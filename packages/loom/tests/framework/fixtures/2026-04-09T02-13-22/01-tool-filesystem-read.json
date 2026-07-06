@@ -1,0 +1,299 @@
+{
+  "recordedAt": "2026-04-09T02:13:22.179Z",
+  "metadata": {
+    "prompt": "Read target.txt",
+    "tools": "readonly",
+    "expectedBehavior": "readFile → returns UNIQUE_CONTENT_12345"
+  },
+  "eventCount": 23,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 12,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "The file contains exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 1
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2817,
+      "outputTokens": 120,
+      "costUsd": 0.00085425
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "3cf51fca-ef4d-47b4-b751-41f8fa7bd8a4",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775700793757
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700793757
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "{\"fi",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "le_path\": \"/",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "var/folde",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "rs/s1/hlc00",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "1ps1",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "k58b_t77k",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "953y6m0000g",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "n/T/l",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "oom-test-R",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "08z7L/targ",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "delta": "et.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01A3NMn88D2kFYtxYhLjFhpq",
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1348,
+          "outputTokens": 99,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00046075
+        },
+        "timestamp": 1775700794957
+      },
+      "index": 16
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700794957
+      },
+      "index": 17
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file contains",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file contains exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1469,
+          "outputTokens": 21,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0003935
+        },
+        "timestamp": 1775700802178
+      },
+      "index": 21
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "3cf51fca-ef4d-47b4-b751-41f8fa7bd8a4",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2817,
+          "outputTokens": 120,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00085425,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700802178
+      },
+      "index": 22
+    }
+  ]
+}

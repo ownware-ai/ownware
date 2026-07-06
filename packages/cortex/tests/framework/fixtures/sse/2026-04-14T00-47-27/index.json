@@ -1,0 +1,32 @@
+{
+  "runStamp": "2026-04-14T00-47-27",
+  "totalStreams": 1,
+  "streams": [
+    {
+      "file": "01-pattern-04-multi-tool.json",
+      "name": "pattern-04-multi-tool",
+      "metadata": {
+        "prompt": "Read 3 files and report first item from each",
+        "profileId": "coder",
+        "threadId": "thread_1025b19d1d9f",
+        "expectedBehavior": "Multiple tool.call.start/end pairs, then synthesis text"
+      },
+      "eventCount": 0,
+      "completed": false
+    }
+  ]
+}},
+    {
+      "file": "02-pattern-07-subagents-parallel.json",
+      "name": "pattern-07-subagents-parallel",
+      "metadata": {
+        "prompt": "Dispatch explore + planner in parallel",
+        "profileId": "coder",
+        "threadId": "thread_5be9d7a0fce6",
+        "expectedBehavior": "2+ agent.spawn events fire close together, both complete"
+      },
+      "eventCount": 0,
+      "completed": false
+    }
+  ]
+}

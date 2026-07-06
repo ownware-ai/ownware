@@ -1,0 +1,59 @@
+{
+  "name": "target-researcher",
+  "kind": "helper",
+  "description": "Researches ONE target — a company, person, or market — in depth and returns a structured, sourced, dated brief. Uses web search, fetches primary sources, and drives the browser for JS-gated pages (pricing, dynamic dashboards). Read-only: writes nothing, publishes nothing, spawns nothing.",
+  "version": "0.1.0",
+  "tags": ["research", "competitive-intel", "single-target", "sourced"],
+  "metadata": {
+    "icon": "T",
+    "color": "violet",
+    "category": "Research",
+    "avatar": {
+      "bg": "#170F2B",
+      "fg": "#D8C5FF",
+      "accent": "#8B5BFF",
+      "symbol": "<circle cx=\"27\" cy=\"27\" r=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><line x1=\"35.5\" y1=\"35.5\" x2=\"48\" y2=\"48\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><circle cx=\"27\" cy=\"27\" r=\"3\" fill=\"currentColor\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 12288,
+  "maxTurns": 40,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute", "agent_spawn"],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": false,
+    "sources": [],
+    "autoLearn": false,
+    "isolation": "per_session"
+  },
+  "skills": { "dirs": [], "external": [] },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "strict",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": { "mode": "foreground", "timeout": "25m" },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 5 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "memory" }
+}

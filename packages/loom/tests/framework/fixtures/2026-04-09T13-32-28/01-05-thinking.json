@@ -1,0 +1,163 @@
+{
+  "recordedAt": "2026-04-09T13:32:28.868Z",
+  "metadata": {
+    "prompt": "Think step by step: 47 * 83",
+    "model": "sonnet",
+    "expectedBehavior": "thinking.delta events with reasoning, then text.delta with answer"
+  },
+  "eventCount": 12,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 7,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n```\n\nStep 1: Multiply 47 by 3 (the ones digit of 83)\n- 47 × 3 = 141\n\nStep 2: Multiply 47 by 80 (the tens digit of 83, which is 8 × 10)\n- 47 × 8 = 376\n- 47 × 80 = 3,760\n\nStep 3: Add the partial products\n```\n   141  (47 × 3)\n+ 3760  (47 × 80)\n------\n  3901\n```\n\nTherefore, 47 × 83 = 3,901",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 46,
+      "outputTokens": 187,
+      "costUsd": 0.002943
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "be689fba-5f95-43c9-8457-4cadea49075c",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775741545005
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775741545005
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n```",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\nStep 1: Multiply 47 by 3 (the ones digit of",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 83)\n- 47 × 3 = 141\n\nStep 2: Multiply 47 by 80 (the tens digit of 83, which is 8 × 10)",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n- 47 × 8 = 376\n- 47 × 80 = 3,760\n\nStep 3: Add the partial products\n```\n   ",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "141  (47 × 3)\n+ 3760  (47 × 80)\n------\n  ",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "3901\n```\n\nTherefore, 47 × 83 = 3,901",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n```\n\nStep 1: Multiply 47 by 3 (the ones digit of 83)\n- 47 × 3 = 141\n\nStep 2: Multiply 47 by 80 (the tens digit of 83, which is 8 × 10)\n- 47 × 8 = 376\n- 47 × 80 = 3,760\n\nStep 3: Add the partial products\n```\n   141  (47 × 3)\n+ 3760  (47 × 80)\n------\n  3901\n```\n\nTherefore, 47 × 83 = 3,901",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 46,
+          "outputTokens": 187,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002943
+        },
+        "timestamp": 1775741548868
+      },
+      "index": 10
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "be689fba-5f95-43c9-8457-4cadea49075c",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 46,
+          "outputTokens": 187,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.002943,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775741548868
+      },
+      "index": 11
+    }
+  ]
+}

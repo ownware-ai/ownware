@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:47:27.812Z",
+  "metadata": {
+    "prompt": "Write to file — deny permission",
+    "profileId": "coder",
+    "threadId": "thread_bc8c42fea023",
+    "expectedBehavior": "permission.request → deny → write blocked"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

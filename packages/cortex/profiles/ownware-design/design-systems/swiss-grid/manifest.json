@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "swiss-grid",
+  "name": "Swiss Grid",
+  "category": "typographic",
+  "surface": "web",
+  "summary": "Mid-century international typographic style — strict 12-column grid, Helvetica/Akzidenz, a single red accent, generous white margins. The museum / foundation / academic zone — works when the artifact should read as typographically literate rather than fashionable.",
+  "swatches": ["#ffffff", "#ffffff", "#000000", "#d80027", "#787878", "#000000"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

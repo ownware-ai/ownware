@@ -1,0 +1,385 @@
+{
+  "recordedAt": "2026-04-08T14:27:28.490Z",
+  "metadata": {
+    "prompt": "Read data.txt with always",
+    "profileId": "coder",
+    "threadId": "thread_54d0dc6a786e",
+    "expectedBehavior": "First run: permission.request → always → tool executes"
+  },
+  "eventCount": 33,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 17,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll read the file for you.The file contains just two lines:\n- Line 1: \"original content\"\n- Line 2: (empty line)",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "toolName": "readFile",
+        "result": "1\toriginal content\n2\t",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10723,
+      "outputTokens": 142,
+      "costUsd": 0.034298999999999996
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_54d0dc6a786e",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "ef5af4d9-1601-4757-9168-ea4390f8a8d5",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658444966
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658444966
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll read the file for",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " you.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "{\"f",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "ile_path\"",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": ": \"/",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "var",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "/folders/s1/",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "hlc001",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "ps1",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "k58b_t",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "77k953y",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "6m00",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "00gn/T/",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "corte",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "x-fw-dvlTjL",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "/perm-s",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "andbox/d",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "delta": "ata.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll read the file for you.",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_014JsG5zjv89rvJoCpyTVndK",
+        "toolName": "readFile",
+        "result": "1\toriginal content\n2\t",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5296,
+          "outputTokens": 112,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.017568
+        },
+        "timestamp": 1775658446910
+      },
+      "index": 25
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "ef5af4d9-1601-4757-9168-ea4390f8a8d5",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658446911
+      },
+      "index": 27
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file contains",
+        "turnIndex": 1
+      },
+      "index": 28
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " just two lines:\n- Line 1: \"original content\"\n- Line 2: (empty line)",
+        "turnIndex": 1
+      },
+      "index": 29
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file contains just two lines:\n- Line 1: \"original content\"\n- Line 2: (empty line)",
+        "turnIndex": 1
+      },
+      "index": 30
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5427,
+          "outputTokens": 30,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.016731
+        },
+        "timestamp": 1775658448489
+      },
+      "index": 31
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 32
+    }
+  ]
+}

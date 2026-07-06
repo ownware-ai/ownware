@@ -1,0 +1,96 @@
+{
+  "name": "nova",
+  "kind": "agent",
+  "description": "Content & publishing operator. Turns raw inputs — a transcript, a launch, a doc — into published content everywhere. Researches angles, drafts posts, newsletters, and threads in the operator's brand voice, generates the visuals, repurposes one input into many format-native pieces, queues them on a schedule, and tracks what landed. Drafts everything for sign-off; never publishes without approval.",
+  "version": "0.1.0",
+  "productId": "ownware",
+  "locked": false,
+  "tags": [
+    "content",
+    "publishing",
+    "social",
+    "copywriting",
+    "newsletter",
+    "repurposing",
+    "brand-voice",
+    "scheduling",
+    "linkedin",
+    "twitter"
+  ],
+  "metadata": {
+    "icon": "N",
+    "color": "violet",
+    "category": "Content",
+    "role": "Content & publishing",
+    "avatar": {
+      "bg": "#1E1033",
+      "fg": "#E9D5FF",
+      "accent": "#A855F7",
+      "symbol": "<circle cx=\"20\" cy=\"32\" r=\"5\" fill=\"currentColor\"/><circle cx=\"46\" cy=\"18\" r=\"4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><circle cx=\"48\" cy=\"32\" r=\"4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><circle cx=\"46\" cy=\"46\" r=\"4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><line x1=\"25\" y1=\"32\" x2=\"42\" y2=\"19\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-opacity=\"0.8\"/><line x1=\"25\" y1=\"32\" x2=\"44\" y2=\"32\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-opacity=\"0.8\"/><line x1=\"25\" y1=\"32\" x2=\"42\" y2=\"45\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-opacity=\"0.8\"/>"
+    },
+    "requiredSecrets": []
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 120,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute", "agent_spawn"],
+    "custom": [],
+    "mcp": {},
+    "composio": {
+      "toolkits": ["twitter", "linkedin", "typefully", "notion"]
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "image", "files", "tasks", "url", "csv", "pdf"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

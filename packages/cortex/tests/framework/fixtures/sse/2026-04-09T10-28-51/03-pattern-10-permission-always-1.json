@@ -1,0 +1,415 @@
+{
+  "recordedAt": "2026-04-09T10:29:03.275Z",
+  "metadata": {
+    "prompt": "Read data.txt with always",
+    "profileId": "coder",
+    "threadId": "thread_89c3202f80b4",
+    "expectedBehavior": "First run: permission.request → always → tool executes"
+  },
+  "eventCount": 35,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 18,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll read the file for you.The file contains:\n```\noriginal content\n```",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "toolName": "readFile",
+        "result": "1\toriginal content\n2\t",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10720,
+      "outputTokens": 125,
+      "costUsd": 0.034034999999999996
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_89c3202f80b4",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "8d30aecc-3ef6-4a7b-ba50-56be3e49d6ad",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775730540195
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775730540195
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll read the file for",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " you.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "{\"file_p",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "ath\": \"/v",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "ar/folde",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "rs/s1/hlc",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "001p",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "s1k",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "58b_t77k",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "953y6",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "m0000gn",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "/T/c",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "ortex-f",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "w-P",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "tsZto/p",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "erm-",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "sandbox/da",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "ta.txt",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "delta": "\"}",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll read the file for you.",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01LW4c8HztbQ4y7wTFUZFF5X",
+        "toolName": "readFile",
+        "result": "1\toriginal content\n2\t",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5295,
+          "outputTokens": 111,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.01755
+        },
+        "timestamp": 1775730542170
+      },
+      "index": 26
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "8d30aecc-3ef6-4a7b-ba50-56be3e49d6ad",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775730542171
+      },
+      "index": 28
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file contains:",
+        "turnIndex": 1
+      },
+      "index": 29
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n```\noriginal content\n```",
+        "turnIndex": 1
+      },
+      "index": 30
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file contains:\n```\noriginal content\n```",
+        "turnIndex": 1
+      },
+      "index": 31
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5425,
+          "outputTokens": 14,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.016485
+        },
+        "timestamp": 1775730543268
+      },
+      "index": 32
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "8d30aecc-3ef6-4a7b-ba50-56be3e49d6ad",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 10720,
+          "outputTokens": 125,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.034034999999999996,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775730543269
+      },
+      "index": 33
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 34
+    }
+  ]
+}

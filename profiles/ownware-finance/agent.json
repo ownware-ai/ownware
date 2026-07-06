@@ -1,0 +1,164 @@
+{
+  "name": "ownware-finance",
+  "kind": "agent",
+  "description": "Senior finance analyst across all five FSI verticals — investment banking, equity research, private equity, wealth management, and corporate-finance ops. Builds DCFs, comps, LBOs, three-statement models; drafts pitchbooks, CIMs, IC memos, earnings recaps, KYC reviews, client packs. Cites every figure to a primary source; refuses to fabricate numbers; refuses to give investment, legal, tax, or accounting advice.",
+  "version": "0.1.0",
+  "tags": [
+    "finance",
+    "research",
+    "modeling",
+    "investment-banking",
+    "private-equity",
+    "equity-research",
+    "wealth-management",
+    "due-diligence",
+    "kyc"
+  ],
+  "metadata": {
+    "icon": "$",
+    "color": "teal",
+    "category": "Finance",
+    "avatar": {
+      "bg": "#0F2A2E",
+      "fg": "#A8E6D4",
+      "accent": "#00D4AA",
+      "symbol": "<text x=\"32\" y=\"42\" text-anchor=\"middle\" font-family=\"Georgia,serif\" font-size=\"32\" font-weight=\"600\" fill=\"currentColor\">$</text><line x1=\"14\" y1=\"50\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-opacity=\"0.4\"/>"
+    },
+    "requiredSecrets": [
+      {
+        "variableName": "FRED_API_KEY",
+        "label": "FRED API key",
+        "hint": "https://fred.stlouisfed.org/docs/api/api_key.html",
+        "usage": "Macro series — rates, CPI, GDP, unemployment, treasury yields, credit spreads. Free key, registers in 30s.",
+        "required": false
+      },
+      {
+        "variableName": "FACTSET_API_KEY",
+        "label": "FactSet API key",
+        "hint": "https://developer.factset.com",
+        "usage": "Equity prices, fundamentals, consensus estimates, ownership, transcripts. Enterprise subscription — contact your FactSet rep.",
+        "required": false
+      },
+      {
+        "variableName": "BLOOMBERG_API_KEY",
+        "label": "Bloomberg Terminal API",
+        "hint": "https://developer.bloomberg.com/",
+        "usage": "Real-time pricing, fixed income, FX, derivatives, news, macro feeds. Bloomberg Terminal subscription required (BLPAPI).",
+        "required": false
+      },
+      {
+        "variableName": "SP_CAPITAL_IQ_API_KEY",
+        "label": "S&P Capital IQ API key",
+        "hint": "https://www.spglobal.com/marketintelligence/en/products/api",
+        "usage": "Public + private company data, M&A history, transactions, credit ratings. Enterprise subscription.",
+        "required": false
+      },
+      {
+        "variableName": "PITCHBOOK_API_KEY",
+        "label": "PitchBook API key",
+        "hint": "https://pitchbook.com/products/direct-access-data/api",
+        "usage": "Private market data — PE/VC deals, fund performance, sponsor activity. Enterprise subscription, separate contract from PitchBook Platform.",
+        "required": false
+      },
+      {
+        "variableName": "DALOOPA_API_KEY",
+        "label": "Daloopa API key",
+        "hint": "https://daloopa.com/products/api",
+        "usage": "Standardised KPIs and operating metrics extracted from public filings. Subscription tiers — contact sales.",
+        "required": false
+      },
+      {
+        "variableName": "MORNINGSTAR_API_KEY",
+        "label": "Morningstar API key",
+        "hint": "https://developer.morningstar.com",
+        "usage": "Fund / ETF data, ratings, asset allocation, manager research. Enterprise subscription.",
+        "required": false
+      },
+      {
+        "variableName": "MOODYS_API_KEY",
+        "label": "Moody's API key",
+        "hint": "https://hub.moodysanalytics.com/gettingstarted",
+        "usage": "Credit ratings, KYC / AML reference data on 600M+ entities. Register on the Moody's API Hub; access depends on product tier.",
+        "required": false
+      }
+    ]
+  },
+  "model": "anthropic:claude-opus-4-7",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 100,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 12000
+  },
+  "tools": {
+    "preset": "coding",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "90m"
+  },
+  "subagents": [
+    {
+      "name": "filings-explorer",
+      "description": "Pulls and navigates SEC filings (10-K, 10-Q, 8-K, S-1, S-4, proxy/DEF 14A) and FRED macro series. Returns extracted sections with page references and source URLs. Read-only. Use first when the analysis needs primary-source numbers."
+    },
+    {
+      "name": "valuation-builder",
+      "description": "Runs valuation math: DCF, comps, LBO, sum-of-parts, merger consequences. Takes inputs from filings-explorer; returns models with every assumption labelled and every formula traceable. No web access — compute only."
+    },
+    {
+      "name": "earnings-reviewer",
+      "description": "Summarises a quarterly print: headline beat/miss vs consensus, guidance changes, top three call quotes, KPI trends. Read-only. Use when the user asks 'what happened' with a recent earnings release."
+    },
+    {
+      "name": "market-researcher",
+      "description": "Sector / peer / competitor / thematic research and idea screening. Pulls market structure, peer landscapes, recent deals, news. Read-only. Use when the analysis needs context broader than one company."
+    },
+    {
+      "name": "diligence-runner",
+      "description": "Builds and works through structured checklists: PE diligence (commercial / financial / legal / IT), KYC document review, sanctions / PEP screening, GL break tracing. Returns the checklist with findings and gaps."
+    },
+    {
+      "name": "deck-author",
+      "description": "Drafts structured deliverables — pitchbooks, CIMs, IC memos, one-pagers, client review packs, financial plans. No web, no shell. Takes inputs from the other helpers and assembles them into the firm's section/page conventions."
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" }
+}

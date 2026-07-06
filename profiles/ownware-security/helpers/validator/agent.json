@@ -1,0 +1,91 @@
+{
+  "name": "validator",
+  "kind": "helper",
+  "description": "Independent vulnerability validation specialist. Takes a candidate finding and independently reproduces it with a working PoC. Assesses real-world impact and CVSS 3.1. Skeptical by design. Capabilities flow from parent grants.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "security",
+    "validation",
+    "poc"
+  ],
+  "metadata": {
+    "icon": "shield-check",
+    "color": "rose",
+    "category": "Security Helpers",
+    "avatar": {
+      "bg": "#3A1A22",
+      "fg": "#F4B5C2",
+      "accent": "#F14060",
+      "symbol": "<path d=\"M32 10 L50 16 V32 C50 44 32 54 32 54 C32 54 14 44 14 32 V16 Z\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M22 32 L30 40 L42 26\" stroke=\"currentColor\" stroke-width=\"2.8\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-4.1",
+  "smallFastModel": "openai:gpt-4o-mini",
+  "maxTokens": 16384,
+  "maxTurns": 50,
+  "tools": {
+    "preset": "none",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": true
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "45m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

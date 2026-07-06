@@ -1,0 +1,59 @@
+{
+  "name": "diligence-runner",
+  "kind": "helper",
+  "description": "Builds and works through structured checklists: PE diligence (commercial / financial / legal / IT), KYC document review, sanctions / PEP screening, GL break tracing. Returns the checklist with findings and gaps.",
+  "version": "0.1.0",
+  "tags": ["finance", "diligence", "kyc", "sanctions", "pe", "checklist"],
+  "metadata": {
+    "icon": "D",
+    "color": "teal",
+    "category": "Finance",
+    "avatar": {
+      "bg": "#0F2A2E",
+      "fg": "#A8E6D4",
+      "accent": "#00D4AA",
+      "symbol": "<text x=\"32\" y=\"42\" text-anchor=\"middle\" font-family=\"Georgia,serif\" font-size=\"30\" font-weight=\"600\" fill=\"currentColor\">D</text><line x1=\"14\" y1=\"50\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-opacity=\"0.4\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 10240,
+  "maxTurns": 50,
+  "tools": {
+    "preset": "coding",
+    "allow": ["web_fetch", "web_search"],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": false,
+    "sources": [],
+    "autoLearn": false,
+    "isolation": "per_session"
+  },
+  "skills": { "dirs": [], "external": [] },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": { "mode": "foreground", "timeout": "30m" },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 5 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "memory" }
+}

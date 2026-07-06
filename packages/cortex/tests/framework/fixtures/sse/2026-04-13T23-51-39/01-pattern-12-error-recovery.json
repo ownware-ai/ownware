@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-13T23:51:39.157Z",
+  "metadata": {
+    "prompt": "Read non-existent file, expect error and graceful recovery",
+    "profileId": "coder",
+    "threadId": "thread_95b49aad2628",
+    "expectedBehavior": "tool.call.end with isError: true → LLM acknowledges → done"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

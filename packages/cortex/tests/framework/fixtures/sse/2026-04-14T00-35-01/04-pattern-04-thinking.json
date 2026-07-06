@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:35:01.934Z",
+  "metadata": {
+    "prompt": "Math problem with reasoning",
+    "profileId": "sse-thinking",
+    "threadId": "thread_216a64dce3a0",
+    "expectedBehavior": "May produce thinking.delta events; will produce text answer"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

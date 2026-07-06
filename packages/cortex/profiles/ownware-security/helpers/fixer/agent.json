@@ -1,0 +1,90 @@
+{
+  "name": "fixer",
+  "kind": "helper",
+  "description": "Code remediation specialist. Implements the minimal secure fix for a reported vulnerability, re-runs the PoC to confirm it fails, and checks for regressions. White-box only. Capabilities flow from parent grants.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "security",
+    "remediation"
+  ],
+  "metadata": {
+    "icon": "wrench",
+    "color": "rose",
+    "category": "Security Helpers",
+    "avatar": {
+      "bg": "#3A1A22",
+      "fg": "#F4B5C2",
+      "accent": "#F14060",
+      "symbol": "<path d=\"M42 14 C 48 14, 52 18, 52 24 C 52 28, 50 32, 46 34 L 46 42 L 40 48 L 34 42 L 34 34 C 30 32, 28 28, 28 24 C 28 18, 32 14, 38 14 Z\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\" stroke-linejoin=\"round\" transform=\"rotate(45 40 32)\"/><line x1=\"12\" y1=\"52\" x2=\"32\" y2=\"32\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-4.1",
+  "smallFastModel": "openai:gpt-4o-mini",
+  "maxTokens": 16384,
+  "maxTurns": 50,
+  "tools": {
+    "preset": "none",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": true
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "45m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

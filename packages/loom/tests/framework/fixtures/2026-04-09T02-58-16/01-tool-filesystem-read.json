@@ -1,0 +1,329 @@
+{
+  "recordedAt": "2026-04-09T02:58:16.104Z",
+  "metadata": {
+    "prompt": "Read target.txt",
+    "tools": "readonly",
+    "expectedBehavior": "readFile → returns UNIQUE_CONTENT_12345"
+  },
+  "eventCount": 26,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 15,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "The file contains exactly one line with the content:\n\n```\nUNIQUE_CONTENT_12345\n```",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 1
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2817,
+      "outputTokens": 125,
+      "costUsd": 0.0008604999999999999
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "d3bb2af6-f5ce-400f-ba0e-d7bd0f21da66",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775703494092
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775703494092
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "{\"file_pat",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "h\": ",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "\"/var/fo",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "lders/s1/",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "hlc00",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "1ps1k58b_",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "t77",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "k953y6m0",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "000gn/T/lo",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "om-te",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "st",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "-tEmm1J/",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "targ",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "delta": "et.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_011kVQnW9zuvjM4b6jaQ2WWf",
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1348,
+          "outputTokens": 99,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00046075
+        },
+        "timestamp": 1775703495329
+      },
+      "index": 19
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775703495329
+      },
+      "index": 20
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file contains",
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " exactly one line with the content:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file contains exactly one line with the content:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1469,
+          "outputTokens": 26,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00039975
+        },
+        "timestamp": 1775703496103
+      },
+      "index": 24
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "d3bb2af6-f5ce-400f-ba0e-d7bd0f21da66",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2817,
+          "outputTokens": 125,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0008604999999999999,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775703496103
+      },
+      "index": 25
+    }
+  ]
+}

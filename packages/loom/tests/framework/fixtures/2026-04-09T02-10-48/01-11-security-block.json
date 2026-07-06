@@ -1,0 +1,268 @@
+{
+  "recordedAt": "2026-04-09T02:10:48.528Z",
+  "metadata": {
+    "prompt": "Write with deny-all policy",
+    "expectedBehavior": "write_sensitive attempted → denied by policy → error → graceful recovery"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 6,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 5,
+    "text.complete": 2,
+    "permission.response": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll use the write_sensitive tool to write \"TEST_CONTENT\" as requested.The outcome is that the write_sensitive tool call failed with a \"Permission denied by policy\" error. This indicates that the system's security policy prevented the write operation from being executed, even though I attempted to use the tool as instructed.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [
+      {
+        "toolName": "unknown",
+        "granted": false
+      }
+    ],
+    "usage": {
+      "inputTokens": 982,
+      "outputTokens": 128,
+      "costUsd": 0.0048660000000000005
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "fc90e134-2676-4cd3-aca6-5904b5f719d9",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700644435
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700644435
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll use the write_sensitive tool",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to write \"TEST_CONTENT\" as requested.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "toolName": "write_sensitive",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "delta": "{\"conte",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "delta": "nt\": \"T",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "delta": "EST_CONT",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "delta": "ENT\"}",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll use the write_sensitive tool to write \"TEST_CONTENT\" as requested.",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01Qxg49zeWGCEr5QkrEd1EAp",
+        "granted": false,
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 441,
+          "outputTokens": 76,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002463
+        },
+        "timestamp": 1775700646494
+      },
+      "index": 12
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700646494
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " outcome is that the write_sensitive tool call failed with a \"Permission denied by policy\" error. This indicates",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " that the system's security policy prevented the write operation from being executed, even though I attempted",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to use the tool as instructed.",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The outcome is that the write_sensitive tool call failed with a \"Permission denied by policy\" error. This indicates that the system's security policy prevented the write operation from being executed, even though I attempted to use the tool as instructed.",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 541,
+          "outputTokens": 52,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002403
+        },
+        "timestamp": 1775700648527
+      },
+      "index": 19
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "fc90e134-2676-4cd3-aca6-5904b5f719d9",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 982,
+          "outputTokens": 128,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0048660000000000005,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700648528
+      },
+      "index": 20
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "name": "ownware-qa",
+  "kind": "agent",
+  "description": "Ownware QA — tests, regressions, coverage, edge cases. Reads source, writes tests, runs the suite, reports failures with reproductions. Adversarial by default — assumes every change is broken until proven otherwise.",
+  "version": "0.1.0",
+  "productId": "ownware-coder",
+  "locked": true,
+  "tags": [
+    "qa",
+    "testing",
+    "regressions",
+    "coverage"
+  ],
+  "metadata": {
+    "icon": "Q",
+    "color": "teal",
+    "category": "Engineering",
+    "avatar": {
+      "bg": "#1C3A38",
+      "fg": "#A8E6D4",
+      "accent": "#00D4AA",
+      "symbol": "<circle cx=\"28\" cy=\"28\" r=\"16\" stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\"/><line x1=\"40\" y1=\"40\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/><path d=\"M22 28 L26 32 L34 24\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 100,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "coding",
+    "allow": [
+      "readFile",
+      "editFile",
+      "writeFile",
+      "grep",
+      "glob",
+      "ls",
+      "shell"
+    ],
+    "deny": [
+      "browser_*",
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "code", "diff", "terminal", "files", "tasks", "json", "txt"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

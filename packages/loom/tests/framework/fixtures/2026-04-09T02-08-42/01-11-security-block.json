@@ -1,0 +1,255 @@
+{
+  "recordedAt": "2026-04-09T02:08:42.051Z",
+  "metadata": {
+    "prompt": "Calculate 10 + 10 — deny-all blocks it",
+    "expectedBehavior": "tool call attempted → denied by policy → error result → graceful recovery"
+  },
+  "eventCount": 19,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 5,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll use the calculate tool to compute 10 + 10.The calculation was successful! 10 + 10 = 20.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "20",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 978,
+      "outputTokens": 90,
+      "costUsd": 0.004284
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "dff9d069-fe12-46f3-8f71-c2ffeafe9604",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700518376
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700518376
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll use the calculate tool to compute",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 10 + 10.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "delta": "{\"ex",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "delta": "pression\": ",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "delta": "\"10 +",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "delta": " 10\"}",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll use the calculate tool to compute 10 + 10.",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01M2bzsLom9EP2KM4QhD2Jmr",
+        "toolName": "calculate",
+        "result": "20",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 447,
+          "outputTokens": 71,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002406
+        },
+        "timestamp": 1775700520781
+      },
+      "index": 12
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700520781
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The calculation",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " was successful! 10 + 10 = 20.",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The calculation was successful! 10 + 10 = 20.",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 531,
+          "outputTokens": 19,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.001878
+        },
+        "timestamp": 1775700522050
+      },
+      "index": 17
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "dff9d069-fe12-46f3-8f71-c2ffeafe9604",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 978,
+          "outputTokens": 90,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.004284,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700522051
+      },
+      "index": 18
+    }
+  ]
+}

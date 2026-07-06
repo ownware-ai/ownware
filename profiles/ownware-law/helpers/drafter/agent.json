@@ -1,0 +1,95 @@
+{
+  "name": "legal-drafter",
+  "kind": "helper",
+  "description": "Legal drafting specialist. Writes contracts, memos, briefs, and correspondence. Precise language, proper structure, no ambiguity. Read + write filesystem.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "legal",
+    "drafting"
+  ],
+  "metadata": {
+    "icon": "pen-line",
+    "color": "violet",
+    "category": "Legal Helpers",
+    "avatar": {
+      "bg": "#1E1A3E",
+      "fg": "#C9BEFC",
+      "accent": "#7C5CFC",
+      "symbol": "<path d=\"M16 48 L48 16 L52 20 L20 52 L12 52 Z\" stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linejoin=\"round\"/><line x1=\"38\" y1=\"22\" x2=\"46\" y2=\"30\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 35,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "shell_execute",
+      "agent_spawn",
+      "web_search",
+      "web_fetch",
+      "image_*",
+      "speech_*",
+      "memory_*"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

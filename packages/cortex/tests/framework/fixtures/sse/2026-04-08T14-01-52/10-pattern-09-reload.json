@@ -1,0 +1,112 @@
+{
+  "recordedAt": "2026-04-08T14:02:09.921Z",
+  "metadata": {
+    "prompt": "Say hello (after reload)",
+    "expectedBehavior": "Response should reflect new pirate personality"
+  },
+  "eventCount": 8,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey! Ahoy there, me hearty! 🏴‍☠️",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 718,
+      "outputTokens": 26,
+      "costUsd": 0.000212
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_1764ed96aa98",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "a11f17ec-043a-45e4-8acd-33a8d97c01ae",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775656928943
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656928943
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " Ahoy there, me hearty! 🏴‍☠️",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey! Ahoy there, me hearty! 🏴‍☠️",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 718,
+          "outputTokens": 26,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000212
+        },
+        "timestamp": 1775656929920
+      },
+      "index": 6
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 7
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "name": "web",
+  "kind": "helper",
+  "description": "Runs and tests web apps end-to-end. Spins up dev servers via shell, drives the browser via Playwright-style tools, reads DevTools (console, network, performance) when chrome-devtools-mcp is wired. Use for: 'does this page work', 'why is this request failing', 'reproduce this bug', 'why is this slow'. Reports findings; never edits app code.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "web",
+    "browser",
+    "devtools",
+    "qa",
+    "e2e"
+  ],
+  "metadata": {
+    "icon": "globe",
+    "color": "mix",
+    "category": "Engineering Helpers",
+    "avatar": {
+      "bg": "#0E2F3A",
+      "fg": "#A2DDF0",
+      "accent": "#00B8E0",
+      "symbol": "<circle cx=\"32\" cy=\"32\" r=\"20\" stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\"/><ellipse cx=\"32\" cy=\"32\" rx=\"8\" ry=\"20\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\"/><line x1=\"12\" y1=\"32\" x2=\"52\" y2=\"32\" stroke=\"currentColor\" stroke-width=\"2.2\"/><line x1=\"32\" y1=\"12\" x2=\"32\" y2=\"52\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-opacity=\"0.55\"/>"
+    }
+  },
+  "model": "openrouter:kimi-k2.6",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 40,
+  "tools": {
+    "preset": "none",
+    "allow": [
+      "browser_navigate",
+      "browser_click",
+      "browser_type",
+      "browser_screenshot",
+      "browser_snapshot",
+      "browser_evaluate",
+      "browser_console",
+      "browser_hover",
+      "browser_select",
+      "browser_press_key",
+      "browser_drag",
+      "browser_fill_form",
+      "browser_wait",
+      "browser_scroll",
+      "browser_tab_list",
+      "browser_tab_open",
+      "browser_tab_close",
+      "shell_execute",
+      "readFile",
+      "listFiles",
+      "glob",
+      "grep"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": true,
+    "cwd": true,
+    "datetime": false,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "criticalReminder": "INSPECT-AND-REPORT task: do not edit app source code. Your job is to RUN the app, DRIVE the browser, READ DevTools, and REPORT findings. The parent owns all fixes. Shell is for `npm run dev` / `vite` / `playwright install` / process inspection — not for `git`, package installs into shared envs, or filesystem writes outside `/tmp` and the running app's working dir. Your reply MUST end with a one-line VERDICT: WORKS / BROKEN / PARTIAL, followed by a Findings section with file:line or URL:selector evidence.",
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

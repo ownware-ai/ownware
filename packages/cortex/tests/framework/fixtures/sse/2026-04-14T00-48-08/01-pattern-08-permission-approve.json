@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:48:08.338Z",
+  "metadata": {
+    "prompt": "Read data.txt with auto-approve",
+    "profileId": "coder",
+    "threadId": "thread_5a19fa6fd1bb",
+    "expectedBehavior": "permission.request → approve → tool.call.start → tool.call.end"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

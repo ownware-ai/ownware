@@ -1,0 +1,25 @@
+{
+  "recordedAt": "2026-04-14T00:48:06.551Z",
+  "metadata": {
+    "prompt": "Remember this code: VIOLET-9921",
+    "threadId": "thread_8c9e075ddcd5",
+    "expectedBehavior": "Acknowledges receipt of code"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

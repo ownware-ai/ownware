@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper Notebook — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/paper-notebook. Sketchnote / handwritten / textured-paper aesthetic with a marker-blue accent." />
+    <style>
+      :root {
+        --bg:      #f9f3e3;
+        --surface: #fefcf4;
+        --fg:      #2a2722;
+        --muted:   #7c7568;
+        --border:  #d8cdb3;
+        --accent:       #1f5fb8;
+        --accent-hover: #154a92;
+        --accent-fg:    #fefcf4;
+        --good: #3f8a4a;
+        --warn: #d28b1a;
+        --bad:  #c44a3a;
+        --radius:      10px;
+        --radius-pill: 999px;
+        --font-display: 'Caveat', 'Patrick Hand', 'Kalam', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        min-height: 100vh; color: var(--fg); font: 400 16px/1.65 var(--font-body);
+        background-color: var(--bg);
+        background-image: radial-gradient(var(--border) 1px, transparent 1.5px);
+        background-size: 22px 22px;
+      }
+      .wrap { max-width: 1000px; margin-inline: auto; padding: 80px 32px; }
+      .eyebrow { font: 500 14px/1 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; }
+      h1 { font: 600 88px/0.95 var(--font-display); margin: 0 0 20px; text-wrap: balance; }
+      h1 .ink { color: var(--accent); }
+      .underline { position: relative; display: inline-block; }
+      .underline svg { position: absolute; left: 0; right: 0; bottom: -10px; width: 100%; height: 14px; overflow: visible; }
+      .lead { font-size: 19px; max-width: 56ch; margin: 0 0 36px; color: var(--fg); }
+      .actions { display: flex; gap: 14px; margin-bottom: 64px; }
+      .btn { display: inline-flex; align-items: center; min-height: 46px; padding: 0 22px; border-radius: var(--radius); font: 500 15px/1 var(--font-body); text-decoration: none; border: 2px dashed var(--border); cursor: pointer; transition: background 160ms ease; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); border-style: solid; }
+      .btn-primary:hover { background: var(--accent-hover); }
+      .btn-secondary { background: var(--surface); color: var(--fg); }
+      .btn-secondary:hover { border-style: solid; border-color: var(--accent); color: var(--accent); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 64px; } }
+      .note { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; }
+      .note.tilt { transform: rotate(-0.6deg); }
+      .note h3 { font: 600 28px/1.1 var(--font-display); color: var(--fg); margin: 0 0 8px; }
+      .note p  { margin: 0 0 16px; }
+      .highlight { background: linear-gradient(transparent 60%, rgba(210, 139, 26, 0.42) 60%); padding: 0 2px; }
+      .check { color: var(--good); font-weight: 600; }
+      .arrow-note { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 22px; color: var(--accent); }
+      .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 18px; border-top: 1px dashed var(--border); }
+      .stat strong { display: block; font: 600 32px/1.1 var(--font-display); color: var(--accent); }
+      .stat span { font-size: 13px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">CHAPTER 04 · A FIELD NOTE</p>
+      <h1>Sketched, not <span class="underline ink">drawn<svg viewBox="0 0 200 14" preserveAspectRatio="none"><path d="M 2 8 Q 60 2 120 7 T 198 6" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" /></svg></span>.</h1>
+      <p class="lead">A reference layout for the Paper Notebook system — warm cream paper, dot-grid floor, marker-blue accent, and <span class="highlight">one highlighted phrase</span> per page where it matters most.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">Start the lesson</a>
+        <a class="btn btn-secondary" href="#">Browse chapters</a>
+      </div>
+      <div class="grid">
+        <article class="note">
+          <h3>Three notes from this page</h3>
+          <p><span class="check">✓</span> Hand-drawn underline lives in the headline only — one per page, never two.</p>
+          <p><span class="check">✓</span> Dot grid carries the paper-feel. Without it the system collapses to warm minimal.</p>
+          <p><span class="check">✓</span> Handwritten font lives in display; body stays clean sans, always.</p>
+          <div class="stat">
+            <div><strong>22</strong><span>lessons</span></div>
+            <div><strong>3hr</strong><span>est. time</span></div>
+            <div><strong>4.8</strong><span>star avg</span></div>
+          </div>
+        </article>
+        <article class="note tilt">
+          <span class="arrow-note">↪ pin this</span>
+          <h3 style="margin-top:8px">Margin tip</h3>
+          <p>A tilted note pinned to the page floor. The tiny 0.6° rotation is the difference between "deliberate handmade" and "default web template."</p>
+          <div style="display:flex; gap:10px;">
+            <span style="width:34px;height:34px;border-radius:8px;background:var(--accent);border:1px dashed var(--border)"></span>
+            <span style="width:34px;height:34px;border-radius:8px;background:var(--warn);border:1px dashed var(--border)"></span>
+            <span style="width:34px;height:34px;border-radius:8px;background:var(--surface);border:1px dashed var(--border)"></span>
+            <span style="width:34px;height:34px;border-radius:8px;background:var(--fg)"></span>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "neutral-modern",
+  "name": "Neutral Modern",
+  "category": "starter",
+  "surface": "web",
+  "summary": "A clean, opinion-light default. Use when the brief doesn't call for a specific mood — B2B tools, dashboards, utility pages, fallback when nothing else fits.",
+  "swatches": ["#fafafa", "#ffffff", "#111111", "#2f6feb", "#6b6b6b", "#e5e5e5"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css" }
+}

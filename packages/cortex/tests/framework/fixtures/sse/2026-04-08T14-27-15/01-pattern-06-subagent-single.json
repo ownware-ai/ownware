@@ -1,0 +1,852 @@
+{
+  "recordedAt": "2026-04-08T14:27:23.080Z",
+  "metadata": {
+    "prompt": "Use explore helper to find greet function",
+    "profileId": "coder",
+    "threadId": "thread_c457e076745d",
+    "expectedBehavior": "Spawns explore sub-agent, gets result, reports findings"
+  },
+  "eventCount": 80,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 7,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 61,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll spawn the explore agent to find the greet function in the codebase.I see that agent spawning is not available in this session. However, you specifically requested that I MUST use the agent_spawn tool and NOT use the other tools myself. Since agent spawning is not available, I cannot complete this task as requested with the constraints you've provided.\n\nWould you like me to proceed with finding the greet function using the available tools (readFile, listFiles, glob, grep) directly, or would you prefer to adjust the approach?",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "toolName": "agent_spawn",
+        "result": "Agent spawning is not available in this session. Complete the task yourself or break it into smaller steps.",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10853,
+      "outputTokens": 309,
+      "costUsd": 0.037194
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_c457e076745d",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "e3fbf5a7-9f10-4b6b-8265-a6911012ae96",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658435609
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658435609
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll spawn",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " the explore agent to find the greet function in the codebase.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "{\"name",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "\": \"Find gre",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "et function",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "\"",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": ", \"subage",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "nt",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "_type\":",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " \"ex",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "plore\"",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": ", \"prompt",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "\": \"Find t",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "he",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " greet funct",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "ion i",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "n this ",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "code",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "base. Search",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " throu",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "gh all file",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "s to locat",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "e any f",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "unction na",
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "med",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " \\\"greet\\",
+        "turnIndex": 0
+      },
+      "index": 30
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "\" or si",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "milar. Repor",
+        "turnIndex": 0
+      },
+      "index": 32
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "t t",
+        "turnIndex": 0
+      },
+      "index": 33
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "he fi",
+        "turnIndex": 0
+      },
+      "index": 34
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "le p",
+        "turnIndex": 0
+      },
+      "index": 35
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "ath, line ",
+        "turnIndex": 0
+      },
+      "index": 36
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "numb",
+        "turnIndex": 0
+      },
+      "index": 37
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "er, an",
+        "turnIndex": 0
+      },
+      "index": 38
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "d the",
+        "turnIndex": 0
+      },
+      "index": 39
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " functi",
+        "turnIndex": 0
+      },
+      "index": 40
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "on",
+        "turnIndex": 0
+      },
+      "index": 41
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " d",
+        "turnIndex": 0
+      },
+      "index": 42
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "efinition.",
+        "turnIndex": 0
+      },
+      "index": 43
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " If th",
+        "turnIndex": 0
+      },
+      "index": 44
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "er",
+        "turnIndex": 0
+      },
+      "index": 45
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "e are mult",
+        "turnIndex": 0
+      },
+      "index": 46
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "iple gr",
+        "turnIndex": 0
+      },
+      "index": 47
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "eet f",
+        "turnIndex": 0
+      },
+      "index": 48
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "unctions",
+        "turnIndex": 0
+      },
+      "index": 49
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": ", list them ",
+        "turnIndex": 0
+      },
+      "index": 50
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "all. If",
+        "turnIndex": 0
+      },
+      "index": 51
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " no greet f",
+        "turnIndex": 0
+      },
+      "index": 52
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "unction i",
+        "turnIndex": 0
+      },
+      "index": 53
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "s found, co",
+        "turnIndex": 0
+      },
+      "index": 54
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "nfirm",
+        "turnIndex": 0
+      },
+      "index": 55
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": " that af",
+        "turnIndex": 0
+      },
+      "index": 56
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "ter a thorou",
+        "turnIndex": 0
+      },
+      "index": 57
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "gh ",
+        "turnIndex": 0
+      },
+      "index": 58
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "search.\"",
+        "turnIndex": 0
+      },
+      "index": 59
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": ", \"tools\": [",
+        "turnIndex": 0
+      },
+      "index": 60
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "\"readFile\"",
+        "turnIndex": 0
+      },
+      "index": 61
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": ",\"li",
+        "turnIndex": 0
+      },
+      "index": 62
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "stFiles",
+        "turnIndex": 0
+      },
+      "index": 63
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "\",\"g",
+        "turnIndex": 0
+      },
+      "index": 64
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "lob\",\"grep\"",
+        "turnIndex": 0
+      },
+      "index": 65
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "delta": "]}",
+        "turnIndex": 0
+      },
+      "index": 66
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll spawn the explore agent to find the greet function in the codebase.",
+        "turnIndex": 0
+      },
+      "index": 67
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_0113uMZS1wVchECGLNq6nLpN",
+        "toolName": "agent_spawn",
+        "result": "Agent spawning is not available in this session. Complete the task yourself or break it into smaller steps.",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 68
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5302,
+          "outputTokens": 209,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.019041
+        },
+        "timestamp": 1775658439841
+      },
+      "index": 69
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "e3fbf5a7-9f10-4b6b-8265-a6911012ae96",
+        "turnIndex": 0
+      },
+      "index": 70
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658439843
+      },
+      "index": 71
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I",
+        "turnIndex": 1
+      },
+      "index": 72
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " see that agent spawning is not available in this session. However, you specifically requested",
+        "turnIndex": 1
+      },
+      "index": 73
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " that I MUST use the agent_spawn tool and NOT use the other tools myself. Since agent",
+        "turnIndex": 1
+      },
+      "index": 74
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " spawning is not available, I cannot complete this task as requested with the constraints you've provided.\n\nWould you like me to proceed with finding",
+        "turnIndex": 1
+      },
+      "index": 75
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " the greet function using the available tools (readFile, listFiles, glob, grep) directly, or would you prefer to adjust the approach?",
+        "turnIndex": 1
+      },
+      "index": 76
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I see that agent spawning is not available in this session. However, you specifically requested that I MUST use the agent_spawn tool and NOT use the other tools myself. Since agent spawning is not available, I cannot complete this task as requested with the constraints you've provided.\n\nWould you like me to proceed with finding the greet function using the available tools (readFile, listFiles, glob, grep) directly, or would you prefer to adjust the approach?",
+        "turnIndex": 1
+      },
+      "index": 77
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5551,
+          "outputTokens": 100,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.018153
+        },
+        "timestamp": 1775658443079
+      },
+      "index": 78
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 79
+    }
+  ]
+}

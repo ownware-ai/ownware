@@ -1,0 +1,18 @@
+{
+  "runStamp": "2026-04-14T00-00-03",
+  "totalStreams": 1,
+  "streams": [
+    {
+      "file": "01-pattern-04-multi-tool.json",
+      "name": "pattern-04-multi-tool",
+      "metadata": {
+        "prompt": "Read 3 files and report first item from each",
+        "profileId": "coder",
+        "threadId": "thread_cadf8ffb31e6",
+        "expectedBehavior": "Multiple tool.call.start/end pairs, then synthesis text"
+      },
+      "eventCount": 0,
+      "completed": false
+    }
+  ]
+}

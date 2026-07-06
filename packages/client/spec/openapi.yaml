@@ -1,0 +1,203 @@
+# The Ownware gateway wire contract — REST surface, v1.
+#
+# This file is the versioned PROMISE @ownware/client is built against.
+# Scope is deliberate: the seven "talk to your agent" calls. The
+# gateway exposes many more routes (profiles CRUD, connectors,
+# schedules, …) — those are the management surface, INTERNAL and
+# unstable until they appear here.
+#
+# Companion: asyncapi.yaml documents the SSE event vocabulary.
+
+openapi: 3.1.0
+info:
+  title: Ownware Gateway — core wire contract
+  version: 0.1.0
+  description: >
+    Drive a Ownware agent from any language: start a run, stream its
+    events, answer permission prompts. Bearer auth applies to every
+    route except /health whenever the gateway has auth enabled (always
+    true on non-loopback binds; token at <dataDir>/gateway-token).
+
+servers:
+  - url: http://localhost:3011
+    description: Default local gateway (ownware serve prints yours)
+
+security:
+  - bearer: []
+
+paths:
+  /api/v1/health:
+    get:
+      operationId: health
+      security: []  # the ONE unauthenticated route
+      summary: Liveness.
+      responses:
+        '200':
+          description: Gateway is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+                  version: { type: string }
+                  uptime: { type: number }
+
+  /api/v1/run:
+    post:
+      operationId: run
+      summary: Start a run. Returns immediately; stream the reply over SSE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profileId, prompt]
+              properties:
+                profileId:
+                  type: string
+                  description: Which profile answers (the `name` in its agent.json).
+                prompt:
+                  type: string
+                threadId:
+                  type: string
+                  description: Continue an existing conversation; omit for a new thread.
+                model:
+                  type: string
+                  description: >
+                    Override the model (`provider:model`). Omitted → the
+                    thread's model, else the profile's default — and if that
+                    default's provider has no credentials, the gateway falls
+                    back to a model that can answer (vault/env provider,
+                    else a reachable local Ollama).
+      responses:
+        '200':
+          description: Run started in the background.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [threadId]
+                properties:
+                  threadId: { type: string }
+                  agentId: { type: string, description: "'root' for a plain run" }
+                  profileId: { type: string }
+                  model:
+                    type: string
+                    description: The model ACTUALLY dispatched (incl. keyless fallback).
+                  status: { type: string }
+        '404': { description: Unknown profileId or threadId. }
+        '401': { description: Missing/invalid bearer token (auth enabled). }
+
+  /api/v1/threads/{threadId}/agents/root/events:
+    get:
+      operationId: events
+      summary: >
+        The run's event stream (SSE). Stays open indefinitely — a reply
+        is finished at its terminal event (see asyncapi.yaml), not at
+        stream close. Reconnect with ?since=<highest seq seen>.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: since
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
+          description: Replay events with seq greater than this cursor.
+      responses:
+        '200':
+          description: text/event-stream; each frame's data is one JSON event carrying `seq`.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { description: Unknown thread. }
+        '401': { description: Missing/invalid bearer token (auth enabled). }
+
+  /api/v1/threads/{threadId}/resume:
+    post:
+      operationId: resume
+      summary: Answer a permission.request (or other pause) — the run resumes.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, deny, always, answer, allow_folder_session]
+                answer:
+                  type: string
+                  description: Free-text reply when action is `answer`.
+                requestId:
+                  type: string
+                  description: Specific pending request when several are outstanding.
+                grantPath:
+                  type: string
+                  description: Absolute path granted when action is `allow_folder_session`.
+      responses:
+        '200': { description: Decision delivered. }
+        '404': { description: Unknown thread / nothing pending. }
+        '401': { description: Missing/invalid bearer token (auth enabled). }
+
+  /api/v1/threads/{threadId}/abort:
+    post:
+      operationId: abort
+      summary: Stop a running agent.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Abort delivered (idempotent). }
+        '404': { description: Unknown thread. }
+        '401': { description: Missing/invalid bearer token (auth enabled). }
+
+  /api/v1/models:
+    get:
+      operationId: models
+      summary: The model catalog with LIVE availability.
+      responses:
+        '200':
+          description: Every model the gateway knows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string, description: "Canonical `provider:model` id." }
+                    name: { type: string }
+                    provider: { type: string }
+                    hasCredentials:
+                      type: boolean
+                      description: >
+                        Can answer RIGHT NOW: a key is saved/exported, or —
+                        for ollama — a local server answered the probe.
+                    default:
+                      type: boolean
+                      description: At most one per provider — the recommended pick.
+        '401': { description: Missing/invalid bearer token (auth enabled). }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: >
+        Gateway session token. Enabled automatically on any non-loopback
+        bind; persisted at <dataDir>/gateway-token (0600).

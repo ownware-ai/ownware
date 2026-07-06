@@ -1,0 +1,59 @@
+{
+  "name": "seo-analyst",
+  "kind": "helper",
+  "description": "Runs technical and on-page SEO audits, keyword research, and competitor content analysis. Pulls Search Console / Ahrefs / Semrush when keys are connected; falls back to public sources otherwise. Returns prioritised findings tied to the search metric being moved.",
+  "version": "0.1.0",
+  "tags": ["marketing", "seo", "search-console", "ahrefs", "semrush", "audit", "keywords"],
+  "metadata": {
+    "icon": "S",
+    "color": "rose",
+    "category": "Marketing",
+    "avatar": {
+      "bg": "#2A0F1F",
+      "fg": "#FFB8C8",
+      "accent": "#E94B6E",
+      "symbol": "<text x=\"32\" y=\"42\" text-anchor=\"middle\" font-family=\"Helvetica,sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"currentColor\">S</text><line x1=\"14\" y1=\"50\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-opacity=\"0.4\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 12288,
+  "maxTurns": 45,
+  "tools": {
+    "preset": "readonly",
+    "allow": ["web_fetch", "web_search"],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": false,
+    "sources": [],
+    "autoLearn": false,
+    "isolation": "per_session"
+  },
+  "skills": { "dirs": [], "external": [] },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "strict",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": { "mode": "foreground", "timeout": "25m" },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 5 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "memory" }
+}

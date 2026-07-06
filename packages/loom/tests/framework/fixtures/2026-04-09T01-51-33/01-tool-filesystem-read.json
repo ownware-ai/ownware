@@ -1,0 +1,349 @@
+{
+  "recordedAt": "2026-04-09T01:51:33.768Z",
+  "metadata": {
+    "prompt": "Read target.txt",
+    "tools": "readonly",
+    "expectedBehavior": "readFile → returns UNIQUE_CONTENT_12345"
+  },
+  "eventCount": 28,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 17,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "The exact contents of the file are:\n\n```\nUNIQUE_CONTENT_12345\n```",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 2
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2820,
+      "outputTokens": 124,
+      "costUsd": 0.00086
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "cce405cc-71fd-41c8-bba2-ecf1c733bad1",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699491510
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699491510
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "{\"file",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "_pa",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "th\":",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": " \"/var/",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "fold",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "ers/",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "s1",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "/hlc001ps1",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "k58b",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "_t77",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "k953y6m00",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "00gn/T/",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "loom-test-",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "YyBw",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "Ag/target.tx",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "delta": "t\"}",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_016KuHkybEJoYAfSLPJmnwdq",
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1349,
+          "outputTokens": 100,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00046225
+        },
+        "timestamp": 1775699492646
+      },
+      "index": 21
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699492646
+      },
+      "index": 22
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The exact",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " contents of the file are:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The exact contents of the file are:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 25
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1471,
+          "outputTokens": 24,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00039775
+        },
+        "timestamp": 1775699493766
+      },
+      "index": 26
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "cce405cc-71fd-41c8-bba2-ecf1c733bad1",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2820,
+          "outputTokens": 124,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00086,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699493767
+      },
+      "index": 27
+    }
+  ]
+}

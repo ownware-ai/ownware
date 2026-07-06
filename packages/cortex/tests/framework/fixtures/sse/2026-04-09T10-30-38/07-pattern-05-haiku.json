@@ -1,0 +1,133 @@
+{
+  "recordedAt": "2026-04-09T10:30:51.848Z",
+  "metadata": {
+    "prompt": "Say HI",
+    "profileId": "sse-haiku",
+    "expectedBehavior": "Haiku response, lower per-token cost"
+  },
+  "eventCount": 9,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "HI 👋",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 701,
+      "outputTokens": 8,
+      "costUsd": 0.00018525
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_7db21f047f80",
+        "profileId": "sse-haiku"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "6c4c43bd-d964-4db2-9850-e4fafd8615dd",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775730651160
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775730651160
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "HI ",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "👋",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "HI 👋",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 701,
+          "outputTokens": 8,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00018525
+        },
+        "timestamp": 1775730651847
+      },
+      "index": 6
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "6c4c43bd-d964-4db2-9850-e4fafd8615dd",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 701,
+          "outputTokens": 8,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00018525,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775730651847
+      },
+      "index": 7
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 8
+    }
+  ]
+}

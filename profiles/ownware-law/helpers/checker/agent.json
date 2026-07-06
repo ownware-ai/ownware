@@ -1,0 +1,96 @@
+{
+  "name": "legal-checker",
+  "kind": "helper",
+  "description": "Compliance and regulatory specialist. Scans documents and policies against regulatory frameworks (GDPR, HIPAA, SOC 2, CCPA, PCI DSS, SOX, and more). Read-only, web-research capable.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "legal",
+    "compliance",
+    "regulatory",
+    "read-only"
+  ],
+  "metadata": {
+    "icon": "badge-check",
+    "color": "violet",
+    "category": "Legal Helpers",
+    "avatar": {
+      "bg": "#1E1A3E",
+      "fg": "#C9BEFC",
+      "accent": "#7C5CFC",
+      "symbol": "<path d=\"M32 12 L40 18 L48 16 L50 26 L56 32 L50 38 L48 48 L40 46 L32 52 L24 46 L16 48 L14 38 L8 32 L14 26 L16 16 L24 18 Z\" stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M24 32 L30 38 L42 26\" stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+    }
+  },
+  "model": "anthropic:claude-haiku-4-5-20251001",
+  "maxTokens": 16384,
+  "maxTurns": 25,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "writeFile",
+      "editFile",
+      "shell_execute",
+      "agent_spawn",
+      "image_*",
+      "speech_*",
+      "memory_*"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": false,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "20m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

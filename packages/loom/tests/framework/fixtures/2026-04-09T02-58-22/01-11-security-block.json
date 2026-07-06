@@ -1,0 +1,171 @@
+{
+  "recordedAt": "2026-04-09T02:58:22.383Z",
+  "metadata": {
+    "prompt": "Write with readonly tools",
+    "expectedBehavior": "No writeFile tool available — model explains it cannot write"
+  },
+  "eventCount": 13,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 8,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I cannot write \"BLOCKED_CONTENT\" to the specified file because I don't have access to a file writing function. The tools available to me only allow me to:\n\n- Read files (`readFile`)\n- List directory contents (`listFiles`) \n- Search for files by pattern (`glob`)\n- Search file contents (`grep`)\n\nTo write content to a file, you would need to use a different tool or method that has file writing capabilities, such as:\n- A text editor\n- Command line tools like `echo` or `cat`\n- A programming language with file I/O capabilities\n- An IDE or code editor\n\nIf you need to create this file, you could use a command like:\n```bash\necho \"BLOCKED_CONTENT\" > \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-Y9owTT/blocked-file.txt\"\n```",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1178,
+      "outputTokens": 217,
+      "costUsd": 0.006789
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "8ade28e9-e4d4-482f-a722-d78216909f59",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775703498073
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775703498073
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I cannot",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " write \"BLOCKED_CONTENT\" to the specified file because I don't have access to a file writing function. The tools",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " available to me only allow me to:\n\n- Read files (`readFile`)\n- List directory contents (`listFiles`) \n- Search for files by pattern",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " (`glob`)\n- Search file contents (`grep`)\n\nTo write content to a file, you would need to use a different tool or method that has",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file writing capabilities, such as:\n- A text editor\n- Command line tools like",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " `echo` or `cat`\n- A programming language with file I/O capabilities\n- An IDE or code editor\n\nIf you need",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to create this file, you could use a command like:\n```bash\necho \"BLOCKED_CONTENT\" > \"/",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-Y9owTT/blocked-file.txt\"\n```",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I cannot write \"BLOCKED_CONTENT\" to the specified file because I don't have access to a file writing function. The tools available to me only allow me to:\n\n- Read files (`readFile`)\n- List directory contents (`listFiles`) \n- Search for files by pattern (`glob`)\n- Search file contents (`grep`)\n\nTo write content to a file, you would need to use a different tool or method that has file writing capabilities, such as:\n- A text editor\n- Command line tools like `echo` or `cat`\n- A programming language with file I/O capabilities\n- An IDE or code editor\n\nIf you need to create this file, you could use a command like:\n```bash\necho \"BLOCKED_CONTENT\" > \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-Y9owTT/blocked-file.txt\"\n```",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1178,
+          "outputTokens": 217,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.006789
+        },
+        "timestamp": 1775703502382
+      },
+      "index": 11
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "8ade28e9-e4d4-482f-a722-d78216909f59",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1178,
+          "outputTokens": 217,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.006789,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775703502382
+      },
+      "index": 12
+    }
+  ]
+}

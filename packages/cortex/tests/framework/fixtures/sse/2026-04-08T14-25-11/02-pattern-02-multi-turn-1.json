@@ -1,0 +1,113 @@
+{
+  "recordedAt": "2026-04-08T14:25:14.794Z",
+  "metadata": {
+    "prompt": "Remember this code: VIOLET-9921",
+    "threadId": "thread_8c458fa38733",
+    "expectedBehavior": "Acknowledges receipt of code"
+  },
+  "eventCount": 8,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Acknowledged. I've noted code VIOLET-9921.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 724,
+      "outputTokens": 16,
+      "costUsd": 0.000201
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_8c458fa38733",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "0329d861-c9a6-4b74-b94b-e145b94c7501",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775658312843
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658312843
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Acknowledged",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ". I've noted code VIOLET-9921.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Acknowledged. I've noted code VIOLET-9921.",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 724,
+          "outputTokens": 16,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000201
+        },
+        "timestamp": 1775658314793
+      },
+      "index": 6
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 7
+    }
+  ]
+}

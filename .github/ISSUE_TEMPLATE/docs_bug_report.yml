@@ -1,0 +1,42 @@
+name: "📝 Docs Bug"
+description: Documentation is wrong, missing, or misleading.
+title: "[Docs]: "
+labels: ["bug", "docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Docs bugs get the same rigor as code bugs. **One documentation defect per issue, please.**
+
+  - type: input
+    id: location
+    attributes:
+      label: Affected doc
+      description: Repo-relative path (and heading/line range if you have it)
+      placeholder: "docs/gateway/exposing.md — 'Reverse proxies' section"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What the docs currently say
+      description: Quote the wrong/misleading text (or say "missing entirely").
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What they should say
+      description: The correct content — with evidence (actual observed behavior, code reference) if you have it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who gets misled, and what breaks for them if they follow the current docs?
+    validations:
+      required: true

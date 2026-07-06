@@ -1,0 +1,44 @@
+# Ownware
+
+> Open-source, self-hostable agent platform: build an agent as a text profile (a folder with agent.json + SOUL.md), serve it with one class (OwnwareGateway) as an HTTP+SSE service, and reach it from anywhere — terminals, web apps, Telegram, Slack — over one wire contract. Keyless local models via Ollama; Anthropic/OpenAI/Google/OpenRouter with one env var.
+
+Packages: `ownware` (umbrella, the quickstart surface), `@ownware/loom` (agent runtime engine — loop, streaming, tools, zone security), `@ownware/cortex` (kernel & gateway — profiles, threads, SSE, connectors, vault, schedules), `@ownware/shuttle` (messaging channel adapters). Monorepo uses bun and Node ≥ 22: `bun install && bun run build`. Runnable example: `examples/quickstart/`.
+
+## Getting started
+
+- [Quickstart](getting-started/quickstart.md): a live agent in three commands, no API key required
+- [Installation](getting-started/installation.md): add Ownware to your own project and serve a profile
+- [Thinking in Ownware](getting-started/thinking-in-ownware.md): the mental model — profile, engine, gateway, channel — and where security lives
+
+## Building agents
+
+- [Agents & profiles](agents/overview.md): an agent is a folder of text files; when to use profiles and how to serve them
+- [Profile format](agents/profile-format.md): the profile directory and every commonly-used agent.json field (presets, security levels, connectors)
+- [Hooks](agents/hooks.md): declare lifecycle hooks in agent.json — audit webhooks, run archives, pause-for-approval (chat/web/terminal decision), per-model-call metering, operator-gated command hooks, and which mechanism to pick when
+- [Hooks cookbook](agents/hooks-cookbook.md): copy-paste recipes for everyday jobs — approve-from-phone, finish notifications, per-client audit files, usage metering for billing, failure paging, custom check scripts, local debugging
+
+## Gateway & wire contract
+
+- [Gateway](gateway/overview.md): OwnwareGateway options, bearer-token auth, TLS default, where data lives (~/.ownware)
+- [The run API](gateway/run-api.md): POST /api/v1/run, SSE event stream (+ event vocabulary), POST /resume for permissions, GET /models
+- [Exposing the gateway](gateway/exposing.md): the bind-safety invariant (non-loopback forces auth+TLS), the persistent gateway-token file, TLS/proxy patterns
+
+## Security & configuration
+
+- [Security overview](security/overview.md): zones + combination rules, credential vault (engine only sees opaque handles), permission gates, unattended-run safety levels, channel pairing
+- [Configuration reference](reference/configuration.md): every OWNWARE_* env var and the GatewayOptions that matter in production
+- [FAQ](faq.md): is it free, which package to install, keyless start, data/keys safety, exposing, model choice
+- [Troubleshooting](troubleshooting.md): install/native-deps failures, "agent doesn't answer" (no model), TLS/port confusion, Ollama, exposing, channels
+
+## Capabilities
+
+- [Tools & connectors](tools/overview.md): built-in presets, any MCP server, Composio SaaS toolkits, custom defineTool files
+- [Models](models/overview.md): provider:model strings, keyless Ollama path, provider env vars, model discovery
+- [Channels](channels/overview.md): Shuttle adapters — Telegram, Slack, Discord, WhatsApp, SMS — session keys, delivery, group policies; `ownware channel add` + one-process `ownware serve`; schedules deliver to channels via `ownware schedule add --deliver`
+
+## Optional
+
+- [Repo README](../README.md): package table and development commands
+- [Engine deep dive](../packages/loom/README.md): call patterns, built-in tools, three security layers, streaming event vocabulary, providers, compaction
+- [Kernel deep dive](../packages/cortex/README.md): loadProfile/assembleAgent, full agent.json schema, registry, context fragments
+- [Channel live-test checklists](../adapters/shuttle/examples/README.md): per-channel tokens, scopes, and run commands

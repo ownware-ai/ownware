@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soft Clay — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/soft-clay. Pastel claymorphic surfaces with chunky soft-relief shadows and a warm coral accent." />
+    <style>
+      :root {
+        --bg:      #f7eee6;
+        --surface: #fff8f1;
+        --fg:      #2b211c;
+        --muted:   #8a7a70;
+        --border:  #ead8c7;
+        --accent:       #e07a5f;
+        --accent-hover: #d0664a;
+        --accent-fg:    #ffffff;
+        --good: #6a9968;
+        --warn: #d99a3a;
+        --bad:  #c44a4a;
+        --radius:      22px;
+        --radius-pill: 999px;
+        --font-display: 'Nunito', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-body:    'Nunito', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        --shadow-clay: 8px 10px 24px rgba(128, 92, 70, 0.18), -8px -8px 20px rgba(255, 255, 255, 0.75);
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 100vh; background: var(--bg); color: var(--fg); font: 500 16px/1.55 var(--font-body); }
+      .wrap { max-width: 1080px; margin-inline: auto; padding: 88px 28px; }
+      .eyebrow { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin: 0 0 12px; }
+      h1 { font: 800 48px/1.15 var(--font-display); letter-spacing: -0.015em; margin: 0 0 16px; text-wrap: balance; }
+      .lead { color: var(--muted); font-size: 18px; max-width: 56ch; margin: 0 0 32px; }
+      .actions { display: flex; gap: 14px; margin-bottom: 56px; }
+      .btn { display: inline-flex; align-items: center; min-height: 52px; padding: 0 26px; border-radius: var(--radius-pill); font: 700 15px/1 var(--font-body); text-decoration: none; border: none; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); box-shadow: var(--shadow-clay); }
+      .btn-primary:hover { background: var(--accent-hover); transform: translateY(-2px); }
+      .btn-secondary { background: var(--surface); color: var(--fg); box-shadow: var(--shadow-clay); }
+      .btn-secondary:hover { color: var(--accent); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+      .card { background: var(--surface); border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow-clay); }
+      .card h3 { font: 800 22px/1.2 var(--font-display); margin: 0 0 8px; letter-spacing: -0.01em; }
+      .card p  { color: var(--muted); margin: 0 0 20px; font-size: 15px; }
+      .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 18px; border-top: 1px solid var(--border); }
+      .stat strong { display: block; font: 800 28px/1.1 var(--font-display); }
+      .stat span { color: var(--muted); font-size: 12px; }
+      .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: var(--radius-pill); background: rgba(106, 153, 104, 0.16); color: var(--good); font: 700 12px/1 var(--font-body); }
+      .pill::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--good); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">Soft Clay</p>
+      <h1>Approachable surfaces, chunky shadows, one coral accent.</h1>
+      <p class="lead">For learning apps, habit trackers, and consumer-friendly tools — anywhere the artifact should feel warm and unintimidating.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">Get started</a>
+        <a class="btn btn-secondary" href="#">Browse demos</a>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <span class="pill">all set</span>
+          <h3 style="margin-top:14px">Today's progress</h3>
+          <p>Cards sit proud of the floor like pressed clay. The coral accent only appears on the CTA, focus ring, and one hero element.</p>
+          <div class="stat">
+            <div><strong>12</strong><span>tasks done</span></div>
+            <div><strong>3</strong><span>streak days</span></div>
+            <div><strong>92%</strong><span>on plan</span></div>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Surface tones</h3>
+          <p>Warm-cream floor, warmer surface, soft-relief shadow pair. Sat-saturation lives on the accent only.</p>
+          <div style="display:flex; gap:10px;">
+            <span style="width:36px;height:36px;border-radius:12px;background:var(--accent);box-shadow:var(--shadow-clay)"></span>
+            <span style="width:36px;height:36px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-clay)"></span>
+            <span style="width:36px;height:36px;border-radius:12px;background:var(--fg)"></span>
+            <span style="width:36px;height:36px;border-radius:12px;background:var(--border)"></span>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

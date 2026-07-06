@@ -1,0 +1,116 @@
+{
+  "name": "@ownware/cortex",
+  "version": "0.1.0",
+  "description": "The Ownware kernel & gateway — profiles, threads, HTTP+SSE gateway, credential vault, and the `ownware` CLI.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ownware": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./events": {
+      "import": "./dist/gateway/events.js",
+      "types": "./dist/gateway/events.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli.js",
+      "types": "./dist/cli.d.ts"
+    }
+  },
+  "scripts": {
+    "postinstall": "node scripts/fix-node-pty-permissions.mjs && node scripts/ensure-ripgrep-binary.mjs",
+    "rebuild:electron": "bash scripts/rebuild-native-for-electron.sh",
+    "rebuild:node": "npm rebuild better-sqlite3 node-pty",
+    "promote": "bun run scripts/promote-profile.ts",
+    "build": "tsc && mkdir -p dist/connector/detection && cp src/connector/detection/known-apps.json dist/connector/detection/known-apps.json",
+    "bundle:gateway": "bun build dist/gateway/server.js --outfile dist/gateway-bundle.mjs --target node --format esm --external better-sqlite3 --external node-pty --external chokidar --external bindings --external fsevents --external playwright-core --external playwright --external chromium-bidi --external sharp --external @img/sharp-darwin-arm64 --external @img/sharp-darwin-x64 --external @img/sharp-linux-arm64 --external @img/sharp-linux-x64 --external @img/sharp-win32-x64 --external @img/sharp-libvips-darwin-arm64 --external @img/sharp-libvips-darwin-x64 --external @img/sharp-libvips-linux-arm64 --external @img/sharp-libvips-linux-x64 --external @vscode/ripgrep",
+    "dev": "tsc --build && node --watch --watch-path=dist dist/gateway/server.js",
+    "dev:watch": "tsc --watch",
+    "gateway": "node dist/gateway/server.js",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:db": "bash scripts/test-db.sh",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build && bun run test:unit"
+  },
+  "files": [
+    "dist",
+    "scripts/fix-node-pty-permissions.mjs",
+    "scripts/ensure-ripgrep-binary.mjs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@ownware/loom": "workspace:*",
+    "@img/colour": "^1.0.0",
+    "@vscode/ripgrep": "^1.17.1",
+    "better-sqlite3": "^12.8.0",
+    "chokidar": "^4.0.3",
+    "detect-libc": "^2.1.2",
+    "https-proxy-agent": "^7.0.2",
+    "jose": "^6.2.3",
+    "node-forge": "^1.4.0",
+    "node-pty": "^1.1.0",
+    "playwright-core": "^1.52.0",
+    "proxy-from-env": "^1.1.0",
+    "semver": "^7.7.3",
+    "sharp": "^0.34.5",
+    "yaml": "^2.6.0",
+    "yauzl": "^2.10.0",
+    "zod": "^3.24.0"
+  },
+  "//optionalDependencies": "Sharp ships per-platform native bindings as optional deps. Listing them here forces bun to materialize whichever match the current platform under cortex/node_modules/@img/, so electron-builder's extraResources can ship them. Non-matching arch entries fail to install silently.",
+  "//optionalDependencies-shuttle": "@ownware/shuttle powers `ownware channel …` — a runtime-only bridge (dynamic import, no TS dependency; see src/cli/channel.ts). Optional so a failed/absent install degrades to a clear hint instead of breaking cortex.",
+  "optionalDependencies": {
+    "@ownware/shuttle": "workspace:*",
+    "@img/sharp-darwin-arm64": "0.34.5",
+    "@img/sharp-darwin-x64": "0.34.5",
+    "@img/sharp-linux-arm64": "0.34.5",
+    "@img/sharp-linux-x64": "0.34.5",
+    "@img/sharp-win32-x64": "0.34.5",
+    "@img/sharp-libvips-darwin-arm64": "1.2.4",
+    "@img/sharp-libvips-darwin-x64": "1.2.4",
+    "@img/sharp-libvips-linux-arm64": "1.2.4",
+    "@img/sharp-libvips-linux-x64": "1.2.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.0.0",
+    "@types/node-forge": "^1.3.14",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Ownware Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ownware-ai/ownware.git",
+    "directory": "packages/cortex"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "gateway",
+    "self-hosted",
+    "agent-platform",
+    "profiles",
+    "sse",
+    "ownware"
+  ]
+}

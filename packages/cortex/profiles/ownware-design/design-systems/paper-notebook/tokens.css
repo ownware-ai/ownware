@@ -1,0 +1,58 @@
+/* Paper Notebook — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is warm cream paper, --surface is a slightly warmer paper-white.
+ *     Both should pair with a dotted-grid background pattern (see Signature
+ *     Moves) — without the dot grid the system reads as 'warm-soft', not
+ *     as paper notebook.
+ *   - --accent is marker-blue (the kind of saturated medium blue you'd
+ *     find in a Pilot G2 or Lamy fountain pen). Avoid pure royal blue or
+ *     navy — too clean, breaks the made-by-hand feel.
+ *   - --fg is warm dark-brown-ink, not pure black. Handwritten ink is
+ *     never #000 — even the darkest black ink reads as #2a2722 once it
+ *     dries on warm paper.
+ *   - --border is the dotted-line color and the warm hairline color.
+ *     Most borders in this system are dotted or dashed (NOT solid),
+ *     evoking the perforations and rules of real notebook paper.
+ *   - --radius is 10px (slight, not pillowy). Hard corners feel
+ *     printed-not-handwritten; very rounded feels too soft for crafted.
+ *   - --font-display is a handwritten / marker-feel face (Caveat or
+ *     similar). The body stays a clean sans so the system stays
+ *     readable; only the FLOURISHES are handwritten.
+ */
+
+:root {
+  /* surface — warm paper canvas + slightly warmer note tier */
+  --bg:      #f9f3e3;
+  --surface: #fefcf4;
+
+  /* foreground ladder — warm ink, not pure black */
+  --fg:     #2a2722;
+  --muted:  #7c7568;
+  --border: #d8cdb3;
+
+  /* accent — marker-blue, the only saturated note */
+  --accent:       #1f5fb8;
+  --accent-hover: #154a92;
+  --accent-fg:    #fefcf4;
+
+  /* semantic — desaturated to live on warm paper */
+  --good: #3f8a4a;
+  --warn: #d28b1a;
+  --bad:  #c44a3a;
+
+  /* shape — slight rounding, paper-like */
+  --radius:      10px;
+  --radius-pill: 999px;
+
+  /* typography — handwritten display, clean sans body */
+  --font-display: 'Caveat', 'Patrick Hand', 'Kalam', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

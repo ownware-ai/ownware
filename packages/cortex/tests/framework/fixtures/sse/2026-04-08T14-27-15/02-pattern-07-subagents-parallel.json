@@ -1,0 +1,1638 @@
+{
+  "recordedAt": "2026-04-08T14:27:37.940Z",
+  "metadata": {
+    "prompt": "Dispatch explore + planner in parallel",
+    "profileId": "coder",
+    "threadId": "thread_52e179b5831f",
+    "expectedBehavior": "2+ agent.spawn events fire close together, both complete"
+  },
+  "eventCount": 155,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 3,
+    "text.delta": 15,
+    "tool.call.start": 4,
+    "tool.call.args_delta": 118,
+    "text.complete": 3,
+    "tool.call.end": 4,
+    "turn.end": 3,
+    "checkpoint.saved": 2,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll spawn both helpers in parallel as requested.I see that agent spawning is not available in this session. I'll complete both tasks myself:## Summary of Findings\n\n### TypeScript Files in src/\nFound 2 .ts files:\n- `src/utils.ts`\n- `src/index.ts`\n\n### Adding a New Utility Function to src/utils.ts\n\n**Current Structure**: The `src/utils.ts` file currently only contains a single constant export (`VERSION = \"1.0.0\"`).\n\n**Recommendations for Adding a Utility Function**:\n\n1. **Naming Convention**: Use camelCase for function names following JavaScript/TypeScript conventions\n2. **Export Pattern**: Use named exports (consistent with existing `VERSION` export)\n3. **Code Organization**: Add the new function after the existing exports, maintaining clean separation\n\n**Example addition**:\n```typescript\nexport const VERSION = \"1.0.0\"\n\nexport function yourUtilityFunction(param: string): string {\n  // implementation\n  return param\n}\n```\n\nThe file is minimal and ready for expansion. You can add utility functions using standard TypeScript patterns with named exports.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "toolName": "agent_spawn",
+        "result": "Agent spawning is not available in this session. Complete the task yourself or break it into smaller steps.",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "toolName": "agent_spawn",
+        "result": "Agent spawning is not available in this session. Complete the task yourself or break it into smaller steps.",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "toolName": "glob",
+        "result": "src/utils.ts\nsrc/index.ts",
+        "isError": false,
+        "durationMs": 3,
+        "turnIndex": 1
+      },
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "toolName": "readFile",
+        "result": "1\texport const VERSION = \"1.0.0\"\n2\t",
+        "isError": false,
+        "durationMs": 3,
+        "turnIndex": 1
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 17123,
+      "outputTokens": 683,
+      "costUsd": 0.061614
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_52e179b5831f",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "2e49aee5-e806-4b9d-903b-5eb5efef573f",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658443106
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658443106
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll spawn",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " both helpers in parallel as requested.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "{\"na",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "me\": \"expl",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "ore ts",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": " file",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "s\"",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": ", \"su",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "bage",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "nt_type\": \"",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "explo",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "re\"",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": ", \"prompt\": ",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "\"List a",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "ll .ts file",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "s ",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "in src/. Use",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": " glob ",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "to fi",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "nd all Typ",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "eScript f",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "iles recur",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "sively i",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "n the",
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": " s",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "rc director",
+        "turnIndex": 0
+      },
+      "index": 30
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "y. Provid",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "e ",
+        "turnIndex": 0
+      },
+      "index": 32
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "a co",
+        "turnIndex": 0
+      },
+      "index": 33
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "mplete li",
+        "turnIndex": 0
+      },
+      "index": 34
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "st",
+        "turnIndex": 0
+      },
+      "index": 35
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": " of all .t",
+        "turnIndex": 0
+      },
+      "index": 36
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "s files",
+        "turnIndex": 0
+      },
+      "index": 37
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": " fo",
+        "turnIndex": 0
+      },
+      "index": 38
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "und, includi",
+        "turnIndex": 0
+      },
+      "index": 39
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "ng their re",
+        "turnIndex": 0
+      },
+      "index": 40
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "lat",
+        "turnIndex": 0
+      },
+      "index": 41
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "ive pat",
+        "turnIndex": 0
+      },
+      "index": 42
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "hs fr",
+        "turnIndex": 0
+      },
+      "index": 43
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "om the wor",
+        "turnIndex": 0
+      },
+      "index": 44
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "king dire",
+        "turnIndex": 0
+      },
+      "index": 45
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "ctory.\"",
+        "turnIndex": 0
+      },
+      "index": 46
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": ", \"tools\": [",
+        "turnIndex": 0
+      },
+      "index": 47
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "\"glob\",\"",
+        "turnIndex": 0
+      },
+      "index": 48
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "delta": "listFiles\"]}",
+        "turnIndex": 0
+      },
+      "index": 49
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 50
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 51
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "{\"name\": ",
+        "turnIndex": 0
+      },
+      "index": 52
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "\"plan u",
+        "turnIndex": 0
+      },
+      "index": 53
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "tils functio",
+        "turnIndex": 0
+      },
+      "index": 54
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "n\"",
+        "turnIndex": 0
+      },
+      "index": 55
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": ", \"subagen",
+        "turnIndex": 0
+      },
+      "index": 56
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "t_type\": \"",
+        "turnIndex": 0
+      },
+      "index": 57
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "pl",
+        "turnIndex": 0
+      },
+      "index": 58
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "anner\"",
+        "turnIndex": 0
+      },
+      "index": 59
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": ", \"pr",
+        "turnIndex": 0
+      },
+      "index": 60
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ompt\": \"Sug",
+        "turnIndex": 0
+      },
+      "index": 61
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "gest h",
+        "turnIndex": 0
+      },
+      "index": 62
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ow to a",
+        "turnIndex": 0
+      },
+      "index": 63
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "dd a new ut",
+        "turnIndex": 0
+      },
+      "index": 64
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "il",
+        "turnIndex": 0
+      },
+      "index": 65
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ity fu",
+        "turnIndex": 0
+      },
+      "index": 66
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "nction in s",
+        "turnIndex": 0
+      },
+      "index": 67
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "rc/ut",
+        "turnIndex": 0
+      },
+      "index": 68
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ils.",
+        "turnIndex": 0
+      },
+      "index": 69
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ts. First, ",
+        "turnIndex": 0
+      },
+      "index": 70
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "check if src",
+        "turnIndex": 0
+      },
+      "index": 71
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "/ut",
+        "turnIndex": 0
+      },
+      "index": 72
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ils.ts exi",
+        "turnIndex": 0
+      },
+      "index": 73
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "sts and e",
+        "turnIndex": 0
+      },
+      "index": 74
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "xamine it",
+        "turnIndex": 0
+      },
+      "index": 75
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "s curren",
+        "turnIndex": 0
+      },
+      "index": 76
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "t st",
+        "turnIndex": 0
+      },
+      "index": 77
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ructure and ",
+        "turnIndex": 0
+      },
+      "index": 78
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "patterns.",
+        "turnIndex": 0
+      },
+      "index": 79
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": " Then provid",
+        "turnIndex": 0
+      },
+      "index": 80
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "e r",
+        "turnIndex": 0
+      },
+      "index": 81
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ecom",
+        "turnIndex": 0
+      },
+      "index": 82
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "mend",
+        "turnIndex": 0
+      },
+      "index": 83
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "atio",
+        "turnIndex": 0
+      },
+      "index": 84
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ns for ad",
+        "turnIndex": 0
+      },
+      "index": 85
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ding",
+        "turnIndex": 0
+      },
+      "index": 86
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": " a ne",
+        "turnIndex": 0
+      },
+      "index": 87
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "w utility fu",
+        "turnIndex": 0
+      },
+      "index": 88
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "nctio",
+        "turnIndex": 0
+      },
+      "index": 89
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "n,",
+        "turnIndex": 0
+      },
+      "index": 90
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": " inc",
+        "turnIndex": 0
+      },
+      "index": 91
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "luding n",
+        "turnIndex": 0
+      },
+      "index": 92
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "amin",
+        "turnIndex": 0
+      },
+      "index": 93
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "g conven",
+        "turnIndex": 0
+      },
+      "index": 94
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "tions, ex",
+        "turnIndex": 0
+      },
+      "index": 95
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "port patter",
+        "turnIndex": 0
+      },
+      "index": 96
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ns, ",
+        "turnIndex": 0
+      },
+      "index": 97
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "and cod",
+        "turnIndex": 0
+      },
+      "index": 98
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "e organ",
+        "turnIndex": 0
+      },
+      "index": 99
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ization b",
+        "turnIndex": 0
+      },
+      "index": 100
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ased on th",
+        "turnIndex": 0
+      },
+      "index": 101
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "e ",
+        "turnIndex": 0
+      },
+      "index": 102
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "existing co",
+        "turnIndex": 0
+      },
+      "index": 103
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "deb",
+        "turnIndex": 0
+      },
+      "index": 104
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "ase structur",
+        "turnIndex": 0
+      },
+      "index": 105
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "e.\"",
+        "turnIndex": 0
+      },
+      "index": 106
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": ", \"tools\": [",
+        "turnIndex": 0
+      },
+      "index": 107
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "\"re",
+        "turnIndex": 0
+      },
+      "index": 108
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "adFile\"",
+        "turnIndex": 0
+      },
+      "index": 109
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": ",\"g",
+        "turnIndex": 0
+      },
+      "index": 110
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "lob\",\"lis",
+        "turnIndex": 0
+      },
+      "index": 111
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "tFil",
+        "turnIndex": 0
+      },
+      "index": 112
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "delta": "es\"]}",
+        "turnIndex": 0
+      },
+      "index": 113
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll spawn both helpers in parallel as requested.",
+        "turnIndex": 0
+      },
+      "index": 114
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_012aWeBeLZQShsDKnkEm5c75",
+        "toolName": "agent_spawn",
+        "result": "Agent spawning is not available in this session. Complete the task yourself or break it into smaller steps.",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 115
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01DNfTWo5i8PD4cfsfUHb8Zv",
+        "toolName": "agent_spawn",
+        "result": "Agent spawning is not available in this session. Complete the task yourself or break it into smaller steps.",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 116
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5348,
+          "outputTokens": 335,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.021069
+        },
+        "timestamp": 1775658449073
+      },
+      "index": 117
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "2e49aee5-e806-4b9d-903b-5eb5efef573f",
+        "turnIndex": 0
+      },
+      "index": 118
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658449074
+      },
+      "index": 119
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I see that agent",
+        "turnIndex": 1
+      },
+      "index": 120
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " spawning is not available in this session. I'll complete both tasks myself:",
+        "turnIndex": 1
+      },
+      "index": 121
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "toolName": "glob",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 122
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 123
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "delta": "{\"pattern",
+        "turnIndex": 1
+      },
+      "index": 124
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "delta": "\": \"s",
+        "turnIndex": 1
+      },
+      "index": 125
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "delta": "rc/**/",
+        "turnIndex": 1
+      },
+      "index": 126
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "delta": "*.ts",
+        "turnIndex": 1
+      },
+      "index": 127
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "delta": "\"}",
+        "turnIndex": 1
+      },
+      "index": 128
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 129
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 130
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "delta": "{\"file_p",
+        "turnIndex": 1
+      },
+      "index": 131
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "delta": "ath\":",
+        "turnIndex": 1
+      },
+      "index": 132
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "delta": " \"src/utils",
+        "turnIndex": 1
+      },
+      "index": 133
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "delta": ".ts\"}",
+        "turnIndex": 1
+      },
+      "index": 134
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I see that agent spawning is not available in this session. I'll complete both tasks myself:",
+        "turnIndex": 1
+      },
+      "index": 135
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UgRQ7qJPHpXn1JJcgRhFKe",
+        "toolName": "glob",
+        "result": "src/utils.ts\nsrc/index.ts",
+        "isError": false,
+        "durationMs": 3,
+        "turnIndex": 1
+      },
+      "index": 136
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_016N32xjNdSaQGoQvmGpTTyj",
+        "toolName": "readFile",
+        "result": "1\texport const VERSION = \"1.0.0\"\n2\t",
+        "isError": false,
+        "durationMs": 3,
+        "turnIndex": 1
+      },
+      "index": 137
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5786,
+          "outputTokens": 116,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.019098
+        },
+        "timestamp": 1775658452154
+      },
+      "index": 138
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "2e49aee5-e806-4b9d-903b-5eb5efef573f",
+        "turnIndex": 1
+      },
+      "index": 139
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 2,
+        "timestamp": 1775658452155
+      },
+      "index": 140
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "##",
+        "turnIndex": 2
+      },
+      "index": 141
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " Summary of Findings\n\n### TypeScript Files in src/\nFound 2 .ts files:\n- `src/utils.ts`",
+        "turnIndex": 2
+      },
+      "index": 142
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n- `src/index.ts`\n\n### Adding a New Utility Function to src/utils.ts\n\n**Current Structure**: The `src",
+        "turnIndex": 2
+      },
+      "index": 143
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "/utils.ts` file currently only contains a single constant export (`VERSION = \"1.0.0\"`).",
+        "turnIndex": 2
+      },
+      "index": 144
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n**Recommendations for Adding a Utility Function**:\n\n1. **Naming Convention**: Use camelCase for function names following JavaScript/",
+        "turnIndex": 2
+      },
+      "index": 145
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "TypeScript conventions\n2. **Export Pattern**: Use named exports (consistent with existing `VERSION",
+        "turnIndex": 2
+      },
+      "index": 146
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "` export)\n3. **Code Organization**: Add the new function after the existing exports, maintaining clean",
+        "turnIndex": 2
+      },
+      "index": 147
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " separation\n\n**Example addition**:\n```typescript\nexport const VERSION = \"1.0.0\"\n\nexport function your",
+        "turnIndex": 2
+      },
+      "index": 148
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "UtilityFunction(param: string): string {\n  // implementation\n  return param\n}\n```\n\nThe file",
+        "turnIndex": 2
+      },
+      "index": 149
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " is minimal and ready for expansion. You can add utility",
+        "turnIndex": 2
+      },
+      "index": 150
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " functions using standard TypeScript patterns with named exports.",
+        "turnIndex": 2
+      },
+      "index": 151
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "## Summary of Findings\n\n### TypeScript Files in src/\nFound 2 .ts files:\n- `src/utils.ts`\n- `src/index.ts`\n\n### Adding a New Utility Function to src/utils.ts\n\n**Current Structure**: The `src/utils.ts` file currently only contains a single constant export (`VERSION = \"1.0.0\"`).\n\n**Recommendations for Adding a Utility Function**:\n\n1. **Naming Convention**: Use camelCase for function names following JavaScript/TypeScript conventions\n2. **Export Pattern**: Use named exports (consistent with existing `VERSION` export)\n3. **Code Organization**: Add the new function after the existing exports, maintaining clean separation\n\n**Example addition**:\n```typescript\nexport const VERSION = \"1.0.0\"\n\nexport function yourUtilityFunction(param: string): string {\n  // implementation\n  return param\n}\n```\n\nThe file is minimal and ready for expansion. You can add utility functions using standard TypeScript patterns with named exports.",
+        "turnIndex": 2
+      },
+      "index": 152
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 2,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5989,
+          "outputTokens": 232,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.021447
+        },
+        "timestamp": 1775658457937
+      },
+      "index": 153
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 154
+    }
+  ]
+}

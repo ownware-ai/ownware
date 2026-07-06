@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "soft-clay",
+  "name": "Soft Clay",
+  "category": "friendly",
+  "surface": "web",
+  "summary": "Pastel claymorphic surfaces with chunky soft-relief shadows and a warm coral accent. The friendly-tool / learning-app / consumer-marketing zone — works when the artifact should feel approachable, tactile, and warm.",
+  "swatches": ["#f7eee6", "#fff8f1", "#2b211c", "#e07a5f", "#8a7a70", "#ead8c7"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

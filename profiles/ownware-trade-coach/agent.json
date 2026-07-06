@@ -1,0 +1,160 @@
+{
+  "name": "ownware-trade-coach",
+  "description": "Your trading coach. Connects to your live broker, watches your fills, and protects you from your worst habits — revenge trading, oversizing, holding losers. Pre-trade pre-mortem before you click buy. Hard halt at the daily loss limit, no override. Honest post-trade review against your own winner pattern. For active traders, not researchers.",
+  "version": "0.1.0",
+  "tags": [
+    "trading",
+    "trader",
+    "broker",
+    "discipline",
+    "risk",
+    "psychology",
+    "live"
+  ],
+  "metadata": {
+    "icon": "C",
+    "color": "violet",
+    "category": "Finance",
+    "requiredSecrets": [
+      {
+        "variableName": "ALPACA_API_KEY",
+        "label": "Alpaca API key",
+        "hint": "Free paper-trading account at app.alpaca.markets — start in paper mode.",
+        "usage": "Live US stock, ETF, options, and crypto positions and order flow.",
+        "required": false
+      },
+      {
+        "variableName": "ALPACA_SECRET_KEY",
+        "label": "Alpaca API secret",
+        "hint": "Generated alongside the API key in the Alpaca dashboard.",
+        "usage": "Authenticates the Alpaca MCP for read + trade actions.",
+        "required": false
+      },
+      {
+        "variableName": "BINANCE_API_KEY",
+        "label": "Binance API key",
+        "hint": "Use a read-only key while you trial. Trade permissions are opt-in per IP.",
+        "usage": "Live Binance spot balances, fills, and (if enabled) order execution.",
+        "required": false
+      },
+      {
+        "variableName": "BINANCE_API_SECRET",
+        "label": "Binance API secret",
+        "hint": "Paired with BINANCE_API_KEY.",
+        "usage": "Signs Binance MCP requests.",
+        "required": false
+      },
+      {
+        "variableName": "SEC_EDGAR_USER_AGENT",
+        "label": "SEC EDGAR User-Agent",
+        "hint": "Required by SEC fair-access policy. Format: \"Your Name (you@example.com)\". Free, no signup.",
+        "usage": "SEC EDGAR MCP — 10-K, 10-Q, 8-K, insider Form 4, financial statements.",
+        "required": false
+      }
+    ],
+    "avatar": {
+      "bg": "#120E22",
+      "fg": "#C4B5FD",
+      "accent": "#8B5CF6",
+      "symbol": "<circle cx=\"32\" cy=\"32\" r=\"18\" stroke=\"#8B5CF6\" stroke-width=\"1.5\" fill=\"none\"/><path d=\"M22 32 L29 39 L42 26\" stroke=\"#22C55E\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><line x1=\"32\" y1=\"10\" x2=\"32\" y2=\"16\" stroke=\"#C4B5FD\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-opacity=\"0.7\"/><line x1=\"32\" y1=\"48\" x2=\"32\" y2=\"54\" stroke=\"#C4B5FD\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-opacity=\"0.7\"/><line x1=\"10\" y1=\"32\" x2=\"16\" y2=\"32\" stroke=\"#C4B5FD\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-opacity=\"0.7\"/><line x1=\"48\" y1=\"32\" x2=\"54\" y2=\"32\" stroke=\"#C4B5FD\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-opacity=\"0.7\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 8192,
+  "maxTurns": 30,
+  "tools": {
+    "preset": "coding",
+    "allow": [
+      "request_credential",
+      "remember",
+      "web_search",
+      "web_fetch"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {
+      "vibe-trading": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["--from", "vibe-trading-ai", "vibe-trading-mcp"],
+        "env": {}
+      },
+      "alpaca": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["alpaca-mcp-server"],
+        "env": {
+          "ALPACA_API_KEY": "${ALPACA_API_KEY}",
+          "ALPACA_SECRET_KEY": "${ALPACA_SECRET_KEY}",
+          "ALPACA_PAPER": "true"
+        }
+      },
+      "binance": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["binance-mcp-server"],
+        "env": {
+          "BINANCE_API_KEY": "${BINANCE_API_KEY}",
+          "BINANCE_API_SECRET": "${BINANCE_API_SECRET}"
+        }
+      },
+      "sec-edgar": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["sec-edgar-mcp"],
+        "env": {
+          "SEC_EDGAR_USER_AGENT": "${SEC_EDGAR_USER_AGENT}"
+        }
+      }
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": false,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "strict",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.75
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

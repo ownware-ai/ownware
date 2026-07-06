@@ -1,0 +1,229 @@
+{
+  "recordedAt": "2026-04-08T13:53:34.381Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 15,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - Bold and passionate, commands attention instantly.\n2. **Blue** - Cool and calming, evokes trust and stability.\n3. **Green** - Natural and refreshing, symbolizes growth and renewal.\n4. **Yellow** - Bright and cheerful, radiates warmth and optimism.\n5. **Purple** - Regal and mysterious, blends creativity with sophistication.\n6. **Orange** - Energetic and friendly, combines red's passion with yellow's joy.\n7. **Pink** - Soft and playful, conveys tenderness and compassion.\n8. **Brown** - Earthy and grounding, suggests stability and comfort.\n9. **Gray** - Neutral and balanced, represents sophistication and formality.\n10. **Black** - Powerful and elegant, symbolizes mystery and strength.\n11. **White** - Pure and clean, evokes simplicity and clarity.\n12. **Teal** - Sophisticated blend of blue and green, calm yet vibrant.\n13. **Gold** - Luxurious and timeless, represents wealth and prestige.\n14. **Silver** - Sleek and modern, conveys elegance and refinement.\n15. **Maroon** - Deep and rich, suggests maturity and seriousness.\n16. **Turquoise** - Tropical and refreshing, bright yet soothing.\n17. **Indigo** - Deep and contemplative, inspires intuition and insight.\n18. **Coral** - Warm and inviting, blends pink's softness with orange's energy.\n19. **Olive** - Muted and earthy, evokes wisdom and practicality.\n20. **Crimson** - Intense and dramatic, a deeper, richer red.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 414,
+      "costUsd": 0.00069925
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_907e76a87195",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "0608e62a-194b-4037-b579-af5a56d8f91b",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775656410672
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656410672
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - Bold and passionate, commands attention instantly.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n2. **Blue** - Cool and calming, evokes trust and stability.\n3. **Green** - Natural and refreshing, symbol",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "izes growth and renewal.\n4. **Yellow** - Bright and cheerful, radiates warmth and optimism.\n5. **Purple** - R",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "egal and mysterious, blends creativity with sophistication.\n6. **Orange** - Energetic and friendly, combines",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " red's passion with yellow's joy.\n7. **Pink** - Soft and playful, conveys tend",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "erness and compassion.\n8. **Brown** - Earthy and grounding, suggests stability and comfort.\n9. **Gray",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Neutral and balanced, represents sophistication and formality.\n10. **Black** - Powerful and elegant, symbolizes mystery and strength",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ".\n11. **White** - Pure and clean, evokes simplicity and clarity.\n12. **Teal** - Sophisticated blend of blue and green, calm yet",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " vibrant.\n13. **Gold** - Luxurious and timeless, represents wealth and prestige.\n14. **Silver** - Sleek and modern, conv",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "eys elegance and refinement.\n15. **Maroon** - Deep and rich, suggests maturity and seriousness.\n16. **Tur",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "quoise** - Tropical and refreshing, bright yet soothing.\n17. **Indigo** - Deep and contemplative, insp",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ires intuition and insight.\n18. **Coral** - Warm and inviting, blends pink's softness with orange's energy.",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n19. **Olive** - Muted and earthy, evokes wisdom and practicality.\n20. **Crimson** - Intense and dramatic",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", a deeper, richer red.",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - Bold and passionate, commands attention instantly.\n2. **Blue** - Cool and calming, evokes trust and stability.\n3. **Green** - Natural and refreshing, symbolizes growth and renewal.\n4. **Yellow** - Bright and cheerful, radiates warmth and optimism.\n5. **Purple** - Regal and mysterious, blends creativity with sophistication.\n6. **Orange** - Energetic and friendly, combines red's passion with yellow's joy.\n7. **Pink** - Soft and playful, conveys tenderness and compassion.\n8. **Brown** - Earthy and grounding, suggests stability and comfort.\n9. **Gray** - Neutral and balanced, represents sophistication and formality.\n10. **Black** - Powerful and elegant, symbolizes mystery and strength.\n11. **White** - Pure and clean, evokes simplicity and clarity.\n12. **Teal** - Sophisticated blend of blue and green, calm yet vibrant.\n13. **Gold** - Luxurious and timeless, represents wealth and prestige.\n14. **Silver** - Sleek and modern, conveys elegance and refinement.\n15. **Maroon** - Deep and rich, suggests maturity and seriousness.\n16. **Turquoise** - Tropical and refreshing, bright yet soothing.\n17. **Indigo** - Deep and contemplative, inspires intuition and insight.\n18. **Coral** - Warm and inviting, blends pink's softness with orange's energy.\n19. **Olive** - Muted and earthy, evokes wisdom and practicality.\n20. **Crimson** - Intense and dramatic, a deeper, richer red.",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 414,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00069925
+        },
+        "timestamp": 1775656414380
+      },
+      "index": 19
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 20
+    }
+  ]
+}

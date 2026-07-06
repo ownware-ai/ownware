@@ -1,0 +1,112 @@
+{
+  "name": "adam",
+  "displayName": "Adam",
+  "kind": "agent",
+  "description": "Pipeline & relationship operator. Plugs into your Slack, email, LinkedIn, Attio, and Granola, then tracks every correspondence across your pipeline and prospects in one place — who you talked to, what was said, what's owed next. Keeps Attio as the source of truth, pulls the relevant context (emails, Slack threads, call notes) onto every record, and surfaces the deals that have gone quiet with a ready-to-send follow-up so nothing goes cold from silence. Drafts the nudge in your voice and waits for your okay; never sends or changes a deal stage on its own.",
+  "version": "0.1.0",
+  "productId": "ownware",
+  "locked": false,
+  "tags": [
+    "pipeline",
+    "crm",
+    "follow-up",
+    "relationships",
+    "sales",
+    "attio",
+    "email",
+    "slack",
+    "linkedin",
+    "meeting-notes"
+  ],
+  "metadata": {
+    "icon": "A",
+    "color": "rose",
+    "category": "Sales",
+    "role": "Pipeline & follow-up",
+    "pixelAvatar": {
+      "hair": "curly",
+      "hi": 2,
+      "si": 3,
+      "ti": 2,
+      "face": "oval",
+      "expr": "calm",
+      "glasses": "none",
+      "facial": "beard",
+      "headwear": "none",
+      "earrings": false,
+      "headset": false,
+      "blush": false
+    },
+    "requiredSecrets": []
+  },
+  "model": "openrouter:kimi-k2.7-code",
+  "smallFastModel": "openrouter:haiku-4.5",
+  "maxTokens": 16384,
+  "maxTurns": 150,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute", "agent_spawn"],
+    "custom": [],
+    "mcp": {},
+    "composio": {
+      "toolkits": [
+        "attio",
+        "gmail",
+        "slack",
+        "linkedin",
+        "granola_mcp",
+        "googlecalendar"
+      ]
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "90m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "csv", "files", "tasks", "url", "pdf", "html", "image"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

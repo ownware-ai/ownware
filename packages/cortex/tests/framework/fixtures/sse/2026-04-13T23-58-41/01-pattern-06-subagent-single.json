@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-13T23:58:41.913Z",
+  "metadata": {
+    "prompt": "Use explore helper to find greet function",
+    "profileId": "coder",
+    "threadId": "thread_70428c9e9c94",
+    "expectedBehavior": "Spawns explore sub-agent, gets result, reports findings"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

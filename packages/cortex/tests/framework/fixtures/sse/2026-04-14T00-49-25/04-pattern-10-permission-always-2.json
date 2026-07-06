@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:49:25.893Z",
+  "metadata": {
+    "prompt": "Second read — should not prompt",
+    "profileId": "coder",
+    "threadId": "thread_d9124134ddf8",
+    "expectedBehavior": "No permission.request — already approved via \"always\""
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

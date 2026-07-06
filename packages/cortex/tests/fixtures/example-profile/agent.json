@@ -1,0 +1,48 @@
+{
+  "name": "example",
+  "description": "Test fixture profile used by assembler.test.ts. NOT a shipping profile — lives in tests/fixtures/, never in packages/cortex/profiles/.",
+  "model": "anthropic:claude-sonnet-4-20250514",
+  "maxTokens": 4096,
+  "maxTurns": 20,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute"],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"]
+  },
+  "skills": {
+    "dirs": [],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": false,
+    "datetime": false,
+    "project": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask"
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    }
+  }
+}

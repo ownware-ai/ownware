@@ -1,0 +1,45 @@
+/* Modern Minimal — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --accent is a single cobalt; do NOT introduce a second accent. If the
+ *     brief demands a destructive action, use --bad.
+ *   - --accent-hover darkens (not lifts) — this system uses filled CTAs and a
+ *     darkening on hover reads as the expected affordance.
+ *   - --radius caps at 8px deliberately. Higher rounding drifts into consumer.
+ */
+
+:root {
+  /* surface ladder */
+  --bg:      #fafafa;
+  --surface: #ffffff;
+
+  /* foreground ladder */
+  --fg:     #111111;
+  --muted:  #6b6b6b;
+  --border: #e5e5e5;
+
+  /* accent — one cobalt, used everywhere accent is needed */
+  --accent:       #2f6feb;
+  --accent-hover: #1f5fd6;
+  --accent-fg:    #ffffff;
+
+  /* semantic — used sparingly, always paired with an icon */
+  --good: #17a34a;
+  --warn: #eab308;
+  --bad:  #dc2626;
+
+  /* shape */
+  --radius:      8px;
+  --radius-pill: 999px;
+
+  /* typography */
+  --font-display: 'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

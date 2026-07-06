@@ -1,0 +1,199 @@
+{
+  "name": "ownware-marketing",
+  "kind": "agent",
+  "description": "Senior marketing operator across CRO, copywriting, SEO, paid media, lifecycle email, analytics, and growth. Writes pages and ads, audits funnels, mines voice-of-customer, designs experiments, and assembles campaign briefs. Cites every claim about an audience to a source; refuses to fabricate testimonials, statistics, or pain points; refuses dark patterns and coercive friction.",
+  "version": "0.1.0",
+  "productId": "ownware-marketing",
+  "locked": true,
+  "tags": [
+    "marketing",
+    "cro",
+    "copywriting",
+    "seo",
+    "paid-ads",
+    "email",
+    "lifecycle",
+    "analytics",
+    "growth",
+    "experimentation"
+  ],
+  "metadata": {
+    "icon": "M",
+    "color": "rose",
+    "category": "Marketing",
+    "avatar": {
+      "bg": "#2A0F1F",
+      "fg": "#FFB8C8",
+      "accent": "#E94B6E",
+      "symbol": "<text x=\"32\" y=\"40\" text-anchor=\"middle\" font-family=\"Helvetica,sans-serif\" font-size=\"32\" font-weight=\"700\" fill=\"currentColor\">M</text><path d=\"M14 52 L26 46 L34 50 L50 40\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\" stroke-opacity=\"0.7\"/><polyline points=\"45,38 50,40 48,45\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\" stroke-opacity=\"0.7\"/>"
+    },
+    "requiredSecrets": [
+      {
+        "variableName": "GA4_PROPERTY_ID",
+        "label": "Google Analytics 4 property ID",
+        "hint": "https://support.google.com/analytics/answer/9539598",
+        "usage": "Web + product analytics — sessions, conversions, events, attribution. Pair with GA4_SERVICE_ACCOUNT_JSON for read access. Free.",
+        "required": false
+      },
+      {
+        "variableName": "GA4_SERVICE_ACCOUNT_JSON",
+        "label": "GA4 service account JSON",
+        "hint": "https://developers.google.com/analytics/devguides/reporting/data/v1/quickstart-client-libraries",
+        "usage": "Service-account credentials for the GA4 Data API. Grant the account Viewer access to the property. Free.",
+        "required": false
+      },
+      {
+        "variableName": "GSC_SITE_URL",
+        "label": "Search Console site URL",
+        "hint": "https://search.google.com/search-console",
+        "usage": "Property URL exactly as registered in Search Console (e.g. sc-domain:example.com). Pair with GSC_SERVICE_ACCOUNT_JSON.",
+        "required": false
+      },
+      {
+        "variableName": "GSC_SERVICE_ACCOUNT_JSON",
+        "label": "Search Console service account JSON",
+        "hint": "https://developers.google.com/webmaster-tools/v1/how-tos/search_analytics",
+        "usage": "Service-account credentials for the Search Console API — the canonical source for queries, impressions, CTR, position. Free.",
+        "required": false
+      },
+      {
+        "variableName": "AHREFS_API_KEY",
+        "label": "Ahrefs API key",
+        "hint": "https://ahrefs.com/api",
+        "usage": "Backlink profile, keyword research, competitor content gaps. Enterprise subscription.",
+        "required": false
+      },
+      {
+        "variableName": "SEMRUSH_API_KEY",
+        "label": "Semrush API key",
+        "hint": "https://www.semrush.com/api-documentation/",
+        "usage": "Keyword research, SERP tracking, competitor positioning. API units sold separately from the main subscription.",
+        "required": false
+      },
+      {
+        "variableName": "MIXPANEL_API_KEY",
+        "label": "Mixpanel service account secret",
+        "hint": "https://developer.mixpanel.com/reference/service-accounts",
+        "usage": "Product analytics — funnels, retention, cohorts. Pair with MIXPANEL_PROJECT_ID.",
+        "required": false
+      },
+      {
+        "variableName": "MIXPANEL_PROJECT_ID",
+        "label": "Mixpanel project ID",
+        "hint": "https://developer.mixpanel.com/reference/project-id",
+        "usage": "Numeric project ID for the Mixpanel workspace.",
+        "required": false
+      },
+      {
+        "variableName": "AMPLITUDE_API_KEY",
+        "label": "Amplitude API key",
+        "hint": "https://www.docs.developers.amplitude.com/analytics/apis/",
+        "usage": "Product analytics — alternative to Mixpanel. Cohort analysis, behavioural segmentation.",
+        "required": false
+      },
+      {
+        "variableName": "POSTHOG_API_KEY",
+        "label": "PostHog personal API key",
+        "hint": "https://posthog.com/docs/api",
+        "usage": "Open-source product analytics, session replay, feature flags. Works against self-hosted instances.",
+        "required": false
+      },
+      {
+        "variableName": "RESEND_API_KEY",
+        "label": "Resend API key",
+        "hint": "https://resend.com/api-keys",
+        "usage": "Transactional and broadcast email sending. Developer-friendly, low setup cost.",
+        "required": false
+      },
+      {
+        "variableName": "CUSTOMER_IO_API_KEY",
+        "label": "Customer.io app API key",
+        "hint": "https://customer.io/docs/api/",
+        "usage": "Lifecycle and behaviour-triggered email automation. App API key for read; track key for sends.",
+        "required": false
+      }
+    ]
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 100,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "coding",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [
+    {
+      "name": "audience-researcher",
+      "description": "Mines voice-of-customer from public reviews (G2, Capterra, App Store, Trustpilot, Reddit, X), user interviews, and support tickets the user provides. Returns sourced quotes, recurring pain points, and the language customers actually use. Read-only. Use first when copy or positioning needs grounding."
+    },
+    {
+      "name": "analytics-reader",
+      "description": "Pulls and explains data from GA4, Search Console, Mixpanel, Amplitude, PostHog, Ahrefs, and Semrush when keys are connected. Returns metric reports with timeframe, baseline, and source URL. Read-only — never modifies events or tracking. Use when a recommendation needs numbers behind it."
+    },
+    {
+      "name": "copywriter",
+      "description": "Drafts marketing copy variants given an audience, offer, and constraints. Produces headline + subhead + body + CTA per variant, each labelled with its angle (outcome / pain / proof / authority / social). No web, no shell. Never invents stats or testimonials."
+    },
+    {
+      "name": "seo-analyst",
+      "description": "Runs technical and on-page SEO audits, keyword research, and competitor content analysis. Pulls from Search Console / Ahrefs / Semrush when available; falls back to public sources otherwise. Returns prioritised findings tied to the search metric being moved."
+    },
+    {
+      "name": "asset-author",
+      "description": "Assembles structured deliverables — campaign briefs, launch plans, landing-page outlines, content calendars, A/B test plans, pricing pages — from the other helpers' outputs. No web, no shell. Maintains a consistent section structure and never invents data."
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "html", "url", "csv", "image",
+      "pdf", "mermaid", "files", "tasks", "code", "video"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

@@ -1,0 +1,379 @@
+{
+  "recordedAt": "2026-04-09T01:53:19.693Z",
+  "metadata": {
+    "prompt": "Use failing tool, then recover with calculator",
+    "tools": "failing + calculator",
+    "expectedBehavior": "always_fail returns error → model uses calculate → reports 10"
+  },
+  "eventCount": 30,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 3,
+    "text.delta": 7,
+    "tool.call.start": 2,
+    "tool.call.args_delta": 8,
+    "text.complete": 3,
+    "tool.call.end": 2,
+    "turn.end": 3,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll start by calling the always_fail tool, and then use the calculate tool when it fails.As expected, the always_fail tool returned an error. Now I'll use the calculate tool to compute 7 + 3:**Result:** The always_fail tool failed as expected with error \"test error\". The calculate tool then computed 7 + 3 = **10**.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "always_fail",
+        "result": "Error: test error",
+        "isError": true,
+        "durationMs": 0
+      },
+      {
+        "toolName": "calculate",
+        "result": "10",
+        "isError": false,
+        "durationMs": 5
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2412,
+      "outputTokens": 196,
+      "costUsd": 0.000848
+    },
+    "turnCount": 3
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "10b247d9-54d0-48a8-a347-e271af086e1b",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699594642
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699594642
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll start",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " by calling the always_fail tool, and then use the calculate tool when it fails.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01UgyYMhNuAskYMFDPYboW1S",
+        "toolName": "always_fail",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgyYMhNuAskYMFDPYboW1S",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgyYMhNuAskYMFDPYboW1S",
+        "delta": "{\"message\"",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgyYMhNuAskYMFDPYboW1S",
+        "delta": ": \"test erro",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UgyYMhNuAskYMFDPYboW1S",
+        "delta": "r\"}",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll start by calling the always_fail tool, and then use the calculate tool when it fails.",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UgyYMhNuAskYMFDPYboW1S",
+        "toolName": "always_fail",
+        "result": "Error: test error",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 705,
+          "outputTokens": 76,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00027125
+        },
+        "timestamp": 1775699595906
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699595906
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "As expected, the always_fail tool returned",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " an error. Now I'll use the calculate tool to compute 7 + 3:",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_012iVYbdrjYPU5UEVZCmZfrr",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012iVYbdrjYPU5UEVZCmZfrr",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012iVYbdrjYPU5UEVZCmZfrr",
+        "delta": "{\"expressi",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012iVYbdrjYPU5UEVZCmZfrr",
+        "delta": "on\": ",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_012iVYbdrjYPU5UEVZCmZfrr",
+        "delta": "\"7 + 3\"}",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "As expected, the always_fail tool returned an error. Now I'll use the calculate tool to compute 7 + 3:",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_012iVYbdrjYPU5UEVZCmZfrr",
+        "toolName": "calculate",
+        "result": "10",
+        "isError": false,
+        "durationMs": 5,
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 805,
+          "outputTokens": 84,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00030625
+        },
+        "timestamp": 1775699596835
+      },
+      "index": 22
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 2,
+        "timestamp": 1775699596835
+      },
+      "index": 23
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "**",
+        "turnIndex": 2
+      },
+      "index": 24
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Result:** The always_fail tool failed as expected with error \"",
+        "turnIndex": 2
+      },
+      "index": 25
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "test error\". The calculate tool then computed 7 + 3 = **10**.",
+        "turnIndex": 2
+      },
+      "index": 26
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "**Result:** The always_fail tool failed as expected with error \"test error\". The calculate tool then computed 7 + 3 = **10**.",
+        "turnIndex": 2
+      },
+      "index": 27
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 2,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 902,
+          "outputTokens": 36,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0002705
+        },
+        "timestamp": 1775699599691
+      },
+      "index": 28
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "10b247d9-54d0-48a8-a347-e271af086e1b",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2412,
+          "outputTokens": 196,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.000848,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 3,
+        "timestamp": 1775699599691
+      },
+      "index": 29
+    }
+  ]
+}

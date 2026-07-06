@@ -1,0 +1,16 @@
+{
+  "name": "ownware-custom-client",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Advanced example: drive the Ownware gateway from your own app over the raw HTTP+SSE wire contract.",
+  "type": "module",
+  "scripts": {
+    "serve": "node serve.mjs",
+    "chat": "node chat.mjs",
+    "test": "echo 'custom-client example — no tests'",
+    "typecheck": "echo 'custom-client example — no typecheck'"
+  },
+  "dependencies": {
+    "ownware": "workspace:*"
+  }
+}

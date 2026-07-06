@@ -1,0 +1,40 @@
+# Dependabot configuration for Ownware.
+#
+# Deliberately scoped to github-actions ONLY.
+#
+# We do NOT enable dependabot for npm/bun source dependencies because the
+# workspace pins them exactly in bun.lock as part of our supply-chain
+# posture. Schedule-driven version-bump PRs against those pins would
+# undermine the strategy — pins are moved deliberately, after review, not
+# on a calendar.
+#
+# github-actions is the exception: our workflows pin actions to full commit
+# SHAs, and those pins must move when upstream actions publish patches —
+# which are usually themselves security fixes. Dependabot opens a PR with
+# the new SHA + release notes; it gets reviewed like any other PR (and
+# .github/ is CODEOWNERS-owned by the security owner).
+#
+# CVE-only security updates for source dependencies are enabled separately
+# via repo settings (Settings → Code security → Dependabot security
+# updates). Those fire only when a pinned version becomes known-bad — which
+# is exactly when we want to move a pin.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(actions)"
+    groups:
+      # Batch routine bumps into one weekly PR; security updates still open
+      # individually and bypass grouping.
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

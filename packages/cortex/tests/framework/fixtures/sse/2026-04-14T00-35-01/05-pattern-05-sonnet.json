@@ -1,0 +1,25 @@
+{
+  "recordedAt": "2026-04-14T00:35:01.937Z",
+  "metadata": {
+    "prompt": "Say HI",
+    "profileId": "sse-thinking",
+    "expectedBehavior": "Sonnet response, higher per-token cost"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

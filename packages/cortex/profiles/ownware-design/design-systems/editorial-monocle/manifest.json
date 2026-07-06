@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "editorial-monocle",
+  "name": "Editorial Monocle",
+  "category": "editorial",
+  "surface": "web",
+  "summary": "Restrained editorial. White-space heavy, considered serif display, single near-black accent. Premium-brand and high-consideration pages.",
+  "swatches": ["#fafaf7", "#ffffff", "#1a1a1a", "#1a1a1a", "#6b6b6b", "#e8e6e0"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css" }
+}

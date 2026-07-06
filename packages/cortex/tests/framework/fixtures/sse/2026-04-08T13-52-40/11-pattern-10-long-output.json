@@ -1,0 +1,229 @@
+{
+  "recordedAt": "2026-04-08T13:53:05.153Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 15,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - Bold and passionate, catches the eye instantly.\n2. **Blue** - Calm and trustworthy, like the open sky.\n3. **Green** - Fresh and natural, found in forests and plants.\n4. **Yellow** - Bright and cheerful, brings warmth and energy.\n5. **Orange** - Vibrant and playful, blends red and yellow.\n6. **Purple** - Regal and mysterious, associated with royalty.\n7. **Pink** - Soft and gentle, often linked to sweetness.\n8. **Brown** - Earthy and grounding, reminds us of nature.\n9. **Black** - Deep and powerful, absorbs all light.\n10. **White** - Pure and clean, represents simplicity.\n11. **Gray** - Neutral and balanced, sits between light and dark.\n12. **Cyan** - Cool and modern, a bright blue-green blend.\n13. **Magenta** - Electric and bold, vivid and eye-catching.\n14. **Lime** - Bright and energetic, fresh like new growth.\n15. **Navy** - Deep and sophisticated, classic and formal.\n16. **Coral** - Warm and inviting, inspired by ocean reefs.\n17. **Teal** - Cool and sophisticated, blends blue and green.\n18. **Gold** - Luxurious and precious, symbolizes wealth.\n19. **Silver** - Sleek and modern, shines with quiet elegance.\n20. **Burgundy** - Rich and deep, a sophisticated dark red.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 372,
+      "costUsd": 0.00064675
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_2d76399cbe7c",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "9c1776ff-91ee-4fa3-8c90-927503364674",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775656381690
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656381690
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - Bold and passionate, catches the eye instantly",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ".\n2. **Blue** - Calm and trustworthy, like the open sky.\n3. **Green** -",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " Fresh and natural, found in forests and plants.\n4. **Yellow** - Bright and cheerful, brings",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " warmth and energy.\n5. **Orange** - Vibrant and playful, blends red and yellow.\n6. **Purple",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Regal and mysterious, associated with royalty.\n7. **Pink** - Soft and gentle, often linked",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to sweetness.\n8. **Brown** - Earthy and grounding, reminds us of nature.\n9. **Black** - Deep and powerful",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", absorbs all light.\n10. **White** - Pure and clean, represents simplicity.\n11. **Gray** - Neutral and balanced, sits",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " between light and dark.\n12. **Cyan** - Cool and modern, a bright",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " blue-green blend.\n13. **Magenta** - Electric and bold, vivid and eye-catching.\n14. **",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Lime** - Bright and energetic, fresh like new growth.\n15. **Navy** - Deep and sophisticated, classic",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and formal.\n16. **Coral** - Warm and inviting, inspired by ocean reefs.\n17. **Teal** - Cool",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and sophisticated, blends blue and green.\n18. **Gold** - Luxurious and precious, symbolizes wealth.\n19. **Silver",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Sleek and modern, shines with quiet elegance.\n20. **Burgundy** - Rich and deep, a",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " sophisticated dark red.",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - Bold and passionate, catches the eye instantly.\n2. **Blue** - Calm and trustworthy, like the open sky.\n3. **Green** - Fresh and natural, found in forests and plants.\n4. **Yellow** - Bright and cheerful, brings warmth and energy.\n5. **Orange** - Vibrant and playful, blends red and yellow.\n6. **Purple** - Regal and mysterious, associated with royalty.\n7. **Pink** - Soft and gentle, often linked to sweetness.\n8. **Brown** - Earthy and grounding, reminds us of nature.\n9. **Black** - Deep and powerful, absorbs all light.\n10. **White** - Pure and clean, represents simplicity.\n11. **Gray** - Neutral and balanced, sits between light and dark.\n12. **Cyan** - Cool and modern, a bright blue-green blend.\n13. **Magenta** - Electric and bold, vivid and eye-catching.\n14. **Lime** - Bright and energetic, fresh like new growth.\n15. **Navy** - Deep and sophisticated, classic and formal.\n16. **Coral** - Warm and inviting, inspired by ocean reefs.\n17. **Teal** - Cool and sophisticated, blends blue and green.\n18. **Gold** - Luxurious and precious, symbolizes wealth.\n19. **Silver** - Sleek and modern, shines with quiet elegance.\n20. **Burgundy** - Rich and deep, a sophisticated dark red.",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 372,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00064675
+        },
+        "timestamp": 1775656385152
+      },
+      "index": 19
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 20
+    }
+  ]
+}

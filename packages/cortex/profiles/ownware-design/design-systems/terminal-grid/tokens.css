@@ -1,0 +1,52 @@
+/* Terminal Grid — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --font-display, --font-body, --font-mono are ALL the same monospace.
+ *     This is genre-defining — switching body to a proportional sans
+ *     instantly turns this into "dark theme dashboard", which is a
+ *     different system. Keep mono.
+ *   - --radius is 4px. Sharp corners are part of the engineered feel; the
+ *     genre uses 0–6px corners only.
+ *   - --accent is neon-green telemetry. The genre alternative is amber
+ *     CRT or cyan — pick one and stay; do not mix telemetry colors in
+ *     one artifact.
+ *   - --border is a near-fg gridline color (`#1c2530`) — gridlines must
+ *     be VISIBLE in this system, not subliminal. A 6%-alpha hairline is
+ *     wrong; the borders are part of the visual language.
+ */
+
+:root {
+  /* surface — deep ink with a slightly-lifted panel tier */
+  --bg:      #070b10;
+  --surface: #0d1218;
+
+  /* foreground ladder — high-contrast cool-green-white */
+  --fg:     #d8f5e0;
+  --muted:  #5d6b78;
+  --border: #1c2530;
+
+  /* accent — neon telemetry green, the one chromatic note */
+  --accent:       #3df57c;
+  --accent-hover: #5cff97;
+  --accent-fg:    #070b10;
+
+  /* semantic — CRT-saturated, no blending */
+  --good: #3df57c;
+  --warn: #f5c83d;
+  --bad:  #ff5d6c;
+
+  /* shape — sharp corners are the genre */
+  --radius:      4px;
+  --radius-pill: 4px;
+
+  /* typography — monospace everywhere, no exceptions */
+  --font-display: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --font-body:    'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --font-mono:    'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

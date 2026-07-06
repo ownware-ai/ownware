@@ -1,0 +1,18 @@
+{
+  "runStamp": "2026-04-13T23-51-39",
+  "totalStreams": 1,
+  "streams": [
+    {
+      "file": "01-pattern-12-error-recovery.json",
+      "name": "pattern-12-error-recovery",
+      "metadata": {
+        "prompt": "Read non-existent file, expect error and graceful recovery",
+        "profileId": "coder",
+        "threadId": "thread_95b49aad2628",
+        "expectedBehavior": "tool.call.end with isError: true → LLM acknowledges → done"
+      },
+      "eventCount": 0,
+      "completed": false
+    }
+  ]
+}

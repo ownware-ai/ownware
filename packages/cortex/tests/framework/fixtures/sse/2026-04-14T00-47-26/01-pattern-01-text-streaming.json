@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:47:26.097Z",
+  "metadata": {
+    "prompt": "Say exactly: HELLO PATTERN ONE",
+    "profileId": "sse-text",
+    "threadId": "thread_b0d386df4a6e",
+    "expectedBehavior": "text.delta events accumulate to \"HELLO PATTERN ONE\""
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

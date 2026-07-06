@@ -1,0 +1,51 @@
+/* Soft Clay — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --radius is 22px. The genre's identity depends on heavy rounding; a 4px
+ *     corner here is wrong, not "minimal."
+ *   - --surface is warmer than --bg, not lighter. The system reads as molded
+ *     clay because elements emerge from a warm-cream floor; on a flat-white
+ *     surface this collapses to a regular pastel theme.
+ *   - --border is warm, low-contrast. Hard `#000` borders kill the soft-relief
+ *     effect; the depth comes from shadow, not from outlines.
+ *   - --accent is a single warm coral. Pastels in this system live on the
+ *     SURFACE, not the accent — the accent is the one saturated note.
+ *   - Shadows are NOT in the tokens (genre-specific layering) but ARE
+ *     prescribed in DESIGN.md as the signature move.
+ */
+
+:root {
+  /* surface — warm-cream floor with a slightly-warmer card tier */
+  --bg:      #f7eee6;
+  --surface: #fff8f1;
+
+  /* foreground ladder — warm dark, not pure black */
+  --fg:     #2b211c;
+  --muted:  #8a7a70;
+  --border: #ead8c7;
+
+  /* accent — one warm coral, the only saturated note */
+  --accent:       #e07a5f;
+  --accent-hover: #d0664a;
+  --accent-fg:    #ffffff;
+
+  /* semantic — desaturated to live on the warm surface */
+  --good: #6a9968;
+  --warn: #d99a3a;
+  --bad:  #c44a4a;
+
+  /* shape — heavy rounding is the genre */
+  --radius:      22px;
+  --radius-pill: 999px;
+
+  /* typography — rounded geometric sans where available, system fallback */
+  --font-display: 'Nunito', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-body:    'Nunito', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

@@ -1,0 +1,499 @@
+{
+  "recordedAt": "2026-04-11T12:11:57.329Z",
+  "metadata": {
+    "prompt": "Read 3 files and report first item from each",
+    "profileId": "coder",
+    "threadId": "thread_f1db6b1f4203",
+    "expectedBehavior": "Multiple tool.call.start/end pairs, then synthesis text"
+  },
+  "eventCount": 39,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 3,
+    "tool.call.args_delta": 18,
+    "text.complete": 2,
+    "tool.call.end": 3,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll read all three files in parallel and then tell you the first item from each.Based on the files I read, here are the first items from each file:\n\n- **colors.txt**: red\n- **numbers.txt**: 1  \n- **fruits.txt**: apple",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "toolName": "readFile",
+        "result": "1\tred\n2\tgreen\n3\tblue\n4\t",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "totalLines": 4
+        }
+      },
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "toolName": "readFile",
+        "result": "1\t1\n2\t2\n3\t3\n4\t4\n5\t5\n6\t",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "totalLines": 6
+        }
+      },
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "toolName": "readFile",
+        "result": "1\tapple\n2\tbanana\n3\tcherry\n4\t",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "totalLines": 4
+        }
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 20182,
+      "outputTokens": 198,
+      "costUsd": 0.06351599999999999
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_f1db6b1f4203",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "e46f6231-cb3c-4578-98c7-d37b1ccdd0e3",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775909513195
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775909513195
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll read all",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " three files in parallel and then tell you the first item from each.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "delta": "{\"file_",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "delta": "pat",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "delta": "h\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "delta": ": \"colors.tx",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "delta": "t\"}",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "delta": "{\"file_p",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "delta": "ath\": \"num",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "delta": "be",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "delta": "rs.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "{\"",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "file_pat",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "h\": \"",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "frui",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "ts.",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "delta": "txt\"}",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll read all three files in parallel and then tell you the first item from each.",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01QhNRZjTdKFiNfruLWgJYWA",
+        "toolName": "readFile",
+        "result": "1\tred\n2\tgreen\n3\tblue\n4\t",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "totalLines": 4
+        }
+      },
+      "index": 27
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UJ9EqGBM4M2SmEj2Q3Dwoc",
+        "toolName": "readFile",
+        "result": "1\t1\n2\t2\n3\t3\n4\t4\n5\t5\n6\t",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "totalLines": 6
+        }
+      },
+      "index": 28
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UaVspEk1D4CU6X6KH6nidh",
+        "toolName": "readFile",
+        "result": "1\tapple\n2\tbanana\n3\tcherry\n4\t",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "totalLines": 4
+        }
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 9947,
+          "outputTokens": 153,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.032136
+        },
+        "timestamp": 1775909515597
+      },
+      "index": 30
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "e46f6231-cb3c-4578-98c7-d37b1ccdd0e3",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775909515598
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Based",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " on the files I read, here are the first items from each file:\n\n- **colors.txt**: red\n- **numbers.txt**: 1  \n- **fruits.txt**: apple",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Based on the files I read, here are the first items from each file:\n\n- **colors.txt**: red\n- **numbers.txt**: 1  \n- **fruits.txt**: apple",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 10235,
+          "outputTokens": 45,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.03138
+        },
+        "timestamp": 1775909517327
+      },
+      "index": 36
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "e46f6231-cb3c-4578-98c7-d37b1ccdd0e3",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 20182,
+          "outputTokens": 198,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.06351599999999999,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775909517328
+      },
+      "index": 37
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 38
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "recordedAt": "2026-04-09T13:43:51.300Z",
+  "metadata": {
+    "prompt": "Write with readonly tools",
+    "expectedBehavior": "No writeFile tool available — model explains it cannot write"
+  },
+  "eventCount": 11,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 6,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I cannot write \"BLOCKED_CONTENT\" to the specified file because I don't have access to a file writing function. The tools available to me are only for reading and searching files:\n\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory contents\n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nI can only read, list, find, and search files, but I cannot create, modify, or write to files. To write content to a file, you would need to use a different tool or perform the operation outside of this environment.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1178,
+      "outputTokens": 135,
+      "costUsd": 0.005559
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "fded440f-586e-4a89-ac1f-0774e529c164",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775742227645
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775742227645
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I cannot",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " write \"BLOCKED_CONTENT\" to the specified file because I don't have access to a file writing function. The tools",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " available to me are only for reading and searching files:\n\n- `readFile` - for",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " reading file contents\n- `listFiles` - for listing directory contents\n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nI can only read",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", list, find, and search files, but I cannot create, modify, or write to files. To write",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " content to a file, you would need to use a different tool or perform the operation outside of this environment.",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I cannot write \"BLOCKED_CONTENT\" to the specified file because I don't have access to a file writing function. The tools available to me are only for reading and searching files:\n\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory contents\n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nI can only read, list, find, and search files, but I cannot create, modify, or write to files. To write content to a file, you would need to use a different tool or perform the operation outside of this environment.",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1178,
+          "outputTokens": 135,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.005559
+        },
+        "timestamp": 1775742231300
+      },
+      "index": 9
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "fded440f-586e-4a89-ac1f-0774e529c164",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1178,
+          "outputTokens": 135,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.005559,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775742231300
+      },
+      "index": 10
+    }
+  ]
+}

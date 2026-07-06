@@ -1,0 +1,238 @@
+{
+  "recordedAt": "2026-04-08T14:20:19.337Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 22,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 16,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - Bold and energetic, symbolizes passion and danger.\n2. **Blue** - Calm and trustworthy, evokes the sky and ocean.\n3. **Yellow** - Bright and cheerful, associated with sunshine and happiness.\n4. **Green** - Natural and refreshing, represents growth and harmony.\n5. **Purple** - Regal and mysterious, blends the calm of blue with red's energy.\n6. **Orange** - Warm and enthusiastic, sits between red and yellow.\n7. **Pink** - Soft and playful, conveys tenderness and sweetness.\n8. **Brown** - Earthy and stable, grounds and provides a natural feel.\n9. **Gray** - Neutral and sophisticated, balances between black and white.\n10. **Black** - Powerful and formal, represents elegance and mystery.\n11. **White** - Pure and clean, symbolizes simplicity and clarity.\n12. **Turquoise** - Cool and exotic, blends blue and green freshness.\n13. **Gold** - Luxurious and warm, suggests wealth and prestige.\n14. **Silver** - Sleek and modern, reflects light and elegance.\n15. **Teal** - Deep and calming, a sophisticated blend of blue and green.\n16. **Coral** - Vibrant and tropical, warm with a hint of playfulness.\n17. **Indigo** - Deep and contemplative, rich blue with mysterious depth.\n18. **Crimson** - Intense and bold, a darker, richer shade of red.\n19. **Olive** - Muted and earthy, a subtle blend of green and brown.\n20. **Maroon** - Dark and sophisticated, a deep wine-like red tone.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 414,
+      "costUsd": 0.00069925
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_88b9ea06ec45",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "3868809d-7d4a-4c59-80fd-fbceecabcc8d",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775658015390
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658015390
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - Bold and energetic, symbolizes passion and danger",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ".\n2. **Blue** - Calm and trustworthy, evokes the sky and ocean.\n3. **Yellow",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Bright and cheerful, associated with sunshine and happiness.\n4. **Green** - Natural and refreshing, represents growth and harmony.",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n5. **Purple** - Regal and mysterious, blends the calm of blue with red's",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " energy.\n6. **Orange** - Warm and enthusiastic, sits between red and yellow.\n7. **Pink** - Soft and playful, conv",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "eys tenderness and sweetness.\n8. **Brown** - Earthy and stable, grounds and provides a natural feel.\n9. **Gray",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Neutral and sophisticated, balances between black and white.\n10. **Black** - Powerful and formal, represents eleg",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ance and mystery.\n11. **White** - Pure and clean, symbolizes simplicity and clarity.\n12. **Turquoise** - Cool and exotic, bl",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ends blue and green freshness.\n13. **Gold** - Luxurious and warm, suggests wealth and prestige.\n14. **Silver**",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " - Sleek and modern, reflects light and elegance.\n15. **Teal** - Deep and calming, a sophisticated blend",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " of blue and green.\n16. **Coral** - Vibrant and tropical, warm with a hint of play",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "fulness.\n17. **Indigo** - Deep and contemplative, rich blue with mysterious depth.\n18. **Crimson",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Intense and bold, a darker, richer shade of red.\n19. **",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Olive** - Muted and earthy, a subtle blend of green and brown.\n20. **Maroon** - Dark and sophisticated, a deep wine",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "-like red tone.",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - Bold and energetic, symbolizes passion and danger.\n2. **Blue** - Calm and trustworthy, evokes the sky and ocean.\n3. **Yellow** - Bright and cheerful, associated with sunshine and happiness.\n4. **Green** - Natural and refreshing, represents growth and harmony.\n5. **Purple** - Regal and mysterious, blends the calm of blue with red's energy.\n6. **Orange** - Warm and enthusiastic, sits between red and yellow.\n7. **Pink** - Soft and playful, conveys tenderness and sweetness.\n8. **Brown** - Earthy and stable, grounds and provides a natural feel.\n9. **Gray** - Neutral and sophisticated, balances between black and white.\n10. **Black** - Powerful and formal, represents elegance and mystery.\n11. **White** - Pure and clean, symbolizes simplicity and clarity.\n12. **Turquoise** - Cool and exotic, blends blue and green freshness.\n13. **Gold** - Luxurious and warm, suggests wealth and prestige.\n14. **Silver** - Sleek and modern, reflects light and elegance.\n15. **Teal** - Deep and calming, a sophisticated blend of blue and green.\n16. **Coral** - Vibrant and tropical, warm with a hint of playfulness.\n17. **Indigo** - Deep and contemplative, rich blue with mysterious depth.\n18. **Crimson** - Intense and bold, a darker, richer shade of red.\n19. **Olive** - Muted and earthy, a subtle blend of green and brown.\n20. **Maroon** - Dark and sophisticated, a deep wine-like red tone.",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 414,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00069925
+        },
+        "timestamp": 1775658019334
+      },
+      "index": 20
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 21
+    }
+  ]
+}

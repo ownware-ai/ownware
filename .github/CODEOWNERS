@@ -1,0 +1,58 @@
+# CODEOWNERS — required-review routing for Ownware's security-sensitive surfaces.
+#
+# WARNING: GitHub CODEOWNERS uses LAST-match-wins semantics. If you add an
+# overlapping rule BELOW the security block, include the security owner on
+# that entry too — otherwise you silently remove required security review.
+# scripts/check-codeowners.mjs (bun run check:codeowners) guards against this.
+#
+# Ownware currently has a single maintainer, so every rule points at the same
+# handle. The value is the enforced review SURFACE: with branch protection's
+# "Require review from Code Owners" enabled, no PR touching these paths can
+# merge unseen. When a security team exists, swap the handle for the team —
+# never delete rules.
+
+# ── Protect the ownership rules themselves + the leak boundary ──────────────
+/.github/CODEOWNERS @tariq659891
+/.gitignore @tariq659891
+/.gitleaks.toml @tariq659891
+
+# ── Security policy, CI, supply chain ───────────────────────────────────────
+/SECURITY.md @tariq659891
+/packages/loom/SECURITY.md @tariq659891
+/packages/cortex/SECURITY.md @tariq659891
+/docs/security/ @tariq659891
+/docs/gateway/exposing.md @tariq659891
+/.github/workflows/ @tariq659891
+/.github/dependabot.yml @tariq659891
+/bun.lock @tariq659891
+/package.json @tariq659891
+/packages/*/package.json @tariq659891
+/adapters/*/package.json @tariq659891
+/scripts/check-licenses.mjs @tariq659891
+/scripts/check-codeowners.mjs @tariq659891
+
+# ── The credential boundary (kernel side): vault, store, audit, injection ───
+/packages/cortex/src/credential/ @tariq659891
+/packages/cortex/src/connector/credentials/ @tariq659891
+/packages/cortex/src/connector/mcp/credentials.ts @tariq659891
+/packages/cortex/src/gateway/handlers/credential* @tariq659891
+/packages/cortex/src/gateway/credential-event-bus.ts @tariq659891
+
+# ── Gateway exposure surface: auth, TLS, bind safety, tokens, host guard ────
+/packages/cortex/src/gateway/middleware/ @tariq659891
+/packages/cortex/src/gateway/tls.ts @tariq659891
+/packages/cortex/src/gateway/token-store.ts @tariq659891
+/packages/cortex/src/gateway/server.ts @tariq659891
+
+# ── The engine security floor: zones, combination rules, permissions, handles
+/packages/loom/src/zones/ @tariq659891
+/packages/loom/src/security/ @tariq659891
+/packages/loom/src/permissions/ @tariq659891
+/packages/loom/src/credentials/ @tariq659891
+/packages/loom/src/backend/zone-router.ts @tariq659891
+/packages/loom/src/tools/builtins/credential.ts @tariq659891
+/packages/loom/src/tools/builtins/shell-credential-guards.ts @tariq659891
+
+# ── Channel secret store + fail-closed pairing ──────────────────────────────
+/adapters/shuttle/src/channels/store.ts @tariq659891
+/adapters/shuttle/src/pairing.ts @tariq659891

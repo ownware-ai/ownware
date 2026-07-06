@@ -1,0 +1,369 @@
+{
+  "recordedAt": "2026-04-09T01:51:57.251Z",
+  "metadata": {
+    "prompt": "Three separate calculator calls",
+    "tools": "calculator",
+    "expectedBehavior": "3 tool.call.start/end pairs with results 15, 60, 25"
+  },
+  "eventCount": 28,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 3,
+    "tool.call.args_delta": 13,
+    "tool.call.end": 3,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "Here are the three results:\n\n1. **10 + 5 = 15**\n2. **20 * 3 = 60**\n3. **100 / 4 = 25**",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "15",
+        "isError": false,
+        "durationMs": 1
+      },
+      {
+        "toolName": "calculate",
+        "result": "60",
+        "isError": false,
+        "durationMs": 0
+      },
+      {
+        "toolName": "calculate",
+        "result": "25",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1515,
+      "outputTokens": 183,
+      "costUsd": 0.0006075
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "846234e0-cf1c-48ff-816c-f0329384d3b0",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699515218
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699515218
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "delta": "{\"expressio",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "delta": "n\"",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "delta": ": \"10 + 5",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "delta": "\"}",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_016xXz1yeMqSLcopD9ofbxMw",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016xXz1yeMqSLcopD9ofbxMw",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016xXz1yeMqSLcopD9ofbxMw",
+        "delta": "{\"expression",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016xXz1yeMqSLcopD9ofbxMw",
+        "delta": "\": \"20 * ",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_016xXz1yeMqSLcopD9ofbxMw",
+        "delta": "3\"}",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01LP24gHNQXBEvwNt8rKBNDG",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LP24gHNQXBEvwNt8rKBNDG",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LP24gHNQXBEvwNt8rKBNDG",
+        "delta": "{\"e",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LP24gHNQXBEvwNt8rKBNDG",
+        "delta": "xpression\"",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01LP24gHNQXBEvwNt8rKBNDG",
+        "delta": ": \"100 / 4\"}",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_019qgqSVDDqxTwoM5iL35UJr",
+        "toolName": "calculate",
+        "result": "15",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_016xXz1yeMqSLcopD9ofbxMw",
+        "toolName": "calculate",
+        "result": "60",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01LP24gHNQXBEvwNt8rKBNDG",
+        "toolName": "calculate",
+        "result": "25",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 649,
+          "outputTokens": 132,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00032725
+        },
+        "timestamp": 1775699516334
+      },
+      "index": 21
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699516334
+      },
+      "index": 22
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Here",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " are the three results:\n\n1. **10 + 5 = 15**\n2. **20 * 3 = 60**\n3. **100 / 4 = 25**",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Here are the three results:\n\n1. **10 + 5 = 15**\n2. **20 * 3 = 60**\n3. **100 / 4 = 25**",
+        "turnIndex": 1
+      },
+      "index": 25
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 866,
+          "outputTokens": 51,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00028025
+        },
+        "timestamp": 1775699517250
+      },
+      "index": 26
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "846234e0-cf1c-48ff-816c-f0329384d3b0",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1515,
+          "outputTokens": 183,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0006075,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699517250
+      },
+      "index": 27
+    }
+  ]
+}

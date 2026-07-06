@@ -1,0 +1,62 @@
+{
+  "com.figma.Desktop": {
+    "name": "Figma",
+    "via": "mcp:figma",
+    "category": "design",
+    "mcpInstall": {
+      "transport": "http",
+      "url": "https://mcp.figma.com/mcp",
+      "authType": "oauth2"
+    }
+  },
+  "com.tinyspeck.slackmacgap": {
+    "name": "Slack",
+    "via": "mcp:slack",
+    "category": "communication",
+    "mcpInstall": {
+      "runtime": "npx",
+      "package": "@modelcontextprotocol/server-slack",
+      "authType": "oauth2"
+    }
+  },
+  "notion.id": {
+    "name": "Notion",
+    "via": "mcp:notion",
+    "category": "productivity",
+    "mcpInstall": {
+      "runtime": "npx",
+      "package": "@notionhq/notion-mcp-server",
+      "authType": "oauth2"
+    }
+  },
+  "com.linear": {
+    "name": "Linear",
+    "via": "mcp:linear",
+    "category": "productivity",
+    "mcpInstall": {
+      "runtime": "npx",
+      "package": "linear-mcp-server",
+      "authType": "api-key"
+    }
+  },
+  "com.github.GitHubClient": {
+    "name": "GitHub Desktop",
+    "via": "mcp:github",
+    "category": "dev-tools",
+    "mcpInstall": {
+      "runtime": "npx",
+      "package": "@modelcontextprotocol/server-github",
+      "authType": "oauth2"
+    }
+  },
+  "com.microsoft.teams2": {
+    "name": "Microsoft Teams",
+    "via": "mcp:microsoft-365",
+    "category": "communication",
+    "mcpInstall": {
+      "runtime": "npx",
+      "package": "@softeria/ms-365-mcp-server",
+      "authType": "oauth2"
+    }
+  }
+}

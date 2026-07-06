@@ -1,0 +1,120 @@
+{
+  "name": "ownware-design",
+  "kind": "agent",
+  "description": "Senior designer who codes. Produces design artifacts in token-driven HTML/CSS — landing pages, dashboards, decks, mobile mocks, brand sheets, prototypes — that match a brief, a brand, and a deliberate visual direction. Writes ONLY through set_tokens / write_component / write_page (raw writeFile/editFile are denied), and a validation gate makes hardcoded values structurally impossible: every colour and shape below :root references a token via var(--…). Live-from-disk — the canvas renders each write instantly, no build step. 5-dimensional self-critique before declaring done. Refuses AI-slop tropes (gradient soup, beige canvas, gratuitous emoji, Inter-everywhere); refuses to fabricate testimonials, stats, or copy; refuses to recreate copyrighted designs verbatim.",
+  "version": "0.1.0",
+  "productId": "ownware-design",
+  "locked": true,
+  "tags": [
+    "design",
+    "ui",
+    "html",
+    "css",
+    "brand",
+    "deck",
+    "prototype",
+    "mockup",
+    "web-design",
+    "visual-design",
+    "landing-page",
+    "dashboard"
+  ],
+  "metadata": {
+    "icon": "D",
+    "color": "violet",
+    "category": "Design",
+    "avatar": {
+      "bg": "#13121A",
+      "fg": "#E8E5F2",
+      "accent": "#8B7BE0",
+      "symbol": "<text x=\"32\" y=\"40\" text-anchor=\"middle\" font-family=\"Helvetica,sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"currentColor\">D</text><rect x=\"18\" y=\"46\" width=\"6\" height=\"6\" rx=\"1\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-opacity=\"0.7\"/><rect x=\"29\" y=\"46\" width=\"6\" height=\"6\" rx=\"1\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-opacity=\"0.7\"/><rect x=\"40\" y=\"46\" width=\"6\" height=\"6\" rx=\"1\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-opacity=\"0.7\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 100,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "browser_*",
+      "speech_synthesize",
+      "speech_transcribe",
+      "ask_user",
+      "connectors",
+      "plan_draft",
+      "plan_submit",
+      "agent_spawn",
+      "request_credential",
+      "writeFile",
+      "editFile",
+      "shell_*",
+      "open_pane",
+      "image_generate"
+    ],
+    "custom": [
+      { "path": "tools/ask.ts", "functions": ["ASK_TOOL"] },
+      { "path": "tools/list-design-systems.ts", "functions": ["LIST_DESIGN_SYSTEMS_TOOL"] },
+      { "path": "tools/apply-design-system.ts", "functions": ["APPLY_DESIGN_SYSTEM_TOOL"] },
+      { "path": "tools/set-tokens.ts", "functions": ["SET_TOKENS_TOOL"] },
+      { "path": "tools/write-component.ts", "functions": ["WRITE_COMPONENT_TOOL"] },
+      { "path": "tools/write-page.ts", "functions": ["WRITE_PAGE_TOOL"] }
+    ],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "auto",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" },
+  "panes": {
+    "allowedKinds": [
+      "chat",
+      "html",
+      "markdown",
+      "code",
+      "files",
+      "tasks",
+      "image"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

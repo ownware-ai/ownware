@@ -1,0 +1,123 @@
+{
+  "recordedAt": "2026-04-08T13:53:25.414Z",
+  "metadata": {
+    "prompt": "Math problem with reasoning",
+    "profileId": "sse-thinking",
+    "threadId": "thread_a47268e885e5",
+    "expectedBehavior": "May produce thinking.delta events; will produce text answer"
+  },
+  "eventCount": 9,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 3,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I need to multiply 47 × 83. Let me break this down:\n\n47 × 83 = 47 × (80 + 3)\n= 47 × 80 + 47 × 3\n= 3,760 + 141\n= 3,901\n\n**Answer: 3,901**",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 728,
+      "outputTokens": 80,
+      "costUsd": 0.003384
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_a47268e885e5",
+        "profileId": "sse-thinking"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "217c53ec-0504-4e86-8e1a-1cbf32a6b6ba",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775656403308
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656403308
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I need to multiply",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 47 × 83. Let me break this down:\n\n47 × 83 = 47 × (80 + 3)\n= 47 × 80 + 47 ",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "× 3\n= 3,760 + 141\n= 3,901\n\n**Answer: 3,901**",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I need to multiply 47 × 83. Let me break this down:\n\n47 × 83 = 47 × (80 + 3)\n= 47 × 80 + 47 × 3\n= 3,760 + 141\n= 3,901\n\n**Answer: 3,901**",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 728,
+          "outputTokens": 80,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003384
+        },
+        "timestamp": 1775656405411
+      },
+      "index": 7
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 8
+    }
+  ]
+}

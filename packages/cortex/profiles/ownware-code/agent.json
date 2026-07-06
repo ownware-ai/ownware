@@ -1,0 +1,131 @@
+{
+  "name": "ownware-code",
+  "kind": "agent",
+  "description": "Ownware Code — full-stack coding agent. Reads, writes, edits, searches, and executes.",
+  "version": "0.1.2",
+  "productId": "ownware-coder",
+  "locked": true,
+  "tags": [
+    "coding",
+    "full-access",
+    "shell"
+  ],
+  "metadata": {
+    "icon": "{}",
+    "color": "teal",
+    "category": "Engineering",
+    "avatar": {
+      "bg": "#1C3A38",
+      "fg": "#A8E6D4",
+      "accent": "#00D4AA",
+      "symbol": "<path d=\"M22 22 L12 32 L22 42\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><path d=\"M42 22 L52 32 L42 42\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/><line x1=\"36\" y1=\"20\" x2=\"28\" y2=\"44\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-opacity=\"0.55\"/>"
+    }
+  },
+  "model": "openrouter:kimi-k2.7-code",
+  "smallFastModel": "openrouter:haiku-4.5",
+  "maxTokens": 16384,
+  "maxTurns": 100,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 10000
+  },
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "browser_*",
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [
+    {
+      "name": "explore",
+      "description": "Fast read-only codebase search. Use for finding files, patterns, architecture. Runs on Haiku for speed.",
+      "profile": "explore"
+    },
+    {
+      "name": "planner",
+      "description": "Software architect. Explores codebase and designs step-by-step implementation plans. Read-only.",
+      "profile": "planner"
+    },
+    {
+      "name": "verifier",
+      "description": "Adversarial tester. Runs builds, tests, linters. Finds edge cases and failures before reporting done.",
+      "profile": "verifier"
+    },
+    {
+      "name": "general",
+      "description": "General-purpose read+edit helper. Use for self-contained subtasks that don't fit explore (read-only) / planner (design) / verifier (test). Returns a concise report.",
+      "profile": "general"
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "code", "image", "url", "html", "mermaid",
+      "pdf", "video", "audio", "csv", "diff", "txt", "json",
+      "terminal", "files", "tasks", "plan", "chrome", "3d", "notebook"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

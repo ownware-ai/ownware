@@ -1,0 +1,56 @@
+/* Swiss Grid — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg and --surface are both pure white. Swiss design rejects warm
+ *     paper substrates — the canvas is paper-white, near-clinical, with
+ *     ALL warmth coming from the type setting itself.
+ *   - --fg is pure black (#000), not off-black. International typographic
+ *     style demands maximum density of body type; an off-black foreground
+ *     reads as too soft.
+ *   - --accent is one Swiss-red. Substitutable per artifact for cobalt
+ *     blue (#003a8c) or museum-yellow (#ffcc00) — but ONE chromatic accent
+ *     only. The whole reason the grid is so visible is the monochrome
+ *     palette + single chromatic note.
+ *   - --radius is 0px. Rounded corners belong to consumer SaaS; Swiss
+ *     design uses hard rectangles, period.
+ *   - --border is black, used for fine 0.5–1px rule lines that mark the
+ *     grid — not for container outlines. The grid IS the border system.
+ *   - --font-display, --font-body are Helvetica/Akzidenz. Switching to
+ *     Inter or Geist drops you into 'modern-minimal' territory.
+ */
+
+:root {
+  /* surface — pure white, no warm cast */
+  --bg:      #ffffff;
+  --surface: #ffffff;
+
+  /* foreground ladder — pure ink */
+  --fg:     #000000;
+  --muted:  #787878;
+  --border: #000000;
+
+  /* accent — one Swiss-red (alternate: cobalt #003a8c or museum-yellow #ffcc00) */
+  --accent:       #d80027;
+  --accent-hover: #b80020;
+  --accent-fg:    #ffffff;
+
+  /* semantic — saturated; the genre uses pure poster colors */
+  --good: #007a3d;
+  --warn: #ffcc00;
+  --bad:  #d80027;
+
+  /* shape — hard rectangles only */
+  --radius:      0px;
+  --radius-pill: 0px;
+
+  /* typography — Helvetica / Akzidenz Grotesk is the genre */
+  --font-display: 'Helvetica Neue', 'Akzidenz Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-body:    'Helvetica Neue', 'Akzidenz Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

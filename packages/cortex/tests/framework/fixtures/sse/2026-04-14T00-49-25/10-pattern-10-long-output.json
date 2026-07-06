@@ -1,0 +1,24 @@
+{
+  "recordedAt": "2026-04-14T00:49:25.944Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

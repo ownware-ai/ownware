@@ -1,0 +1,172 @@
+{
+  "recordedAt": "2026-04-09T13:42:50.590Z",
+  "metadata": {
+    "prompt": "Think step by step: 47 * 83",
+    "model": "sonnet",
+    "expectedBehavior": "thinking.delta events with reasoning, then text.delta with answer"
+  },
+  "eventCount": 13,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 8,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n```\n\nStep 1: Multiply 47 by 3 (the ones digit of 83)\n- 3 × 7 = 21 (write 1, carry 2)\n- 3 × 4 = 12, plus carried 2 = 14\n- Result: 141\n\nStep 2: Multiply 47 by 8 (the tens digit of 83)\n- 8 × 7 = 56 (write 6, carry 5)\n- 8 × 4 = 32, plus carried 5 = 37\n- Since this is the tens digit, shift left: 3760\n\nStep 3: Add the partial products\n```\n   141\n+ 3760\n------\n  3901\n```\n\nTherefore, 47 × 83 = 3,901",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 46,
+      "outputTokens": 231,
+      "costUsd": 0.003603
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "4c7e46dd-2b37-4662-bdb6-ec852b6b6dce",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775742163596
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775742163596
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll solve",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n```\n\nStep",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 1: Multiply 47 by 3 (the ones digit of 83)\n-",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 3 × 7 = 21 (write 1, carry 2)\n- 3 × 4 = 12,",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " plus carried 2 = 14\n- Result: 141\n\nStep 2: Multiply 47 by 8 (the tens digit of 83)\n-",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 8 × 7 = 56 (write 6, carry 5)\n- 8 × 4 = 32, plus carried 5 = 37\n- Since this is the",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " tens digit, shift left: 3760\n\nStep 3: Add the partial products\n```\n   141",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n+ 3760\n------\n  3901\n```\n\nTherefore, 47 × 83 = 3,901",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n```\n\nStep 1: Multiply 47 by 3 (the ones digit of 83)\n- 3 × 7 = 21 (write 1, carry 2)\n- 3 × 4 = 12, plus carried 2 = 14\n- Result: 141\n\nStep 2: Multiply 47 by 8 (the tens digit of 83)\n- 8 × 7 = 56 (write 6, carry 5)\n- 8 × 4 = 32, plus carried 5 = 37\n- Since this is the tens digit, shift left: 3760\n\nStep 3: Add the partial products\n```\n   141\n+ 3760\n------\n  3901\n```\n\nTherefore, 47 × 83 = 3,901",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 46,
+          "outputTokens": 231,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003603
+        },
+        "timestamp": 1775742170589
+      },
+      "index": 11
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "4c7e46dd-2b37-4662-bdb6-ec852b6b6dce",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 46,
+          "outputTokens": 231,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.003603,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775742170589
+      },
+      "index": 12
+    }
+  ]
+}

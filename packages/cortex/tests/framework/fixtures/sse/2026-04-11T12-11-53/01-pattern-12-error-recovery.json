@@ -1,0 +1,447 @@
+{
+  "recordedAt": "2026-04-11T12:11:57.110Z",
+  "metadata": {
+    "prompt": "Read non-existent file, expect error and graceful recovery",
+    "profileId": "coder",
+    "threadId": "thread_8a72ad61c712",
+    "expectedBehavior": "tool.call.end with isError: true → LLM acknowledges → done"
+  },
+  "eventCount": 38,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 23,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "text.delta": 3,
+    "text.complete": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "The file was not found. The file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt` does not exist.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt'",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 20260,
+      "outputTokens": 187,
+      "costUsd": 0.063585
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_8a72ad61c712",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "81ec19e8-431c-4c08-af60-8985b4d1ed0d",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775909513195
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775909513195
+      },
+      "index": 2
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "{\"fil",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "e_pat",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "h\"",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": ": ",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "\"/var/",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "folders/s1",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "/hlc001ps1k5",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "8b_t77k",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "953y6m00",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "00gn",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "/T",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "/c",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "ortex",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "-fw-Jh6lrQ/",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "er",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "ror-",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "sandbox/thi",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "s-fi",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "le-do",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "es-",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "not-exist.t",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "delta": "xt\"}",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01F3JyyksBRsVTc3r2XqzfdC",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt'",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 9996,
+          "outputTokens": 112,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.031668
+        },
+        "timestamp": 1775909515186
+      },
+      "index": 28
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "81ec19e8-431c-4c08-af60-8985b4d1ed0d",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775909515187
+      },
+      "index": 30
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 1
+      },
+      "index": 31
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file was not found. The file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex",
+        "turnIndex": 1
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt` does not exist.",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file was not found. The file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-Jh6lrQ/error-sandbox/this-file-does-not-exist.txt` does not exist.",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 10264,
+          "outputTokens": 75,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.031917
+        },
+        "timestamp": 1775909517109
+      },
+      "index": 35
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "81ec19e8-431c-4c08-af60-8985b4d1ed0d",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 20260,
+          "outputTokens": 187,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.063585,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775909517109
+      },
+      "index": 36
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 37
+    }
+  ]
+}

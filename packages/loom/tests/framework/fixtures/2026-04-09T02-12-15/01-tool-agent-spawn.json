@@ -1,0 +1,735 @@
+{
+  "recordedAt": "2026-04-09T02:12:15.873Z",
+  "metadata": {
+    "prompt": "Spawn calc-helper sub-agent",
+    "tools": "calculator + agent_spawn",
+    "expectedBehavior": "agent_spawn succeeds, sub-agent computes 99"
+  },
+  "eventCount": 66,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 3,
+    "text.delta": 11,
+    "tool.call.start": 2,
+    "tool.call.args_delta": 40,
+    "text.complete": 3,
+    "tool.call.end": 2,
+    "turn.end": 3,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll create a sub-agent to handle this calculation task for you.It seems there was an issue with the agent spawn. Let me try again with more specific parameters:I apologize, but it appears the agent_spawn function is not returning the expected output from the sub-agent. The tool executed without errors, but I'm not receiving the result that the calc-helper agent should have computed. \n\nTypically, the sub-agent would use the calculate tool to compute 9 * 11 = 99 and report that answer back. However, due to the current system behavior, I'm unable to show you the actual output from the spawned agent.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 256
+      },
+      {
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 306
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 3356,
+      "outputTokens": 358,
+      "costUsd": 0.015438
+    },
+    "turnCount": 3
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "da65ceed-13a8-4f53-baef-0db2f8291638",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700727088
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700727088
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll create",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " a sub-agent to handle this calculation task for you.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "{\"name\": \"",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "calc-",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "helper",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": ", ",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "\"prompt\": \"U",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "se the cal",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "culate to",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "ol ",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "to com",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "pute 9 * 1",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "1 an",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "d te",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "ll me the a",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "delta": "nswer.\"}",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll create a sub-agent to handle this calculation task for you.",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01B2ZmrdhdT44LAbDwzU7cqb",
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 256,
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 974,
+          "outputTokens": 105,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.004497
+        },
+        "timestamp": 1775700729088
+      },
+      "index": 23
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700729088
+      },
+      "index": 24
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "It",
+        "turnIndex": 1
+      },
+      "index": 25
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " seems there was an issue with the agent spawn. Let me try again with more specific parameters:",
+        "turnIndex": 1
+      },
+      "index": 26
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 27
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 28
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "{\"name\": \"c",
+        "turnIndex": 1
+      },
+      "index": 29
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "al",
+        "turnIndex": 1
+      },
+      "index": 30
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "c-helper\"",
+        "turnIndex": 1
+      },
+      "index": 31
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": ", \"promp",
+        "turnIndex": 1
+      },
+      "index": 32
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "t\": \"Use",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": " the cal",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "culate t",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "ool to comp",
+        "turnIndex": 1
+      },
+      "index": 36
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "ute 9",
+        "turnIndex": 1
+      },
+      "index": 37
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": " * 11 and ",
+        "turnIndex": 1
+      },
+      "index": 38
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "tell me t",
+        "turnIndex": 1
+      },
+      "index": 39
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "he a",
+        "turnIndex": 1
+      },
+      "index": 40
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "nswer.\"",
+        "turnIndex": 1
+      },
+      "index": 41
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": ", \"too",
+        "turnIndex": 1
+      },
+      "index": 42
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "ls\":",
+        "turnIndex": 1
+      },
+      "index": 43
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": " [\"",
+        "turnIndex": 1
+      },
+      "index": 44
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "calcul",
+        "turnIndex": 1
+      },
+      "index": 45
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "ate",
+        "turnIndex": 1
+      },
+      "index": 46
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "\"]",
+        "turnIndex": 1
+      },
+      "index": 47
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": ", \"b",
+        "turnIndex": 1
+      },
+      "index": 48
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "ackgr",
+        "turnIndex": 1
+      },
+      "index": 49
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "ound\": fals",
+        "turnIndex": 1
+      },
+      "index": 50
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "delta": "e}",
+        "turnIndex": 1
+      },
+      "index": 51
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "It seems there was an issue with the agent spawn. Let me try again with more specific parameters:",
+        "turnIndex": 1
+      },
+      "index": 52
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01QEb3FpoQ1TzjFw6ZJdYxKA",
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 306,
+        "turnIndex": 1
+      },
+      "index": 53
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1105,
+          "outputTokens": 146,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.005505
+        },
+        "timestamp": 1775700731649
+      },
+      "index": 54
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 2,
+        "timestamp": 1775700731649
+      },
+      "index": 55
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I",
+        "turnIndex": 2
+      },
+      "index": 56
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " apologize, but it appears the agent_spawn function is not returning the expected output from the sub",
+        "turnIndex": 2
+      },
+      "index": 57
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "-agent. The tool executed without errors, but I'm not receiving the result that",
+        "turnIndex": 2
+      },
+      "index": 58
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " the calc-helper agent should have computed. \n\nTypically, the sub",
+        "turnIndex": 2
+      },
+      "index": 59
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "-agent would use the calculate tool to compute 9 * 11 = 99 and report that answer back.",
+        "turnIndex": 2
+      },
+      "index": 60
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " However, due to the current system behavior, I'm unable to show you the actual",
+        "turnIndex": 2
+      },
+      "index": 61
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " output from the spawned agent.",
+        "turnIndex": 2
+      },
+      "index": 62
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I apologize, but it appears the agent_spawn function is not returning the expected output from the sub-agent. The tool executed without errors, but I'm not receiving the result that the calc-helper agent should have computed. \n\nTypically, the sub-agent would use the calculate tool to compute 9 * 11 = 99 and report that answer back. However, due to the current system behavior, I'm unable to show you the actual output from the spawned agent.",
+        "turnIndex": 2
+      },
+      "index": 63
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 2,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1277,
+          "outputTokens": 107,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.005436
+        },
+        "timestamp": 1775700735872
+      },
+      "index": 64
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "da65ceed-13a8-4f53-baef-0db2f8291638",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 3356,
+          "outputTokens": 358,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.015438,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 3,
+        "timestamp": 1775700735872
+      },
+      "index": 65
+    }
+  ]
+}

@@ -1,0 +1,415 @@
+{
+  "recordedAt": "2026-04-09T13:38:43.630Z",
+  "metadata": {
+    "prompt": "Three separate calculator calls",
+    "tools": "calculator",
+    "expectedBehavior": "3 tool.call.start/end pairs with results 15, 60, 25"
+  },
+  "eventCount": 33,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 3,
+    "tool.call.args_delta": 14,
+    "text.complete": 2,
+    "tool.call.end": 3,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll call the calculate tool three separate times with the expressions you provided.Here are the results from all three calculations:\n\n1. **10 + 5 = 15**\n2. **20 * 3 = 60** \n3. **100 / 4 = 25**",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "15",
+        "isError": false,
+        "durationMs": 5
+      },
+      {
+        "toolName": "calculate",
+        "result": "60",
+        "isError": false,
+        "durationMs": 0
+      },
+      {
+        "toolName": "calculate",
+        "result": "25",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1190,
+      "outputTokens": 202,
+      "costUsd": 0.0066
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "d4d2b459-73d5-4cf4-aa79-d895423f7cb3",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775741919201
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775741919201
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll call the calculate tool three separate",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " times with the expressions you provided.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01R3TmnXFjxa4U6jPKcdvqoU",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01R3TmnXFjxa4U6jPKcdvqoU",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01R3TmnXFjxa4U6jPKcdvqoU",
+        "delta": "{\"express",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01R3TmnXFjxa4U6jPKcdvqoU",
+        "delta": "ion\": \"10",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01R3TmnXFjxa4U6jPKcdvqoU",
+        "delta": " + 5\"}",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "delta": "{\"",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "delta": "expre",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "delta": "ssion\": \"",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "delta": "20 *",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "delta": " 3\"}",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01BEuEGGDFTYWvEU9wZMSXKr",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01BEuEGGDFTYWvEU9wZMSXKr",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01BEuEGGDFTYWvEU9wZMSXKr",
+        "delta": "{\"expression",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01BEuEGGDFTYWvEU9wZMSXKr",
+        "delta": "\": \"100 ",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01BEuEGGDFTYWvEU9wZMSXKr",
+        "delta": "/ 4\"}",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll call the calculate tool three separate times with the expressions you provided.",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01R3TmnXFjxa4U6jPKcdvqoU",
+        "toolName": "calculate",
+        "result": "15",
+        "isError": false,
+        "durationMs": 5,
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01VnRYLX3VEs65fmscr4sdZK",
+        "toolName": "calculate",
+        "result": "60",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01BEuEGGDFTYWvEU9wZMSXKr",
+        "toolName": "calculate",
+        "result": "25",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 479,
+          "outputTokens": 147,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003642
+        },
+        "timestamp": 1775741921725
+      },
+      "index": 25
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775741921725
+      },
+      "index": 26
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Here",
+        "turnIndex": 1
+      },
+      "index": 27
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " are the results from all three calculations:\n\n1. **10 + 5 = 15**\n2. **20 * 3 = 60** \n3. **100",
+        "turnIndex": 1
+      },
+      "index": 28
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " / 4 = 25**",
+        "turnIndex": 1
+      },
+      "index": 29
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Here are the results from all three calculations:\n\n1. **10 + 5 = 15**\n2. **20 * 3 = 60** \n3. **100 / 4 = 25**",
+        "turnIndex": 1
+      },
+      "index": 30
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 711,
+          "outputTokens": 55,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002958
+        },
+        "timestamp": 1775741923629
+      },
+      "index": 31
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "d4d2b459-73d5-4cf4-aa79-d895423f7cb3",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1190,
+          "outputTokens": 202,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0066,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775741923629
+      },
+      "index": 32
+    }
+  ]
+}

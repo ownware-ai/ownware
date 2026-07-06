@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Luminous Glass — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/luminous-glass. Frosted dark panels over an ambient gradient floor, with one violet accent." />
+    <style>
+      :root {
+        --bg:      #0b0f1a;
+        --surface: rgba(255, 255, 255, 0.06);
+        --fg:      #f5f7ff;
+        --muted:   #8a93b0;
+        --border:  rgba(255, 255, 255, 0.10);
+        --accent:       #7c5cfc;
+        --accent-hover: #8e72ff;
+        --accent-fg:    #ffffff;
+        --good: #4ade80;
+        --warn: #fbbf24;
+        --bad:  #fb7185;
+        --radius:      16px;
+        --radius-pill: 999px;
+        --font-display: 'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+        --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        min-height: 100vh; color: var(--fg);
+        font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+        background:
+          radial-gradient(circle at 15% 10%, rgba(124, 92, 252, 0.30), transparent 38%),
+          radial-gradient(circle at 85% 0%,  rgba(45, 212, 191, 0.18), transparent 42%),
+          var(--bg);
+      }
+      .wrap { max-width: 1080px; margin-inline: auto; padding: 96px 28px; }
+      .eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+      h1 { font: 600 56px/1.1 var(--font-display); letter-spacing: -0.025em; margin: 0 0 16px; text-wrap: balance; }
+      .lead { color: var(--muted); font-size: 18px; max-width: 56ch; margin: 0 0 32px; }
+      .actions { display: flex; gap: 12px; margin-bottom: 64px; }
+      .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border-radius: var(--radius-pill); font: 600 14px/1 var(--font-body); text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); box-shadow: 0 12px 40px rgba(124, 92, 252, 0.35); }
+      .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+      .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--border); backdrop-filter: blur(20px); }
+      .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+      .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 24px 80px rgba(124, 92, 252, 0.18); }
+      .panel h3 { font: 600 20px/1.2 var(--font-display); margin: 0 0 8px; }
+      .panel p  { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+      .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+      .stat strong { display: block; font: 600 28px/1.1 var(--font-display); letter-spacing: -0.02em; }
+      .stat span { color: var(--muted); font-size: 12px; }
+      .status { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: var(--radius-pill); background: rgba(74, 222, 128, 0.12); color: var(--good); font: 600 11px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+      .status::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--good); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">Luminous Glass</p>
+      <h1>Frosted panels, ambient floor, one violet accent.</h1>
+      <p class="lead">For AI agent surfaces, audio tools, and anything that should feel quietly alive without shouting.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">Start session</a>
+        <a class="btn btn-secondary" href="#">See examples</a>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <span class="status">live</span>
+          <h3 style="margin-top:14px">Agent telemetry</h3>
+          <p>Streaming responses from the active model. Glass panels float over the gradient floor; the violet accent only appears on the CTA, focus ring, and one hero element.</p>
+          <div class="stat">
+            <div><strong>1.2s</strong><span>median latency</span></div>
+            <div><strong>98%</strong><span>cache hit</span></div>
+            <div><strong>3</strong><span>tools wired</span></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>Surface tokens</h3>
+          <p>Translucent fill, alpha border, soft violet bloom. Every value comes from the system tokens.</p>
+          <div style="display:flex; gap:8px;">
+            <span style="width:32px;height:32px;border-radius:8px;background:var(--accent)"></span>
+            <span style="width:32px;height:32px;border-radius:8px;background:var(--surface);border:1px solid var(--border)"></span>
+            <span style="width:32px;height:32px;border-radius:8px;background:var(--fg)"></span>
+            <span style="width:32px;height:32px;border-radius:8px;background:var(--muted)"></span>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

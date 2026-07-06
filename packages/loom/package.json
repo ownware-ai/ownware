@@ -1,0 +1,89 @@
+{
+  "name": "@ownware/loom",
+  "version": "0.1.0",
+  "description": "Loom — the model-agnostic agent runtime inside Ownware. A production-grade agent engine (streaming, tools, zones, multi-agent) with no framework dependencies.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "loom": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./tools": {
+      "import": "./dist/tools/index.js",
+      "types": "./dist/tools/index.d.ts"
+    },
+    "./providers": {
+      "import": "./dist/provider/index.js",
+      "types": "./dist/provider/index.d.ts"
+    },
+    "./media": {
+      "import": "./dist/media/index.js",
+      "types": "./dist/media/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc && bun run scripts/copy-assets.ts",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:unit": "vitest run --config vitest.config.ts src/__tests__/unit",
+    "test:e2e": "vitest run --config vitest.config.ts src/__tests__/e2e",
+    "test:security": "vitest run --config vitest.config.ts src/__tests__/unit/security",
+    "test:watch": "vitest",
+    "lint": "biome check src/",
+    "typecheck": "tsc --noEmit",
+    "sync-models": "bun run scripts/sync-models.ts",
+    "sync-openrouter": "bun run scripts/sync-openrouter.ts",
+    "sync-all": "bun run scripts/sync-models.ts && bun run scripts/sync-openrouter.ts",
+    "prepublishOnly": "bun run build && bun run test:unit"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@google/generative-ai": "^0.24.0",
+    "@vscode/ripgrep": "^1.17.1",
+    "openai": "^4.80.0",
+    "playwright-core": "^1.52.0",
+    "sharp": "^0.34.5",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Ownware Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ownware-ai/ownware.git",
+    "directory": "packages/loom"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
+  "keywords": [
+    "agent",
+    "agentic",
+    "llm",
+    "framework",
+    "tool-calling",
+    "streaming",
+    "multi-agent",
+    "agent-os"
+  ]
+}

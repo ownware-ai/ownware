@@ -1,0 +1,378 @@
+{
+  "recordedAt": "2026-04-08T14:19:29.994Z",
+  "metadata": {
+    "prompt": "Read non-existent file, expect error and graceful recovery",
+    "profileId": "coder",
+    "threadId": "thread_5d7794f615ac",
+    "expectedBehavior": "tool.call.end with isError: true → LLM acknowledges → done"
+  },
+  "eventCount": 32,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 19,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "The file was not found.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1srwuy/error-sandbox/this-file-does-not-exist.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1srwuy/error-sandbox/this-file-does-not-exist.txt'",
+        "isError": true,
+        "durationMs": 2,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10895,
+      "outputTokens": 118,
+      "costUsd": 0.034455
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_5d7794f615ac",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "ddc134fc-fc52-4023-831a-9c60bc0ac150",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775657964976
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775657964976
+      },
+      "index": 2
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "{\"file_",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "path\":",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": " \"/var/f",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "olders/s1/hl",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "c001ps1k58b",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "_t7",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "7k953y6m00",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "00gn/T/c",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "ortex-fw-1sr",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "wu",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "y/erro",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "r-sandb",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "ox/this-",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "file-",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "doe",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "s-n",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "ot-",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "delta": "exist.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01No9nmjj7KSHBpy5FHJEWCa",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1srwuy/error-sandbox/this-file-does-not-exist.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1srwuy/error-sandbox/this-file-does-not-exist.txt'",
+        "isError": true,
+        "durationMs": 2,
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5318,
+          "outputTokens": 109,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.017589
+        },
+        "timestamp": 1775657967564
+      },
+      "index": 24
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "ddc134fc-fc52-4023-831a-9c60bc0ac150",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775657967566
+      },
+      "index": 26
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 1
+      },
+      "index": 27
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file was not found.",
+        "turnIndex": 1
+      },
+      "index": 28
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file was not found.",
+        "turnIndex": 1
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5577,
+          "outputTokens": 9,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.016866
+        },
+        "timestamp": 1775657969991
+      },
+      "index": 30
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 31
+    }
+  ]
+}

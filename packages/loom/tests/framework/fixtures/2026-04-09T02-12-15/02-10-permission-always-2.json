@@ -1,0 +1,249 @@
+{
+  "recordedAt": "2026-04-09T02:12:15.346Z",
+  "metadata": {
+    "prompt": "Second write — should skip prompt",
+    "expectedBehavior": "No permission.request — already approved"
+  },
+  "eventCount": 17,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 4,
+    "permission.request": 1,
+    "permission.response": 1,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "Done. \"SECOND_WRITE\" has been written to the sensitive location.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "write_sensitive",
+        "result": "Written: SECOND_WRITE",
+        "isError": false,
+        "durationMs": 52
+      }
+    ],
+    "agents": [],
+    "permissions": [
+      {
+        "toolName": "write_sensitive",
+        "granted": true
+      }
+    ],
+    "usage": {
+      "inputTokens": 1509,
+      "outputTokens": 78,
+      "costUsd": 0.00047475
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "c6778f6d-2d0e-408a-96ef-1a1d5f401861",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775700733052
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700733052
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "toolName": "write_sensitive",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "delta": "{\"content\": ",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "delta": "\"SECOND",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "delta": "_WRITE\"}",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "permission.request",
+      "data": {
+        "type": "permission.request",
+        "requestId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "toolName": "write_sensitive",
+        "input": {
+          "content": "SECOND_WRITE"
+        },
+        "reason": "Tool requires explicit approval",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "granted": true,
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01EJhC9BRBNRFSrCc8ugUUXw",
+        "toolName": "write_sensitive",
+        "result": "Written: SECOND_WRITE",
+        "isError": false,
+        "durationMs": 52,
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 716,
+          "outputTokens": 58,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0002515
+        },
+        "timestamp": 1775700734435
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700734435
+      },
+      "index": 11
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Done",
+        "turnIndex": 1
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ". \"SECOND_WRITE\" has been written to the sensitive location.",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Done. \"SECOND_WRITE\" has been written to the sensitive location.",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 793,
+          "outputTokens": 20,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00022325
+        },
+        "timestamp": 1775700735346
+      },
+      "index": 15
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "c6778f6d-2d0e-408a-96ef-1a1d5f401861",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1509,
+          "outputTokens": 78,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00047475,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700735346
+      },
+      "index": 16
+    }
+  ]
+}

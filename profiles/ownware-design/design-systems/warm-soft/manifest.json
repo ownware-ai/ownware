@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "warm-soft",
+  "name": "Warm Soft",
+  "category": "consumer",
+  "surface": "web",
+  "summary": "Approachable, friendly, consumer comfort. Cream background, warm terracotta accent, generous radii. Health, education, finance-for-humans.",
+  "swatches": ["#fdf9f3", "#ffffff", "#2a1f17", "#c96442", "#7a6a5d", "#ebe3d8"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css" }
+}

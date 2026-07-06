@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:00:02.309Z",
+  "metadata": {
+    "prompt": "Read data.txt with always",
+    "profileId": "coder",
+    "threadId": "thread_d06801ffba5b",
+    "expectedBehavior": "First run: permission.request → always → tool executes"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "luxury-serif",
+  "name": "Luxury Serif",
+  "category": "premium",
+  "surface": "web",
+  "summary": "Wide-tracked display serif, generous whitespace, deep oxblood accent on warm-stone paper. The fashion / wine / hospitality / real-estate / high-jewelry zone — works when the artifact should feel expensive without being loud.",
+  "swatches": ["#f1ece1", "#ffffff", "#1a1612", "#5e1a23", "#7a6f60", "#d2c9b6"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

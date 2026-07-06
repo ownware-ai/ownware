@@ -1,0 +1,181 @@
+{
+  "recordedAt": "2026-04-09T02:12:34.151Z",
+  "metadata": {
+    "prompt": "Think step by step: 47 * 83",
+    "model": "sonnet",
+    "expectedBehavior": "thinking.delta events with reasoning, then text.delta with answer"
+  },
+  "eventCount": 14,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 9,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\nFirst, let me break this down:\n47 × 83\n\nI'll multiply 47 by each digit of 83:\n\n**Step 1: 47 × 3 (ones place)**\n- 7 × 3 = 21 (write 1, carry 2)\n- 4 × 3 = 12, plus carried 2 = 14\n- Result: 141\n\n**Step 2: 47 × 80 (tens place)**\n- This is the same as 47 × 8 × 10\n- 7 × 8 = 56 (write 6, carry 5)\n- 4 × 8 = 32, plus carried 5 = 37\n- Result: 376, then shift left one place = 3,760\n\n**Step 3: Add the partial products**\n```\n   141\n+ 3760\n------\n  3901\n```\n\nTherefore, 47 × 83 = **3,901**",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 46,
+      "outputTokens": 256,
+      "costUsd": 0.003978
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "f41f9920-758a-4d94-98b4-c7a3c8631b69",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700749537
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700749537
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll solve",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 47 × 83 step by step using the standard multiplication method.\n\nFirst, let me break this down:\n47 × 83",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\nI'll multiply 47 by each digit of 83:\n\n**Step 1: 47",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " × 3 (ones place)**\n- 7 × 3 = 21 (write 1, carry 2)\n- 4 × 3 ",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "= 12, plus carried 2 = 14\n- Result: 141\n\n**Step 2: 47 × 80",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " (tens place)**\n- This is the same as 47 × 8 × 10\n- 7 × 8 = 56 (write 6, carry 5)\n- 4 × ",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "8 = 32, plus carried 5 = 37\n- Result: 376, then shift left one place =",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 3,760\n\n**Step 3: Add the partial products**\n```\n   141\n+ 3760",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n------\n  3901\n```\n\nTherefore, 47 × 83 = **3,901**",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\nFirst, let me break this down:\n47 × 83\n\nI'll multiply 47 by each digit of 83:\n\n**Step 1: 47 × 3 (ones place)**\n- 7 × 3 = 21 (write 1, carry 2)\n- 4 × 3 = 12, plus carried 2 = 14\n- Result: 141\n\n**Step 2: 47 × 80 (tens place)**\n- This is the same as 47 × 8 × 10\n- 7 × 8 = 56 (write 6, carry 5)\n- 4 × 8 = 32, plus carried 5 = 37\n- Result: 376, then shift left one place = 3,760\n\n**Step 3: Add the partial products**\n```\n   141\n+ 3760\n------\n  3901\n```\n\nTherefore, 47 × 83 = **3,901**",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 46,
+          "outputTokens": 256,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003978
+        },
+        "timestamp": 1775700754151
+      },
+      "index": 12
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "f41f9920-758a-4d94-98b4-c7a3c8631b69",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 46,
+          "outputTokens": 256,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.003978,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775700754151
+      },
+      "index": 13
+    }
+  ]
+}

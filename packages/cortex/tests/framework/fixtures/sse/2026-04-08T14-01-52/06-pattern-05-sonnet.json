@@ -1,0 +1,113 @@
+{
+  "recordedAt": "2026-04-08T14:02:03.829Z",
+  "metadata": {
+    "prompt": "Say HI",
+    "profileId": "sse-thinking",
+    "expectedBehavior": "Sonnet response, higher per-token cost"
+  },
+  "eventCount": 8,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Hi! 👋",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 712,
+      "outputTokens": 8,
+      "costUsd": 0.002256
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_f7832195a61b",
+        "profileId": "sse-thinking"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "711300a7-3e3b-477c-9c96-97edde8d7a2b",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775656922057
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656922057
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Hi! ",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "👋",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Hi! 👋",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 712,
+          "outputTokens": 8,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002256
+        },
+        "timestamp": 1775656923828
+      },
+      "index": 6
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 7
+    }
+  ]
+}

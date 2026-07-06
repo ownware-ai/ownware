@@ -1,0 +1,51 @@
+/* Warm Soft — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is cream (#fdf9f3) NOT peach (#fdf3e7) or tan (#f5e8d6). The cream
+ *     specifically is identity-defining; drifting warmer pulls toward the AI
+ *     default beige slop pattern.
+ *   - --fg is deep warm brown (#2a1f17) NOT black. Warm tones throughout keep
+ *     the system cohesive.
+ *   - --accent is fired-clay terracotta (#c96442). It's deliberately less
+ *     orange than common warm accents — orange reads consumer-app-2018; this
+ *     reads considered.
+ *   - --font-display defaults to Inter, NOT a serif. Serif drifts editorial.
+ *     Override only when the brief specifically asks for editorial warmth.
+ */
+
+:root {
+  /* surface ladder — cream */
+  --bg:      #fdf9f3;
+  --surface: #ffffff;
+
+  /* foreground ladder — warm brown */
+  --fg:     #2a1f17;
+  --muted:  #7a6a5d;
+  --border: #ebe3d8;
+
+  /* accent — terracotta */
+  --accent:       #c96442;
+  --accent-hover: #b15533;
+  --accent-fg:    #ffffff;
+
+  /* semantic — warm-adjusted to match the surface ladder */
+  --good: #2f7d4a;
+  --warn: #b8740c;
+  --bad:  #b53a2a;
+
+  /* shape — generous, not extreme */
+  --radius:      14px;
+  --radius-pill: 999px;
+
+  /* typography — default all-sans; override --font-display to a serif when
+     the brief specifically asks for editorial warmth */
+  --font-display: 'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

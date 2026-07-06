@@ -1,0 +1,10 @@
+{
+  // Cloudflare Pages config for the Ownware marketing site (the apex,
+  // ownware.dev). Sibling to website/ (the docs site → docs.ownware.dev).
+  //
+  // `public/` holds the built static files (produced by `node build.mjs`).
+  // Deploy with:  npx wrangler pages deploy public --project-name=ownware-site
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ownware-site",
+  "pages_build_output_dir": "public"
+}

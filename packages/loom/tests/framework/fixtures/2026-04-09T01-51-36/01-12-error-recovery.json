@@ -1,0 +1,383 @@
+{
+  "recordedAt": "2026-04-09T01:51:36.935Z",
+  "metadata": {
+    "prompt": "Use failing tool, then recover with calculator",
+    "tools": "failing + calculator",
+    "expectedBehavior": "always_fail returns error → model uses calculate → reports 10"
+  },
+  "eventCount": 30,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 3,
+    "tool.call.start": 2,
+    "tool.call.args_delta": 12,
+    "tool.call.end": 2,
+    "turn.end": 3,
+    "text.delta": 4,
+    "text.complete": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "As expected, the always_fail tool returned an error. Now I'll use the calculate tool:**Result:** 7 + 3 = **10**",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "always_fail",
+        "result": "Error: test error",
+        "isError": true,
+        "durationMs": 0
+      },
+      {
+        "toolName": "calculate",
+        "result": "10",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2362,
+      "outputTokens": 148,
+      "costUsd": 0.0007755
+    },
+    "turnCount": 3
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "1056ff42-3241-48a0-83d1-762b859d452a",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699491961
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699491961
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "toolName": "always_fail",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "delta": "{\"m",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "delta": "essage",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "delta": "\":",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "delta": " \"test erro",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "delta": "r\"}",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01EMVm1dKsMrhBzeSNwaVjk5",
+        "toolName": "always_fail",
+        "result": "Error: test error",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 705,
+          "outputTokens": 55,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000245
+        },
+        "timestamp": 1775699492929
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699492929
+      },
+      "index": 11
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "As expected",
+        "turnIndex": 1
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", the always_fail tool returned an error. Now I'll use the calculate tool:",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "delta": "{\"ex",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "delta": "pres",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "delta": "sion\": ",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "delta": "\"7",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "delta": " + 3\"}",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "As expected, the always_fail tool returned an error. Now I'll use the calculate tool:",
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01GTTHN2PLpqMdiFkZZyZZhX",
+        "toolName": "calculate",
+        "result": "10",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 784,
+          "outputTokens": 76,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000291
+        },
+        "timestamp": 1775699496183
+      },
+      "index": 23
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 2,
+        "timestamp": 1775699496183
+      },
+      "index": 24
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "**",
+        "turnIndex": 2
+      },
+      "index": 25
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Result:** 7 + 3 = **10**",
+        "turnIndex": 2
+      },
+      "index": 26
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "**Result:** 7 + 3 = **10**",
+        "turnIndex": 2
+      },
+      "index": 27
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 2,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 873,
+          "outputTokens": 17,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0002395
+        },
+        "timestamp": 1775699496934
+      },
+      "index": 28
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "1056ff42-3241-48a0-83d1-762b859d452a",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2362,
+          "outputTokens": 148,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0007755,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 3,
+        "timestamp": 1775699496934
+      },
+      "index": 29
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "recordedAt": "2026-04-08T14:25:23.530Z",
+  "metadata": {
+    "prompt": "Say HI",
+    "profileId": "sse-thinking",
+    "expectedBehavior": "Sonnet response, higher per-token cost"
+  },
+  "eventCount": 7,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 1,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "HI",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 712,
+      "outputTokens": 5,
+      "costUsd": 0.002211
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_4eafffd71c25",
+        "profileId": "sse-thinking"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "66ef73e4-7e55-4b66-974b-0fb9f214b40b",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658322446
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658322446
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "HI",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "HI",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 712,
+          "outputTokens": 5,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002211
+        },
+        "timestamp": 1775658323528
+      },
+      "index": 5
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 6
+    }
+  ]
+}

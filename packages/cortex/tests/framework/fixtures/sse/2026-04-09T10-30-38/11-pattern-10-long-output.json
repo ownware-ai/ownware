@@ -1,0 +1,231 @@
+{
+  "recordedAt": "2026-04-09T10:30:57.708Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 20,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 13,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - Bold and passionate, the color of fire and danger.\n2. **Blue** - Cool and calming, associated with sky and sea.\n3. **Yellow** - Bright and cheerful, the warmth of the sun.\n4. **Green** - Fresh and natural, the color of growth.\n5. **Orange** - Vibrant and energetic, between red and yellow.\n6. **Purple** - Royal and mysterious, a blend of red and blue.\n7. **Pink** - Soft and gentle, a lighter shade of red.\n8. **Brown** - Earthy and warm, found in wood and soil.\n9. **Black** - Dark and powerful, the absence of light.\n10. **White** - Pure and clean, the presence of all colors.\n11. **Gray** - Neutral and balanced, between black and white.\n12. **Cyan** - Cool and modern, a bright blue-green.\n13. **Magenta** - Vivid and striking, a purplish-red.\n14. **Lime** - Sharp and electric, a bright yellow-green.\n15. **Turquoise** - Tropical and refreshing, blue-green like shallow water.\n16. **Gold** - Rich and luxurious, the color of precious metal.\n17. **Silver** - Sleek and elegant, a metallic gray-white.\n18. **Navy** - Deep and sophisticated, a dark blue.\n19. **Maroon** - Dark and intense, a deep brownish-red.\n20. **Olive** - Muted and earthy, a dull yellow-green.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 381,
+      "costUsd": 0.000658
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_8f15b77d1b6d",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "dd1dc106-c8ea-4c56-9356-97005edaafca",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775730654711
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775730654711
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - Bold and passionate, the color of fire and danger.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n2. **Blue** - Cool and calming, associated with sky and sea.\n3. **Yellow** - Bright and cheerful, the warm",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "th of the sun.\n4. **Green** - Fresh and natural, the color of growth.\n5. **Orange** - Vibrant and energetic, between red and yellow.\n6. **",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Purple** - Royal and mysterious, a blend of red and blue.\n7. **Pink** - Soft and gentle, a lighter shade of red.\n8. **Brown",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Earthy and warm, found in wood and soil.\n9. **Black** - Dark and powerful, the absence of light.\n10. **White** - Pure and clean",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", the presence of all colors.\n11. **Gray** - Neutral and balanced, between black and white.\n12. **Cyan** - Cool and modern",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", a bright blue-green.\n13. **Magenta** - Vivid and striking, a purplish-red.\n14. **Lime",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Sharp and electric, a bright yellow-green.\n15. **Turquoise** - Tropical",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and refreshing, blue-green like shallow water.\n16. **Gold** - Rich and luxurious, the color of precious",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " metal.\n17. **Silver** - Sleek and elegant, a metallic gray-white.\n18. **Navy** - Deep and sophisticated, a",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " dark blue.\n19. **Maroon** - Dark and intense, a deep brownish-red.\n20. **Olive** - Muted",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and earthy, a dull yellow-green.",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - Bold and passionate, the color of fire and danger.\n2. **Blue** - Cool and calming, associated with sky and sea.\n3. **Yellow** - Bright and cheerful, the warmth of the sun.\n4. **Green** - Fresh and natural, the color of growth.\n5. **Orange** - Vibrant and energetic, between red and yellow.\n6. **Purple** - Royal and mysterious, a blend of red and blue.\n7. **Pink** - Soft and gentle, a lighter shade of red.\n8. **Brown** - Earthy and warm, found in wood and soil.\n9. **Black** - Dark and powerful, the absence of light.\n10. **White** - Pure and clean, the presence of all colors.\n11. **Gray** - Neutral and balanced, between black and white.\n12. **Cyan** - Cool and modern, a bright blue-green.\n13. **Magenta** - Vivid and striking, a purplish-red.\n14. **Lime** - Sharp and electric, a bright yellow-green.\n15. **Turquoise** - Tropical and refreshing, blue-green like shallow water.\n16. **Gold** - Rich and luxurious, the color of precious metal.\n17. **Silver** - Sleek and elegant, a metallic gray-white.\n18. **Navy** - Deep and sophisticated, a dark blue.\n19. **Maroon** - Dark and intense, a deep brownish-red.\n20. **Olive** - Muted and earthy, a dull yellow-green.",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 381,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000658
+        },
+        "timestamp": 1775730657705
+      },
+      "index": 17
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "dd1dc106-c8ea-4c56-9356-97005edaafca",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 727,
+          "outputTokens": 381,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.000658,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775730657707
+      },
+      "index": 18
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 19
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "runStamp": "2026-04-09T10-30-04",
+  "totalStreams": 2,
+  "streams": [
+    {
+      "file": "01-pattern-06-subagent-single.json",
+      "name": "pattern-06-subagent-single",
+      "metadata": {
+        "prompt": "Use explore helper to find greet function",
+        "profileId": "coder",
+        "threadId": "thread_4e276c8b0a41",
+        "expectedBehavior": "Spawns explore sub-agent, gets result, reports findings"
+      },
+      "eventCount": 69,
+      "completed": true
+    },
+    {
+      "file": "02-pattern-07-subagents-parallel.json",
+      "name": "pattern-07-subagents-parallel",
+      "metadata": {
+        "prompt": "Dispatch explore + planner in parallel",
+        "profileId": "coder",
+        "threadId": "thread_fd4f8baca4f7",
+        "expectedBehavior": "2+ agent.spawn events fire close together, both complete"
+      },
+      "eventCount": 165,
+      "completed": true
+    }
+  ]
+}

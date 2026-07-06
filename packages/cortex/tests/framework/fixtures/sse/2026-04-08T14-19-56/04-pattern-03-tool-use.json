@@ -1,0 +1,326 @@
+{
+  "recordedAt": "2026-04-08T14:20:05.465Z",
+  "metadata": {
+    "prompt": "Read /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1uKhPg/pattern3.txt",
+    "profileId": "sse-tools",
+    "threadId": "thread_82b537946946",
+    "expectedBehavior": "Calls a read-file tool, then reports content"
+  },
+  "eventCount": 27,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 12,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "text.delta": 4,
+    "text.complete": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "The file at that path is outside the workspace root, so I cannot access it. The file appears to be in a temporary directory that's not within the current working environment's accessible file system.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1uKhPg/pattern3.txt\": Path \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1uKhPg/pattern3.txt\" resolves outside the workspace root.",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 5495,
+      "outputTokens": 142,
+      "costUsd": 0.018615
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_82b537946946",
+        "profileId": "sse-tools"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "5d0dc080-adae-4212-aaf3-0660dcf580a0",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775657999776
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775657999776
+      },
+      "index": 2
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "{\"file_pat",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "h\": \"/var",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "/folders/s",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "1/hlc0",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "01ps1",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "k58b_t77k95",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "3y6m0000gn",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "/T/corte",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "x-fw-1u",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "KhPg/patte",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "delta": "rn3.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01CNWMN2R38gG2megNpkhpYu",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1uKhPg/pattern3.txt\": Path \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-1uKhPg/pattern3.txt\" resolves outside the workspace root.",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 2634,
+          "outputTokens": 100,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.009402
+        },
+        "timestamp": 1775658001867
+      },
+      "index": 17
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "5d0dc080-adae-4212-aaf3-0660dcf580a0",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658001867
+      },
+      "index": 19
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file at",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " that path is outside the workspace root, so I cannot access it. The file appears to be in a",
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " temporary directory that's not within the current working environment's accessible",
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file system.",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file at that path is outside the workspace root, so I cannot access it. The file appears to be in a temporary directory that's not within the current working environment's accessible file system.",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 2861,
+          "outputTokens": 42,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.009213
+        },
+        "timestamp": 1775658005463
+      },
+      "index": 25
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 26
+    }
+  ]
+}

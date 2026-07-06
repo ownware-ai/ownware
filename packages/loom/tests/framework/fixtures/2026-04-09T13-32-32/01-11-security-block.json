@@ -1,0 +1,171 @@
+{
+  "recordedAt": "2026-04-09T13:32:32.910Z",
+  "metadata": {
+    "prompt": "Write with readonly tools",
+    "expectedBehavior": "No writeFile tool available — model explains it cannot write"
+  },
+  "eventCount": 13,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 8,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I cannot write \"BLOCKED_CONTENT\" to the file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-esaHbk/blocked-file.txt` because I don't have access to any file writing functions.\n\nThe tools available to me are read-only operations:\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory contents  \n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nI can only read and search files, but I cannot create, modify, or write to files. To write content to a file, you would need to use a text editor, command line tools like `echo` or `cat`, or a programming script with write permissions.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1178,
+      "outputTokens": 188,
+      "costUsd": 0.006354
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "e55697b5-8937-493c-b0bb-4fcfb90b60f0",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775741547957
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775741547957
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I cannot",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " write \"BLOCKED_CONTENT\" to the file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-esaHbk",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "/blocked-file.txt` because I don't have access to any file writing functions.\n\nThe tools",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " available to me are read-only operations:\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " contents  \n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nI can only read and",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " search files, but I cannot create, modify, or write to files. To write",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " content to a file, you would need to use a text editor, command line tools like `echo`",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " or `cat`, or a programming script with write permissions.",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I cannot write \"BLOCKED_CONTENT\" to the file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-esaHbk/blocked-file.txt` because I don't have access to any file writing functions.\n\nThe tools available to me are read-only operations:\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory contents  \n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nI can only read and search files, but I cannot create, modify, or write to files. To write content to a file, you would need to use a text editor, command line tools like `echo` or `cat`, or a programming script with write permissions.",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1178,
+          "outputTokens": 188,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.006354
+        },
+        "timestamp": 1775741552910
+      },
+      "index": 11
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "e55697b5-8937-493c-b0bb-4fcfb90b60f0",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1178,
+          "outputTokens": 188,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.006354,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775741552910
+      },
+      "index": 12
+    }
+  ]
+}

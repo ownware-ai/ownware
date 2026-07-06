@@ -1,0 +1,117 @@
+{
+  "recordedAt": "2026-04-09T01:51:58.133Z",
+  "metadata": {
+    "prompt": "Recall the code",
+    "expectedBehavior": "Returns AMBER-7734"
+  },
+  "eventCount": 7,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "The code you told me was AMBER-7734.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 68,
+      "outputTokens": 15,
+      "costUsd": 0.00003575
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "d8bb6fdf-a512-442a-a083-cb26482992f3",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699516151
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699516151
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " code you told me was AMBER-7734.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The code you told me was AMBER-7734.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 68,
+          "outputTokens": 15,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00003575
+        },
+        "timestamp": 1775699518133
+      },
+      "index": 5
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "d8bb6fdf-a512-442a-a083-cb26482992f3",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 68,
+          "outputTokens": 15,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00003575,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775699518133
+      },
+      "index": 6
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "name": "explore",
+  "kind": "helper",
+  "description": "Fast read-only security discovery scout. Finds security-relevant code — auth flows, input sinks, query builders, file operations, deserialization, dependency manifests — and reports where to look. Read-only.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "security",
+    "search",
+    "read-only"
+  ],
+  "metadata": {
+    "icon": "search",
+    "color": "rose",
+    "category": "Security Helpers",
+    "avatar": {
+      "bg": "#2B0F14",
+      "fg": "#F8C6C6",
+      "accent": "#E24B4A",
+      "symbol": "<circle cx=\"26\" cy=\"26\" r=\"12\" stroke=\"currentColor\" stroke-width=\"2.6\" fill=\"none\"/><line x1=\"35\" y1=\"35\" x2=\"46\" y2=\"46\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-4o-mini",
+  "maxTokens": 16384,
+  "maxTurns": 20,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "writeFile",
+      "editFile",
+      "shell_execute",
+      "agent_spawn",
+      "browser_*",
+      "memory_*",
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe",
+      "ask_user",
+      "create_vulnerability_report"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": false,
+    "cwd": true,
+    "datetime": false,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": false,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "10m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "truncate",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.85
+    },
+    "retain": {
+      "type": "messages",
+      "count": 4
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

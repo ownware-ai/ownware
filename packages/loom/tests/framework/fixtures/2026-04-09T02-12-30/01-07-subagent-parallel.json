@@ -1,0 +1,593 @@
+{
+  "recordedAt": "2026-04-09T02:12:30.258Z",
+  "metadata": {
+    "prompt": "Spawn 2 sub-agents in parallel",
+    "expectedBehavior": "2 agent_spawn calls, both complete, parent synthesizes"
+  },
+  "eventCount": 52,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 6,
+    "tool.call.start": 2,
+    "tool.call.args_delta": 34,
+    "text.complete": 2,
+    "tool.call.end": 2,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll spawn two separate agents to handle each calculation as requested.Both agents have completed their calculations. Here are the results:\n\n**Agent \"adder\" result:** 100 + 200 = 300\n\n**Agent \"multiplier\" result:** 50 * 3 = 150\n\nBoth calculations have been successfully completed using separate agents as requested.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 255
+      },
+      {
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 301
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2248,
+      "outputTokens": 265,
+      "costUsd": 0.010719
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "e372ccc2-8125-4f5f-b131-b744cf9f101e",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700745514
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700745514
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll spawn two separate",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " agents to handle each calculation as requested.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "{\"na",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "me\": \"",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "adde",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "r\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": ", \"pr",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "ompt\": \"C",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "alcu",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "late 1",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "00 ",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "+ 200 usi",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "ng the",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": " calcula",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "te tool",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": ".\"",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": ", \"tools\": [",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "delta": "\"calculate\"]}",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "{\"name\": ",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "\"mu",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "ltip",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "lier\"",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": ", ",
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "\"prompt\":",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": " \"Calcula",
+        "turnIndex": 0
+      },
+      "index": 30
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "te",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": " 50 * 3",
+        "turnIndex": 0
+      },
+      "index": 32
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": " using the",
+        "turnIndex": 0
+      },
+      "index": 33
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": " calculate t",
+        "turnIndex": 0
+      },
+      "index": 34
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "oo",
+        "turnIndex": 0
+      },
+      "index": 35
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "l.\"",
+        "turnIndex": 0
+      },
+      "index": 36
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": ", \"tools\":",
+        "turnIndex": 0
+      },
+      "index": 37
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": " [\"calc",
+        "turnIndex": 0
+      },
+      "index": 38
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "delta": "ulate\"]}",
+        "turnIndex": 0
+      },
+      "index": 39
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll spawn two separate agents to handle each calculation as requested.",
+        "turnIndex": 0
+      },
+      "index": 40
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01SZGvMdxKCCLRECMrAKsL7S",
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 255,
+        "turnIndex": 0
+      },
+      "index": 41
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_013UKGtspAVSUj1ei7yqaxLs",
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 301,
+        "turnIndex": 0
+      },
+      "index": 42
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 987,
+          "outputTokens": 199,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.005946
+        },
+        "timestamp": 1775700748320
+      },
+      "index": 43
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700748320
+      },
+      "index": 44
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Both",
+        "turnIndex": 1
+      },
+      "index": 45
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " agents have completed their calculations. Here are the results:\n\n**Agent \"adder\" result:** 100",
+        "turnIndex": 1
+      },
+      "index": 46
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " + 200 = 300\n\n**Agent \"multiplier\" result:** 50 * 3 = 150\n\nBoth calculations have been successfully completed using separate",
+        "turnIndex": 1
+      },
+      "index": 47
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " agents as requested.",
+        "turnIndex": 1
+      },
+      "index": 48
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Both agents have completed their calculations. Here are the results:\n\n**Agent \"adder\" result:** 100 + 200 = 300\n\n**Agent \"multiplier\" result:** 50 * 3 = 150\n\nBoth calculations have been successfully completed using separate agents as requested.",
+        "turnIndex": 1
+      },
+      "index": 49
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1261,
+          "outputTokens": 66,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.004773
+        },
+        "timestamp": 1775700750255
+      },
+      "index": 50
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "e372ccc2-8125-4f5f-b131-b744cf9f101e",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2248,
+          "outputTokens": 265,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.010719,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700750255
+      },
+      "index": 51
+    }
+  ]
+}

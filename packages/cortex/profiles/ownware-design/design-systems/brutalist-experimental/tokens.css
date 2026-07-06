@@ -1,0 +1,51 @@
+/* Brutalist Experimental — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --surface equals --bg deliberately. Brutalist systems usually have no
+ *     separate card surface — content sits on the canvas, separated by hard
+ *     borders rather than by surface tier.
+ *   - --radius is 0px. Not "small". Zero. The system's identity depends on
+ *     hard corners; introduce a single radical-radius element per page only
+ *     as a deliberate counterpoint, hard-coded on that element, never via
+ *     this token.
+ *   - --border is the same near-black as --fg. The border IS structural here;
+ *     2–4px solid borders carry layout separation, not hairlines.
+ *   - --accent is hot orange (#ff4d00). One sledgehammer color, used 1–2
+ *     places per page. Pastels and pale accents break the genre.
+ *   - --font-display is a serif. Sans display at 120px+ reads as "tech
+ *     startup", not "brutalist agency."
+ */
+
+:root {
+  /* surface — canvas only, no separate card tier */
+  --bg:      #f4f0e6;
+  --surface: #f4f0e6;
+
+  /* foreground — hard contrast */
+  --fg:     #0a0a0a;
+  --muted:  #4a4a4a;
+  --border: #0a0a0a;
+
+  /* accent — hot, one sledgehammer color */
+  --accent:    #ff4d00;
+  --accent-fg: #0a0a0a;
+
+  /* semantic — saturated, no blending */
+  --good: #006b3c;
+  --bad:  #c41e3a;
+
+  /* shape — hard corners, no exceptions via token */
+  --radius:      0px;
+  --radius-pill: 0px;
+
+  /* typography — serif display is the identity */
+  --font-display: "Times New Roman", Georgia, "Iowan Old Style", serif;
+  --font-body:    -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

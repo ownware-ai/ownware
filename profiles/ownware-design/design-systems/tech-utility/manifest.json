@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "tech-utility",
+  "name": "Tech Utility",
+  "category": "tech",
+  "surface": "web",
+  "summary": "Dense, dark, information-rich. Developer dashboards, ops tools, terminals, internal admin. Where the operator self-identifies as a power user.",
+  "swatches": ["#0d1117", "#161b22", "#e6edf3", "#58a6ff", "#8b949e", "#30363d"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css" }
+}

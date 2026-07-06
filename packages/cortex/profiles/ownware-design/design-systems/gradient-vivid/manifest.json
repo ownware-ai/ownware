@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "gradient-vivid",
+  "name": "Gradient Vivid",
+  "category": "marketing",
+  "surface": "web",
+  "summary": "Bold multi-stop gradient hero with saturated brand-color washes and confident geometric type. The SaaS-marketing / launch-page / product-announcement zone — works when the artifact's job is to telegraph 'one big idea, presented with full chest.'",
+  "swatches": ["#fafbff", "#ffffff", "#0d0c25", "#6b3df5", "#3df5d4", "#e6e6f2"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

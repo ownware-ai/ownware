@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:47:27.859Z",
+  "metadata": {
+    "prompt": "Dispatch explore + planner in parallel",
+    "profileId": "coder",
+    "threadId": "thread_5be9d7a0fce6",
+    "expectedBehavior": "2+ agent.spawn events fire close together, both complete"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

@@ -1,0 +1,76 @@
+# Main CI — build, typecheck, test, plus the governance guards.
+#
+# Actions are pinned to full commit SHAs (supply-chain posture; see
+# .github/dependabot.yml — dependabot bumps these pins weekly).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      # Cache bun's global download cache so unchanged deps aren't re-fetched
+      # every run — the native deps (better-sqlite3, sharp, playwright, …) are
+      # the slow part of install. Keyed on the lockfile; a dep change busts it.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run typecheck
+      # E2E/LLM lanes are env-gated and self-skip without provider keys.
+      - run: bun run test
+      # Production dependency tree stays license-compatible with Apache-2.0
+      # (fail-closed allowlist; exceptions documented in THIRD_PARTY_NOTICES.md).
+      # Lives in this job because it needs installed node_modules.
+      - run: bun run check:dep-licenses
+
+  governance:
+    name: Governance guards (licenses, CODEOWNERS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - run: node scripts/check-licenses.mjs
+      - run: node scripts/check-codeowners.mjs
+      - run: node scripts/check-agents-guides.mjs
+
+  secrets:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # full history — the scan covers every commit, not just the diff
+      # Run the gitleaks CLI directly (MIT, free for everyone). The
+      # gitleaks-ACTION wrapper now requires a paid license for org-owned
+      # repos; the CLI does not — same scan, same config, no license key.
+      # Picks up .gitleaks.toml at the repo root (test-fixture allowlist).
+      # A finding outside test code is always a failure — fix the leak,
+      # never the allowlist.
+      - name: Secret scan (full history)
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git . --config .gitleaks.toml --redact --exit-code 1

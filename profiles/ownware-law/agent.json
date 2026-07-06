@@ -1,0 +1,102 @@
+{
+  "name": "ownware-law",
+  "kind": "agent",
+  "description": "Legal counsel agent \u2014 reviews contracts, drafts agreements, researches case law, checks compliance, and produces legal memoranda. Multi-agent with specialized subagents for research, analysis, drafting, and compliance.",
+  "version": "0.1.0",
+  "metadata": {
+    "icon": "\u00a7",
+    "color": "rose",
+    "category": "Legal",
+    "avatar": {
+      "bg": "#3A3189",
+      "fg": "#D5D2F7",
+      "accent": "#7F77DD",
+      "symbol": "<line x1=\"32\" y1=\"14\" x2=\"32\" y2=\"38\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><line x1=\"20\" y1=\"20\" x2=\"44\" y2=\"20\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M20 20 L16 30 L24 30 Z\" fill=\"currentColor\" fill-opacity=\"0.7\"/><path d=\"M44 20 L40 30 L48 30 Z\" fill=\"currentColor\" fill-opacity=\"0.7\"/><rect x=\"24\" y=\"42\" width=\"16\" height=\"3\" rx=\"1.5\" fill=\"currentColor\" fill-opacity=\"0.4\"/>"
+    }
+  },
+  "tags": [
+    "legal",
+    "contracts",
+    "compliance",
+    "research",
+    "drafting"
+  ],
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTurns": 100,
+  "maxTokens": 16384,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [
+    {
+      "name": "researcher",
+      "description": "Legal research specialist. Finds case law, statutes, regulations, and precedent. Fast, read-only, exhaustive."
+    },
+    {
+      "name": "analyst",
+      "description": "Document analysis specialist. Deep reads contracts, policies, and legal documents. Extracts terms, obligations, risks, and anomalies."
+    },
+    {
+      "name": "drafter",
+      "description": "Legal drafting specialist. Writes contracts, memos, briefs, and correspondence. Precise language, proper structure, no ambiguity."
+    },
+    {
+      "name": "checker",
+      "description": "Compliance and regulatory specialist. Scans documents and policies against regulatory frameworks (GDPR, HIPAA, SOC2, CCPA, etc.)."
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

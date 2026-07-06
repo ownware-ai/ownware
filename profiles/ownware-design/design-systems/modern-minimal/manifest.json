@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "modern-minimal",
+  "name": "Modern Minimal",
+  "category": "minimal",
+  "surface": "web",
+  "summary": "Clean, single-accent, B2B credibility. Linear / Stripe / Vercel zone — works for developer tools, fintech, ops dashboards.",
+  "swatches": ["#fafafa", "#ffffff", "#111111", "#2f6feb", "#6b6b6b", "#e5e5e5"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css" }
+}

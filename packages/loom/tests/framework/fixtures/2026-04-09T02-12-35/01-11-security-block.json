@@ -1,0 +1,444 @@
+{
+  "recordedAt": "2026-04-09T02:12:35.659Z",
+  "metadata": {
+    "prompt": "Write file with deny-all policy",
+    "expectedBehavior": "Tool attempted, permission denied, error result"
+  },
+  "eventCount": 38,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 23,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll write \"BLOCKED_CONTENT\" to the specified file path.The file has been successfully created with the content \"BLOCKED_CONTENT\". The file was written to the specified temporary directory path and contains 15 characters (including the newline that's automatically added).",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "writeFile",
+        "result": "File created: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-odbEDc/blocked-file.txt (15 characters)",
+        "isError": false,
+        "durationMs": 2
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 3886,
+      "outputTokens": 182,
+      "costUsd": 0.014388
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "f53297ac-c5cf-4629-a12c-efa454e6d7cf",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700745514
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700745514
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll write \"",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "BLOCKED_CONTENT\" to the specified file path.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "toolName": "writeFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "{\"f",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "ile_path\":",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": " \"/va",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "r/folde",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "rs/s1/hl",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "c001ps1",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "k58b_t77k",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "953",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "y6m0000",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "gn/T/",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "loom",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "-test",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "-odbEDc/b",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "loc",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "ked-file",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": ".txt\"",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": ", \"",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "content",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "\": \"B",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "LOC",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "KED_CONTE",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "delta": "NT\"}",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll write \"BLOCKED_CONTENT\" to the specified file path.",
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01TaZ7pBmFAmgcXgJ42avhgX",
+        "toolName": "writeFile",
+        "result": "File created: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-odbEDc/blocked-file.txt (15 characters)",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1842,
+          "outputTokens": 137,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.007581
+        },
+        "timestamp": 1775700748214
+      },
+      "index": 30
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700748214
+      },
+      "index": 31
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 1
+      },
+      "index": 32
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file has been successfully created with the content \"BLOCKED_CONTENT\". The file was written to the specified temporary directory path and contains",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 15 characters (including the newline that's automatically added).",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file has been successfully created with the content \"BLOCKED_CONTENT\". The file was written to the specified temporary directory path and contains 15 characters (including the newline that's automatically added).",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 2044,
+          "outputTokens": 45,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.006807
+        },
+        "timestamp": 1775700755651
+      },
+      "index": 36
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "f53297ac-c5cf-4629-a12c-efa454e6d7cf",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 3886,
+          "outputTokens": 182,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.014388,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700755652
+      },
+      "index": 37
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "luminous-glass",
+  "name": "Luminous Glass",
+  "category": "ambient",
+  "surface": "web",
+  "summary": "Frosted dark panels over an ambient gradient floor, with one neon accent. The AI-product / music-app / immersive-tool zone — works for agent dashboards, audio surfaces, anything that should feel quietly luminous.",
+  "swatches": ["#0b0f1a", "#171c2c", "#f5f7ff", "#7c5cfc", "#8a93b0", "#2a3147"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

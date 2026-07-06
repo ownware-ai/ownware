@@ -1,0 +1,89 @@
+{
+  "name": "recon",
+  "kind": "helper",
+  "description": "Reconnaissance specialist. Maps attack surfaces, enumerates subdomains, discovers endpoints, fingerprints technologies. Thorough and structured. Capabilities flow from parent grants.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "security",
+    "reconnaissance"
+  ],
+  "metadata": {
+    "icon": "radar",
+    "color": "rose",
+    "category": "Security Helpers",
+    "avatar": {
+      "bg": "#3A1A22",
+      "fg": "#F4B5C2",
+      "accent": "#F14060",
+      "symbol": "<circle cx=\"32\" cy=\"32\" r=\"20\" stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-opacity=\"0.45\"/><circle cx=\"32\" cy=\"32\" r=\"12\" stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-opacity=\"0.7\"/><circle cx=\"32\" cy=\"32\" r=\"4\" fill=\"currentColor\"/><line x1=\"32\" y1=\"32\" x2=\"50\" y2=\"18\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-4.1-mini",
+  "maxTokens": 16384,
+  "maxTurns": 50,
+  "tools": {
+    "preset": "none",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": true
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

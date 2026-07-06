@@ -1,0 +1,59 @@
+{
+  "name": "earnings-reviewer",
+  "kind": "helper",
+  "description": "Summarises a quarterly earnings print: headline beat/miss vs consensus, guidance changes, top three call quotes, KPI trends. Read-only.",
+  "version": "0.1.0",
+  "tags": ["finance", "earnings", "transcripts", "guidance"],
+  "metadata": {
+    "icon": "E",
+    "color": "teal",
+    "category": "Finance",
+    "avatar": {
+      "bg": "#0F2A2E",
+      "fg": "#A8E6D4",
+      "accent": "#00D4AA",
+      "symbol": "<text x=\"32\" y=\"42\" text-anchor=\"middle\" font-family=\"Georgia,serif\" font-size=\"30\" font-weight=\"600\" fill=\"currentColor\">E</text><line x1=\"14\" y1=\"50\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-opacity=\"0.4\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 8192,
+  "maxTurns": 30,
+  "tools": {
+    "preset": "readonly",
+    "allow": ["web_fetch", "web_search"],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": false,
+    "sources": [],
+    "autoLearn": false,
+    "isolation": "per_session"
+  },
+  "skills": { "dirs": [], "external": [] },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": false,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "strict",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": { "mode": "foreground", "timeout": "15m" },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 4 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "memory" }
+}

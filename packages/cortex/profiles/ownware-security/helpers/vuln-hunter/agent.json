@@ -1,0 +1,90 @@
+{
+  "name": "vuln-hunter",
+  "kind": "helper",
+  "description": "Vulnerability discovery specialist. Tests a specific vulnerability class against a specific target. Focused, adversarial, evidence-driven. Capabilities flow from parent grants.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "security",
+    "vulnerability-discovery"
+  ],
+  "metadata": {
+    "icon": "crosshair",
+    "color": "rose",
+    "category": "Security Helpers",
+    "avatar": {
+      "bg": "#3A1A22",
+      "fg": "#F4B5C2",
+      "accent": "#F14060",
+      "symbol": "<circle cx=\"32\" cy=\"32\" r=\"16\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\"/><line x1=\"32\" y1=\"10\" x2=\"32\" y2=\"22\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><line x1=\"32\" y1=\"42\" x2=\"32\" y2=\"54\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><line x1=\"10\" y1=\"32\" x2=\"22\" y2=\"32\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><line x1=\"42\" y1=\"32\" x2=\"54\" y2=\"32\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/><circle cx=\"32\" cy=\"32\" r=\"3\" fill=\"currentColor\"/>"
+    }
+  },
+  "model": "openai:gpt-4.1",
+  "smallFastModel": "openai:gpt-4o-mini",
+  "maxTokens": 16384,
+  "maxTurns": 60,
+  "tools": {
+    "preset": "none",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": true
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

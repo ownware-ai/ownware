@@ -1,0 +1,292 @@
+{
+  "recordedAt": "2026-04-09T01:53:17.755Z",
+  "metadata": {
+    "prompt": "Spawn math-helper sub-agent",
+    "expectedBehavior": "agent_spawn → child computes 96 → parent reports result"
+  },
+  "eventCount": 23,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 7,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 6,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I don't have access to an \"agent_spawn\" tool. Looking at my available tools, I only have access to:\n\n- **calculate**: A tool for evaluating simple math expressions\n\nI can help you directly with the math problem though! Let me calculate 12 * 8:The result is **96**.\n\nIf you need a sub-agent or multi-agent capability, that would require a different tool that isn't currently available in my toolkit.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 11
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1436,
+      "outputTokens": 155,
+      "costUsd": 0.00055275
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "a51ced17-a16d-4508-a48e-76d9e185a0d7",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699594641
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699594641
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I don",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have access to an \"agent_spawn\" tool. Looking at my available tools, I only have access to:\n\n-",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " **calculate**: A tool for evaluating simple math expressions\n\nI can help you directly",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " with the math problem though! Let me calculate 12 * 8:",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "delta": "{\"expre",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "delta": "ssion\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "delta": ": \"",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "delta": "12 * ",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "delta": "8\"}",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I don't have access to an \"agent_spawn\" tool. Looking at my available tools, I only have access to:\n\n- **calculate**: A tool for evaluating simple math expressions\n\nI can help you directly with the math problem though! Let me calculate 12 * 8:",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01CA6EfM43BrxFMoVUkvRE97",
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 11,
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 653,
+          "outputTokens": 117,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0003095
+        },
+        "timestamp": 1775699596581
+      },
+      "index": 15
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699596581
+      },
+      "index": 16
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The result",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " is **96**.\n\nIf you need a sub-agent or multi-agent capability, that",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " would require a different tool that isn't currently available in my toolkit.",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The result is **96**.\n\nIf you need a sub-agent or multi-agent capability, that would require a different tool that isn't currently available in my toolkit.",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 783,
+          "outputTokens": 38,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00024325
+        },
+        "timestamp": 1775699597753
+      },
+      "index": 21
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "a51ced17-a16d-4508-a48e-76d9e185a0d7",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1436,
+          "outputTokens": 155,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00055275,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699597753
+      },
+      "index": 22
+    }
+  ]
+}

@@ -1,0 +1,346 @@
+{
+  "recordedAt": "2026-04-09T02:03:23.556Z",
+  "metadata": {
+    "prompt": "Spawn calc-helper sub-agent",
+    "tools": "calculator + agent_spawn",
+    "expectedBehavior": "agent_spawn succeeds, sub-agent computes 99"
+  },
+  "eventCount": 28,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 14,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll create a sub-agent to handle that calculation for you.The calc-helper agent has completed the task. The calculation 9 * 11 equals 99.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 313
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2078,
+      "outputTokens": 130,
+      "costUsd": 0.008184
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "ec3f5d73-3063-45e3-99cc-908cca0742fa",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700199825
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700199825
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll create",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " a sub-agent to handle that calculation for you.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "{\"name\": \"c",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "alc-",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "helper\"",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": ", \"prompt\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": ": \"Use ",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "the calc",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "ulat",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "e tool to co",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "mpute",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": " 9 * 11 an",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "d tell me ",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "the answe",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "delta": "r.\"}",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll create a sub-agent to handle that calculation for you.",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_018dQMa9r23PZTwML6pPkbe6",
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 313,
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 974,
+          "outputTokens": 104,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.004482
+        },
+        "timestamp": 1775700201920
+      },
+      "index": 21
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700201920
+      },
+      "index": 22
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The calc",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "-helper agent has completed the task. The calculation 9 * 11 equals 99.",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The calc-helper agent has completed the task. The calculation 9 * 11 equals 99.",
+        "turnIndex": 1
+      },
+      "index": 25
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1104,
+          "outputTokens": 26,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003702
+        },
+        "timestamp": 1775700203553
+      },
+      "index": 26
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "ec3f5d73-3063-45e3-99cc-908cca0742fa",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2078,
+          "outputTokens": 130,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.008184,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700203554
+      },
+      "index": 27
+    }
+  ]
+}

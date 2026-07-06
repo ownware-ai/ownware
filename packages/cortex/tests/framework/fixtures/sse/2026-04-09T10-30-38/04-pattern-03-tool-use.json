@@ -1,0 +1,356 @@
+{
+  "recordedAt": "2026-04-09T10:30:46.763Z",
+  "metadata": {
+    "prompt": "Read /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-RWQarA/pattern3.txt",
+    "profileId": "sse-tools",
+    "threadId": "thread_030617a24c9d",
+    "expectedBehavior": "Calls a read-file tool, then reports content"
+  },
+  "eventCount": 29,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 13,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "text.delta": 4,
+    "text.complete": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "The file at that path cannot be accessed as it's outside the workspace root. The path appears to be a temporary file in your system's temp directory, but I can only read files within the current workspace.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-RWQarA/pattern3.txt\": Path \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-RWQarA/pattern3.txt\" resolves outside the workspace root.",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 5490,
+      "outputTokens": 144,
+      "costUsd": 0.01863
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_030617a24c9d",
+        "profileId": "sse-tools"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "c6bee2f0-55fb-4bbd-bd43-84106798766a",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775730641148
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775730641148
+      },
+      "index": 2
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "{\"file_path",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "\": \"/var",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "/folders",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "/s1/hlc001",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "ps",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "1k58",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "b_t77k953y",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "6m0000g",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "n/T/c",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "ortex-fw-RWQ",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "arA/patter",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "delta": "n3.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01XHpj8keX9kDeubcq4ftK8u",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-RWQarA/pattern3.txt\": Path \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-RWQarA/pattern3.txt\" resolves outside the workspace root.",
+        "isError": true,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 2633,
+          "outputTokens": 99,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.009384
+        },
+        "timestamp": 1775730643475
+      },
+      "index": 18
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "c6bee2f0-55fb-4bbd-bd43-84106798766a",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775730643476
+      },
+      "index": 20
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file at",
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " that path cannot be accessed as it's outside the workspace root. The path appears to be a temporary file in your",
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " system's temp directory, but I can only read files within the current workspace",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ".",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file at that path cannot be accessed as it's outside the workspace root. The path appears to be a temporary file in your system's temp directory, but I can only read files within the current workspace.",
+        "turnIndex": 1
+      },
+      "index": 25
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 2857,
+          "outputTokens": 45,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.009246
+        },
+        "timestamp": 1775730646760
+      },
+      "index": 26
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "c6bee2f0-55fb-4bbd-bd43-84106798766a",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 5490,
+          "outputTokens": 144,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.01863,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775730646762
+      },
+      "index": 27
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 28
+    }
+  ]
+}

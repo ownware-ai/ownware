@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexus — Deep focus, unlocked.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<script>
+  /* Set theme before paint to avoid a flash. Dark is the system default. */
+  (function () {
+    var s = localStorage.getItem('nexus-theme');
+    var t = s || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  /* ============================================================
+     Nexus design system — tokens transcribed from STYLE.md / DESIGN.md
+     Theme-invariant tokens live in :root. Color + depth tokens are
+     themed; the light variant is derived from the same color ramps.
+     ============================================================ */
+  :root {
+    /* Typography */
+    --font-display: 'DotGothic16', monospace;
+    --font-body: 'JetBrains Mono', monospace;
+    --display-lg-size: 72px;
+    --display-lg-line: 72px;
+    --display-lg-tracking: -0.05em;
+    --display-lg-weight: 400;
+    --body-md-size: 18px;
+    --body-md-line: 28px;
+    --body-md-weight: 300;
+    --label-md-size: 14px;
+    --label-md-line: 20px;
+    --label-md-weight: 500;
+
+    /* Spacing — base unit 4px */
+    --unit: 4px;
+    --gap-sm: 6px;  --gap-md: 8px;  --gap-lg: 12px;
+    --gap-xl: 16px; --gap-2xl: 24px; --gap-3xl: 32px;
+    --section-pad-y: 104px;
+    --section-pad-x: 32px;
+
+    /* Shapes */
+    --radius-sm: 6px; --radius-md: 8px; --radius-lg: 16px;
+    --radius-xl: 32px; --radius-full: 9999px;
+
+    /* Depth */
+    --blur: 12px;
+    --shadow-btn: rgba(0, 0, 0, 0.4) 0px 10px 20px -5px, rgba(0, 0, 0, 0.1) 0px 0px 15px 0px;
+    --shadow-btn-lg: rgba(0, 0, 0, 0.5) 0px 15px 35px -5px, rgba(0, 0, 0, 0.15) 0px 0px 20px 0px;
+
+    /* Constant brand fill (vivid green signal — same in both themes) */
+    --color-secondary: #4ADE80;
+    --shadow-glow: rgba(74, 222, 128, 0.40) 0px 0px 24px 0px;
+
+    /* Motion */
+    --dur-fast: 150ms;
+    --dur-base: 300ms;
+    --dur-slow: 1000ms;
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ---------- DARK theme (system default) ---------- */
+  :root,
+  [data-theme="dark"] {
+    --color-background: #000000;
+    --color-surface: #151515;
+    --color-text-primary: #6B7280;
+    --color-text-secondary: #FFFFFF;
+    --color-accent-text: #4ADE80;
+    --color-border: #1F2937;
+    --glass-fill: rgba(21, 21, 21, 0.72);
+    --nav-bg: rgba(0, 0, 0, 0.55);
+    --shell-gradient: linear-gradient(rgb(156, 163, 175), rgb(75, 85, 99), rgb(31, 41, 55));
+    --meter-track: #1F2937;
+    --shadow-card: rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px;
+    --grid-dot: rgba(255, 255, 255, 0.04);
+    --glow-1: rgba(74, 222, 128, 0.10);
+    --glow-2: rgba(156, 163, 175, 0.06);
+    --row-border: rgba(31, 41, 55, 0.6);
+  }
+
+  /* ---------- LIGHT theme (derived from the primary / green ramps) ---------- */
+  [data-theme="light"] {
+    --color-background: #F4F5F6;   /* primary ramp ~100 */
+    --color-surface: #FFFFFF;
+    --color-text-primary: #51555B; /* primary ramp 800 — readable secondary text */
+    --color-text-secondary: #1F2937; /* tertiary — strong headings */
+    --color-accent-text: #349B5A;  /* green ramp 700 — accessible green text */
+    --color-border: #DFE2E5;       /* primary ramp 200 */
+    --glass-fill: rgba(255, 255, 255, 0.72);
+    --nav-bg: rgba(244, 245, 246, 0.72);
+    --shell-gradient: linear-gradient(#E7E9EB, #CFD3D9, #B8BDC5);
+    --meter-track: #DFE2E5;
+    --shadow-card: rgba(31, 41, 55, 0.08) 0px 1px 2px 0px, rgba(31, 41, 55, 0.04) 0px 8px 24px -8px;
+    --grid-dot: rgba(31, 41, 55, 0.05);
+    --glow-1: rgba(74, 222, 128, 0.14);
+    --glow-2: rgba(156, 163, 175, 0.12);
+    --row-border: rgba(31, 41, 55, 0.10);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+    font-size: var(--body-md-size);
+    line-height: var(--body-md-line);
+    font-weight: var(--body-md-weight);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    transition: background-color var(--dur-base) var(--ease-standard),
+                color var(--dur-base) var(--ease-standard);
+  }
+
+  /* Atmospheric background: focus glow + dotted grid */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      radial-gradient(circle at 50% 0%, var(--glow-1), transparent 45%),
+      radial-gradient(circle at 85% 80%, var(--glow-2), transparent 40%),
+      radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 32px 32px;
+    transition: background-color var(--dur-base) var(--ease-standard);
+  }
+
+  /* Pointer-follow glow (ambient, low opacity) */
+  .cursor-glow {
+    position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none;
+    width: 520px; height: 520px; border-radius: var(--radius-full);
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(74, 222, 128, 0.10), transparent 60%);
+    opacity: 0; transition: opacity var(--dur-slow) var(--ease-standard);
+    will-change: transform;
+  }
+
+  .layer { position: relative; z-index: 1; }
+
+  /* ---------- Type helpers ---------- */
+  .display {
+    font-family: var(--font-display);
+    font-size: var(--display-lg-size);
+    line-height: var(--display-lg-line);
+    letter-spacing: var(--display-lg-tracking);
+    font-weight: var(--display-lg-weight);
+    color: var(--color-text-secondary);
+  }
+  .label {
+    font-family: var(--font-body);
+    font-size: var(--label-md-size);
+    line-height: var(--label-md-line);
+    font-weight: var(--label-md-weight);
+  }
+  .eyebrow {
+    font-family: var(--font-body);
+    font-size: var(--label-md-size);
+    font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--color-accent-text);
+  }
+
+  /* ---------- Layout ---------- */
+  .shell { max-width: 1120px; margin: 0 auto; padding: 0 var(--section-pad-x); }
+  section { padding: var(--section-pad-y) 0; }
+
+  /* ---------- Glass surface + gradient border shell ---------- */
+  .gradient-shell {
+    display: block;
+    padding: 1px;
+    border-radius: var(--radius-lg);
+    background: var(--shell-gradient);
+    background-size: 100% 240%;
+    background-position: 0% 0%;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow var(--dur-base) var(--ease-standard),
+                transform var(--dur-base) var(--ease-standard);
+    animation: shell-drift 9s var(--ease-standard) infinite alternate;
+  }
+  @keyframes shell-drift { from { background-position: 0% 0%; } to { background-position: 0% 100%; } }
+
+  .glass {
+    border-radius: 15px;
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    box-sizing: border-box;
+    transition: background-color var(--dur-base) var(--ease-standard);
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    font-family: var(--font-body);
+    font-size: var(--label-md-size);
+    line-height: var(--label-md-line);
+    font-weight: var(--label-md-weight);
+    display: inline-flex; align-items: center; gap: var(--gap-md);
+    cursor: pointer; border: 1px solid var(--color-border);
+    transition: transform var(--dur-fast) var(--ease-standard),
+                box-shadow var(--dur-base) var(--ease-standard),
+                color var(--dur-fast) var(--ease-standard),
+                border-color var(--dur-fast) var(--ease-standard),
+                background-color var(--dur-base) var(--ease-standard);
+  }
+  .btn .ico { transition: transform var(--dur-fast) var(--ease-standard); }
+  .btn:hover .ico { transform: translateX(3px); }
+
+  .btn-primary {
+    background: var(--color-background);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-md);
+    padding: 14px 28px; box-shadow: var(--shadow-btn);
+  }
+  [data-theme="light"] .btn-primary { background: #1F2937; color: #FFFFFF; border-color: #1F2937; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow-btn-lg); border-color: var(--color-secondary); }
+
+  .btn-ghost {
+    background: transparent; color: var(--color-text-secondary);
+    border-radius: var(--radius-md); padding: 14px 28px; border-color: var(--color-border);
+  }
+  .btn-ghost:hover { border-color: var(--color-primary, var(--color-text-secondary)); transform: translateY(-2px); }
+
+  .link {
+    font-family: var(--font-body); font-size: var(--label-md-size);
+    line-height: var(--label-md-line); font-weight: 300;
+    color: var(--color-text-primary); text-decoration: none;
+    transition: color var(--dur-fast) var(--ease-standard);
+  }
+  .link:hover { color: var(--color-text-secondary); }
+
+  /* ---------- Theme toggle ---------- */
+  .theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: var(--radius-full);
+    background: var(--glass-fill); border: 1px solid var(--color-border);
+    color: var(--color-text-secondary); cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-standard),
+                border-color var(--dur-fast) var(--ease-standard),
+                background-color var(--dur-base) var(--ease-standard);
+  }
+  .theme-toggle:hover { transform: rotate(-15deg) scale(1.05); border-color: var(--color-secondary); }
+  [data-theme="dark"] .ico-moon { display: none; }
+  [data-theme="light"] .ico-sun { display: none; }
+
+  /* ---------- Nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+    background: var(--nav-bg); border-bottom: 1px solid var(--color-border);
+    transition: background-color var(--dur-base) var(--ease-standard),
+                border-color var(--dur-base) var(--ease-standard);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand {
+    font-family: var(--font-display); font-size: 20px; color: var(--color-text-secondary);
+    letter-spacing: -0.02em; display: flex; align-items: center; gap: var(--gap-md);
+  }
+  .brand .ico { color: var(--color-secondary); animation: spin 24s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .nav-links { display: flex; align-items: center; gap: var(--gap-3xl); }
+  .nav-links .link { display: inline-flex; align-items: center; gap: var(--gap-sm); }
+
+  /* Solar-style linear icon */
+  .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; flex-shrink: 0; }
+  .ico-lg { width: 22px; height: 22px; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding-top: 80px; }
+  .hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: var(--gap-3xl); align-items: center; }
+  .hero h1 { margin: var(--gap-2xl) 0 var(--gap-xl); }
+  .hero h1 .accent { color: var(--color-accent-text); }
+  .hero p.lede { max-width: 46ch; margin-bottom: var(--gap-3xl); color: var(--color-text-primary); }
+  .cta-row { display: flex; gap: var(--gap-lg); flex-wrap: wrap; }
+
+  /* Hero visual: focus console */
+  .console { padding: 24px; min-width: 240px; }
+  .console-bar { display: flex; gap: var(--gap-md); margin-bottom: var(--gap-2xl); }
+  .dot { width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--color-border); }
+  .dot.live { background: var(--color-secondary); animation: pulse 1.6s var(--ease-standard) infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+  }
+  .console-row { display: flex; align-items: center; justify-content: space-between; padding: var(--gap-lg) 0; border-bottom: 1px solid var(--row-border); }
+  .console-row:last-child { border-bottom: 0; }
+  .console-row .k { color: var(--color-text-primary); }
+  .console-row .v { color: var(--color-text-secondary); }
+  .console-row .v.green { color: var(--color-accent-text); }
+  .meter { height: 6px; border-radius: var(--radius-full); background: var(--meter-track); overflow: hidden; width: 120px; }
+  .meter > span { display: block; height: 100%; width: 0; background: var(--color-secondary); border-radius: var(--radius-full); transition: width 1.4s var(--ease-standard); }
+
+  /* ---------- Stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-xl); }
+  .stat { padding: var(--gap-2xl); text-align: center; }
+  .stat .num { font-family: var(--font-display); font-size: 44px; color: var(--color-text-secondary); letter-spacing: -0.04em; }
+  .stat .cap { color: var(--color-text-primary); font-size: var(--label-md-size); margin-top: var(--gap-md); }
+
+  /* ---------- Features ---------- */
+  .section-head { max-width: 60ch; margin-bottom: var(--gap-3xl); }
+  .section-head h2 { font-family: var(--font-display); font-size: 44px; color: var(--color-text-secondary); letter-spacing: -0.04em; margin: var(--gap-lg) 0; }
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-xl); }
+  .feature { padding: var(--gap-3xl); height: 100%; }
+  .feature .ico-wrap { width: 44px; height: 44px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; border: 1px solid var(--color-border); color: var(--color-accent-text); margin-bottom: var(--gap-xl); transition: border-color var(--dur-base), color var(--dur-base); }
+  .feature:hover .ico-wrap { border-color: var(--color-secondary); }
+  .feature h3 { font-family: var(--font-body); font-weight: 500; font-size: 18px; color: var(--color-text-secondary); margin-bottom: var(--gap-md); }
+  .feature p { font-size: 15px; line-height: 24px; }
+
+  /* ---------- CTA band ---------- */
+  .cta-band { padding: 56px; text-align: center; }
+  .cta-band h2 { font-family: var(--font-display); font-size: 56px; letter-spacing: -0.05em; color: var(--color-text-secondary); margin-bottom: var(--gap-xl); }
+  .cta-band p { max-width: 48ch; margin: 0 auto var(--gap-3xl); }
+  .cta-band .cta-row { justify-content: center; }
+
+  /* ---------- Footer ---------- */
+  footer { border-top: 1px solid var(--color-border); padding: 48px 0; transition: border-color var(--dur-base); }
+  .foot-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--gap-xl); }
+  .foot-links { display: flex; gap: var(--gap-2xl); flex-wrap: wrap; }
+
+  /* ---------- Reveal motion ---------- */
+  @keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  .reveal { opacity: 0; }
+  .reveal.in { animation: rise var(--dur-slow) var(--ease-standard) forwards; }
+  .d1 { animation-delay: 80ms; } .d2 { animation-delay: 200ms; }
+  .d3 { animation-delay: 320ms; } .d4 { animation-delay: 440ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal, .reveal.in { opacity: 1; animation: none; }
+    .gradient-shell, .dot.live, .brand .ico { animation: none; }
+    .meter > span { transition: none; }
+    .cursor-glow { display: none; }
+    html { scroll-behavior: auto; }
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    :root { --section-pad-y: 64px; --display-lg-size: 52px; --display-lg-line: 52px; }
+    .hero-grid, .stats, .features { grid-template-columns: 1fr; }
+    .nav-links .link.hide-sm { display: none; }
+    .cta-band h2 { font-size: 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="cursor-glow" aria-hidden="true"></div>
+<div class="layer">
+
+  <!-- ============ NAV ============ -->
+  <nav>
+    <div class="shell nav-inner">
+      <div class="brand">
+        <svg class="ico ico-lg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5L19 19M19 5l-2.5 2.5M7.5 16.5L5 19"/></svg>
+        NEXUS
+      </div>
+      <div class="nav-links">
+        <a class="link hide-sm" href="#features">Product</a>
+        <a class="link hide-sm" href="#stats">Why Nexus</a>
+        <a class="link hide-sm" href="#docs">View documentation</a>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle color theme" title="Toggle theme">
+          <svg class="ico ico-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+          <svg class="ico ico-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"/></svg>
+        </button>
+        <a class="btn btn-ghost" href="#cta">
+          Start free
+          <svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="shell hero-grid">
+      <div>
+        <span class="eyebrow reveal d1">Focus OS · v1.0</span>
+        <h1 class="display reveal d2">Deep focus,<br><span class="accent">unlocked.</span></h1>
+        <p class="lede body reveal d3">Nexus turns scattered attention into a single, defended flow. One key, one session — the noise stays out and the work gets done.</p>
+        <div class="cta-row reveal d4">
+          <a class="btn btn-primary" href="#cta">
+            Begin for free
+            <svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn-ghost" href="#docs">View documentation</a>
+        </div>
+      </div>
+
+      <div class="gradient-shell reveal d3">
+        <div class="glass console">
+          <div class="console-bar"><span class="dot"></span><span class="dot"></span><span class="dot live"></span></div>
+          <div class="console-row"><span class="k label">session</span><span class="v label green" id="timer">focused · 01:42:08</span></div>
+          <div class="console-row"><span class="k label">distractions blocked</span><span class="v label" data-count="38" data-decimals="0">0</span></div>
+          <div class="console-row"><span class="k label">depth</span><span class="meter"><span data-fill="82"></span></span></div>
+          <div class="console-row"><span class="k label">flow state</span><span class="v label green">locked in</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section id="stats">
+    <div class="shell stats">
+      <div class="gradient-shell reveal d1"><div class="glass stat"><div class="num" data-count="3.2" data-decimals="1" data-suffix="×">0</div><div class="cap">more deep-work hours / week</div></div></div>
+      <div class="gradient-shell reveal d2"><div class="glass stat"><div class="num" data-count="41" data-decimals="0" data-suffix="s">0</div><div class="cap">average time to flow</div></div></div>
+      <div class="gradient-shell reveal d3"><div class="glass stat"><div class="num" data-count="99.9" data-decimals="1" data-suffix="%">0</div><div class="cap">sessions completed offline-first</div></div></div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section id="features">
+    <div class="shell">
+      <div class="section-head reveal d1">
+        <span class="eyebrow">The system</span>
+        <h2>Built to defend your attention.</h2>
+        <p class="body">Every surface in Nexus follows one material language — glass, hairline borders, and a single green signal for the thing that matters right now.</p>
+      </div>
+      <div class="features">
+        <div class="gradient-shell reveal d1">
+          <div class="glass feature">
+            <div class="ico-wrap"><svg class="ico ico-lg" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+            <h3>Sealed sessions</h3>
+            <p>One key opens a focus block. Notifications, tabs, and noise stay locked out until you choose to surface.</p>
+          </div>
+        </div>
+        <div class="gradient-shell reveal d2">
+          <div class="glass feature">
+            <div class="ico-wrap"><svg class="ico ico-lg" viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5"/></svg></div>
+            <h3>Live depth meter</h3>
+            <p>A quiet signal tracks how deep you are, so you can protect momentum instead of guessing at it.</p>
+          </div>
+        </div>
+        <div class="gradient-shell reveal d3">
+          <div class="glass feature">
+            <div class="ico-wrap"><svg class="ico ico-lg" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+            <h3>Local-first by default</h3>
+            <p>Your sessions, notes, and history live on your machine. Nexus never holds the keys — you do.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CTA BAND ============ -->
+  <section id="cta">
+    <div class="shell">
+      <div class="gradient-shell reveal d1">
+        <div class="glass cta-band">
+          <h2 class="display">Ready to lock in?</h2>
+          <p class="body">Start a session in seconds. No account walls, no cloud lock-in — just deep focus, unlocked.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#">Start free
+              <svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="btn btn-ghost" href="#docs">View documentation</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer>
+    <div class="shell foot-inner">
+      <div class="brand" style="font-size:16px;">NEXUS</div>
+      <div class="foot-links">
+        <a class="link" href="#">Product</a>
+        <a class="link" href="#">Pricing</a>
+        <a class="link" id="docs" href="#">View documentation</a>
+        <a class="link" href="#">Privacy</a>
+      </div>
+      <span class="label" style="color:var(--color-text-primary)">© 2026 Nexus</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ---- Theme toggle (persists to localStorage) ---- */
+    var toggle = document.getElementById('themeToggle');
+    toggle.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('nexus-theme', next); } catch (e) { /* storage blocked — theme still applies for this session */ }
+    });
+
+    /* ---- Count-up numbers ---- */
+    function countUp(el) {
+      var target = parseFloat(el.getAttribute('data-count'));
+      var decimals = parseInt(el.getAttribute('data-decimals') || '0', 10);
+      var suffix = el.getAttribute('data-suffix') || '';
+      if (reduce) { el.textContent = target.toFixed(decimals) + suffix; return; }
+      var start = performance.now(), dur = 1100;
+      function step(now) {
+        var p = Math.min((now - start) / dur, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = (target * eased).toFixed(decimals) + suffix;
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ---- Reveal + trigger inner animations on scroll ---- */
+    function activate(el) {
+      el.classList.add('in');
+      el.querySelectorAll('[data-count]').forEach(countUp);
+      el.querySelectorAll('.meter > span').forEach(function (bar) {
+        bar.style.width = bar.getAttribute('data-fill') + '%';
+      });
+    }
+    var els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) {
+      els.forEach(activate);
+    } else {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { activate(e.target); io.unobserve(e.target); }
+        });
+      }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+      els.forEach(function (el) { io.observe(el); });
+    }
+
+    /* ---- Live session timer ---- */
+    var timer = document.getElementById('timer');
+    if (timer) {
+      var secs = 1 * 3600 + 42 * 60 + 8;
+      setInterval(function () {
+        secs++;
+        var h = Math.floor(secs / 3600);
+        var m = Math.floor((secs % 3600) / 60);
+        var s = secs % 60;
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        timer.textContent = 'focused · ' + pad(h) + ':' + pad(m) + ':' + pad(s);
+      }, 1000);
+    }
+
+    /* ---- Pointer-follow glow (skipped for reduced-motion / touch) ---- */
+    var glow = document.querySelector('.cursor-glow');
+    if (glow && !reduce && window.matchMedia('(pointer: fine)').matches) {
+      var gx = window.innerWidth / 2, gy = window.innerHeight / 2, tx = gx, ty = gy, shown = false;
+      window.addEventListener('pointermove', function (e) {
+        tx = e.clientX; ty = e.clientY;
+        if (!shown) { glow.style.opacity = '1'; shown = true; }
+      });
+      (function loop() {
+        gx += (tx - gx) * 0.12; gy += (ty - gy) * 0.12;
+        glow.style.transform = 'translate(' + gx + 'px,' + gy + 'px) translate(-50%, -50%)';
+        requestAnimationFrame(loop);
+      })();
+    }
+  })();
+</script>
+</body>
+</html>

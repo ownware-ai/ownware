@@ -1,0 +1,329 @@
+/* ==========================================================================
+   Ownware design tokens — v2 · dark primary, light secondary
+   Source of truth: .catalyst/design-system-v2/ (index.html = living spec)
+   Evidence base:  .catalyst/learning/design-md/STUDY.md (25-system study)
+
+   The idea, in one line:
+     The O is the perimeter you own. Everything inside it is woven in two
+     colors — Carbon and Bone. Light and dark are the same cloth turned
+     over. The only color the system rents is Cobalt, the signal, and only
+     to say "this is live / this is where you are."
+
+   Palette discipline (v2.1 tuning):
+     The NEUTRAL ramp is near-neutral — only a 1-point warm bias so it
+     relates to the #141414 logo without ever reading beige/muddy. Light
+     cards are pure white (the clean, professional move). Borders are crisp
+     neutral alpha (white-on-dark, black-on-light), never colour-tinted.
+     Semantic colours are clean modern tones, not earth mud.
+
+   Architecture: three layers (primitive → semantic → component). Components
+   style through semantic tokens only. :root defaults to DARK (primary).
+   The light media query covers OS-light users; explicit [data-theme]
+   attributes override in BOTH directions so a UI toggle always wins.
+
+   THE ACCENT CONTRACT (Framer-strict; see STUDY.md §2.4):
+     --accent may color: links, focus rings, the live/selection signal, and
+     ONE headline-keyword moment per page. It must never be a button fill,
+     a background band, or body text. The primary action is monochrome:
+     --action/--on-action flip polarity with the theme.
+   ========================================================================== */
+
+:root {
+  /* ---- primitives: carbon (the ink — near-neutral, 1-pt warm bias) ------- */
+  --carbon-950: #0A0A09;
+  --carbon-900: #0F0F0E;   /* dark page ground                */
+  --carbon-850: #141414;   /* the logo carbon; code surface   */
+  --carbon-800: #181817;   /* dark surface                    */
+  --carbon-750: #1F1F1E;   /* dark surface-2                  */
+  --carbon-700: #282827;   /* wash                            */
+  --carbon-600: #383836;
+  --carbon-500: #4E4E4B;
+  --carbon-400: #6E6D69;
+  --carbon-300: #8C8B86;
+  --carbon-200: #B4B3AE;
+  --carbon-100: #D6D4CF;
+
+  /* ---- primitives: bone (the ground — the brand's warm off-white) -------- */
+  --bone:        #F4F3F0;  /* the logo bone                   */
+  --bone-bright: #FBFAF8;
+  --bone-dim:    #F0EFEC;
+  --bone-deep:   #E7E6E2;
+
+  /* ---- primitives: cobalt (the signal — the one rented color) ----------- */
+  --cobalt-100: #DDE3FE;
+  --cobalt-200: #BBC7FC;
+  --cobalt-300: #93A9F9;
+  --cobalt-400: #6784F0;
+  --cobalt-500: #3E5CE0;
+  --cobalt-600: #2A45C6;
+  --cobalt-700: #1F35A5;
+  --cobalt-800: #182A84;
+
+  /* =========================================================================
+     SEMANTIC · theme: dark (PRIMARY) — the carbon room
+     ========================================================================= */
+  --bg:         var(--carbon-900);
+  --surface:    var(--carbon-800);          /* cards, panels                */
+  --surface-2:  var(--carbon-750);          /* nested fills, hovers         */
+  --wash:       var(--carbon-700);          /* pressed / selected fills     */
+
+  /* hairlines are crisp neutral alpha — no colour tint                     */
+  --hairline:      rgba(255, 255, 255, 0.085);
+  --hairline-2:    rgba(255, 255, 255, 0.15);
+  --hairline-soft: rgba(255, 255, 255, 0.05);
+
+  --ink:        var(--bone);
+  --ink-2:      var(--carbon-200);
+  --ink-3:      var(--carbon-300);          /* large text / labels only     */
+
+  /* the signal (see contract above) */
+  --accent:       var(--cobalt-300);        /* links, focus, live, keyword  */
+  --accent-hover: var(--cobalt-200);
+  --accent-wash:  rgba(147, 169, 249, 0.13);
+  --accent-solid: var(--cobalt-500);        /* selection controls (switch)  */
+  --on-accent:    #FFFFFF;
+
+  /* the primary action — MONO, flips polarity with the theme               */
+  --action:       var(--bone);
+  --on-action:    var(--carbon-850);
+  --action-hover: #E7E5E0;
+  --action-press: #D6D4CF;
+
+  /* semantic — clean modern tones (Primer-grade), functional only          */
+  --success: #3FB950;  --success-wash: rgba(63, 185, 80, 0.13);
+  --warning: #D29922;  --warning-wash: rgba(210, 153, 34, 0.13);
+  --danger:  #F85149;  --danger-wash:  rgba(248, 81, 73, 0.13);
+
+  /* the weave — the mark's threads as a background device (neutral)        */
+  --thread: rgba(255, 255, 255, 0.045);
+  --weave:  repeating-linear-gradient(to bottom,
+              var(--thread) 0 1px, transparent 1px 8px);
+
+  /* code is ALWAYS the lockup: bone ink on carbon, both themes.
+     code-edge is white-alpha in BOTH themes (the well is always dark).     */
+  --code-bg:   var(--carbon-850);
+  --code-ink:  var(--bone);
+  --code-edge: rgba(255, 255, 255, 0.10);
+
+  /* elevation: surfaces + hairlines carry depth; shadow only for FLOATING
+     elements (modal, menu, popover) — light-edge + soft drop               */
+  --shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                  0 10px 30px rgba(0, 0, 0, 0.45);
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  color-scheme: dark;
+
+  /* =========================================================================
+     TYPE — one grotesque + one mono. No serif, no third face.
+     Display: 600 max, tracking scales with size, leading 1.05.
+     Mono = the semantic register: eyebrows, table headers, keycaps, code.
+     tnum on all telemetry (font-variant-numeric: tabular-nums).
+     ========================================================================= */
+  --font-text: "Instrument Sans", "Helvetica Neue", Helvetica, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-hero:    clamp(2.75rem, 6.5vw, 4.75rem);
+  --text-display: clamp(2.25rem, 4.5vw, 3.25rem);
+  --text-h1: 2.25rem;   --text-h2: 1.75rem;
+  --text-h3: 1.375rem;  --text-h4: 1.125rem;
+  --text-lg: 1.125rem;  --text-body: 1rem;
+  --text-sm: 0.875rem;  --text-xs: 0.8125rem;
+  --text-2xs: 0.6875rem;
+
+  --track-hero:    -0.035em;   /* tracking scales with size, caps at hero  */
+  --track-display: -0.025em;
+  --track-h:       -0.015em;
+  --track-caps:     0.12em;    /* mono eyebrows / labels — positive        */
+
+  --leading-display: 1.05;
+  --leading-body:    1.55;
+
+  /* ---- space / shape ----------------------------------------------------
+     4px grid · 96px section rhythm · rectangles, not pills                 */
+  --space-1: 4px;  --space-2: 8px;   --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px;  --space-7: 48px; --space-8: 64px;
+  --space-9: 96px; --space-10: 144px;
+
+  --radius-1: 6px;    /* buttons, inputs, chips        */
+  --radius-2: 10px;   /* cards, code blocks            */
+  --radius-3: 16px;   /* mockups, modals               */
+  --radius-pill: 999px; /* badges and tabs ONLY        */
+
+  --border:   1px solid var(--hairline);
+  --border-2: 1px solid var(--hairline-2);
+  --container: 1120px;
+  --measure:   66ch;
+
+  /* ---- motion — small, functional, specified (exceeds the genre bar) ----
+     transform/opacity only; one 600ms signature (ring draw / thread scan) */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --dur-draw: 600ms;
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-beat:   cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* =========================================================================
+     COMPONENT layer — the pieces components may not improvise
+     ========================================================================= */
+  --btn-height: 40px;
+  --btn-pad-x: 18px;
+  --btn-font: 500 var(--text-sm) / 1 var(--font-text);
+  --btn-radius: var(--radius-1);
+
+  --input-height: 40px;
+  --input-pad-x: 12px;
+
+  --eyebrow-font: 600 var(--text-2xs) / 1 var(--font-mono);
+
+  --nav-height: 64px;
+  --spine-w: 2px;      /* the mark's bar as active/selected edge            */
+}
+
+/* ---- theme: light (secondary) — the bone room, same cloth turned over --
+   Cards are pure white on a warm off-white ground; steps stay subtle so
+   depth never goes beige. Borders are crisp neutral black-alpha.          */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:         var(--bone);
+    --surface:    #FFFFFF;
+    --surface-2:  var(--bone-dim);
+    --wash:       var(--bone-deep);
+
+    --hairline:      rgba(0, 0, 0, 0.09);
+    --hairline-2:    rgba(0, 0, 0, 0.14);
+    --hairline-soft: rgba(0, 0, 0, 0.05);
+
+    --ink:   var(--carbon-850);
+    --ink-2: #565654;
+    --ink-3: #83827E;
+
+    --accent:       var(--cobalt-600);
+    --accent-hover: var(--cobalt-700);
+    --accent-wash:  rgba(42, 69, 198, 0.08);
+    --accent-solid: var(--cobalt-600);
+    --on-accent:    #FFFFFF;
+
+    --action:       var(--carbon-850);
+    --on-action:    var(--bone);
+    --action-hover: var(--carbon-700);
+    --action-press: var(--carbon-600);
+
+    --success: #1A7F37;  --success-wash: rgba(26, 127, 55, 0.10);
+    --warning: #9A6700;  --warning-wash: rgba(154, 103, 0, 0.10);
+    --danger:  #CF222E;  --danger-wash:  rgba(207, 34, 46, 0.09);
+
+    --thread: rgba(0, 0, 0, 0.05);
+
+    /* code well is dark in light mode too → keep white-alpha edge          */
+    --code-edge: rgba(255, 255, 255, 0.10);
+
+    /* light theme: stacked micro-shadow + one soft tier, neutral           */
+    --shadow-float: 0 1px 1px rgba(17, 17, 17, 0.03),
+                    0 2px 4px rgba(17, 17, 17, 0.04),
+                    0 12px 32px rgba(17, 17, 17, 0.10);
+
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+    color-scheme: light;
+  }
+}
+
+/* ---- explicit toggle wins over the OS preference, both directions ------ */
+:root[data-theme="dark"] {
+  --bg:         var(--carbon-900);
+  --surface:    var(--carbon-800);
+  --surface-2:  var(--carbon-750);
+  --wash:       var(--carbon-700);
+
+  --hairline:      rgba(255, 255, 255, 0.085);
+  --hairline-2:    rgba(255, 255, 255, 0.15);
+  --hairline-soft: rgba(255, 255, 255, 0.05);
+
+  --ink:   var(--bone);
+  --ink-2: var(--carbon-200);
+  --ink-3: var(--carbon-300);
+
+  --accent:       var(--cobalt-300);
+  --accent-hover: var(--cobalt-200);
+  --accent-wash:  rgba(147, 169, 249, 0.13);
+  --accent-solid: var(--cobalt-500);
+  --on-accent:    #FFFFFF;
+
+  --action:       var(--bone);
+  --on-action:    var(--carbon-850);
+  --action-hover: #E7E5E0;
+  --action-press: #D6D4CF;
+
+  --success: #3FB950;  --success-wash: rgba(63, 185, 80, 0.13);
+  --warning: #D29922;  --warning-wash: rgba(210, 153, 34, 0.13);
+  --danger:  #F85149;  --danger-wash:  rgba(248, 81, 73, 0.13);
+
+  --thread: rgba(255, 255, 255, 0.045);
+
+  --code-edge: rgba(255, 255, 255, 0.10);
+
+  --shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                  0 10px 30px rgba(0, 0, 0, 0.45);
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg:         var(--bone);
+  --surface:    #FFFFFF;
+  --surface-2:  var(--bone-dim);
+  --wash:       var(--bone-deep);
+
+  --hairline:      rgba(0, 0, 0, 0.09);
+  --hairline-2:    rgba(0, 0, 0, 0.14);
+  --hairline-soft: rgba(0, 0, 0, 0.05);
+
+  --ink:   var(--carbon-850);
+  --ink-2: #565654;
+  --ink-3: #83827E;
+
+  --accent:       var(--cobalt-600);
+  --accent-hover: var(--cobalt-700);
+  --accent-wash:  rgba(42, 69, 198, 0.08);
+  --accent-solid: var(--cobalt-600);
+  --on-accent:    #FFFFFF;
+
+  --action:       var(--carbon-850);
+  --on-action:    var(--bone);
+  --action-hover: var(--carbon-700);
+  --action-press: var(--carbon-600);
+
+  --success: #1A7F37;  --success-wash: rgba(26, 127, 55, 0.10);
+  --warning: #9A6700;  --warning-wash: rgba(154, 103, 0, 0.10);
+  --danger:  #CF222E;  --danger-wash:  rgba(207, 34, 46, 0.09);
+
+  --thread: rgba(0, 0, 0, 0.05);
+
+  --code-edge: rgba(255, 255, 255, 0.10);
+
+  --shadow-float: 0 1px 1px rgba(17, 17, 17, 0.03),
+                  0 2px 4px rgba(17, 17, 17, 0.04),
+                  0 12px 32px rgba(17, 17, 17, 0.10);
+
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  color-scheme: light;
+}
+
+/* ---- reduced motion ----------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 1ms; --dur-base: 1ms; --dur-slow: 1ms; --dur-draw: 1ms;
+  }
+}
+
+/* ==========================================================================
+   NOTE · dataviz: v2 ships no chart palette. Before charts land on these
+   carbon/bone surfaces, run the dataviz validator and add --viz-* tokens
+   here. Chart colors are computed, not picked.
+   ========================================================================== */

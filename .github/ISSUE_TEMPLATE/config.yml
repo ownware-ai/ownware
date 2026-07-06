@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/ownware-ai/ownware/discussions
+    about: Setup help, "how do I…", design ideas, and showing what you built. Please don't open issues for questions.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/ownware-ai/ownware/security/advisories/new
+    about: NEVER open a public issue for a vulnerability — use private reporting (see SECURITY.md).
+  - name: 🤝 Contributing guide
+    url: https://github.com/ownware-ai/ownware/blob/main/CONTRIBUTING.md
+    about: Read this before opening a PR — especially "Where does this live?".

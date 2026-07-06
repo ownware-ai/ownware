@@ -1,0 +1,434 @@
+{
+  "recordedAt": "2026-04-08T14:25:25.986Z",
+  "metadata": {
+    "prompt": "Read non-existent file, expect error and graceful recovery",
+    "profileId": "coder",
+    "threadId": "thread_4e320d200436",
+    "expectedBehavior": "tool.call.end with isError: true → LLM acknowledges → done"
+  },
+  "eventCount": 38,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 21,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll try to read the file you specified.The file was not found. The path `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file-does-not-exist.txt` does not exist.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file-does-not-exist.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file-does-not-exist.txt'",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10910,
+      "outputTokens": 194,
+      "costUsd": 0.03564
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_4e320d200436",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "33212e36-b24d-43a9-95c8-a22199e8fb88",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658320706
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658320706
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll try",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to read the file you specified.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "{\"file_path",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "\": \"",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "/var",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "/folders",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "/s1/h",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "lc",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "001ps1k58",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "b_t77k953y6m",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "0000gn/T/",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "cortex-",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "fw",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "-fw",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "2Urn/error-",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "sandbox/thi",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "s-",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "file",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "-does-n",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "ot",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "-e",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "delta": "xist.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll try to read the file you specified.",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01TS7aWSQ1tRbRCfWLnJQ2kJ",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file-does-not-exist.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file-does-not-exist.txt'",
+        "isError": true,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5319,
+          "outputTokens": 121,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.017772
+        },
+        "timestamp": 1775658323252
+      },
+      "index": 29
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "33212e36-b24d-43a9-95c8-a22199e8fb88",
+        "turnIndex": 0
+      },
+      "index": 30
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658323253
+      },
+      "index": 31
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file was not found. The",
+        "turnIndex": 1
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " path `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "-does-not-exist.txt` does not exist.",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file was not found. The path `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-fw2Urn/error-sandbox/this-file-does-not-exist.txt` does not exist.",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5591,
+          "outputTokens": 73,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.017868
+        },
+        "timestamp": 1775658325964
+      },
+      "index": 36
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 37
+    }
+  ]
+}

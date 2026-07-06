@@ -1,0 +1,126 @@
+{
+  "name": "ownware-browser",
+  "kind": "agent",
+  "description": "Browser automation agent that does web tasks on the user's behalf — fills forms, navigates portals, completes flows on real merchant / payment / courier sites. Pretends to be a user, not a developer. Pauses for human approval before destructive third-party actions (refund, cancel, purchase, post). Read-only on the local repo.",
+  "version": "0.1.0",
+  "productId": "ownware-coder",
+  "locked": true,
+  "tags": [
+    "browser",
+    "automation",
+    "operations",
+    "agent"
+  ],
+  "metadata": {
+    "icon": "globe",
+    "color": "mix",
+    "category": "Operations",
+    "avatar": {
+      "bg": "#142838",
+      "fg": "#A4D8F2",
+      "accent": "#3FB3F2",
+      "symbol": "<circle cx=\"32\" cy=\"32\" r=\"20\" stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\"/><path d=\"M12 32 H52\" stroke=\"currentColor\" stroke-width=\"2.2\"/><ellipse cx=\"32\" cy=\"32\" rx=\"8\" ry=\"20\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\"/><path d=\"M24 22 L40 22\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-opacity=\"0.55\"/><path d=\"M24 42 L40 42\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-opacity=\"0.55\"/>"
+    }
+  },
+  "model": "openai:gpt-5.4",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 60,
+  "tools": {
+    "preset": "full",
+    "allow": [
+      "browser_navigate",
+      "browser_click",
+      "browser_type",
+      "browser_screenshot",
+      "browser_snapshot",
+      "browser_evaluate",
+      "browser_console",
+      "browser_hover",
+      "browser_select",
+      "browser_press_key",
+      "browser_drag",
+      "browser_fill_form",
+      "browser_wait",
+      "browser_scroll",
+      "browser_tab_list",
+      "browser_tab_open",
+      "browser_tab_close",
+      "ask_user",
+      "readFile",
+      "listFiles",
+      "glob",
+      "grep"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.7
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    },
+    "toolResultDrop": {
+      "enabled": true
+    },
+    "browserSnapshotCompaction": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "image", "url", "chrome", "html"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

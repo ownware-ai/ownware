@@ -1,0 +1,28 @@
+# Build / runtime artifacts
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+
+# Secrets & credentials — NEVER COMMIT (see SECURITY.md; scanner config in .gitleaks.toml)
+.env
+.env.*
+!.env.example
+*.pem
+client_secret_*.json
+
+# Local agent state / tool dirs — machine-local, never shared
+# (/memory/ is root-anchored: packages/*/src/memory/ is real source code)
+.claude/
+.agent/
+/memory/
+
+# Internal work/strategy docs — never published. Contains planning, commercial
+# strategy, and verbatim copies of third-party repos under study (their own
+# licenses); publishing any of it would be a strategy and license leak.
+.catalyst/
+
+# Personal, machine-local ignores belong in .git/info/exclude — keep this file
+# intentional and reviewable (it is part of the security surface).

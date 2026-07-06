@@ -1,0 +1,435 @@
+{
+  "recordedAt": "2026-04-08T14:26:57.272Z",
+  "metadata": {
+    "prompt": "Write to file — deny permission if asked",
+    "profileId": "coder",
+    "threadId": "thread_475178597f3e",
+    "expectedBehavior": "CURRENT: writeFile auto-approved, no permission.request fires. EXPECTED (future): permission.request → deny → write blocked"
+  },
+  "eventCount": 38,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 22,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll try to write \"FORBIDDEN\" to that file.The file was created successfully with the text \"FORBIDDEN\".",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "toolName": "writeFile",
+        "result": "File created: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-H3dcOw/perm-sandbox/deny-target.txt (9 characters)",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10844,
+      "outputTokens": 152,
+      "costUsd": 0.034811999999999996
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_475178597f3e",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "06b69c0b-aadb-4f2b-be76-d399d2e1640e",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658412531
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658412531
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll try",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to write \"FORBIDDEN\" to that file.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "toolName": "writeFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "{\"",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "file_pat",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "h\": \"/v",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "ar/folders/",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "s1/h",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "lc",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "001ps1",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "k58b_t",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "77k953y6",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "m0000gn/",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "T/",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "corte",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "x-fw-H3d",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "cO",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "w/perm-san",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "dbox/deny-",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "ta",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "rget.txt\"",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": ", \"content\":",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": " \"FORBIDD",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "delta": "EN\"}",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll try to write \"FORBIDDEN\" to that file.",
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01AWrut2hAfJkZwz6tJWvfHb",
+        "toolName": "writeFile",
+        "result": "File created: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-H3dcOw/perm-sandbox/deny-target.txt (9 characters)",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5318,
+          "outputTokens": 137,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.018009
+        },
+        "timestamp": 1775658415480
+      },
+      "index": 30
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "06b69c0b-aadb-4f2b-be76-d399d2e1640e",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658415480
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file was created successfully with the text \"FORBIDDEN\".",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file was created successfully with the text \"FORBIDDEN\".",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5526,
+          "outputTokens": 15,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.016803
+        },
+        "timestamp": 1775658417271
+      },
+      "index": 36
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 37
+    }
+  ]
+}

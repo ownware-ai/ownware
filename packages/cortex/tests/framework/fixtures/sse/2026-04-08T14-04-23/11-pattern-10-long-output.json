@@ -1,0 +1,220 @@
+{
+  "recordedAt": "2026-04-08T14:04:44.607Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 20,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 14,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - A bold, warm color symbolizing passion and energy\n2. **Blue** - A cool, calming color associated with the sky and ocean\n3. **Yellow** - A bright, cheerful color that evokes sunshine and warmth\n4. **Green** - A natural, refreshing color linked to growth and nature\n5. **Purple** - A rich, regal color blending red and blue mystique\n6. **Orange** - A vibrant, energetic color between red and yellow\n7. **Pink** - A soft, gentle color often representing love and sweetness\n8. **Brown** - An earthy, grounded color found in wood and soil\n9. **Black** - A dark, formal color symbolizing sophistication and mystery\n10. **White** - A clean, pure color representing simplicity and clarity\n11. **Gray** - A neutral, balanced color conveying calmness and sophistication\n12. **Cyan** - A bright blue-green color used in digital displays\n13. **Magenta** - A vivid pink-purple color with high intensity and energy\n14. **Lime** - A sharp, neon green color radiating brightness and fun\n15. **Turquoise** - A blue-green tropical color evoking water and relaxation\n16. **Gold** - A warm, precious color symbolizing wealth and luxury\n17. **Silver** - A shiny, metallic color representing elegance and modernity\n18. **Navy** - A dark blue color conveying stability and professionalism\n19. **Coral** - A warm, peachy-orange color inspired by ocean reefs\n20. **Indigo** - A deep, saturated blue color used historically for dyes",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 391,
+      "costUsd": 0.0006705
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_0b21e376ddc2",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "1c4034d2-0046-4cd5-a255-fc470824bb8b",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775657080703
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775657080703
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - A bold, warm color symbolizing passion and energy\n2. **Blue** - A cool, cal",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ming color associated with the sky and ocean\n3. **Yellow** - A bright, cheerful color that evokes sunshine",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and warmth\n4. **Green** - A natural, refreshing color linked to growth and nature\n5. **Purple** - A rich, r",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "egal color blending red and blue mystique\n6. **Orange** - A vibrant, energetic color between",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " red and yellow\n7. **Pink** - A soft, gentle color often representing love and sweetness\n8. **Brown** - An",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " earthy, grounded color found in wood and soil\n9. **Black** - A dark, formal color symbolizing sophistication and mystery\n10. **White",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - A clean, pure color representing simplicity and clarity\n11. **Gray** - A neutral, balanced color conveying calmness and sophistication\n12. **Cyan",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - A bright blue-green color used in digital displays\n13. **Magenta** - A vivid pink-purple color with high",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " intensity and energy\n14. **Lime** - A sharp, neon green color radiating brightness",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and fun\n15. **Turquoise** - A blue-green tropical color evoking water and relaxation\n16. **Gold",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - A warm, precious color symbolizing wealth and luxury\n17. **Silver** - A shiny, metallic color representing elegance and modernity\n18. **Navy",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - A dark blue color conveying stability and professionalism\n19. **Coral** - A warm, peachy-orange color inspired",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " by ocean reefs\n20. **Indigo** - A deep, saturated blue color used historically for dyes",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - A bold, warm color symbolizing passion and energy\n2. **Blue** - A cool, calming color associated with the sky and ocean\n3. **Yellow** - A bright, cheerful color that evokes sunshine and warmth\n4. **Green** - A natural, refreshing color linked to growth and nature\n5. **Purple** - A rich, regal color blending red and blue mystique\n6. **Orange** - A vibrant, energetic color between red and yellow\n7. **Pink** - A soft, gentle color often representing love and sweetness\n8. **Brown** - An earthy, grounded color found in wood and soil\n9. **Black** - A dark, formal color symbolizing sophistication and mystery\n10. **White** - A clean, pure color representing simplicity and clarity\n11. **Gray** - A neutral, balanced color conveying calmness and sophistication\n12. **Cyan** - A bright blue-green color used in digital displays\n13. **Magenta** - A vivid pink-purple color with high intensity and energy\n14. **Lime** - A sharp, neon green color radiating brightness and fun\n15. **Turquoise** - A blue-green tropical color evoking water and relaxation\n16. **Gold** - A warm, precious color symbolizing wealth and luxury\n17. **Silver** - A shiny, metallic color representing elegance and modernity\n18. **Navy** - A dark blue color conveying stability and professionalism\n19. **Coral** - A warm, peachy-orange color inspired by ocean reefs\n20. **Indigo** - A deep, saturated blue color used historically for dyes",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 391,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0006705
+        },
+        "timestamp": 1775657084606
+      },
+      "index": 18
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 19
+    }
+  ]
+}

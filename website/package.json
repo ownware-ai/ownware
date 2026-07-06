@@ -1,0 +1,14 @@
+{
+  "name": "ownware-docs-site",
+  "private": true,
+  "type": "module",
+  "description": "The Ownware documentation site — a small static generator that renders ../docs into a multi-page site (the v2 design system). Deploys to Cloudflare Pages at docs.ownware.dev.",
+  "scripts": {
+    "build": "node build-site.mjs",
+    "serve": "node build-site.mjs && npx --yes serve dist"
+  },
+  "dependencies": {
+    "marked": "^15.0.0",
+    "highlight.js": "^11.11.0"
+  }
+}

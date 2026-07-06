@@ -1,0 +1,254 @@
+{
+  "recordedAt": "2026-04-09T01:54:51.900Z",
+  "metadata": {
+    "prompt": "Spawn math-helper sub-agent",
+    "expectedBehavior": "agent_spawn → child computes 96 → parent reports result"
+  },
+  "eventCount": 19,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 4,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I don't have access to an `agent_spawn` tool. The only tool available to me is the `calculate` tool, which I can use directly to perform mathematical operations.\n\nHowever, I can compute 12 * 8 for you right now:The result is **96**. \n\n12 multiplied by 8 equals 96.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1430,
+      "outputTokens": 135,
+      "costUsd": 0.00052625
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "93ca2fde-cbb4-4b4d-8c6c-f6a8502f0b1f",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699688121
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699688121
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I don",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have access to an `agent_spawn` tool. The only tool available to me is the `calculate` tool, which I",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " can use directly to perform mathematical operations.\n\nHowever, I can compute 12 * 8 for you right now:",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01XQ2rejm2WS7Z97eLKZK5e5",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XQ2rejm2WS7Z97eLKZK5e5",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XQ2rejm2WS7Z97eLKZK5e5",
+        "delta": "{\"expre",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XQ2rejm2WS7Z97eLKZK5e5",
+        "delta": "ssion\": ",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01XQ2rejm2WS7Z97eLKZK5e5",
+        "delta": "\"12 * 8\"}",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I don't have access to an `agent_spawn` tool. The only tool available to me is the `calculate` tool, which I can use directly to perform mathematical operations.\n\nHowever, I can compute 12 * 8 for you right now:",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01XQ2rejm2WS7Z97eLKZK5e5",
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 653,
+          "outputTokens": 111,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000302
+        },
+        "timestamp": 1775699689816
+      },
+      "index": 12
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699689816
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The result",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " is **96**. \n\n12 multiplied by 8 equals 96.",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The result is **96**. \n\n12 multiplied by 8 equals 96.",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 777,
+          "outputTokens": 24,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00022425
+        },
+        "timestamp": 1775699691892
+      },
+      "index": 17
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "93ca2fde-cbb4-4b4d-8c6c-f6a8502f0b1f",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1430,
+          "outputTokens": 135,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00052625,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699691893
+      },
+      "index": 18
+    }
+  ]
+}

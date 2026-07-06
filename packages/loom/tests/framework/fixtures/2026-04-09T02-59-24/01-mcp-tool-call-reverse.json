@@ -1,0 +1,265 @@
+{
+  "recordedAt": "2026-04-09T02:59:24.267Z",
+  "metadata": {
+    "prompt": "Reverse FRAMEWORK_TEST via MCP echo server",
+    "expectedBehavior": "mcp__echo__reverse called → returns TSET_KROWEMARF"
+  },
+  "eventCount": 20,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 6,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll use the reverse tool to reverse the string \"FRAMEWORK_TEST\" for you.The result of reversing \"FRAMEWORK_TEST\" is: **TSET_KROWEMARF**",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "mcp__echo__reverse",
+        "result": "TSET_KROWEMARF",
+        "isError": false,
+        "durationMs": 36
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1570,
+      "outputTokens": 106,
+      "costUsd": 0.0063
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "84434dc2-1c4a-4cb8-97e8-ee80d09b780f",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775703561472
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775703561472
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll use the reverse",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " tool to reverse the string \"FRAMEWORK_TEST\" for you.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "toolName": "mcp__echo__reverse",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "delta": "{\"text",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "delta": "\": \"F",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "delta": "RAMEWOR",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "delta": "K_TEST",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "delta": "\"}",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll use the reverse tool to reverse the string \"FRAMEWORK_TEST\" for you.",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_0126K9tjvkyhtrs5x5hRD4sq",
+        "toolName": "mcp__echo__reverse",
+        "result": "TSET_KROWEMARF",
+        "isError": false,
+        "durationMs": 36,
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 735,
+          "outputTokens": 79,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.00339
+        },
+        "timestamp": 1775703562999
+      },
+      "index": 13
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775703562999
+      },
+      "index": 14
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The result",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " of reversing \"FRAMEWORK_TEST\" is: **TSET_KROWEMARF**",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The result of reversing \"FRAMEWORK_TEST\" is: **TSET_KROWEMARF**",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 835,
+          "outputTokens": 27,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.00291
+        },
+        "timestamp": 1775703564264
+      },
+      "index": 18
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "84434dc2-1c4a-4cb8-97e8-ee80d09b780f",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1570,
+          "outputTokens": 106,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0063,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775703564264
+      },
+      "index": 19
+    }
+  ]
+}

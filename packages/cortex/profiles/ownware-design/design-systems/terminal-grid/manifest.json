@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "terminal-grid",
+  "name": "Terminal Grid",
+  "category": "tech",
+  "surface": "web",
+  "summary": "HUD / dev-console aesthetic — near-black canvas, mono everywhere, neon-green telemetry accent, sharp gridlines. For developer tools, infra dashboards, gaming, and anywhere the artifact should read as 'engineered.'",
+  "swatches": ["#070b10", "#0d1218", "#d8f5e0", "#3df57c", "#5d6b78", "#1c2530"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

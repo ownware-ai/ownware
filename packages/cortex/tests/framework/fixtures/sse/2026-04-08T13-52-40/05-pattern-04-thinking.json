@@ -1,0 +1,123 @@
+{
+  "recordedAt": "2026-04-08T13:52:55.467Z",
+  "metadata": {
+    "prompt": "Math problem with reasoning",
+    "profileId": "sse-thinking",
+    "threadId": "thread_253b3b07b885",
+    "expectedBehavior": "May produce thinking.delta events; will produce text answer"
+  },
+  "eventCount": 9,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 3,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll calculate 47 × 83 using the standard multiplication method.\n\nBreaking it down:\n- 47 × 80 = 47 × 8 × 10 = 376 × 10 = 3,760\n- 47 × 3 = 141\n- 3,760 + 141 = 3,901\n\n**Answer: 3,901**",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 728,
+      "outputTokens": 95,
+      "costUsd": 0.003609
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_253b3b07b885",
+        "profileId": "sse-thinking"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "9e25dc57-4599-4b7c-ac68-9d9d1bbbc652",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775656370418
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656370418
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll calculate 47 ×",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 83 using the standard multiplication method.\n\nBreaking it down:\n- 47 × 80 = 47",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " × 8 × 10 = 376 × 10 = 3,760\n- 47 × 3 = 141\n- 3,760 + 141 = 3,901\n\n**Answer: 3,901**",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll calculate 47 × 83 using the standard multiplication method.\n\nBreaking it down:\n- 47 × 80 = 47 × 8 × 10 = 376 × 10 = 3,760\n- 47 × 3 = 141\n- 3,760 + 141 = 3,901\n\n**Answer: 3,901**",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 728,
+          "outputTokens": 95,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003609
+        },
+        "timestamp": 1775656375466
+      },
+      "index": 7
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 8
+    }
+  ]
+}

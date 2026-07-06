@@ -1,0 +1,86 @@
+{
+  "name": "reporter",
+  "kind": "helper",
+  "description": "Vulnerability reporting specialist. Formalizes validated findings into structured reports with CVSS, CWE, PoC, impact, and remediation. Never invents; only formalizes what the validator confirmed. Capabilities flow from parent grants.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "security",
+    "reporting"
+  ],
+  "metadata": {
+    "icon": "file-text",
+    "color": "rose",
+    "category": "Security Helpers",
+    "avatar": {
+      "bg": "#3A1A22",
+      "fg": "#F4B5C2",
+      "accent": "#F14060",
+      "symbol": "<path d=\"M20 10 H40 L50 20 V52 C50 53.1 49.1 54 48 54 H20 C18.9 54 18 53.1 18 52 V12 C18 10.9 18.9 10 20 10 Z\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M40 10 V20 H50\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\" stroke-linejoin=\"round\"/><line x1=\"24\" y1=\"30\" x2=\"44\" y2=\"30\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/><line x1=\"24\" y1=\"38\" x2=\"44\" y2=\"38\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/><line x1=\"24\" y1=\"46\" x2=\"36\" y2=\"46\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-4.1-mini",
+  "maxTokens": 16384,
+  "maxTurns": 20,
+  "tools": {
+    "preset": "none",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": false,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": false,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "15m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

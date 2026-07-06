@@ -1,0 +1,336 @@
+{
+  "name": "ownware-security",
+  "kind": "agent",
+  "description": "AI-powered security review agent. Performs authorized vulnerability assessment on in-scope targets with multi-agent orchestration, automated scanning, and structured reporting.",
+  "version": "0.1.0",
+  "metadata": {
+    "icon": "S",
+    "color": "rose",
+    "category": "Security",
+    "avatar": {
+      "bg": "#8A2020",
+      "fg": "#F8C6C6",
+      "accent": "#E24B4A",
+      "symbol": "<path d=\"M32 12 L48 20 L48 36 Q48 50 32 54 Q16 50 16 36 L16 20 Z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/><path d=\"M25 33 L30 38 L39 27\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+    }
+  },
+  "tags": [
+    "security",
+    "pentest",
+    "vulnerability-assessment",
+    "multi-agent"
+  ],
+  "model": "openai:gpt-5.4",
+  "smallFastModel": "openai:gpt-4o-mini",
+  "maxTokens": 16384,
+  "maxTurns": 300,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe"
+    ],
+    "custom": [
+      {
+        "path": "tools/reporting.ts"
+      },
+      {
+        "path": "tools/notes.ts"
+      },
+      {
+        "path": "tools/todo.ts"
+      },
+      {
+        "path": "tools/scan-finish.ts"
+      }
+    ],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/vulnerabilities/",
+      "skills/tooling/",
+      "skills/frameworks/",
+      "skills/protocols/",
+      "skills/technologies/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": true,
+    "contextUsage": true
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "120m"
+  },
+  "subagents": [
+    {
+      "name": "recon",
+      "description": "Maps attack surfaces, enumerates subdomains, discovers endpoints, fingerprints technologies. Read-only probing.",
+      "grant": {
+        "tools": [
+          "shell_execute",
+          "web_fetch",
+          "web_search",
+          "browser_navigate",
+          "browser_click",
+          "browser_type",
+          "browser_screenshot",
+          "browser_snapshot",
+          "browser_evaluate",
+          "browser_console",
+          "browser_wait",
+          "browser_scroll",
+          "create_note",
+          "list_notes",
+          "update_note",
+          "create_todo",
+          "list_todos",
+          "update_todo",
+          "mark_todo_done"
+        ],
+        "skills": [
+          "nmap",
+          "naabu",
+          "httpx",
+          "subfinder",
+          "katana",
+          "nuclei",
+          "ffuf"
+        ]
+      }
+    },
+    {
+      "name": "vuln-hunter",
+      "description": "Tests one vulnerability class against one target surface. Focused, evidence-driven.",
+      "grant": {
+        "tools": [
+          "shell_execute",
+          "web_fetch",
+          "web_search",
+          "browser_navigate",
+          "browser_click",
+          "browser_type",
+          "browser_screenshot",
+          "browser_snapshot",
+          "browser_evaluate",
+          "browser_console",
+          "browser_wait",
+          "browser_scroll",
+          "browser_fill_form",
+          "browser_press_key",
+          "create_note",
+          "create_todo",
+          "update_todo",
+          "mark_todo_done"
+        ],
+        "skills": [
+          "sql-injection",
+          "xss",
+          "idor",
+          "ssrf",
+          "rce",
+          "xxe",
+          "csrf",
+          "path-traversal",
+          "authentication-jwt",
+          "broken-function-auth",
+          "business-logic",
+          "open-redirect",
+          "mass-assignment",
+          "race-conditions",
+          "insecure-file-uploads",
+          "information-disclosure",
+          "subdomain-takeover",
+          "sqlmap",
+          "nuclei",
+          "ffuf",
+          "semgrep",
+          "fastapi",
+          "nestjs",
+          "nextjs"
+        ]
+      }
+    },
+    {
+      "name": "validator",
+      "description": "Independently reproduces a candidate finding with a working PoC. Scores CVSS in business context.",
+      "grant": {
+        "tools": [
+          "shell_execute",
+          "web_fetch",
+          "web_search",
+          "browser_navigate",
+          "browser_click",
+          "browser_type",
+          "browser_screenshot",
+          "browser_snapshot",
+          "browser_evaluate",
+          "browser_console",
+          "browser_wait",
+          "browser_fill_form",
+          "browser_press_key",
+          "create_note",
+          "update_note"
+        ],
+        "skills": [
+          "sql-injection",
+          "xss",
+          "idor",
+          "ssrf",
+          "rce",
+          "xxe",
+          "csrf",
+          "path-traversal",
+          "authentication-jwt",
+          "broken-function-auth",
+          "business-logic",
+          "open-redirect",
+          "mass-assignment",
+          "race-conditions",
+          "insecure-file-uploads",
+          "information-disclosure",
+          "sqlmap",
+          "semgrep",
+          "fastapi",
+          "nestjs",
+          "nextjs"
+        ]
+      }
+    },
+    {
+      "name": "reporter",
+      "description": "Formalizes a validated finding via create_vulnerability_report. One report per finding.",
+      "grant": {
+        "tools": [
+          "create_vulnerability_report",
+          "list_vulnerability_reports",
+          "create_note"
+        ],
+        "skills": [
+          "fastapi",
+          "nestjs",
+          "nextjs"
+        ]
+      }
+    },
+    {
+      "name": "fixer",
+      "description": "Implements the minimal secure fix for a reported vulnerability and re-runs the PoC. White-box only.",
+      "grant": {
+        "tools": [
+          "readFile",
+          "writeFile",
+          "editFile",
+          "listFiles",
+          "glob",
+          "grep",
+          "shell_execute",
+          "create_note"
+        ],
+        "skills": [
+          "sql-injection",
+          "xss",
+          "idor",
+          "ssrf",
+          "rce",
+          "xxe",
+          "csrf",
+          "path-traversal",
+          "authentication-jwt",
+          "broken-function-auth",
+          "insecure-file-uploads",
+          "mass-assignment",
+          "fastapi",
+          "nestjs",
+          "nextjs"
+        ]
+      }
+    },
+    {
+      "name": "code-reviewer",
+      "description": "Static analysis of source code. Maps data flow from input to sink. White-box only.",
+      "grant": {
+        "tools": [
+          "readFile",
+          "listFiles",
+          "glob",
+          "grep",
+          "shell_execute",
+          "create_note",
+          "create_todo",
+          "list_todos",
+          "update_todo",
+          "mark_todo_done"
+        ],
+        "skills": [
+          "sql-injection",
+          "xss",
+          "idor",
+          "ssrf",
+          "rce",
+          "xxe",
+          "csrf",
+          "path-traversal",
+          "authentication-jwt",
+          "broken-function-auth",
+          "business-logic",
+          "open-redirect",
+          "mass-assignment",
+          "race-conditions",
+          "insecure-file-uploads",
+          "information-disclosure",
+          "semgrep",
+          "fastapi",
+          "nestjs",
+          "nextjs"
+        ]
+      }
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.75
+    },
+    "retain": {
+      "type": "messages",
+      "count": 10
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

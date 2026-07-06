@@ -1,0 +1,59 @@
+{
+  "name": "fact-checker",
+  "kind": "helper",
+  "description": "Verifies a specific load-bearing claim — a price, a funding amount, a headcount, a launch date, a named hire — against primary sources. Returns confirmed / contradicted / unverifiable, each with the source and date. Web-only, fast, no side effects, no spawning.",
+  "version": "0.1.0",
+  "tags": ["research", "verification", "fact-check", "sourcing"],
+  "metadata": {
+    "icon": "F",
+    "color": "violet",
+    "category": "Research",
+    "avatar": {
+      "bg": "#170F2B",
+      "fg": "#D8C5FF",
+      "accent": "#8B5BFF",
+      "symbol": "<circle cx=\"32\" cy=\"30\" r=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><polyline points=\"24,30 29,36 41,23\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 8192,
+  "maxTurns": 25,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute", "agent_spawn"],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": false,
+    "sources": [],
+    "autoLearn": false,
+    "isolation": "per_session"
+  },
+  "skills": { "dirs": [], "external": [] },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "strict",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": { "mode": "foreground", "timeout": "15m" },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 5 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "memory" }
+}

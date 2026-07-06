@@ -1,0 +1,104 @@
+================================================================
+CORTEX SSE BATCH REVIEWER — PROMPT FOR SONNET / HAIKU
+================================================================
+
+Same context as REVIEW_PROMPT.txt but for reviewing an ENTIRE RUN
+(all fixtures from one timestamped folder) at once.
+
+Use this when you want a single pass over all SSE patterns and
+a summary report of which patterns are healthy and which have
+issues across the framework.
+
+================================================================
+INPUT
+================================================================
+
+You will be given:
+1. The contents of `index.json` (lists all streams in the run)
+2. The contents of every `*.json` fixture file in that folder
+
+================================================================
+YOUR TASK
+================================================================
+
+For each fixture, perform the same checks as REVIEW_PROMPT.txt
+(read it for full rules), then aggregate into a single report:
+
+```
+RUN: <runStamp>
+TOTAL STREAMS: <N>
+PASSED: <count>
+FAILED: <count>
+WARNED: <count>
+
+PER-PATTERN VERDICTS:
+  01-pattern-01-text-streaming: PASS
+  02-pattern-02-multi-turn-1:   PASS
+  03-pattern-02-multi-turn-2:   PASS
+  04-pattern-03-tool-use:       FAIL (tool.call.end missing)
+  05-pattern-04-thinking:       WARN (no thinking.delta — may be model)
+  ...
+
+CRITICAL ISSUES (must fix):
+  - <stream name>: <one-line description>
+  - <stream name>: <one-line description>
+
+WARNINGS (investigate):
+  - <stream name>: <one-line description>
+
+PROTOCOL COMPLIANCE SUMMARY:
+  R1 (stream.start first):    100% (10/10)
+  R2 (done last):             90%  (9/10) — fixture 04 missing done
+  R3 (tool pairing):          100% (3/3 fixtures with tools)
+  R4 (agent pairing):         N/A (no sub-agent fixtures yet)
+  R5 (permission pairing):    N/A (no permission fixtures yet)
+  R8 (every start has end):   95%  (1 orphan tool.call.start in fixture 04)
+  R12-R18 (payload shapes):   100%
+  R19-R22 (content match):    80%  (2 fixtures had partial keyword match)
+  R23-R25 (usage non-zero):   100%
+
+PATTERN COVERAGE GAPS:
+  - No fixtures for: sub-agent parallel, permission HITL, security block
+  - Recommend running sse-subagents.journey.ts and sse-permissions.journey.ts
+
+OVERALL HEALTH: GREEN | YELLOW | RED
+```
+
+================================================================
+GREEN / YELLOW / RED CRITERIA
+================================================================
+
+GREEN:
+  - Zero FAILs
+  - <= 2 WARNs
+  - All protocol rules >= 95% compliant
+  - No critical pattern gaps
+
+YELLOW:
+  - <= 2 FAILs
+  - <= 5 WARNs
+  - At least one protocol rule between 90-95%
+  - Some pattern gaps but core patterns covered
+
+RED:
+  - >= 3 FAILs
+  - Any critical pattern (text streaming, tool use, multi-turn) failing
+  - Any protocol rule < 90%
+  - Core patterns missing fixtures
+
+================================================================
+HOW TO INVOKE
+================================================================
+
+# Concatenate all fixtures from one run
+cd packages/cortex/tests/framework/fixtures/sse/<timestamp>/
+cat index.json *.json | pbcopy
+
+# Then in Claude.ai or via API:
+#   System: <contents of this file>
+#   User: "Review this run and report."
+#   <paste all the JSON>
+
+================================================================
+END OF PROMPT
+================================================================

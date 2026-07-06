@@ -1,0 +1,162 @@
+{
+  "recordedAt": "2026-04-09T03:00:13.544Z",
+  "metadata": {
+    "prompt": "Write with readonly tools",
+    "expectedBehavior": "No writeFile tool available — model explains it cannot write"
+  },
+  "eventCount": 12,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 7,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I cannot write \"BLOCKED_CONTENT\" to the file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-D2FdKL/blocked-file.txt` because I don't have access to a file writing function.\n\nThe tools available to me are:\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory contents\n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nNone of these tools allow me to write or modify files. I can only read and search existing files and directories. To write content to a file, you would need to use a different tool or method that has write permissions.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1179,
+      "outputTokens": 174,
+      "costUsd": 0.006147
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "f6f9bf90-6493-4e2f-859f-deb5389d7050",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775703610007
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775703610007
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I cannot",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " write \"BLOCKED_CONTENT\" to the file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-D2FdKL/blocked-file.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "txt` because I don't have access to a file writing function.\n\nThe tools available to me are:\n- `readFile` - for",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " reading file contents\n- `listFiles` - for listing directory contents\n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nNone of these tools allow me to write or",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " modify files. I can only read and search existing files and directories. To write content",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to a file, you would need to use a different tool or method that has write permissions",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ".",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I cannot write \"BLOCKED_CONTENT\" to the file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-D2FdKL/blocked-file.txt` because I don't have access to a file writing function.\n\nThe tools available to me are:\n- `readFile` - for reading file contents\n- `listFiles` - for listing directory contents\n- `glob` - for finding files by pattern\n- `grep` - for searching file contents\n\nNone of these tools allow me to write or modify files. I can only read and search existing files and directories. To write content to a file, you would need to use a different tool or method that has write permissions.",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1179,
+          "outputTokens": 174,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.006147
+        },
+        "timestamp": 1775703613543
+      },
+      "index": 10
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "f6f9bf90-6493-4e2f-859f-deb5389d7050",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1179,
+          "outputTokens": 174,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.006147,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775703613544
+      },
+      "index": 11
+    }
+  ]
+}

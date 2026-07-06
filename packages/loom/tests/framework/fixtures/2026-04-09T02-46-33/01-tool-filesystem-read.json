@@ -1,0 +1,336 @@
+{
+  "recordedAt": "2026-04-09T02:46:33.970Z",
+  "metadata": {
+    "prompt": "Read target.txt",
+    "tools": "readonly",
+    "expectedBehavior": "readFile → returns UNIQUE_CONTENT_12345"
+  },
+  "eventCount": 27,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 13,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll read the file for you.The file contains exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 5
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2828,
+      "outputTokens": 129,
+      "costUsd": 0.00086825
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "a95af566-43f8-4fad-ac1c-466f1e498462",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775702790842
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775702790842
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll read the file for",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " you.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "{\"file",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "_path",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "\": \"/var/fol",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "ders/",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "s1/hlc001ps",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "1k58b_",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "t77k953y",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "6m0000gn/",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "T/loom-test",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "-5SLm",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "w9/t",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "delta": "arget.txt\"}",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll read the file for you.",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01Rr4vFB3r3c53213pH8xNzT",
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 5,
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1349,
+          "outputTokens": 108,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00047225
+        },
+        "timestamp": 1775702792486
+      },
+      "index": 20
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775702792486
+      },
+      "index": 21
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file contains",
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file contains exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1479,
+          "outputTokens": 21,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000396
+        },
+        "timestamp": 1775702793970
+      },
+      "index": 25
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "a95af566-43f8-4fad-ac1c-466f1e498462",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2828,
+          "outputTokens": 129,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00086825,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775702793970
+      },
+      "index": 26
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "runStamp": "2026-04-08T14-19-04",
+  "totalStreams": 4,
+  "streams": [
+    {
+      "file": "01-pattern-08-permission-approve.json",
+      "name": "pattern-08-permission-approve",
+      "metadata": {
+        "prompt": "Read data.txt with auto-approve",
+        "profileId": "coder",
+        "threadId": "thread_60365072a292",
+        "expectedBehavior": "permission.request → approve → tool.call.start → tool.call.end"
+      },
+      "eventCount": 36,
+      "completed": true
+    },
+    {
+      "file": "02-pattern-09-permission-deny.json",
+      "name": "pattern-09-permission-deny",
+      "metadata": {
+        "prompt": "Write to forbidden.txt — deny permission",
+        "profileId": "coder",
+        "threadId": "thread_57f6e0d28ab3",
+        "expectedBehavior": "permission.request → deny → no write tool executes → graceful refusal"
+      },
+      "eventCount": 33,
+      "completed": true
+    },
+    {
+      "file": "03-pattern-10-permission-always-1.json",
+      "name": "pattern-10-permission-always-1",
+      "metadata": {
+        "prompt": "Read data.txt with always",
+        "profileId": "coder",
+        "threadId": "thread_fc6e27921e01",
+        "expectedBehavior": "First run: permission.request → always → tool executes"
+      },
+      "eventCount": 35,
+      "completed": true
+    },
+    {
+      "file": "04-pattern-10-permission-always-2.json",
+      "name": "pattern-10-permission-always-2",
+      "metadata": {
+        "prompt": "Second read — should not prompt",
+        "profileId": "coder",
+        "threadId": "thread_582f9377a12e",
+        "expectedBehavior": "No permission.request — already approved via \"always\""
+      },
+      "eventCount": 34,
+      "completed": true
+    }
+  ]
+}

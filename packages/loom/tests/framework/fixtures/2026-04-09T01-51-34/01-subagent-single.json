@@ -1,0 +1,272 @@
+{
+  "recordedAt": "2026-04-09T01:51:34.844Z",
+  "metadata": {
+    "prompt": "Spawn math-helper sub-agent",
+    "expectedBehavior": "agent_spawn → child computes 96 → parent reports result"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 7,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 4,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I don't have access to an \"agent_spawn\" tool. The only tool available to me is the \"calculate\" function, which evaluates math expressions.\n\nHowever, I can directly help you with this! Let me calculate 12 * 8 for you:The result is **96**.\n\nIf you need a sub-agent for other tasks, you would need to request that capability from your system administrator, as it's not currently available in my tool set.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 1
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1432,
+      "outputTokens": 157,
+      "costUsd": 0.0005542500000000001
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "da787822-14a9-4fac-a60c-659c316a3bf4",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699491597
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699491597
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I don",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have access to an \"agent_spawn\" tool. The only tool available to me is the \"calculate\" function, which evaluates math",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " expressions.\n\nHowever, I can directly help you with this! Let me calculate 12 * 8 for you:",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01SCcw2k9V1YRU1SNkwtF7AU",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SCcw2k9V1YRU1SNkwtF7AU",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SCcw2k9V1YRU1SNkwtF7AU",
+        "delta": "{\"expressio",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SCcw2k9V1YRU1SNkwtF7AU",
+        "delta": "n\": \"12 * 8",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01SCcw2k9V1YRU1SNkwtF7AU",
+        "delta": "\"}",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I don't have access to an \"agent_spawn\" tool. The only tool available to me is the \"calculate\" function, which evaluates math expressions.\n\nHowever, I can directly help you with this! Let me calculate 12 * 8 for you:",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01SCcw2k9V1YRU1SNkwtF7AU",
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 653,
+          "outputTokens": 113,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0003045
+        },
+        "timestamp": 1775699493627
+      },
+      "index": 12
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699493627
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The result",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " is **96**.\n\nIf you need a sub-agent for other",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " tasks, you would need to request that capability from your system administrator, as it",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'s not currently available in my tool set.",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The result is **96**.\n\nIf you need a sub-agent for other tasks, you would need to request that capability from your system administrator, as it's not currently available in my tool set.",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 779,
+          "outputTokens": 44,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00024975
+        },
+        "timestamp": 1775699494832
+      },
+      "index": 19
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "da787822-14a9-4fac-a60c-659c316a3bf4",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1432,
+          "outputTokens": 157,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0005542500000000001,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699494834
+      },
+      "index": 20
+    }
+  ]
+}

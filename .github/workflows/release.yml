@@ -1,0 +1,70 @@
+# Release — automated versioning + npm publish via Changesets.
+#
+# ⚠️ TRIGGER IS MANUAL FOR NOW (workflow_dispatch) so nothing publishes before you
+# intend it to. Run it from the Actions tab → "Release" → "Run workflow". Once the
+# first `0.1.0` is published and you want fully-automatic releases, swap the trigger
+# to `push: { branches: [main] }` (the publish script skips already-published
+# versions, so auto-on-push is then safe). See RELEASE.md.
+#
+# Flow (see RELEASE.md):
+#  - Pending changesets  → opens/updates a "Version Packages" PR (bumps versions,
+#    regenerates CHANGELOGs). Nothing is published.
+#  - No changesets       → publishes any not-yet-published package versions to npm.
+#
+# REQUIRED SECRET: NPM_TOKEN — an npm token for an account in the `ownware` org.
+#
+# Actions are pinned to full commit SHAs (supply-chain posture; dependabot bumps them).
+name: Release
+
+on:
+  workflow_dispatch: {}
+  # push:
+  #   branches: [main]   # ← enable for full auto-release after the first 0.1.0 publish
+
+# Never let two releases run at once (a publish mid-version-bump would be a mess).
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: write # create the "Version Packages" PR branch + commit the bump
+  pull-requests: write # open/update that PR
+
+jobs:
+  release:
+    name: Version PR or publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # Changesets diffs against the base branch — needs history
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+
+      # Auth for `bun publish` (release:publish). Written to $HOME (outside the
+      # repo) so it can never be committed by the version step.
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Opens the "Version Packages" PR when changesets are pending; runs the
+      # publish script when they're not (i.e. the PR was merged). `release:publish`
+      # builds, then `bun publish`es all packages in dependency order.
+      - name: Create Release PR or publish
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: bun run release:version
+          publish: bun run release:publish
+          commit: "chore: version packages"
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

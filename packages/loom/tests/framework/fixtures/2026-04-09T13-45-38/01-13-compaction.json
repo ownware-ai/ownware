@@ -1,0 +1,117 @@
+{
+  "recordedAt": "2026-04-09T13:45:38.680Z",
+  "metadata": {
+    "prompt": "Third turn — should trigger compaction",
+    "expectedBehavior": "compaction.start + compaction.end before model response"
+  },
+  "eventCount": 7,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 2,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "Your favorite numbers are:\n\n1. **42** (favorite)\n2. **7** (second favorite)",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 116,
+      "outputTokens": 27,
+      "costUsd": 0.00006275
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "48935462-f973-4100-8f62-c1d1586c4534",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775742337760
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775742337760
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Your favorite numbers are:",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **42** (favorite)\n2. **7** (second favorite)",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Your favorite numbers are:\n\n1. **42** (favorite)\n2. **7** (second favorite)",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 116,
+          "outputTokens": 27,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00006275
+        },
+        "timestamp": 1775742338680
+      },
+      "index": 5
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "48935462-f973-4100-8f62-c1d1586c4534",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 116,
+          "outputTokens": 27,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00006275,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775742338680
+      },
+      "index": 6
+    }
+  ]
+}

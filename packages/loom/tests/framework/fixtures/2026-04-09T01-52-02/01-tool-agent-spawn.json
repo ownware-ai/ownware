@@ -1,0 +1,284 @@
+{
+  "recordedAt": "2026-04-09T01:52:02.128Z",
+  "metadata": {
+    "prompt": "Spawn calc-helper sub-agent",
+    "tools": "calculator + agent_spawn",
+    "expectedBehavior": "agent_spawn succeeds, sub-agent computes 99"
+  },
+  "eventCount": 22,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 6,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 6,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I don't have access to an \"agent_spawn\" function. The only tool available to me is the `calculate` function, which can evaluate simple math expressions.\n\nHowever, I can directly help you with this calculation:The answer is **99**.\n\nIf you need me to use an agent_spawn function, it would need to be available in my tool set, but it currently isn't.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "99",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1407,
+      "outputTokens": 141,
+      "costUsd": 0.000528
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "124d9b7c-0941-4bed-be58-80b8d4ae676c",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699518930
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699518930
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I don",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have access to an \"agent_spawn\" function. The only tool available to me is the `",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "calculate` function, which can evaluate simple math expressions.\n\nHowever, I can directly help you with this calculation:",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "delta": "{\"expres",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "delta": "sio",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "delta": "n\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "delta": ": \"9 ",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "delta": "* 11\"}",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I don't have access to an \"agent_spawn\" function. The only tool available to me is the `calculate` function, which can evaluate simple math expressions.\n\nHowever, I can directly help you with this calculation:",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01CneZb5qZnmthonsZDnepnY",
+        "toolName": "calculate",
+        "result": "99",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 646,
+          "outputTokens": 102,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000289
+        },
+        "timestamp": 1775699521082
+      },
+      "index": 14
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699521082
+      },
+      "index": 15
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The answer",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " is **99**.\n\nIf you need me to use an agent_spawn function, it would need to be available in my tool",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " set, but it currently isn't.",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The answer is **99**.\n\nIf you need me to use an agent_spawn function, it would need to be available in my tool set, but it currently isn't.",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 761,
+          "outputTokens": 39,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000239
+        },
+        "timestamp": 1775699522128
+      },
+      "index": 20
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "124d9b7c-0941-4bed-be58-80b8d4ae676c",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1407,
+          "outputTokens": 141,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.000528,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699522128
+      },
+      "index": 21
+    }
+  ]
+}

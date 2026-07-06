@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "brutalist-experimental",
+  "name": "Brutalist Experimental",
+  "category": "experimental",
+  "surface": "web",
+  "summary": "Loud, opinionated, statement-making. Heavy display, hot accent, deliberate asymmetry. Creative agencies, fashion drops, music, art-led brands.",
+  "swatches": ["#f4f0e6", "#f4f0e6", "#0a0a0a", "#ff4d00", "#4a4a4a", "#0a0a0a"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css" }
+}

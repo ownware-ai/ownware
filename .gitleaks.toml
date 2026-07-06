@@ -1,0 +1,24 @@
+# Gitleaks config (governance board G1).
+#
+# Full-history scan on 2026-07-04 found 18 findings — ALL synthetic fixtures
+# inside test suites (output-sanitizer, shell-guards, shell-security, zone
+# classifier, credential integration tests). Those suites exist to PROVE the
+# redaction/guard machinery works, so they necessarily contain fake secrets
+# (sk_test_FAKE…, ghp_abcdef…, the jwt.io demo token, supersecret123…).
+#
+# This allowlist scopes the scanner to real leaks only, so `gitleaks detect`
+# can run as a hard CI gate (board G7): a finding OUTSIDE test code is always
+# a failure. Do NOT add production paths here — if a real path trips the
+# scanner, fix the leak, never the allowlist.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic secrets in test fixtures — the security suites test redaction and need fake secrets to redact"
+paths = [
+  '''__tests__/''',
+  '''/tests/''',
+  '''\.test\.ts$''',
+  '''\.env\.example$''',
+]

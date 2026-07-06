@@ -1,0 +1,262 @@
+{
+  "recordedAt": "2026-04-09T01:51:59.012Z",
+  "metadata": {
+    "prompt": "Spawn math-helper sub-agent",
+    "expectedBehavior": "agent_spawn → child computes 96 → parent reports result"
+  },
+  "eventCount": 20,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 7,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 3,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I don't have access to an \"agent_spawn\" tool. Looking at the tools available to me, I only have access to a `calculate` function that can evaluate math expressions.\n\nHowever, I can directly help you with the calculation you mentioned. Let me compute 12 * 8:The result is **96**.\n\nSince I don't have the agent_spawn capability, I computed this directly instead. If you need me to perform other calculations or tasks with the tools I do have available, I'm happy to help!",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1437,
+      "outputTokens": 169,
+      "costUsd": 0.0005705
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "4e526bad-b47c-48e7-b3c7-02ecb689ab8e",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699515224
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699515224
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I don",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have access to an \"agent_spawn\" tool. Looking at the tools available to me, I only have access to a `calculate` function that can evaluate math expressions.\n\nHowever",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", I can directly help you with the calculation you mentioned. Let me compute 12 * 8:",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_018MjNBErrpxeWfFXc4D5x5P",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018MjNBErrpxeWfFXc4D5x5P",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018MjNBErrpxeWfFXc4D5x5P",
+        "delta": "{\"expression",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_018MjNBErrpxeWfFXc4D5x5P",
+        "delta": "\": \"12 * 8\"}",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I don't have access to an \"agent_spawn\" tool. Looking at the tools available to me, I only have access to a `calculate` function that can evaluate math expressions.\n\nHowever, I can directly help you with the calculation you mentioned. Let me compute 12 * 8:",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_018MjNBErrpxeWfFXc4D5x5P",
+        "toolName": "calculate",
+        "result": "96",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 653,
+          "outputTokens": 118,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00031075
+        },
+        "timestamp": 1775699516863
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699516863
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The result",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " is **96**.\n\nSince I don't have the agent_spawn capability, I computed",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " this directly instead. If you need me to perform other calculations or tasks",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " with the tools I do have available, I'm happy to help!",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The result is **96**.\n\nSince I don't have the agent_spawn capability, I computed this directly instead. If you need me to perform other calculations or tasks with the tools I do have available, I'm happy to help!",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 784,
+          "outputTokens": 51,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00025975
+        },
+        "timestamp": 1775699519011
+      },
+      "index": 18
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "4e526bad-b47c-48e7-b3c7-02ecb689ab8e",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1437,
+          "outputTokens": 169,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.0005705,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699519012
+      },
+      "index": 19
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "name": "explore",
+  "kind": "helper",
+  "description": "Fast read-only codebase search. Finds files, traces patterns, maps architecture. Runs on Haiku for speed.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "coding",
+    "search",
+    "read-only"
+  ],
+  "metadata": {
+    "icon": "search",
+    "color": "teal",
+    "category": "Engineering Helpers",
+    "avatar": {
+      "bg": "#0F2B2A",
+      "fg": "#8FE3CE",
+      "accent": "#00D4AA",
+      "symbol": "<circle cx=\"26\" cy=\"26\" r=\"12\" stroke=\"currentColor\" stroke-width=\"2.6\" fill=\"none\"/><line x1=\"35\" y1=\"35\" x2=\"46\" y2=\"46\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openrouter:kimi-k2.6",
+  "maxTokens": 16384,
+  "maxTurns": 20,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "writeFile",
+      "editFile",
+      "shell_execute",
+      "agent_spawn",
+      "browser_*",
+      "memory_*",
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe",
+      "ask_user"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": false,
+    "cwd": true,
+    "datetime": false,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": false,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "10m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "truncate",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.85
+    },
+    "retain": {
+      "type": "messages",
+      "count": 4
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

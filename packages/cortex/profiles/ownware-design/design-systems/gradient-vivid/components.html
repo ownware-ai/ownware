@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gradient Vivid — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/gradient-vivid. Bold multi-stop gradient hero, saturated purple+teal washes, confident geometric type." />
+    <style>
+      :root {
+        --bg:      #fafbff;
+        --surface: #ffffff;
+        --fg:      #0d0c25;
+        --muted:   #5e5d7a;
+        --border:  #e6e6f2;
+        --accent:       #6b3df5;
+        --accent-hover: #5928e0;
+        --accent-fg:    #ffffff;
+        --accent-alt:    #3df5d4;
+        --accent-alt-fg: #0d0c25;
+        --good: #2ec07a;
+        --warn: #ffae1f;
+        --bad:  #f14060;
+        --radius:      14px;
+        --radius-pill: 999px;
+        --font-display: 'Geist', 'Space Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 100vh; background: var(--bg); color: var(--fg); font: 400 16px/1.55 var(--font-body); }
+      .hero {
+        padding: 144px 32px 112px;
+        background:
+          radial-gradient(circle at 12% 10%, rgba(107, 61, 245, 0.30) 0%, transparent 38%),
+          radial-gradient(circle at 88% 88%, rgba(61, 245, 212, 0.28) 0%, transparent 38%),
+          var(--bg);
+      }
+      .hero-wrap { max-width: 1080px; margin-inline: auto; }
+      .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font: 500 12px/1 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 28px; }
+      .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: linear-gradient(95deg, var(--accent), var(--accent-alt)); }
+      h1 { font: 600 96px/1.0 var(--font-display); letter-spacing: -0.03em; margin: 0 0 24px; max-width: 14ch; text-wrap: balance; }
+      h1 .gradient-word {
+        background: linear-gradient(95deg, var(--accent) 0%, var(--accent-alt) 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .lead { font-size: 20px; color: var(--muted); max-width: 52ch; margin: 0 0 40px; }
+      .actions { display: flex; gap: 14px; }
+      .btn { display: inline-flex; align-items: center; min-height: 52px; padding: 0 26px; border-radius: var(--radius); font: 600 15px/1 var(--font-body); text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: background 140ms ease, transform 140ms ease; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); box-shadow: 0 12px 40px rgba(107, 61, 245, 0.35); }
+      .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+      .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--border); }
+      .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+      .features { padding: 96px 32px; background: var(--surface); }
+      .features-wrap { max-width: 1080px; margin-inline: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+      .feature { padding: 32px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+      .feature h3 { font: 600 20px/1.2 var(--font-display); letter-spacing: -0.01em; margin: 0 0 8px; }
+      .feature p  { color: var(--muted); margin: 0; font-size: 15px; }
+      .feature .dot { width: 32px; height: 32px; border-radius: 8px; margin-bottom: 18px; }
+      .dot.purple { background: var(--accent); }
+      .dot.teal   { background: var(--accent-alt); }
+      .dot.split  { background: linear-gradient(135deg, var(--accent), var(--accent-alt)); }
+      @media (max-width: 800px) { h1 { font-size: 56px; } .features-wrap { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <section class="hero">
+      <div class="hero-wrap">
+        <span class="eyebrow">Launching today</span>
+        <h1>Ship faster.<br/>With <span class="gradient-word">presence</span>.</h1>
+        <p class="lead">A reference layout for Gradient Vivid — gradient hero, gradient brand word, confident geometric type, calm white feature section below.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#">Start free</a>
+          <a class="btn btn-secondary" href="#">Watch the demo</a>
+        </div>
+      </div>
+    </section>
+    <section class="features">
+      <div class="features-wrap">
+        <article class="feature">
+          <div class="dot purple"></div>
+          <h3>Bold by default</h3>
+          <p>The hero commits to the gradient. The system telegraphs "one big idea, presented with full chest."</p>
+        </article>
+        <article class="feature">
+          <div class="dot teal"></div>
+          <h3>Calm below the fold</h3>
+          <p>Below the hero, the system goes white. The contrast IS the rhythm — gradient over calm.</p>
+        </article>
+        <article class="feature">
+          <div class="dot split"></div>
+          <h3>The pair is the brand</h3>
+          <p>Purple and teal are used together. Single-accent Gradient Vivid is a different system.</p>
+        </article>
+      </div>
+    </section>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "$schema": "internal — tier classification for bundled profiles",
+  "comment": "Profiles classified as 'core' are auto-loaded as builtins (always active). Profiles classified as 'marketplace' are bundled into the binary but NOT auto-loaded — they appear in the Marketplace tab as 'Ownware Verified' entries the user installs explicitly. Per-profile private helpers live INSIDE each parent's helpers/ folder and are NOT listed here — they are folder-derived and only spawnable by their enclosing parent. Anything not listed defaults to 'core' for backward compatibility. Each entry binds to a Ownware product via its agent.json `productId` field — `ownware` (default product), `ownware-design`, `ownware-marketing`, or a future Ownware-X product slug.",
+  "core": [
+    "ownware",
+    "ownware-code",
+    "ownware-architect",
+    "ownware-qa",
+    "ownware-security",
+    "ownware-backend",
+    "ownware-frontend",
+    "ownware-browser",
+    "ownware-design",
+    "ownware-marketing",
+    "sawyer",
+    "idris",
+    "vivian",
+    "nova",
+    "cleo",
+    "felix"
+  ],
+  "marketplace": []
+}

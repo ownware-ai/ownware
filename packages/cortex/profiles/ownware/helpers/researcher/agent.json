@@ -1,0 +1,116 @@
+{
+  "name": "researcher",
+  "kind": "helper",
+  "description": "Deep web researcher. Runs multi-source web searches, fetches and reads pages, drives the browser for sites that need login or JavaScript, triangulates across sources, and returns a cited brief with confidence levels. Use for: 'research X', 'what's the current state of Y', 'compare these options', 'find primary sources for Z'. Read-only — never edits files or sends messages.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "research",
+    "web",
+    "browser",
+    "search",
+    "read-only"
+  ],
+  "metadata": {
+    "icon": "telescope",
+    "color": "violet",
+    "category": "Research Helpers",
+    "avatar": {
+      "bg": "#211A3D",
+      "fg": "#C9BBFF",
+      "accent": "#8B5BFF",
+      "symbol": "<circle cx=\"27\" cy=\"27\" r=\"13\" stroke=\"currentColor\" stroke-width=\"2.6\" fill=\"none\"/><line x1=\"36.5\" y1=\"36.5\" x2=\"48\" y2=\"48\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/><line x1=\"27\" y1=\"19\" x2=\"27\" y2=\"35\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-opacity=\"0.6\"/><line x1=\"19\" y1=\"27\" x2=\"35\" y2=\"27\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-opacity=\"0.6\"/>"
+    }
+  },
+  "model": "openai:gpt-5.4",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 40,
+  "tools": {
+    "preset": "none",
+    "allow": [
+      "web_search",
+      "web_fetch",
+      "browser_navigate",
+      "browser_click",
+      "browser_type",
+      "browser_screenshot",
+      "browser_snapshot",
+      "browser_evaluate",
+      "browser_console",
+      "browser_hover",
+      "browser_select",
+      "browser_press_key",
+      "browser_scroll",
+      "browser_wait",
+      "browser_tab_list",
+      "browser_tab_open",
+      "browser_tab_close",
+      "readFile",
+      "listFiles",
+      "glob",
+      "grep"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "criticalReminder": "READ-ONLY RESEARCH task: never edit files, never send email/messages, never change any external state. Your job is to SEARCH, READ, and SYNTHESIZE. Triangulate every non-trivial claim across at least two independent sources. Your reply MUST end with a `## Sources` section listing each source as `[title](url) — what it supported`, and every material claim in your brief must trace to one of them. Mark anything you could not verify as UNVERIFIED rather than asserting it.",
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

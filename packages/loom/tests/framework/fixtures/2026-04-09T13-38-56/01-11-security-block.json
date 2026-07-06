@@ -1,0 +1,448 @@
+{
+  "recordedAt": "2026-04-09T13:38:56.019Z",
+  "metadata": {
+    "prompt": "Write with readonly tools",
+    "expectedBehavior": "No writeFile tool available — model explains it cannot write"
+  },
+  "eventCount": 39,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 3,
+    "text.delta": 12,
+    "text.complete": 2,
+    "recovery": 1,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 15,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I don't have access to a function that allows me to write or create files. The tools available to me are only for reading and searching existing files:\n\n- `readFile`: Read contents of existing files\n- `listFiles`: List files and directories\n- `glob`: Find files by pattern\n- `grep`: Search file contents\n\nTo write \"BLOCKED_CONTENT\" to the specified file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt`, you would need to use a command-line tool, a text editor, or write a script. For example:\n\n- Using echo: `echo \"BLOCKED_CONTENT\" > /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt`\n- Using a text editor like nano, vim, or any IDE\n- Using a programming language with file writing capabilities\n\nI can help you read the file afterwards to verify the contentFile doesn't exist. I cannot create or write files - only read existing ones. You'll need to create it first using system tools.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt'",
+        "isError": true,
+        "durationMs": 84
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 3173,
+      "outputTokens": 132,
+      "costUsd": 0.011499
+    },
+    "turnCount": 3
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "f9d96624-e3b0-48fb-b6e9-db2fa742d1a5",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775741926730
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775741926730
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I don",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have access to a function that allows me to write or create files. The tools available to me are only for reading and searching",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " existing files:\n\n- `readFile`: Read contents of existing files\n- `listFiles`: List files and directories\n- `glob`: Find files by pattern",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n- `grep`: Search file contents\n\nTo write \"BLOCKED_CONTENT\" to the specified file `/var/folders/s1/hlc001ps1k58b_",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt`, you would need to use a command-",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "line tool, a text editor, or write a script. For example:\n\n- Using echo:",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " `echo \"BLOCKED_CONTENT\" > /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt`\n- Using a text",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " editor like nano, vim, or any IDE\n- Using a programming language with file writing capabilities\n\nI",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " can help you read the file afterwards to verify the content",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I don't have access to a function that allows me to write or create files. The tools available to me are only for reading and searching existing files:\n\n- `readFile`: Read contents of existing files\n- `listFiles`: List files and directories\n- `glob`: Find files by pattern\n- `grep`: Search file contents\n\nTo write \"BLOCKED_CONTENT\" to the specified file `/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt`, you would need to use a command-line tool, a text editor, or write a script. For example:\n\n- Using echo: `echo \"BLOCKED_CONTENT\" > /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt`\n- Using a text editor like nano, vim, or any IDE\n- Using a programming language with file writing capabilities\n\nI can help you read the file afterwards to verify the content",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "recovery",
+      "data": {
+        "type": "recovery",
+        "reason": "max_output_tokens",
+        "attempt": 1,
+        "detail": "Output limit hit, recovery attempt 1/3",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775741931583
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "{\"file_path\"",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": ": \"/v",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "ar/fo",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "lders/s1",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "/hlc001ps1k5",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "8b_t77k",
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "953y6m00",
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "00gn/T/lo",
+        "turnIndex": 1
+      },
+      "index": 23
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "om-test-Qa",
+        "turnIndex": 1
+      },
+      "index": 24
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "XRM",
+        "turnIndex": 1
+      },
+      "index": 25
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "y/bl",
+        "turnIndex": 1
+      },
+      "index": 26
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "ocked-fil",
+        "turnIndex": 1
+      },
+      "index": 27
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "e.tx",
+        "turnIndex": 1
+      },
+      "index": 28
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "delta": "t\"}",
+        "turnIndex": 1
+      },
+      "index": 29
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01WE49eWgiY9Bf4Q57kdwXZq",
+        "toolName": "readFile",
+        "result": "Failed to read \"/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt\": ENOENT: no such file or directory, stat '/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/loom-test-QaXRMy/blocked-file.txt'",
+        "isError": true,
+        "durationMs": 84,
+        "turnIndex": 1
+      },
+      "index": 30
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1469,
+          "outputTokens": 101,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.005922
+        },
+        "timestamp": 1775741933942
+      },
+      "index": 31
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 2,
+        "timestamp": 1775741933942
+      },
+      "index": 32
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "File",
+        "turnIndex": 2
+      },
+      "index": 33
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " doesn't exist. I cannot create or write files - only",
+        "turnIndex": 2
+      },
+      "index": 34
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " read existing ones. You'll need to create it first using system tools.",
+        "turnIndex": 2
+      },
+      "index": 35
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "File doesn't exist. I cannot create or write files - only read existing ones. You'll need to create it first using system tools.",
+        "turnIndex": 2
+      },
+      "index": 36
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 2,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1704,
+          "outputTokens": 31,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.005577
+        },
+        "timestamp": 1775741935992
+      },
+      "index": 37
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "f9d96624-e3b0-48fb-b6e9-db2fa742d1a5",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 4352,
+          "outputTokens": 388,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.018876,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 3,
+        "timestamp": 1775741935995
+      },
+      "index": 38
+    }
+  ]
+}

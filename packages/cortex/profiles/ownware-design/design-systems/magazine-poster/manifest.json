@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "magazine-poster",
+  "name": "Magazine Poster",
+  "category": "editorial",
+  "surface": "web",
+  "summary": "Oversized editorial display type with one saturated accent and asymmetric grid. The art-direction / agency / portfolio / cultural-publication zone — works when the artifact should feel art-directed, not built.",
+  "swatches": ["#f3eee3", "#ffffff", "#0a0a0a", "#e63946", "#5a554c", "#dbd4c4"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

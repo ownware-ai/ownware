@@ -1,0 +1,110 @@
+{
+  "name": "ownware-security",
+  "kind": "agent",
+  "description": "AI-powered security review agent. Performs authorized vulnerability assessment on in-scope targets with automated scanning, live exploitation, and structured proven-PoC reporting.",
+  "version": "0.1.0",
+  "productId": "ownware-coder",
+  "locked": true,
+  "metadata": {
+    "icon": "S",
+    "color": "rose",
+    "category": "Security",
+    "avatar": {
+      "bg": "#8A2020",
+      "fg": "#F8C6C6",
+      "accent": "#E24B4A",
+      "symbol": "<path d=\"M32 12 L48 20 L48 36 Q48 50 32 54 Q16 50 16 36 L16 20 Z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/><path d=\"M25 33 L30 38 L39 27\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+    }
+  },
+  "tags": [
+    "security",
+    "pentest",
+    "vulnerability-assessment"
+  ],
+  "model": "openai:gpt-5.4",
+  "smallFastModel": "openai:gpt-4o-mini",
+  "maxTokens": 16384,
+  "maxTurns": 300,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe"
+    ],
+    "custom": [
+      {
+        "path": "tools/reporting.ts"
+      }
+    ],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/vulnerabilities/",
+      "skills/tooling/",
+      "skills/frameworks/",
+      "skills/protocols/",
+      "skills/technologies/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": true,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": true,
+    "contextUsage": true
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "120m"
+  },
+  "subagents": [
+    {
+      "name": "explore",
+      "description": "Fast read-only discovery scout. Use to find security-relevant code in parallel — auth flows, input handling, query builders, file operations, deserialization, dependency manifests. Read-only: it never edits, runs commands, or tests. Returns a concise map of where to look.",
+      "profile": "explore"
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.75
+    },
+    "retain": {
+      "type": "messages",
+      "count": 10
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "name": "analytics-reader",
+  "kind": "helper",
+  "description": "Pulls and explains data from GA4, Search Console, Mixpanel, Amplitude, PostHog, Ahrefs, and Semrush when keys are connected. Returns metric reports with timeframe, baseline, and source. Read-only — never modifies events, tracking, or data.",
+  "version": "0.1.0",
+  "tags": ["marketing", "analytics", "ga4", "search-console", "mixpanel", "ahrefs", "semrush"],
+  "metadata": {
+    "icon": "N",
+    "color": "rose",
+    "category": "Marketing",
+    "avatar": {
+      "bg": "#2A0F1F",
+      "fg": "#FFB8C8",
+      "accent": "#E94B6E",
+      "symbol": "<text x=\"32\" y=\"42\" text-anchor=\"middle\" font-family=\"Helvetica,sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"currentColor\">N</text><line x1=\"14\" y1=\"50\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-opacity=\"0.4\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 10240,
+  "maxTurns": 40,
+  "tools": {
+    "preset": "coding",
+    "allow": ["web_fetch", "web_search"],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": false,
+    "sources": [],
+    "autoLearn": false,
+    "isolation": "per_session"
+  },
+  "skills": { "dirs": [], "external": [] },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": { "mode": "foreground", "timeout": "20m" },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 5 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "memory" }
+}

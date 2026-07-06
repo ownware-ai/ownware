@@ -1,0 +1,110 @@
+{
+  "name": "vivian",
+  "displayName": "Margo",
+  "kind": "agent",
+  "description": "Inbox & schedule operator. Runs your email and calendar so you only see what matters. Triages email and Slack by what actually needs you — weighing who the sender is, the thread history, and your open commitments — summarizes long threads, drafts replies in your voice, surfaces a daily 'needs you' list, finds meeting slots with prep notes, and chases unanswered threads. Auto-handles the routine; asks before sending, accepting, declining, or anything else that leaves the building.",
+  "version": "0.1.0",
+  "productId": "ownware",
+  "locked": false,
+  "tags": [
+    "inbox",
+    "email",
+    "calendar",
+    "scheduling",
+    "triage",
+    "assistant",
+    "executive-assistant",
+    "productivity",
+    "digest"
+  ],
+  "metadata": {
+    "icon": "V",
+    "color": "teal",
+    "category": "Productivity",
+    "role": "Inbox & schedule",
+    "avatar": {
+      "bg": "#072A2E",
+      "fg": "#A5F3FC",
+      "accent": "#22D3EE",
+      "symbol": "<rect x=\"14\" y=\"20\" width=\"36\" height=\"26\" rx=\"3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><path d=\"M14 23 L32 36 L50 23\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><circle cx=\"49\" cy=\"19\" r=\"5\" fill=\"currentColor\"/>"
+    },
+    "pixelAvatar": {
+      "hair": "curly",
+      "hi": 1,
+      "si": 0,
+      "ti": 0,
+      "face": "narrow",
+      "expr": "smile",
+      "glasses": "square",
+      "facial": "none",
+      "headwear": "none",
+      "earrings": false,
+      "headset": false,
+      "blush": true
+    },
+    "requiredSecrets": []
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 120,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute", "agent_spawn"],
+    "custom": [],
+    "mcp": {},
+    "composio": {
+      "toolkits": ["gmail", "slack", "googlecalendar"]
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "tasks", "files", "url", "pdf", "csv"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

@@ -1,0 +1,376 @@
+{
+  "recordedAt": "2026-04-09T01:54:50.143Z",
+  "metadata": {
+    "prompt": "Read target.txt",
+    "tools": "readonly",
+    "expectedBehavior": "readFile → returns UNIQUE_CONTENT_12345"
+  },
+  "eventCount": 31,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 17,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll read that file for you.The file contains exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 2
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2825,
+      "outputTokens": 128,
+      "costUsd": 0.00086625
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "2e032dca-9e77-4a93-9658-64fa75a74e83",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699688121
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699688121
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll read that",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file for you.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "toolName": "readFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "{\"file_pa",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "th\": \"/var/f",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "olders/",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "s1/h",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "lc001",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "ps1k5",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "8b_t7",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "7k953",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "y6m",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "000",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "0gn",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "/T/loom-tes",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "t-jH85u",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "g/",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "target.t",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "delta": "xt\"}",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll read that file for you.",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01RzFMQXPJ6DrDqkEE3GA8UM",
+        "toolName": "readFile",
+        "result": "1\tUNIQUE_CONTENT_12345",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 1348,
+          "outputTokens": 107,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00047075
+        },
+        "timestamp": 1775699689313
+      },
+      "index": 24
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775699689313
+      },
+      "index": 25
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The file contains",
+        "turnIndex": 1
+      },
+      "index": 26
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 27
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file contains exactly:\n\n```\nUNIQUE_CONTENT_12345\n```",
+        "turnIndex": 1
+      },
+      "index": 28
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1477,
+          "outputTokens": 21,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0003955
+        },
+        "timestamp": 1775699690142
+      },
+      "index": 29
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "2e032dca-9e77-4a93-9658-64fa75a74e83",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2825,
+          "outputTokens": 128,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00086625,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775699690143
+      },
+      "index": 30
+    }
+  ]
+}

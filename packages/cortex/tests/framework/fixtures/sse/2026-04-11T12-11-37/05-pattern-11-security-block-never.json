@@ -1,0 +1,485 @@
+{
+  "recordedAt": "2026-04-11T12:12:00.435Z",
+  "metadata": {
+    "prompt": "Write to .env file — zone NEVER should hard-block",
+    "profileId": "coder",
+    "threadId": "thread_6b98cb993183",
+    "expectedBehavior": "security.block or tool.call.end with isError — no permission.request"
+  },
+  "eventCount": 44,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 11,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 20,
+    "text.complete": 2,
+    "permission.response": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll try to write the text to that file location.I cannot write to that file location because it's being blocked by a security policy. The path `/var/folders/.../T/cortex-fw-cFPYRW/perm-sandbox/.env` appears to be in a temporary directory that's outside my permitted working area.\n\nI'm restricted to working within safe directories to prevent potential security issues. If you need to create a `.env` file, I can:\n\n1. Create it in the current working directory (`/Users/dev/ownware/packages/cortex`)\n2. Create it in a subdirectory of the current working directory\n3. Help you with the content if you create the file manually in that temp location\n\nWould you like me to create the `.env` file in the current working directory instead?",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 20133,
+      "outputTokens": 316,
+      "costUsd": 0.065139
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_6b98cb993183",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "8da8175f-2bc7-479e-93f3-098209b4fafd",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775909513623
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775909513623
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll try",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to write the text to that file location.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "toolName": "writeFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "{\"file_path\"",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": ": \"/var/fold",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "ers/s1/hlc0",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "01ps",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "1k58",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "b_",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "t77k953y6m00",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "00gn",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "/T/",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "cor",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "tex-",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "fw-cFPY",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "RW/perm-sand",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "box/.en",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "v\"",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": ", \"conten",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "t\": \"SECRE",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "T_KEY=abc1",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "delta": "23\"}",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll try to write the text to that file location.",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01HGPyMSQ8RVkRkpsZBdiJxH",
+        "granted": false,
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 9986,
+          "outputTokens": 137,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.032013
+        },
+        "timestamp": 1775909515824
+      },
+      "index": 28
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "8da8175f-2bc7-479e-93f3-098209b4fafd",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775909515825
+      },
+      "index": 30
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I",
+        "turnIndex": 1
+      },
+      "index": 31
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " cannot write to that file location because it's being blocked by a security policy. The path",
+        "turnIndex": 1
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " `/var/folders/.../T/cortex-fw-cFPYRW/perm-sandbox/.env` appears to be in a temporary",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " directory that's outside my permitted working area.\n\nI'm restricted",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to working within safe directories to prevent potential security issues. If you need to create a `.",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "env` file, I can:\n\n1. Create it in the current working directory (`",
+        "turnIndex": 1
+      },
+      "index": 36
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "/Users/dev/ownware/packages/cortex`)\n2. Create it in a subdirectory of the current working directory\n3. Help you with",
+        "turnIndex": 1
+      },
+      "index": 37
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " the content if you create the file manually in that temp location\n\nWould you like me to create the `.",
+        "turnIndex": 1
+      },
+      "index": 38
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "env` file in the current working directory instead?",
+        "turnIndex": 1
+      },
+      "index": 39
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I cannot write to that file location because it's being blocked by a security policy. The path `/var/folders/.../T/cortex-fw-cFPYRW/perm-sandbox/.env` appears to be in a temporary directory that's outside my permitted working area.\n\nI'm restricted to working within safe directories to prevent potential security issues. If you need to create a `.env` file, I can:\n\n1. Create it in the current working directory (`/Users/dev/ownware/packages/cortex`)\n2. Create it in a subdirectory of the current working directory\n3. Help you with the content if you create the file manually in that temp location\n\nWould you like me to create the `.env` file in the current working directory instead?",
+        "turnIndex": 1
+      },
+      "index": 40
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 10147,
+          "outputTokens": 179,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.033126
+        },
+        "timestamp": 1775909520434
+      },
+      "index": 41
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "8da8175f-2bc7-479e-93f3-098209b4fafd",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 20133,
+          "outputTokens": 316,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.065139,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775909520434
+      },
+      "index": 42
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 43
+    }
+  ]
+}

@@ -1,0 +1,229 @@
+{
+  "recordedAt": "2026-04-08T14:00:25.642Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 15,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - A bold, passionate color symbolizing energy and danger.\n2. **Blue** - A cool, calming color associated with the sky and ocean.\n3. **Yellow** - A bright, cheerful color that radiates warmth and optimism.\n4. **Green** - A natural, refreshing color linked to growth and nature.\n5. **Purple** - A regal, mysterious color blending red and blue.\n6. **Orange** - A vibrant, energetic color between red and yellow.\n7. **Pink** - A soft, gentle color often associated with femininity and sweetness.\n8. **Brown** - An earthy, warm color representing stability and nature.\n9. **Black** - A dark, powerful color symbolizing mystery and formality.\n10. **White** - A pure, clean color representing innocence and simplicity.\n11. **Gray** - A neutral, balanced color suggesting sophistication and calm.\n12. **Cyan** - A bright blue-green color used in digital displays.\n13. **Magenta** - A vivid, bold color mixing red and blue intensely.\n14. **Lime** - A bright yellow-green color bursting with energy.\n15. **Navy** - A deep, dark blue color associated with tradition and stability.\n16. **Coral** - A warm, peachy-orange color evoking tropical vibes.\n17. **Turquoise** - A bright blue-green gemstone color suggesting tranquility.\n18. **Maroon** - A dark, deep red color conveying richness and sophistication.\n19. **Gold** - A luxurious, warm yellow color symbolizing wealth and prestige.\n20. **Silver** - A shiny, cool gray color representing elegance and modernity.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 411,
+      "costUsd": 0.0006955
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_4f95aff4d56d",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "3a84a207-0570-47f7-bd59-0ef42a2a7686",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775656822009
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656822009
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - A bold, passionate color symbolizing energy and",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " danger.\n2. **Blue** - A cool, calming color associated with the sky",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and ocean.\n3. **Yellow** - A bright, cheerful color that radiates warmth and optimism.\n4. **Green** - A natural",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", refreshing color linked to growth and nature.\n5. **Purple** - A regal, mysterious color blending red",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and blue.\n6. **Orange** - A vibrant, energetic color between red and yellow.\n7. **Pink** - A soft, gentle color often associated with femininity and sweet",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ness.\n8. **Brown** - An earthy, warm color representing stability and nature.\n9. **Black** - A dark, powerful color symbolizing mystery and form",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ality.\n10. **White** - A pure, clean color representing innocence and simplicity.\n11. **Gray** - A neutral, balanced color suggesting sophistication and calm",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ".\n12. **Cyan** - A bright blue-green color used in digital displays.\n13. **Magenta** - A viv",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "id, bold color mixing red and blue intensely.\n14. **Lime** - A bright yellow-green color bursting with energy.\n15. **Navy",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - A deep, dark blue color associated with tradition and stability.\n16. **Coral** - A warm, peachy-orange",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " color evoking tropical vibes.\n17. **Turquoise** - A bright blue-green gem",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "stone color suggesting tranquility.\n18. **Maroon** - A dark, deep red color conveying rich",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ness and sophistication.\n19. **Gold** - A luxurious, warm yellow color symbolizing wealth and prestige.\n20. **Silver",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - A shiny, cool gray color representing elegance and modernity.",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - A bold, passionate color symbolizing energy and danger.\n2. **Blue** - A cool, calming color associated with the sky and ocean.\n3. **Yellow** - A bright, cheerful color that radiates warmth and optimism.\n4. **Green** - A natural, refreshing color linked to growth and nature.\n5. **Purple** - A regal, mysterious color blending red and blue.\n6. **Orange** - A vibrant, energetic color between red and yellow.\n7. **Pink** - A soft, gentle color often associated with femininity and sweetness.\n8. **Brown** - An earthy, warm color representing stability and nature.\n9. **Black** - A dark, powerful color symbolizing mystery and formality.\n10. **White** - A pure, clean color representing innocence and simplicity.\n11. **Gray** - A neutral, balanced color suggesting sophistication and calm.\n12. **Cyan** - A bright blue-green color used in digital displays.\n13. **Magenta** - A vivid, bold color mixing red and blue intensely.\n14. **Lime** - A bright yellow-green color bursting with energy.\n15. **Navy** - A deep, dark blue color associated with tradition and stability.\n16. **Coral** - A warm, peachy-orange color evoking tropical vibes.\n17. **Turquoise** - A bright blue-green gemstone color suggesting tranquility.\n18. **Maroon** - A dark, deep red color conveying richness and sophistication.\n19. **Gold** - A luxurious, warm yellow color symbolizing wealth and prestige.\n20. **Silver** - A shiny, cool gray color representing elegance and modernity.",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 411,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0006955
+        },
+        "timestamp": 1775656825641
+      },
+      "index": 19
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 20
+    }
+  ]
+}

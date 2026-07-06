@@ -1,0 +1,58 @@
+/* Neon Arcade — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is near-black with a purple bias (#0a0518). Pure black reads
+ *     as terminal-grid; the purple cast is what makes this read as neon
+ *     rather than tech.
+ *   - --surface is a deep violet (#170c2e), not a neutral grey. Panels
+ *     are deliberately tinted — the genre lives in saturated darkness,
+ *     not neutral darkness.
+ *   - --accent and --accent-alt are BOTH used (magenta + cyan). Unlike
+ *     most systems this is two interactive accents — they pair as
+ *     primary/secondary action, and as the two stops of every neon
+ *     gradient. A THIRD accent is still wrong.
+ *   - --accent-alt (`#1ee9ff`) is below in the tokens — see DESIGN.md
+ *     for when to use which.
+ *   - --radius is small (8px). Sharp-ish corners are part of the arcade
+ *     CRT feel; soft rounded reads as ambient.
+ *   - --border is a saturated violet, not a hairline. Borders here are
+ *     deliberately visible AS lights, often glowing via box-shadow.
+ */
+
+:root {
+  /* surface — purple-biased dark, deep-violet panels */
+  --bg:      #0a0518;
+  --surface: #170c2e;
+
+  /* foreground ladder — cool near-white on saturated dark */
+  --fg:     #ecf0ff;
+  --muted:  #7a6aa8;
+  --border: #34234d;
+
+  /* accent — magenta primary + cyan secondary; the two neon notes */
+  --accent:       #ff2bd6;
+  --accent-hover: #ff52e0;
+  --accent-fg:    #0a0518;
+  --accent-alt:    #1ee9ff;
+  --accent-alt-fg: #0a0518;
+
+  /* semantic — CRT-saturated */
+  --good: #21f5a1;
+  --warn: #ffcc1e;
+  --bad:  #ff5470;
+
+  /* shape — arcade panels are sharp-ish */
+  --radius:      8px;
+  --radius-pill: 999px;
+
+  /* typography — futuristic display, mono support for HUD readouts */
+  --font-display: 'Orbitron', 'Space Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

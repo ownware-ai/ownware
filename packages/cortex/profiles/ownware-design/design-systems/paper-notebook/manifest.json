@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "paper-notebook",
+  "name": "Paper Notebook",
+  "category": "crafted",
+  "surface": "web",
+  "summary": "Sketchnote / handwritten / textured-paper aesthetic — paper canvas, dotted-grid background, hand-drawn underlines and arrows, marker-blue accent. The educational / journaling / creative-tool zone — works when the artifact should feel made-by-hand.",
+  "swatches": ["#f9f3e3", "#fefcf4", "#2a2722", "#1f5fb8", "#7c7568", "#d8cdb3"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

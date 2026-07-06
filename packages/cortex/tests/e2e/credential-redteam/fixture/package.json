@@ -1,0 +1,9 @@
+{
+  "name": "redteam-fixture-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fake project for credential-isolation red-team tests. Not a real app.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -1,0 +1,106 @@
+name: "🐛 Bug Report"
+description: Something is broken, crashes, or behaves incorrectly.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Before submitting:
+        - Search [existing issues](https://github.com/ownware-ai/ownware/issues?q=is%3Aissue) (open **and** closed) for the symptom.
+        - If a field can't be grounded in what you actually observed, write exactly `NOT_ENOUGH_INFO` — an honest gap beats a guess.
+        - **Security vulnerabilities:** do NOT file here — see [SECURITY.md](https://github.com/ownware-ai/ownware/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description based only on observed behavior. Include the error message/traceback if there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The shortest deterministic path you actually observed.
+      placeholder: |
+        1. `ownware init` with profile X
+        2. `ownware serve`
+        3. `curl …` / send a Slack DM / …
+        4. Error: …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      description: What should have happened, and what happened instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      multiple: true
+      options:
+        - CLI (init / serve / key / channel / schedule verbs)
+        - Gateway API (run, threads, SSE stream, auth/TLS)
+        - Engine (agent loop, tools, zones/permissions)
+        - Profiles (agent.json / SOUL.md loading & assembly)
+        - Channels — Slack
+        - Channels — Telegram
+        - Channels — Discord
+        - Channels — WhatsApp
+        - Schedules
+        - Credentials / vault / keys
+        - "@ownware/client SDK"
+        - Install / first run
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Ownware version
+      description: "`ownware --version` output, or the installed package version / commit SHA"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS + Node version (and bun version if building from source)
+      placeholder: "macOS 15.2, Node 22.9, bun 1.3.2"
+    validations:
+      required: true
+
+  - type: input
+    id: model-provider
+    attributes:
+      label: Model / provider (if relevant)
+      description: e.g. "claude-sonnet-5 via Anthropic key", "llama3 via local Ollama", "keyless first run". Never paste an API key.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant serve output, stack traces, or event-stream excerpts. Redact anything sensitive.
+      render: shell
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root cause / proposed fix (optional)
+      description: If you've dug into the code, share file paths + line numbers — this massively speeds up fixes.
+
+  - type: checkboxes
+    id: pr-ready
+    attributes:
+      label: Are you willing to submit a PR?
+      options:
+        - label: I'd like to fix this myself and submit a PR

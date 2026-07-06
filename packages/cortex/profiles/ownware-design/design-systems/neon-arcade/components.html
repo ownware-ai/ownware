@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Neon Arcade — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/neon-arcade. Cyberpunk neon — magenta + cyan on purple-black, glowing strokes, gradient panels, scanline texture." />
+    <style>
+      :root {
+        --bg:      #0a0518;
+        --surface: #170c2e;
+        --fg:      #ecf0ff;
+        --muted:   #7a6aa8;
+        --border:  #34234d;
+        --accent:       #ff2bd6;
+        --accent-hover: #ff52e0;
+        --accent-fg:    #0a0518;
+        --accent-alt:    #1ee9ff;
+        --accent-alt-fg: #0a0518;
+        --good: #21f5a1;
+        --warn: #ffcc1e;
+        --bad:  #ff5470;
+        --radius:      8px;
+        --radius-pill: 999px;
+        --font-display: 'Orbitron', 'Space Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+        --font-mono:    'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        min-height: 100vh; color: var(--fg); font: 400 15px/1.55 var(--font-body);
+        background:
+          repeating-linear-gradient(transparent, transparent 2px, rgba(255,255,255,0.03) 3px),
+          radial-gradient(circle at 20% 0%, rgba(255, 43, 214, 0.18), transparent 40%),
+          radial-gradient(circle at 80% 100%, rgba(30, 233, 255, 0.14), transparent 40%),
+          var(--bg);
+      }
+      .wrap { max-width: 1080px; margin-inline: auto; padding: 96px 28px; }
+      .eyebrow { font: 600 12px/1 var(--font-mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-alt); margin: 0 0 18px; }
+      h1 {
+        font: 700 96px/1.0 var(--font-display); letter-spacing: 0.02em; margin: 0 0 20px; text-wrap: balance;
+        background: linear-gradient(95deg, var(--accent) 0%, var(--accent-alt) 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .lead { color: var(--muted); font-size: 17px; max-width: 56ch; margin: 0 0 36px; }
+      .actions { display: flex; gap: 14px; margin-bottom: 64px; }
+      .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 24px; border-radius: var(--radius); font: 600 14px/1 var(--font-body); text-decoration: none; border: 1px solid transparent; cursor: pointer; letter-spacing: 0.04em; text-transform: uppercase; transition: filter 120ms ease, transform 120ms ease; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); box-shadow: 0 0 24px rgba(255, 43, 214, 0.55); }
+      .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+      .btn-secondary { background: transparent; color: var(--accent-alt); border-color: var(--accent-alt); box-shadow: 0 0 18px rgba(30, 233, 255, 0.35); }
+      .btn-secondary:hover { background: var(--accent-alt); color: var(--accent-alt-fg); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 64px; } }
+      .panel { background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); padding: 26px; box-shadow: 0 0 28px rgba(255, 43, 214, 0.32), 0 0 1px rgba(255, 43, 214, 0.8); }
+      .panel.cyan { border-color: var(--accent-alt); box-shadow: 0 0 28px rgba(30, 233, 255, 0.32), 0 0 1px rgba(30, 233, 255, 0.8); }
+      .panel h3 { font: 600 22px/1.2 var(--font-display); letter-spacing: 0.04em; margin: 0 0 8px; text-transform: uppercase; }
+      .panel p  { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+      .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 16px; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+      .stat strong { display: block; font: 700 28px/1.05 var(--font-mono); color: var(--accent-alt); }
+      .stat span { color: var(--muted); font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+      .led { display: inline-flex; align-items: center; gap: 8px; font: 600 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+      .led::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.3; } }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">DROP // 0048 // LIVE</p>
+      <h1>Neon Arcade.</h1>
+      <p class="lead">For game drops, web3 mints, music releases, and anywhere the artifact should feel like a CRT after dark. Magenta + cyan, scanline floor, glow on every edge.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">Enter drop</a>
+        <a class="btn btn-secondary" href="#">View setlist</a>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <span class="led">live</span>
+          <h3 style="margin-top:12px">BROADCAST_FEED</h3>
+          <p>Magenta-edged panel with a magenta glow. The neon border IS the structural device — without it, the genre dies.</p>
+          <div class="stat">
+            <div><strong>2,481</strong><span>tuned in</span></div>
+            <div><strong>04:12</strong><span>set time</span></div>
+            <div><strong>92dB</strong><span>peak level</span></div>
+          </div>
+        </article>
+        <article class="panel cyan">
+          <h3>SET_LIST</h3>
+          <p>Cyan-edged secondary panel. The two accents pair; never mix magenta border with cyan glow.</p>
+          <div style="display:flex; gap:10px;">
+            <span style="width:36px;height:36px;border-radius:6px;background:var(--accent);box-shadow:0 0 14px var(--accent)"></span>
+            <span style="width:36px;height:36px;border-radius:6px;background:var(--accent-alt);box-shadow:0 0 14px var(--accent-alt)"></span>
+            <span style="width:36px;height:36px;border-radius:6px;background:var(--surface);border:1px solid var(--border)"></span>
+            <span style="width:36px;height:36px;border-radius:6px;background:var(--fg)"></span>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

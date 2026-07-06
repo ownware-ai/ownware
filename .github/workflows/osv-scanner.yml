@@ -1,0 +1,52 @@
+name: OSV-Scanner
+
+# Scans dependencies against the OSV vulnerability database. Ownware ships
+# real native deps (better-sqlite3, node-pty, sharp, playwright, ripgrep) —
+# a CVE'd or compromised version is a live risk, so this runs on every PR,
+# on main, and weekly (new CVEs land against unchanged lockfiles).
+#
+# OSV-Scanner v2 reads bun.lock natively. Google's reusable workflows
+# handle diffing (PR mode) and (optionally) SARIF upload to the Security tab.
+#
+# SARIF upload is DISABLED (upload-sarif: false) while the repo is private:
+# the Security tab needs GitHub Advanced Security, which is free only on
+# public repos, so the upload step would 403. With upload-sarif:false the
+# upload STEP is skipped entirely, so no 403 — the scan still runs and still
+# fails the job on a real vulnerability.
+#
+# NOTE: `security-events: write` MUST stay granted even with upload-sarif:false.
+# The reusable workflow *declares* that permission in its own `permissions:`
+# block, so the caller must grant it or GitHub rejects the run at startup
+# (startup_failure). The upload step is what's gated off, not the permission.
+# Once the repo is public + code scanning is on, just flip upload-sarif to true.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 5 * * 1" # Mondays 05:30 UTC — catch CVEs published against unchanged deps
+
+permissions: {}
+
+jobs:
+  scan-pr:
+    if: github.event_name == 'pull_request'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    permissions:
+      actions: read
+      contents: read
+      security-events: write # REQUIRED by the reusable workflow's declaration (see header)
+    with:
+      upload-sarif: false # skip the Security-tab upload (private repo → no GHAS)
+
+  scan-main:
+    if: github.event_name != 'pull_request'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    permissions:
+      actions: read
+      contents: read
+      security-events: write # REQUIRED by the reusable workflow's declaration (see header)
+    with:
+      upload-sarif: false # skip the Security-tab upload (private repo → no GHAS)

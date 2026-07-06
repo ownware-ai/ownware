@@ -1,0 +1,47 @@
+/* Neutral Modern — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is #fafafa (off-white) not #ffffff so primary surfaces step up to white.
+ *   - --fg is #111111 (near-black) not #000000 — pure black is too sharp on
+ *     long reads against an off-white background.
+ *   - --muted is tuned to clear WCAG AA on --surface (#ffffff). Keep it ≥ #6e6e6e
+ *     if you swap; lighter than that fails contrast.
+ *   - --accent-hover darkens (not lifts) because this system uses filled CTAs
+ *     and a darkening on hover reads as the expected affordance.
+ */
+
+:root {
+  /* surface ladder */
+  --bg:      #fafafa;
+  --surface: #ffffff;
+
+  /* foreground ladder */
+  --fg:     #111111;
+  --muted:  #6b6b6b;
+  --border: #e5e5e5;
+
+  /* accent */
+  --accent:       #2f6feb;
+  --accent-hover: #1f5fd6;
+  --accent-fg:    #ffffff;
+
+  /* semantic */
+  --good: #17a34a;
+  --warn: #eab308;
+  --bad:  #dc2626;
+
+  /* shape */
+  --radius:      8px;
+  --radius-pill: 999px;
+
+  /* typography */
+  --font-display: 'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Magazine Poster — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/magazine-poster. Oversized editorial display type with one saturated red accent and asymmetric grid." />
+    <style>
+      :root {
+        --bg:      #f3eee3;
+        --surface: #ffffff;
+        --fg:      #0a0a0a;
+        --muted:   #5a554c;
+        --border:  #dbd4c4;
+        --accent:       #e63946;
+        --accent-hover: #c92a36;
+        --accent-fg:    #ffffff;
+        --good: #3a7a4e;
+        --warn: #c88a1a;
+        --bad:  #b03030;
+        --radius:      0px;
+        --radius-pill: 0px;
+        --font-display: 'Recoleta', 'Tiempos Headline', 'Playfair Display', 'Times New Roman', Georgia, serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 100vh; background: var(--bg); color: var(--fg); font: 400 17px/1.65 var(--font-body); }
+      .wrap { max-width: 1180px; margin-inline: auto; padding: 96px 32px; }
+      header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 18px; margin-bottom: 72px; }
+      header .mast { font: 600 14px/1 var(--font-body); letter-spacing: 0.16em; text-transform: uppercase; }
+      header .issue { color: var(--muted); font-size: 13px; letter-spacing: 0.06em; }
+      .eyebrow { font: 700 13px/1 var(--font-body); letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin: 0 0 24px; }
+      h1 { font: 700 120px/0.92 var(--font-display); letter-spacing: -0.025em; margin: 0 0 28px; text-wrap: balance; }
+      h1 .red { color: var(--accent); }
+      .grid-hero { display: grid; grid-template-columns: 1fr 2fr; gap: 56px; align-items: end; margin-bottom: 96px; }
+      @media (max-width: 800px) { .grid-hero { grid-template-columns: 1fr; } h1 { font-size: 72px; } }
+      .byline { color: var(--muted); font-size: 14px; line-height: 1.5; }
+      .byline strong { color: var(--fg); }
+      .lead { font-family: var(--font-display); font-size: 28px; line-height: 1.3; font-weight: 500; max-width: 22ch; }
+      .body-column { max-width: 64ch; margin-bottom: 80px; }
+      .body-column p { margin: 0 0 18px; }
+      .body-column p:first-of-type::first-letter {
+        font-family: var(--font-display); font-weight: 700; font-size: 90px; line-height: 0.8;
+        float: left; padding: 6px 12px 0 0; color: var(--accent);
+      }
+      .actions { display: flex; gap: 16px; align-items: center; padding-top: 24px; border-top: 1px solid var(--border); }
+      .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border-radius: 0; font: 600 13px/1 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--fg); cursor: pointer; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+      .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+      .btn-secondary { background: transparent; color: var(--fg); }
+      .btn-secondary:hover { background: var(--fg); color: var(--bg); }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <span class="mast">Ownware Quarterly</span>
+        <span class="issue">No. 04 · Spring</span>
+      </header>
+      <p class="eyebrow">Cover Story</p>
+      <div class="grid-hero">
+        <p class="lead">A field note on dramatic scale, warm paper, and the one chromatic note that earns its keep.</p>
+        <h1>The Page,<br/><span class="red">Composed.</span></h1>
+      </div>
+      <div class="body-column">
+        <p>Magazine Poster is the system you reach for when the artifact should feel <em>art-directed</em>, not built. The display serif dominates. The body breathes. One saturated red carries the entire chromatic weight of the page, punching through a warm-paper monochrome that reads as printed rather than rendered.</p>
+        <p>Reach for it when the brief calls for an agency portfolio, a cultural publication, a manifesto, a long essay. Reach for something else when the brief calls for dense numerics, dashboards, or a SaaS marketing page — those are different systems for different reasons.</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">Read the issue</a>
+        <a class="btn btn-secondary" href="#">Browse archive</a>
+        <span class="byline" style="margin-left:auto;"><strong>By Ownware Design</strong> · Reference fixture</span>
+      </div>
+    </main>
+  </body>
+</html>

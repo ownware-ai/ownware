@@ -1,0 +1,332 @@
+{
+  "recordedAt": "2026-04-09T02:59:22.943Z",
+  "metadata": {
+    "prompt": "Infinite tool loop — limited by maxTurns=2",
+    "expectedBehavior": "session.end with reason=max_turns after 2 turns"
+  },
+  "eventCount": 25,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 2,
+    "tool.call.args_delta": 8,
+    "text.complete": 2,
+    "tool.call.end": 2,
+    "turn.end": 2,
+    "error": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "max_turns",
+  "errors": [
+    {
+      "code": "MAX_TURNS",
+      "message": "Reached maximum turn limit (2)"
+    }
+  ],
+  "analysis": {
+    "text": "I'll call the calculate function with \"1 + 1\" as requested, and then continue calling it with different expressions.Now I'll call calculate again with a different expression:",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "calculate",
+        "result": "2",
+        "isError": false,
+        "durationMs": 1
+      },
+      {
+        "toolName": "calculate",
+        "result": "6",
+        "isError": false,
+        "durationMs": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 987,
+      "outputTokens": 149,
+      "costUsd": 0.005196
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "395945fa-1fad-4c43-8463-e1a54167a5be",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775703559492
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775703559492
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll call the calculate function with \"",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "1 + 1\" as requested, and then continue calling it with different expressions.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_014TAprfeabkQ9dkpECqxDfx",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014TAprfeabkQ9dkpECqxDfx",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014TAprfeabkQ9dkpECqxDfx",
+        "delta": "{\"expressio",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014TAprfeabkQ9dkpECqxDfx",
+        "delta": "n\": \"1 ",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_014TAprfeabkQ9dkpECqxDfx",
+        "delta": "+ 1\"}",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll call the calculate function with \"1 + 1\" as requested, and then continue calling it with different expressions.",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_014TAprfeabkQ9dkpECqxDfx",
+        "toolName": "calculate",
+        "result": "2",
+        "isError": false,
+        "durationMs": 1,
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 446,
+          "outputTokens": 82,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002568
+        },
+        "timestamp": 1775703561357
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775703561357
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Now",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " I'll call calculate again with a different expression:",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01V2q9SyENUNKSHgDiQW2wNN",
+        "toolName": "calculate",
+        "input": {},
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01V2q9SyENUNKSHgDiQW2wNN",
+        "delta": "",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01V2q9SyENUNKSHgDiQW2wNN",
+        "delta": "{\"ex",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01V2q9SyENUNKSHgDiQW2wNN",
+        "delta": "pression\": ",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01V2q9SyENUNKSHgDiQW2wNN",
+        "delta": "\"2 * 3\"}",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Now I'll call calculate again with a different expression:",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01V2q9SyENUNKSHgDiQW2wNN",
+        "toolName": "calculate",
+        "result": "6",
+        "isError": false,
+        "durationMs": 0,
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 541,
+          "outputTokens": 67,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002628
+        },
+        "timestamp": 1775703562942
+      },
+      "index": 22
+    },
+    {
+      "type": "error",
+      "data": {
+        "type": "error",
+        "code": "MAX_TURNS",
+        "message": "Reached maximum turn limit (2)",
+        "recoverable": false,
+        "turnIndex": 2
+      },
+      "index": 23
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "395945fa-1fad-4c43-8463-e1a54167a5be",
+        "reason": "max_turns",
+        "totalUsage": {
+          "inputTokens": 987,
+          "outputTokens": 149,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.005196,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 3,
+        "timestamp": 1775703562942
+      },
+      "index": 24
+    }
+  ]
+}

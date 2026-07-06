@@ -1,0 +1,494 @@
+{
+  "recordedAt": "2026-04-09T02:46:35.336Z",
+  "metadata": {
+    "prompt": "Spawn multiplier sub-agent",
+    "expectedBehavior": "agent_spawn called → sub-agent runs → parent reports result"
+  },
+  "eventCount": 43,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 28,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll delegate this calculation task to a sub-agent named \"multiplier\".The multiplier agent has completed the task. It calculated 7 * 13 using the calculate tool and found that **7 * 13 = 91**.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 299
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 2071,
+      "outputTokens": 180,
+      "costUsd": 0.008913
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "87fd62c3-4c1a-459f-8af4-b00bf69ab92f",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775702790832
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775702790832
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll delegate this calculation",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " task to a sub-agent named \"multiplier\".",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "toolName": "agent_spawn",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "{\"name\":",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": " \"mu",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "ltiplier\"",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": ", \"prompt\": ",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "\"Calculat",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "e 7 * 13 usi",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "ng the calc",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "ula",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "te tool an",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "d repor",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "t the answe",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "r. ",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "Use the ",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "calcul",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "ate functi",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "on with t",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "he expre",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "ssion \\\"7 ",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "* 13\\",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "\" an",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "d provide t",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "he result.",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "\"",
+        "turnIndex": 0
+      },
+      "index": 28
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": ", \"tool",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "s\": ",
+        "turnIndex": 0
+      },
+      "index": 30
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "[\"c",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "delta": "alculate\"]}",
+        "turnIndex": 0
+      },
+      "index": 32
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll delegate this calculation task to a sub-agent named \"multiplier\".",
+        "turnIndex": 0
+      },
+      "index": 33
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_011SaBgNPecVyWmTimRdb5Ey",
+        "toolName": "agent_spawn",
+        "result": "",
+        "isError": false,
+        "durationMs": 299,
+        "turnIndex": 0
+      },
+      "index": 34
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 952,
+          "outputTokens": 141,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.004971
+        },
+        "timestamp": 1775702793806
+      },
+      "index": 35
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775702793806
+      },
+      "index": 36
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The multipl",
+        "turnIndex": 1
+      },
+      "index": 37
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ier agent has completed the task. It calculated 7 * 13 using the calculate tool and found that **7 * 13 = 91",
+        "turnIndex": 1
+      },
+      "index": 38
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "**.",
+        "turnIndex": 1
+      },
+      "index": 39
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The multiplier agent has completed the task. It calculated 7 * 13 using the calculate tool and found that **7 * 13 = 91**.",
+        "turnIndex": 1
+      },
+      "index": 40
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 1119,
+          "outputTokens": 39,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003942
+        },
+        "timestamp": 1775702795294
+      },
+      "index": 41
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "87fd62c3-4c1a-459f-8af4-b00bf69ab92f",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 2071,
+          "outputTokens": 180,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.008913,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775702795294
+      },
+      "index": 42
+    }
+  ]
+}

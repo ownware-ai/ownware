@@ -1,0 +1,56 @@
+name: "✨ Feature Request"
+description: Suggest a new capability or improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please read **["Where does this live?"](https://github.com/ownware-ai/ownware/blob/main/CONTRIBUTING.md#where-does-this-live-read-before-adding-anything)** in the contributing guide.
+        Ownware keeps the core lean: most new capability belongs in a **profile** or a **channel adapter**, not the engine.
+        Niche integrations are welcome — as profiles/adapters in their own package, not bundled in core.
+
+  - type: dropdown
+    id: placement
+    attributes:
+      label: Where do you think this lives?
+      description: Pick the lightest layer that could express it (the placement gate).
+      options:
+        - A profile (instructions / tools / security posture)
+        - A CLI verb or flag
+        - A channel adapter (new place to talk to the agent)
+        - A connector (new credentialed integration)
+        - The engine core (loop / tools / zones / streaming)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do that you can't today? Who hits this, in what real flow?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work? Be specific — CLI verbs, config, API shapes, channel behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "why can't this be a profile or an adapter today?" — if the answer is a missing extension point, name it.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who benefits and how much? One-off convenience or a class of use cases?
+    validations:
+      required: true

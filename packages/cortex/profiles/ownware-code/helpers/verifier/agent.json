@@ -1,0 +1,98 @@
+{
+  "name": "verifier",
+  "kind": "helper",
+  "description": "Adversarial verification. Runs builds, tests, linters, and probes edge cases before the coding agent reports done. Reads and executes; never writes.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "coding",
+    "verification",
+    "qa"
+  ],
+  "metadata": {
+    "icon": "shield-check",
+    "color": "rose",
+    "category": "Engineering Helpers",
+    "avatar": {
+      "bg": "#3A1A22",
+      "fg": "#F4B5C2",
+      "accent": "#F14060",
+      "symbol": "<path d=\"M32 12 L48 18 V32 C48 42 32 52 32 52 C32 52 16 42 16 32 V18 Z\" stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M24 32 L30 38 L42 26\" stroke=\"currentColor\" stroke-width=\"2.6\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+    }
+  },
+  "model": "openrouter:kimi-k2.6",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 40,
+  "tools": {
+    "preset": "none",
+    "allow": [
+      "readFile",
+      "listFiles",
+      "glob",
+      "grep",
+      "shell_execute"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": true,
+    "cwd": true,
+    "datetime": false,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "criticalReminder": "VERIFICATION-ONLY task: do not edit, write, or create files inside the project (ephemeral /tmp scripts allowed). Every check you report must include the exact command run and its actual output — reading code is not verification. Your reply MUST end with exactly one line: `VERDICT: PASS`, `VERDICT: FAIL`, or `VERDICT: PARTIAL`.",
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

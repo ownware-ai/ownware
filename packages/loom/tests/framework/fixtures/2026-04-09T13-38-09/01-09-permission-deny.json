@@ -1,0 +1,126 @@
+{
+  "recordedAt": "2026-04-09T13:38:09.274Z",
+  "metadata": {
+    "prompt": "Write sensitive content — deny",
+    "expectedBehavior": "permission.request → deny → tool NOT executed → graceful recovery"
+  },
+  "eventCount": 8,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 3,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I can use the write_sensitive tool, but I need explicit permission from you to write to a sensitive location. \n\nDo you grant me permission to write \"DENIED_CONTENT\" to a sensitive location?",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 614,
+      "outputTokens": 47,
+      "costUsd": 0.00021225
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "d8164a42-27df-4ba6-a55e-9982da7e0a9c",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775741888146
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775741888146
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I can",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " use the write_sensitive tool, but I need explicit permission from you to write to a sensitive location. \n\nDo you grant me permission to write \"DENIED_CONTENT\" to a",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " sensitive location?",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I can use the write_sensitive tool, but I need explicit permission from you to write to a sensitive location. \n\nDo you grant me permission to write \"DENIED_CONTENT\" to a sensitive location?",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 614,
+          "outputTokens": 47,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00021225
+        },
+        "timestamp": 1775741889274
+      },
+      "index": 6
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "d8164a42-27df-4ba6-a55e-9982da7e0a9c",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 614,
+          "outputTokens": 47,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00021225,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775741889274
+      },
+      "index": 7
+    }
+  ]
+}

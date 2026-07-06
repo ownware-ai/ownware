@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-04-09T13:45:37.921Z",
+  "fixtureCount": 2,
+  "fixtures": [
+    "01-10-permission-always-1",
+    "02-10-permission-always-2"
+  ]
+}

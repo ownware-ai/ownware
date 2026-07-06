@@ -1,0 +1,90 @@
+{
+  "name": "@ownware/shuttle",
+  "version": "0.1.0",
+  "description": "Ownware Shuttle \u2014 messaging channel adapters. Each channel (Telegram, Slack, WhatsApp, SMS\u2026) is a thin client of the ownware gateway wire contract: receive \u2192 drive the agent \u2192 deliver the reply back. One agent, many identities, one thread per person.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ownware-channel": "./dist/channels/bin.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./telegram": {
+      "import": "./dist/telegram/index.js",
+      "types": "./dist/telegram/index.d.ts"
+    },
+    "./sms": {
+      "import": "./dist/sms/index.js",
+      "types": "./dist/sms/index.d.ts"
+    },
+    "./whatsapp": {
+      "import": "./dist/whatsapp/index.js",
+      "types": "./dist/whatsapp/index.d.ts"
+    },
+    "./slack": {
+      "import": "./dist/slack/index.js",
+      "types": "./dist/slack/index.d.ts"
+    },
+    "./discord": {
+      "import": "./dist/discord/index.js",
+      "types": "./dist/discord/index.d.ts"
+    },
+    "./channels": {
+      "import": "./dist/channels/index.js",
+      "types": "./dist/channels/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/",
+    "prepublishOnly": "bun run build && bun run test"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Ownware Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ownware-ai/ownware.git",
+    "directory": "adapters/shuttle"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "slack",
+    "telegram",
+    "whatsapp",
+    "discord",
+    "sms",
+    "chatbot",
+    "ownware"
+  ],
+  "dependencies": {
+    "@ownware/client": "workspace:*"
+  }
+}

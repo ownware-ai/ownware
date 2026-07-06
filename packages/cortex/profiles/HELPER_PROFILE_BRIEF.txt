@@ -1,0 +1,411 @@
+# HELPER PROFILE CREATION BRIEF — /strict
+# =====================================================================
+# Read this entire file before writing anything. No assumptions.
+# Run under /strict rules: research, verify, push back, no TODOs, no
+# placeholders, production-grade output.
+# =====================================================================
+
+## WHAT YOU ARE DOING
+
+Cortex is an Agent Operating System. Profiles are AI agents users run.
+Some profiles (coder, counsel, sentinel, trading-firm) declared their
+helper agents INLINE inside their agent.json `subagents[]` array. That
+is wrong for anything non-trivial — inline helpers can't be reused,
+can't be edited as first-class entities, can't have their own SOUL.md,
+AGENTS.md, or skills/.
+
+Your job: extract those inline subagents into **standalone helper
+profiles on disk**, each with a full profile folder. Then rewrite the
+parent profile's `subagents[]` to reference them by `profile: "<name>"`
+instead of defining them inline.
+
+# =====================================================================
+# ⚠ ARCHITECTURAL NOTE — TWO HELPER PATTERNS EXIST (READ THIS FIRST)
+# =====================================================================
+#
+# Ownware supports TWO helper patterns. Pick the right one per family.
+#
+#   Pattern A — NESTED (per-profile private helpers)  ← DEFAULT
+#   ──────────────────────────────────────────────────────────────────
+#     Layout:    packages/cortex/profiles/<parent>/helpers/<name>/
+#     Loaded by: src/profile/local-helpers.ts:resolveLocalHelperDir
+#     Visible:   ONLY to the enclosing parent
+#     Schema:    helper agent.json has `kind: "helper"`
+#     Listed in BUILTINS.json? NO (per the file's own comment)
+#
+#     Use when the helper is conceptually owned by ONE parent profile
+#     and would not be useful in isolation. Example: coder/helpers/
+#     {explore, planner, verifier, general}/. Each is a coding-specific
+#     specialist; a finance profile would want its own differently-
+#     tuned versions.
+#
+#     Resolution: when a parent declares `subagents[{name, profile}]`,
+#     run.ts checks `<parent-dir>/helpers/<profile>/` FIRST, then falls
+#     back to the global registry.
+#
+#   Pattern B — FLAT (shared helpers in global namespace)
+#   ──────────────────────────────────────────────────────────────────
+#     Layout:    packages/cortex/profiles/<helper-name>/  (top level)
+#     Loaded by: the regular profile registry (same as top-level agents)
+#     Visible:   to ANY profile that references the name
+#     Schema:    helper agent.json has `kind: "helper"`
+#     Listed in BUILTINS.json? YES, in either `core` or `marketplace`
+#
+#     Use when MULTIPLE parent profiles share the SAME helper, with the
+#     same prompt and the same tool surface. If two parents would copy
+#     identical files into their respective `helpers/` folders, hoist
+#     the helper to the flat namespace instead.
+#
+#     Naming: prefix with the family if a helper name would collide
+#     with a top-level agent (e.g. `legal-researcher` vs the existing
+#     top-level `researcher`).
+#
+# DECISION RULE: default to NESTED. Promote to FLAT only when you have
+# concrete evidence two or more parents need exactly the same helper.
+# Identical files are a smell — either nest under each parent (small
+# duplication, clear ownership) or hoist to flat (single source, must
+# be domain-neutral enough to actually serve multiple parents).
+#
+# Both patterns coexist; the resolver tries nested first, then global.
+# A nested helper of name X can shadow a flat helper of name X for one
+# specific parent without affecting other parents.
+#
+# =====================================================================
+
+## WHAT A HELPER PROFILE IS
+
+A helper profile is a real, fully-formed profile with:
+- agent.json     (config, kind: "helper")
+- SOUL.md        (system prompt — the helper's personality + instructions)
+- AGENTS.md      (memory scaffold — starts minimal)
+- skills/        (directory, may be empty)
+
+It behaves identically to a regular profile EXCEPT:
+- `kind: "helper"` in agent.json
+- The client's Profiles lobby hides helpers by default (UI concern, not yours)
+- Only invokable as a subagent from another profile's subagents[] via
+  `{ profile: "<helper-name>" }`
+
+## SCHEMA — `kind` FIELD (already exists)
+
+The profile schema at:
+  packages/cortex/src/profile/schema.ts
+
+defines `kind: z.enum(['agent', 'helper', 'both']).default('agent')` at
+line 587. Use `"helper"` for nested-pattern helpers and for flat-pattern
+helpers that are not user-invokable. Use `"both"` for helpers that double
+as user-invokable profiles.
+
+## FOLDER LAYOUT — pick by pattern
+
+### Nested (default) — for per-parent private helpers
+
+```
+packages/cortex/profiles/<parent>/
+├── agent.json
+├── SOUL.md
+├── AGENTS.md
+├── skills/
+└── helpers/
+    └── <helper-name>/
+        ├── agent.json   (kind: "helper")
+        ├── SOUL.md
+        ├── AGENTS.md
+        └── skills/
+```
+
+Reference from parent's agent.json:
+```json
+"subagents": [
+  { "name": "<helper-name>", "description": "...", "profile": "<helper-name>" }
+]
+```
+
+The resolver finds `<parent>/helpers/<helper-name>/` automatically.
+
+### Flat — for shared helpers across families
+
+```
+packages/cortex/profiles/<helper-name>/      (top level, prefixed if needed)
+├── agent.json   (kind: "helper")
+├── SOUL.md
+├── AGENTS.md
+└── skills/
+```
+
+Plus an entry in `packages/cortex/profiles/BUILTINS.json` under
+`core` (auto-loaded) or `marketplace` (installable). Reference is
+identical to the nested case — the resolver falls back to the global
+registry when no nested helper of that name exists.
+
+## agent.json TEMPLATE (helper)
+
+```json
+{
+  "name": "<helper-name>",
+  "kind": "helper",
+  "description": "<one-sentence purpose, shown in helper picker>",
+  "version": "0.1.0",
+  "tags": ["<family>", "<role>"],
+  "metadata": {
+    "icon": "<lucide-icon-name>",
+    "color": "violet|teal|rose|amber|blue|...",
+    "category": "<family>"
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "maxTokens": 16384,
+  "maxTurns": <integer — bounded, see below>,
+  "tools": {
+    "preset": "readonly | edit | full | custom",
+    "allow": ["readFile","grep","glob", ...],
+    "deny":  []
+  },
+  "memory": { "sources": ["AGENTS.md"] },
+  "skills": { "dirs": ["skills/"] },
+  "subagents": []
+}
+```
+
+For helpers that need a hard per-turn guarantee (e.g. a verifier ending
+with `VERDICT: PASS|FAIL|PARTIAL`), add a top-level `criticalReminder`
+field — Cortex threads it to Loom's `persistentReminder` mechanism so
+the string is re-injected as a `<system-reminder>` on every turn.
+
+### maxTurns guidance
+- Narrow lookup/fetch helpers (recon, explore): 10–20
+- Analytical helpers (planner, analyst, validator): 25–40
+- Drafting/reporter helpers: 15–30
+- Aggressive hunting/fix helpers: 40–60
+
+### tools.preset guidance
+- readonly:  research, analysis, verification helpers (caveat: plan tools auto-inject is SKIPPED for readonly; helpers needing planning must opt in via `allow`)
+- coding:    helpers that read + edit + run shell (filesystem + shell + credential)
+- full:      ONLY for helpers that need every builtin (web, browser, tasks, image, speech, etc.); justify
+- none:      explicit no-tools profile (plan tools also skipped — must opt in via `allow`)
+- custom:    via `allow`-list enumeration of exact tools
+
+NEVER use "full" as a default. Justify every tool allowed.
+
+## SOUL.md RULES — THIS IS THE MOST IMPORTANT FILE
+
+SOUL.md IS the helper. Quality here defines the product. It must be:
+
+1. **Specific to the role.** Not generic "you are a helpful assistant"
+   slop. A verifier verifies differently from a reporter. A bull-researcher
+   argues differently from a bear-researcher. The SOUL must read like it
+   was written by a senior practitioner in that domain.
+
+2. **Structured.** Use sections. Recommended skeleton:
+   - Identity (who you are, one paragraph)
+   - CRITICAL: Read-only mode (for read-only helpers — explicit prohibition list)
+   - Mission (what you exist to do, 2–4 bullets)
+   - Operating principles (how you work — 5–10 numbered rules)
+   - Inputs you expect (what the parent agent will send)
+   - Outputs you produce (exact shape — markdown sections, JSON, list)
+   - What you never do (explicit negative constraints)
+   - Tool usage guidance (when to use which tool)
+   - Handoff protocol (how you return control to the parent)
+   - Worked example (1–2 short input → reasoning → output samples for
+     non-trivial helpers)
+
+3. **Pushy on quality.** Tell the helper to push back, to refuse vague
+   inputs, to ask clarifying questions when the parent is ambiguous,
+   to fail loudly rather than fabricate.
+
+4. **Concrete examples.** Include 1–2 short worked examples of
+   input → reasoning → output for non-trivial helpers.
+
+5. **Length.** 100–260 lines is normal (existing helpers range 132–258).
+   Longer if the role demands it. Do NOT pad.
+
+6. **Voice.** Second person ("You are ...", "You never ..."). Direct.
+   No marketing copy.
+
+## AGENTS.md RULES
+
+Starts minimal — a scaffold the helper will populate over time:
+
+```markdown
+# <Helper Name> — Memory
+
+This file accumulates durable knowledge this helper learns across runs.
+Categories the helper should maintain:
+
+- **Patterns that worked** — approaches that produced good outcomes
+- **Patterns that failed** — approaches to avoid, with reason
+- **Domain facts** — stable facts about the problem space
+- **Edge cases seen** — unusual inputs and how they were handled
+
+(Empty on first run. The helper appends entries as it learns.)
+```
+
+That's it. Do not prepopulate with fake knowledge.
+
+## skills/ DIRECTORY
+
+Create the directory. Leave it empty unless a specific skill is
+genuinely needed for the helper. Do not invent skills.
+
+## PARENT PROFILE REWRITE
+
+After creating all helpers for a family, rewrite the parent profile's
+`subagents[]` from inline specs to profile references:
+
+BEFORE:
+```json
+"subagents": [
+  { "name": "explore", "description": "...", "systemPrompt": "...", "tools": {...} }
+]
+```
+
+AFTER (nested helpers):
+```json
+"subagents": [
+  { "name": "explore", "description": "<same description>", "profile": "explore" }
+]
+```
+
+(With nested helpers, the `profile` value matches the helper folder name
+under `<parent>/helpers/`. Resolution finds it automatically.)
+
+Keep `name` and `description` on the parent side (the parent uses these
+to decide when to delegate). Everything else now lives in the helper
+profile.
+
+If the inline spec had anything meaningful (custom systemPrompt, tool
+restrictions, model override), MIGRATE IT into the helper profile.
+Do NOT lose information.
+
+## NAMING COLLISIONS
+
+For nested helpers: collisions are impossible — each parent has its
+own `helpers/` namespace. `coder/helpers/explore/` and
+`finance/helpers/explore/` are independent files; the resolver picks
+the one under the spawning parent.
+
+For flat helpers: check before creating.
+- `researcher` already exists as a top-level profile. Counsel's
+  "researcher" must become `legal-researcher` if hoisted to flat.
+- Audit all helper names against existing /profiles/ directory. Any
+  collision → prefix with family (`legal-`, `trading-`, `sentinel-`).
+- Update the parent profile's `subagents[].name` AND `.profile` to
+  match the new helper name.
+
+## SENTINEL FAMILY — SPECIAL CASE
+
+sentinel, sentinel-deep, sentinel-quick share the same 6 roles at
+different depths. DO NOT create 14 helpers. Default to NESTED helpers
+under `sentinel/helpers/`, but if the same 6 helpers genuinely serve
+all three sentinel parents identically, consider FLAT helpers prefixed
+`sentinel-` (recon → `sentinel-recon`, etc.) so the three sentinel
+variants share one set.
+
+The depth differentiation (deep/quick) should be expressed by the
+PARENT profile overriding `model` and/or `maxTurns` at the reference
+site. The SubagentSpecSchema in schema.ts supports `model` and
+`tools` overrides on the reference form.
+
+## FAMILIES AND WHAT EACH AGENT RUN OWNS
+
+Each /strict agent run handles ONE family end-to-end:
+
+1. **coder family** — DONE 2026-05-10
+   Layout: nested
+   Helpers: `coder/helpers/{explore, planner, verifier, general}/`
+   Parent: coder
+
+2. **counsel family** (queued)
+   Layout: nested (recommended) — `counsel/helpers/{...}/`
+   Helpers: legal-researcher, legal-analyst, legal-drafter, legal-checker
+   Parent to rewrite: counsel
+
+3. **sentinel family** (queued, serves 3 parents)
+   Layout: probably FLAT prefixed `sentinel-` (one set serves all 3 parents)
+   Helpers: sentinel-recon, sentinel-vuln-hunter, sentinel-validator,
+            sentinel-reporter, sentinel-fixer, sentinel-code-reviewer
+   Parents to rewrite: sentinel, sentinel-deep, sentinel-quick
+
+4. **trading family** (queued)
+   Layout: nested (recommended) — `trading-firm/helpers/{...}/`
+   Helpers: market-analyst, fundamentals-analyst, intelligence-analyst,
+            macro-analyst, bull-researcher, bear-researcher, risk-assessor
+   Parent to rewrite: trading-firm
+
+Your run will be told which family. Do only that family.
+
+## PROCESS FOR YOUR RUN
+
+1. Read the parent profile's current agent.json. Understand each inline
+   subagent's intent, systemPrompt, tools, and how the parent delegates
+   to it. Read the parent's SOUL.md to understand the context.
+
+2. Read the profile schema at `src/profile/schema.ts` — confirm the
+   exact fields, required vs optional, defaults. No guessing.
+
+3. Decide pattern: **default NESTED** unless multiple parents will share.
+
+4. For each helper:
+   a. Choose a final name (check collisions if flat).
+   b. Draft agent.json per template above.
+   c. Draft SOUL.md — this is where you spend real time. Research the
+      domain. A legal analyst is not a coder. A macro-analyst is not
+      a fundamentals-analyst. Get the voice and methodology right.
+   d. Create AGENTS.md scaffold.
+   e. Create empty skills/ directory.
+
+5. Rewrite the parent profile(s) agent.json to reference helpers.
+   Preserve parent SOUL.md and other files as-is unless they contain
+   stale references to inline subagents that need updating.
+
+6. Validate every agent.json parses as valid JSON and matches the
+   ProfileSchema. If you can run `npm test` or a validator, do.
+
+7. Output a summary:
+   - Helpers created (with paths)
+   - Parents rewritten
+   - Any issues found
+   - Anything you had to push back on
+
+## QUALITY BAR (do not skip)
+
+- SOUL.md must read like a senior specialist wrote it. If it reads
+  generic, rewrite it.
+- Every tool in `allow` must be justified by something in SOUL.md.
+  If you allow Bash but never tell the helper to use it, remove Bash.
+- No TODO, FIXME, "tune later", placeholder text in ANY file.
+- No fabricated expertise — if you don't know what a bear-researcher
+  methodology looks like in finance, say so and research it. Do not
+  invent.
+
+## WHAT TO PUSH BACK ON
+
+- If the inline subagent's intent is unclear and you can't derive it
+  from the parent SOUL, stop and ask.
+- If a proposed helper would need tools Cortex doesn't provide, stop
+  and ask.
+- If the sentinel-deep/quick tiers can't be expressed as per-reference
+  overrides, stop and ask.
+- If you're unsure whether nested or flat is right, stop and ask.
+
+## OUT OF SCOPE
+
+- Do NOT modify schema.ts. The `kind` field already exists.
+- Do NOT touch client UI code.
+- Do NOT create new top-level profiles.
+- Do NOT modify the `default` profile (no subagents to extract).
+- Do NOT add a `kind` field to regular profiles — they default to
+  `"agent"` correctly.
+
+## REFERENCE FILES
+
+- Profile schema:        `packages/cortex/src/profile/schema.ts`
+- Profile loader:        `packages/cortex/src/profile/loader.ts`
+- Local-helper resolver: `packages/cortex/src/profile/local-helpers.ts`
+- Profile assembler:     `packages/cortex/src/profile/assembler.ts`
+- Subagent resolver:     `packages/cortex/src/profile/subagent-resolver.ts`
+- Coder family example:  `packages/cortex/profiles/coder/helpers/{explore,planner,verifier,general}/`
+
+Read real profiles before writing. Match the existing conventions
+exactly unless they conflict with this brief.
+
+# END OF BRIEF

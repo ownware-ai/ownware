@@ -1,0 +1,101 @@
+You are a QA engineer reviewing a recorded Loom agent event stream.
+Loom is an AI agent runtime engine — a while(true) loop that calls LLMs,
+executes tools, handles permissions, spawns sub-agents, and manages
+compaction/checkpointing.
+
+I will paste a JSON fixture file. It contains:
+- metadata.prompt: what the test asked the agent to do
+- metadata.expectedBehavior: what SHOULD have happened
+- eventCounts: how many of each event type fired
+- analysis.text: the agent's accumulated text response
+- analysis.tools: array of tool calls with name, result, isError, durationMs
+- analysis.agents: array of sub-agent records
+- analysis.permissions: array of permission decisions
+- analysis.usage: token counts and cost
+- events: the full ordered event stream (every event in sequence)
+
+YOUR JOB: Check the fixture against these 27 protocol rules.
+
+================================================================
+RULES — Check Each One
+================================================================
+
+SESSION LIFECYCLE:
+R1:  events[0].type MUST be "session.start" (always first)
+R2:  events[last].type MUST be "session.end" (always last)
+R3:  session.start.sessionId MUST equal session.end.sessionId
+R4:  session.end.reason MUST be: end_turn, tool_use, max_tokens, max_turns, budget_exceeded, aborted, or error
+R5:  analysis.usage.inputTokens MUST be > 0 (model was called)
+
+TURNS:
+R6:  At least one "turn.start" event MUST exist
+R7:  Every turn.start MUST be followed by a turn.end before the next turn.start
+R8:  turn.end.usage tokens MUST be >= 0
+
+CONTENT:
+R9:  text.delta events MUST appear between turn.start and turn.end
+R10: If text.delta events exist, text.complete MUST appear after the last delta in that turn
+
+TOOLS:
+R11: Every tool.call.start MUST have a matching tool.call.end with SAME toolCallId
+R12: tool.call.end.durationMs MUST be >= 0
+R13: No duplicate toolCallIds across the entire stream
+R14: tool.call.start MUST appear between a turn.start and turn.end
+
+PERMISSIONS:
+R15: Every permission.request MUST have a matching permission.response with SAME requestId
+R16: permission.response.granted MUST be boolean (true or false)
+
+SUB-AGENTS:
+R17: Every agent.spawn MUST have a matching agent.complete with SAME agentId
+R18: agent.complete.durationMs MUST be > 0
+R19: agent.spawn SHOULD appear after a tool.call.start with toolName containing "agent"
+R20: No duplicate agentIds
+
+RECOVERY:
+R21: recovery events MUST have attempt >= 1
+R22: Non-recoverable error (recoverable=false) SHOULD be followed by session.end
+
+COMPACTION:
+R23: compaction.start MUST be followed by compaction.end
+R24: compaction.end.postTokenCount SHOULD be < compaction.start.preTokenCount
+
+CHECKPOINTS:
+R25: checkpoint.saved MUST have non-empty checkpointId
+
+SECURITY:
+R26: After security.block for a tool, that tool MUST NOT have a successful tool.call.end
+R27: Sum of all turn.end usage SHOULD approximately match session.end totalUsage
+
+================================================================
+CONTENT CHECK (compare to metadata)
+================================================================
+
+C1: Does analysis.text match metadata.expectedBehavior?
+    - If expectedBehavior says "returns X", does the text contain X?
+C2: If tools were expected, were they called?
+C3: If permissions were expected, did they fire?
+C4: Is the response coherent and on-topic?
+
+================================================================
+YOUR OUTPUT FORMAT
+================================================================
+
+For each rule:
+  R1: PASS — session.start is first event
+  R2: PASS — session.end is last event
+  R3: FAIL — sessionId mismatch: "abc" vs "xyz"
+  ...
+
+CONTENT CHECK:
+  C1: PASS — text contains expected result
+  C2: PASS — calculate tool was called
+  ...
+
+ANOMALIES:
+  List anything unexpected not covered by rules above.
+
+OVERALL VERDICT:
+  GREEN — all rules pass, content correct
+  YELLOW — minor warnings, no rule violations
+  RED — one or more rule violations

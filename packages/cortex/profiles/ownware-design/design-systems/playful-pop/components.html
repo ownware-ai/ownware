@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Playful Pop — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/playful-pop. Bright multi-accent canvas with bold chunky type and thick dark borders." />
+    <style>
+      :root {
+        --bg:      #fff5d0;
+        --surface: #ffffff;
+        --fg:      #1a1438;
+        --muted:   #6c6585;
+        --border:  #1a1438;
+        --accent:       #ff5d8f;
+        --accent-hover: #ef4d7f;
+        --accent-fg:    #ffffff;
+        --accent-alt:    #7fd6c2;
+        --accent-alt-fg: #1a1438;
+        --good: #2ec07a;
+        --warn: #ffb020;
+        --bad:  #ef4d4d;
+        --radius:      14px;
+        --radius-pill: 999px;
+        --font-display: 'Recoleta', 'Space Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 100vh; background: var(--bg); color: var(--fg); font: 400 16px/1.55 var(--font-body); }
+      .wrap { max-width: 1080px; margin-inline: auto; padding: 96px 28px; }
+      .eyebrow { display: inline-block; padding: 6px 12px; border: 2px solid var(--border); border-radius: var(--radius-pill); background: var(--accent-alt); color: var(--accent-alt-fg); font: 700 12px/1 var(--font-body); letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 18px; }
+      h1 { font: 800 72px/1.05 var(--font-display); letter-spacing: -0.025em; margin: 0 0 16px; text-wrap: balance; }
+      .lead { font-size: 19px; max-width: 56ch; margin: 0 0 32px; }
+      .actions { display: flex; gap: 14px; margin-bottom: 56px; }
+      .btn { display: inline-flex; align-items: center; min-height: 54px; padding: 0 28px; border-radius: var(--radius-pill); font: 700 16px/1 var(--font-body); text-decoration: none; border: 3px solid var(--border); cursor: pointer; transition: transform 100ms ease, box-shadow 100ms ease; box-shadow: 5px 5px 0 var(--border); }
+      .btn:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--border); }
+      .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--border); }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); }
+      .btn-secondary { background: var(--surface); color: var(--fg); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 22px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+      .card { background: var(--surface); border: 3px solid var(--border); border-radius: var(--radius); padding: 28px; box-shadow: 6px 6px 0 var(--border); }
+      .card.alt { background: var(--accent-alt); }
+      .card h3 { font: 800 26px/1.15 var(--font-display); letter-spacing: -0.02em; margin: 0 0 8px; }
+      .card p  { color: var(--fg); margin: 0 0 20px; opacity: 0.78; }
+      .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-top: 16px; border-top: 2px dashed var(--border); }
+      .stat strong { display: block; font: 800 32px/1.05 var(--font-display); }
+      .stat span { font-size: 12px; opacity: 0.7; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); border: 2px solid var(--border); background: var(--accent); color: var(--accent-fg); font: 700 11px/1 var(--font-body); letter-spacing: 0.04em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">PLAYFUL POP</p>
+      <h1>Loud, fun, and a little bit ✨ on purpose.</h1>
+      <p class="lead">For kids' apps, creator tools, and consumer landing pages — anywhere the artifact should feel like a smile. Two accents (pink + mint), thick dark borders, chunky display type.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">Try it free →</a>
+        <a class="btn btn-secondary" href="#">See examples</a>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <span class="badge">new</span>
+          <h3 style="margin-top:14px">Your streak: 12 days 🔥</h3>
+          <p>Cards carry a thick dark border, hard offset shadow, and one of the two accent fills. The combination is the brand.</p>
+          <div class="stat">
+            <div><strong>12</strong><span>days streak</span></div>
+            <div><strong>340</strong><span>xp earned</span></div>
+            <div><strong>4</strong><span>badges unlocked</span></div>
+          </div>
+        </article>
+        <article class="card alt">
+          <h3>Mint accent tile</h3>
+          <p>The alt accent gets its own surface treatment, never its own interactive role beyond pairing.</p>
+          <div style="display:flex; gap:10px;">
+            <span style="width:36px;height:36px;border-radius:8px;background:var(--accent);border:2px solid var(--border)"></span>
+            <span style="width:36px;height:36px;border-radius:8px;background:var(--accent-alt);border:2px solid var(--border)"></span>
+            <span style="width:36px;height:36px;border-radius:8px;background:var(--surface);border:2px solid var(--border)"></span>
+            <span style="width:36px;height:36px;border-radius:8px;background:var(--fg)"></span>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

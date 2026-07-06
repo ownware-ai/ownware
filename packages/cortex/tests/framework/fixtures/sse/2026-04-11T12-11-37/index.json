@@ -1,0 +1,66 @@
+{
+  "runStamp": "2026-04-11T12-11-37",
+  "totalStreams": 5,
+  "streams": [
+    {
+      "file": "01-pattern-08-permission-approve.json",
+      "name": "pattern-08-permission-approve",
+      "metadata": {
+        "prompt": "Read data.txt with auto-approve",
+        "profileId": "coder",
+        "threadId": "thread_25a2abf7bfd2",
+        "expectedBehavior": "permission.request → approve → tool.call.start → tool.call.end"
+      },
+      "eventCount": 37,
+      "completed": true
+    },
+    {
+      "file": "02-pattern-09-permission-deny.json",
+      "name": "pattern-09-permission-deny",
+      "metadata": {
+        "prompt": "Write to file — deny permission",
+        "profileId": "coder",
+        "threadId": "thread_4851d93127f8",
+        "expectedBehavior": "permission.request → deny → write blocked"
+      },
+      "eventCount": 42,
+      "completed": true
+    },
+    {
+      "file": "03-pattern-10-permission-always-1.json",
+      "name": "pattern-10-permission-always-1",
+      "metadata": {
+        "prompt": "Read data.txt with always",
+        "profileId": "coder",
+        "threadId": "thread_5fd07a1f896d",
+        "expectedBehavior": "First run: permission.request → always → tool executes"
+      },
+      "eventCount": 34,
+      "completed": true
+    },
+    {
+      "file": "04-pattern-10-permission-always-2.json",
+      "name": "pattern-10-permission-always-2",
+      "metadata": {
+        "prompt": "Second read — should not prompt",
+        "profileId": "coder",
+        "threadId": "thread_99acc151546f",
+        "expectedBehavior": "No permission.request — already approved via \"always\""
+      },
+      "eventCount": 36,
+      "completed": true
+    },
+    {
+      "file": "05-pattern-11-security-block-never.json",
+      "name": "pattern-11-security-block-never",
+      "metadata": {
+        "prompt": "Write to .env file — zone NEVER should hard-block",
+        "profileId": "coder",
+        "threadId": "thread_6b98cb993183",
+        "expectedBehavior": "security.block or tool.call.end with isError — no permission.request"
+      },
+      "eventCount": 44,
+      "completed": true
+    }
+  ]
+}

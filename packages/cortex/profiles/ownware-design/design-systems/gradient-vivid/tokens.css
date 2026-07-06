@@ -1,0 +1,56 @@
+/* Gradient Vivid — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is a cool near-white (#fafbff), faintly violet-leaning. This
+ *     primes the eye for the saturated gradient washes below.
+ *   - --accent and --accent-alt are BOTH used (purple + teal). Like neon-
+ *     arcade and playful-pop, this is a two-accent system — they pair as
+ *     gradient stops on the hero and as primary/secondary CTA fills. A
+ *     third accent is still wrong.
+ *   - --fg is deep ink with a faint violet cast (#0d0c25). Pairs with
+ *     the cool background to set the brand chord.
+ *   - --radius is 14px on cards and buttons — slightly soft, marketing-
+ *     feel; not tight enough to read as dev-tool, not loose enough to
+ *     read as consumer-friendly.
+ *   - The signature gradient stops are NOT in tokens (genre-specific
+ *     compositions vary) but the canonical pair is documented in
+ *     DESIGN.md as the signature move.
+ */
+
+:root {
+  /* surface — cool near-white floor, clean white card tier */
+  --bg:      #fafbff;
+  --surface: #ffffff;
+
+  /* foreground ladder — deep violet-ink, cool muted */
+  --fg:     #0d0c25;
+  --muted:  #5e5d7a;
+  --border: #e6e6f2;
+
+  /* accent — purple primary + teal secondary; the two gradient stops */
+  --accent:       #6b3df5;
+  --accent-hover: #5928e0;
+  --accent-fg:    #ffffff;
+  --accent-alt:    #3df5d4;
+  --accent-alt-fg: #0d0c25;
+
+  /* semantic — saturated but tuned to the brand chord */
+  --good: #2ec07a;
+  --warn: #ffae1f;
+  --bad:  #f14060;
+
+  /* shape — marketing soft, not consumer-pillow */
+  --radius:      14px;
+  --radius-pill: 999px;
+
+  /* typography — confident geometric sans across the board */
+  --font-display: 'Geist', 'Space Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

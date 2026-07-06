@@ -1,0 +1,18 @@
+{
+  "runStamp": "2026-04-09T10-27-07",
+  "totalStreams": 1,
+  "streams": [
+    {
+      "file": "01-pattern-09-permission-deny.json",
+      "name": "pattern-09-permission-deny",
+      "metadata": {
+        "prompt": "Write to file — deny permission",
+        "profileId": "coder",
+        "threadId": "thread_df5b7a2e308d",
+        "expectedBehavior": "permission.request → deny → write blocked"
+      },
+      "eventCount": 43,
+      "completed": true
+    }
+  ]
+}

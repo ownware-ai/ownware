@@ -1,0 +1,55 @@
+/* Playful Pop — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - Unlike the other systems, Playful Pop ships TWO accents: --accent
+ *     (pink) and --accent-alt (mint). This is the only system in the
+ *     catalog that allows two interactive chromatic notes — used for
+ *     pairing CTAs (primary + secondary fill) and for alternating-row
+ *     callouts. Adding a THIRD accent is still wrong.
+ *   - --bg is bright pastel yellow, not white. White as a canvas in this
+ *     system collapses it to a regular friendly SaaS theme.
+ *   - --fg is deep purple-black, not neutral black. The whole palette is
+ *     warm-bright; pure black breaks the chord.
+ *   - --radius is 14px on cards (soft but not pillowy) and 999px on
+ *     buttons (full pills). Buttons in this system are ALWAYS pill-shaped.
+ *   - --border is heavy, near-fg color. The genre uses thick (2–3px)
+ *     dark borders as a structural device — borders are NOT decorative.
+ */
+
+:root {
+  /* surface — bright pastel canvas, clean white card tier */
+  --bg:      #fff5d0;
+  --surface: #ffffff;
+
+  /* foreground ladder — deep purple-black on bright palette */
+  --fg:     #1a1438;
+  --muted:  #6c6585;
+  --border: #1a1438;
+
+  /* accent — pink primary + mint secondary; the only multi-accent system */
+  --accent:       #ff5d8f;
+  --accent-hover: #ef4d7f;
+  --accent-fg:    #ffffff;
+  --accent-alt:    #7fd6c2;
+  --accent-alt-fg: #1a1438;
+
+  /* semantic — saturated, no blending */
+  --good: #2ec07a;
+  --warn: #ffb020;
+  --bad:  #ef4d4d;
+
+  /* shape — soft cards, pill buttons */
+  --radius:      14px;
+  --radius-pill: 999px;
+
+  /* typography — chunky display sans, friendly body sans */
+  --font-display: 'Recoleta', 'Space Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

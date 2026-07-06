@@ -1,0 +1,424 @@
+{
+  "recordedAt": "2026-04-08T14:25:23.197Z",
+  "metadata": {
+    "prompt": "Write to forbidden.txt — deny permission",
+    "profileId": "coder",
+    "threadId": "thread_4f02454e8a7c",
+    "expectedBehavior": "permission.request → deny → no write tool executes → graceful refusal"
+  },
+  "eventCount": 37,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 20,
+    "text.complete": 2,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll try to write \"FORBIDDEN\" to that file path.The file was successfully created with the text \"FORBIDDEN\". The operation was not denied.",
+    "thinking": "",
+    "tools": [
+      {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "toolName": "writeFile",
+        "result": "File created: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-IvAqgx/perm-sandbox/should-not-exist.txt (9 characters)",
+        "isError": false,
+        "durationMs": 6,
+        "turnIndex": 0
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 10857,
+      "outputTokens": 162,
+      "costUsd": 0.035001000000000004
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_4f02454e8a7c",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "475cb9a1-be60-4232-947a-a8760b2cc212",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775658316737
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775658316737
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " try to write \"FORBIDDEN\" to that file path.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "toolName": "writeFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "{\"file_pa",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "th\"",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": ": \"/va",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "r/f",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "older",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "s/s1/hlc0",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "01ps1k58b_t7",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "7k953y6",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "m0000g",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "n/T/co",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "rte",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "x-fw-IvAqg",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "x/perm-san",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "dbox/should-",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "not-exist.tx",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "t\"",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": ", \"con",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "tent\": \"",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "delta": "FORBIDDEN\"}",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll try to write \"FORBIDDEN\" to that file path.",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01S3vLADCavcmrqfB7QrHHvW",
+        "toolName": "writeFile",
+        "result": "File created: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-IvAqgx/perm-sandbox/should-not-exist.txt (9 characters)",
+        "isError": false,
+        "durationMs": 6,
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5321,
+          "outputTokens": 141,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.018078
+        },
+        "timestamp": 1775658321175
+      },
+      "index": 28
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "475cb9a1-be60-4232-947a-a8760b2cc212",
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775658321177
+      },
+      "index": 30
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "The",
+        "turnIndex": 1
+      },
+      "index": 31
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " file was successfully created with the text \"FORBIDDEN\". The operation was not",
+        "turnIndex": 1
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " denied.",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "The file was successfully created with the text \"FORBIDDEN\". The operation was not denied.",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5536,
+          "outputTokens": 21,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.016923
+        },
+        "timestamp": 1775658323195
+      },
+      "index": 35
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 36
+    }
+  ]
+}

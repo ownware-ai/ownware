@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Terminal Grid — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/terminal-grid. HUD / dev-console aesthetic — near-black canvas, mono everywhere, neon-green telemetry accent." />
+    <style>
+      :root {
+        --bg:      #070b10;
+        --surface: #0d1218;
+        --fg:      #d8f5e0;
+        --muted:   #5d6b78;
+        --border:  #1c2530;
+        --accent:       #3df57c;
+        --accent-hover: #5cff97;
+        --accent-fg:    #070b10;
+        --good: #3df57c;
+        --warn: #f5c83d;
+        --bad:  #ff5d6c;
+        --radius:      4px;
+        --radius-pill: 4px;
+        --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        min-height: 100vh; background: var(--bg); color: var(--fg);
+        font: 400 13px/1.45 var(--font-mono);
+        background-image:
+          linear-gradient(var(--border) 1px, transparent 1px),
+          linear-gradient(90deg, var(--border) 1px, transparent 1px);
+        background-size: 32px 32px;
+        background-position: 0 0;
+      }
+      .wrap { max-width: 1080px; margin-inline: auto; padding: 56px 24px; }
+      .eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+      h1 { font: 600 40px/1.1 var(--font-mono); margin: 0 0 16px; letter-spacing: -0.01em; }
+      .lead { color: var(--muted); font-size: 14px; max-width: 64ch; margin: 0 0 28px; }
+      .actions { display: flex; gap: 10px; margin-bottom: 40px; }
+      .btn { display: inline-flex; align-items: center; min-height: 38px; padding: 0 18px; border-radius: var(--radius); font: 500 13px/1 var(--font-mono); text-decoration: none; border: 1px solid transparent; cursor: pointer; letter-spacing: 0.02em; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); }
+      .btn-primary:hover { background: var(--accent-hover); }
+      .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--border); }
+      .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+      .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+      .panel h3 { font: 600 16px/1.2 var(--font-mono); margin: 0 0 6px; }
+      .panel p  { color: var(--muted); margin: 0 0 16px; }
+      .led { display: inline-flex; align-items: center; gap: 8px; font: 600 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+      .led::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.35; } }
+      .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; padding-top: 16px; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+      .stat > div { padding: 0 12px; border-right: 1px solid var(--border); }
+      .stat > div:first-child { padding-left: 0; }
+      .stat > div:last-child  { border-right: 0; }
+      .stat strong { display: block; font: 700 32px/1.1 var(--font-mono); color: var(--accent); letter-spacing: -0.02em; }
+      .stat span { color: var(--muted); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">Terminal Grid · v1.0.0</p>
+      <h1>$ telemetry --live --grid --mono</h1>
+      <p class="lead">Visible gridlines, mono everywhere, one neon-green telemetry accent. For dev tools, infra dashboards, and anywhere the artifact should read as engineered.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#">$ run session</a>
+        <a class="btn btn-secondary" href="#">$ view logs</a>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <span class="led">online</span>
+          <h3 style="margin-top:12px">SESSION_STATUS</h3>
+          <p>// active connection · 3 tools wired · 1.2s median latency</p>
+          <div class="stat">
+            <div><strong>98.7</strong><span>uptime %</span></div>
+            <div><strong>12,408</strong><span>requests</span></div>
+            <div><strong>0.42s</strong><span>p95 latency</span></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>TOKEN_MAP</h3>
+          <p>// every value comes from --tokens</p>
+          <div style="display:flex; gap:8px;">
+            <span style="width:32px;height:32px;border-radius:4px;background:var(--accent);box-shadow:0 0 12px var(--accent)"></span>
+            <span style="width:32px;height:32px;border-radius:4px;background:var(--surface);border:1px solid var(--border)"></span>
+            <span style="width:32px;height:32px;border-radius:4px;background:var(--fg)"></span>
+            <span style="width:32px;height:32px;border-radius:4px;background:var(--muted)"></span>
+          </div>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

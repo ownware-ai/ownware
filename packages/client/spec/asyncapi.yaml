@@ -1,0 +1,130 @@
+# The Ownware gateway wire contract — SSE event vocabulary, v1.
+#
+# Companion to openapi.yaml. Every frame on
+# GET /api/v1/threads/{threadId}/agents/root/events is one JSON object
+# carrying `type` and `seq`. `seq` is the resume cursor: reconnect with
+# ?since=<highest seen> and the stream resumes without replaying.
+#
+# THE TERMINATION RULE (the one thing every consumer must know): the
+# root stream NEVER closes on its own — a new POST /run may arrive any
+# time. One run's reply is finished at:
+#   - turn.end whose stopReason is NOT tool_use / pause_turn, or
+#   - turn.interrupted, error, or stream.shutdown.
+# @ownware/client's streamReply() encodes exactly this.
+
+asyncapi: 3.0.0
+info:
+  title: Ownware Gateway — run event stream
+  version: 0.1.0
+
+channels:
+  runEvents:
+    address: /api/v1/threads/{threadId}/agents/root/events
+    messages:
+      textDelta:
+        name: text.delta
+        summary: Streamed assistant text.
+        payload:
+          type: object
+          required: [type, seq, text]
+          properties:
+            type: { const: text.delta }
+            seq: { type: integer }
+            text: { type: string }
+      toolCallStart:
+        name: tool.call.start
+        summary: The agent started a tool call.
+        payload:
+          type: object
+          required: [type, seq, toolName]
+          properties:
+            type: { const: tool.call.start }
+            seq: { type: integer }
+            toolName: { type: string }
+            input: { type: object }
+      toolCallEnd:
+        name: tool.call.end
+        summary: Tool call finished.
+        payload:
+          type: object
+          required: [type, seq, toolName]
+          properties:
+            type: { const: tool.call.end }
+            seq: { type: integer }
+            toolName: { type: string }
+            isError: { type: boolean }
+            durationMs: { type: integer }
+      permissionRequest:
+        name: permission.request
+        summary: >
+          Run paused, awaiting approval. Answer via POST
+          /threads/{threadId}/resume {"action":"approve"|"deny"}.
+        payload:
+          type: object
+          required: [type, seq, toolName]
+          properties:
+            type: { const: permission.request }
+            seq: { type: integer }
+            toolName: { type: string }
+            requestId: { type: string }
+      turnEnd:
+        name: turn.end
+        summary: >
+          One model call finished. TERMINAL for the run unless
+          stopReason is tool_use or pause_turn (the loop continues).
+        payload:
+          type: object
+          required: [type, seq]
+          properties:
+            type: { const: turn.end }
+            seq: { type: integer }
+            stopReason: { type: string }
+            usage: { type: object }
+      turnInterrupted:
+        name: turn.interrupted
+        summary: Run ended outside turn.end (abort, timeout, shutdown). TERMINAL.
+        payload:
+          type: object
+          required: [type, seq]
+          properties:
+            type: { const: turn.interrupted }
+            seq: { type: integer }
+            reason: { type: string }
+      error:
+        name: error
+        summary: Something failed. TERMINAL.
+        payload:
+          type: object
+          required: [type, seq, message]
+          properties:
+            type: { const: error }
+            seq: { type: integer }
+            code: { type: string }
+            message: { type: string }
+      streamShutdown:
+        name: stream.shutdown
+        summary: >
+          Gateway is closing THIS socket (e.g. slow_consumer). TERMINAL
+          for the connection — re-hydrate, then reconnect only if the
+          thread is still running.
+        payload:
+          type: object
+          required: [type, seq]
+          properties:
+            type: { const: stream.shutdown }
+            seq: { type: integer }
+            reason: { type: string }
+            retryAfterMs: { type: integer }
+      heartbeat:
+        name: heartbeat
+        summary: Every ~30s regardless of traffic. Ignore; use for liveness timers.
+        payload:
+          type: object
+          required: [type]
+          properties:
+            type: { const: heartbeat }
+            ts: { type: integer }
+
+# The full engine vocabulary (thinking deltas, sub-agent spawns,
+# compaction, security blocks, …) is larger; events not listed here are
+# non-contractual — render them generically or ignore them.

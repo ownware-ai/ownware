@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Luxury Serif — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/luxury-serif. Wide-tracked display serif, generous whitespace, deep oxblood on warm stone." />
+    <style>
+      :root {
+        --bg:      #f1ece1;
+        --surface: #ffffff;
+        --fg:      #1a1612;
+        --muted:   #7a6f60;
+        --border:  #d2c9b6;
+        --accent:       #5e1a23;
+        --accent-hover: #491218;
+        --accent-fg:    #f1ece1;
+        --good: #2f6e3f;
+        --warn: #b58020;
+        --bad:  #8a2a2a;
+        --radius:      4px;
+        --radius-pill: 999px;
+        --font-display: 'Recoleta', 'Fraunces', 'Cormorant Garamond', 'Iowan Old Style', 'Times New Roman', Georgia, serif;
+        --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 100vh; background: var(--bg); color: var(--fg); font: 400 17px/1.6 var(--font-body); }
+      .wrap { max-width: 1180px; margin-inline: auto; padding: 144px 48px; }
+      header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 144px; }
+      .mast { font: 600 14px/1 var(--font-body); letter-spacing: 0.24em; text-transform: uppercase; }
+      .established { color: var(--muted); font: 400 12px/1 var(--font-body); letter-spacing: 0.18em; text-transform: uppercase; }
+      .eyebrow { font: 600 11px/1 var(--font-body); letter-spacing: 0.24em; text-transform: uppercase; color: var(--accent); margin: 0 0 36px; }
+      h1 { font: 500 144px/0.95 var(--font-display); letter-spacing: -0.03em; margin: 0 0 48px; max-width: 14ch; text-wrap: balance; }
+      h1 .accent-word { color: var(--accent); }
+      .hero { display: grid; grid-template-columns: 7fr 5fr; gap: 64px; align-items: end; margin-bottom: 144px; }
+      .lead { font: 400 22px/1.4 var(--font-display); font-style: italic; max-width: 36ch; color: var(--muted); }
+      .actions { display: flex; gap: 16px; align-items: center; padding-top: 32px; border-top: 1px solid var(--border); margin-bottom: 144px; }
+      .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 28px; border-radius: var(--radius); font: 500 13px/1 var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--fg); cursor: pointer; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+      .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+      .btn-secondary { background: transparent; color: var(--fg); }
+      .btn-secondary:hover { background: var(--fg); color: var(--bg); }
+      .institutional { display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; padding-top: 48px; border-top: 1px solid var(--border); }
+      .institutional h4 { font: 600 11px/1.4 var(--font-body); letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+      .institutional p  { font-size: 14px; color: var(--muted); margin: 0; line-height: 1.6; }
+      @media (max-width: 800px) { h1 { font-size: 72px; } .hero { grid-template-columns: 1fr; } .institutional { grid-template-columns: 1fr 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <span class="mast">Maison Ownware</span>
+        <span class="established">Established · 1862</span>
+      </header>
+      <section>
+        <p class="eyebrow">Spring–Summer 2026 — By Appointment</p>
+        <div class="hero">
+          <h1>Quiet, by <span class="accent-word">design.</span></h1>
+          <p class="lead">An atelier of fine objects, presented in oxblood and warm stone, set in display serif at considered scale. Whitespace is the structural medium.</p>
+        </div>
+        <div class="actions">
+          <a class="btn btn-primary" href="#">Request a viewing</a>
+          <a class="btn btn-secondary" href="#">Browse the collection</a>
+        </div>
+        <div class="institutional">
+          <div>
+            <h4>Atelier</h4>
+            <p>14 Rue de Sévigné<br/>75004 Paris</p>
+          </div>
+          <div>
+            <h4>By Appointment</h4>
+            <p>Tuesday – Saturday<br/>11:00 – 19:00</p>
+          </div>
+          <div>
+            <h4>Collections</h4>
+            <p>Spring · Summer<br/>Autumn · Winter</p>
+          </div>
+          <div>
+            <h4>Correspondence</h4>
+            <p>atelier@ownware.maison<br/>+33 1 44 54 14 14</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

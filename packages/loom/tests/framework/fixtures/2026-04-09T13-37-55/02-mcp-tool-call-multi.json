@@ -1,0 +1,340 @@
+{
+  "recordedAt": "2026-04-09T13:37:55.130Z",
+  "metadata": {
+    "prompt": "Uppercase then echo via MCP",
+    "expectedBehavior": "mcp__echo__uppercase → HELLO WORLD, mcp__echo__echo → MCP_WORKS"
+  },
+  "eventCount": 25,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 5,
+    "tool.call.start": 2,
+    "tool.call.args_delta": 8,
+    "text.complete": 2,
+    "tool.call.end": 2,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll use the uppercase tool on \"hello world\" and then echo \"MCP_WORKS\" as requested.Here are the results:\n\n1. **Uppercase conversion**: \"hello world\" → \"HELLO WORLD\"\n2. **Echo result**: \"MCP_WORKS\" → \"MCP_WORKS\"\n\nBoth tools executed successfully!",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "mcp__echo__echo",
+        "result": "MCP_WORKS",
+        "isError": false,
+        "durationMs": 11
+      },
+      {
+        "toolName": "mcp__echo__uppercase",
+        "result": "HELLO WORLD",
+        "isError": false,
+        "durationMs": 2
+      }
+    ],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 1691,
+      "outputTokens": 180,
+      "costUsd": 0.007773
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "5b8a638b-cbba-49f6-970d-957ecee61f9c",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775741870969
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775741870969
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll use",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " the uppercase tool on \"hello world\" and then echo \"MCP_WORKS\" as requested.",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01P3s4iEj11S9XaV38inhNy9",
+        "toolName": "mcp__echo__uppercase",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01P3s4iEj11S9XaV38inhNy9",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01P3s4iEj11S9XaV38inhNy9",
+        "delta": "{\"text\": \"he",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01P3s4iEj11S9XaV38inhNy9",
+        "delta": "llo wor",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01P3s4iEj11S9XaV38inhNy9",
+        "delta": "ld\"}",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01UkNDLHvExiXSS41DkqLrac",
+        "toolName": "mcp__echo__echo",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UkNDLHvExiXSS41DkqLrac",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UkNDLHvExiXSS41DkqLrac",
+        "delta": "{\"message\": ",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UkNDLHvExiXSS41DkqLrac",
+        "delta": "\"MCP_WOR",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01UkNDLHvExiXSS41DkqLrac",
+        "delta": "KS\"}",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll use the uppercase tool on \"hello world\" and then echo \"MCP_WORKS\" as requested.",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01UkNDLHvExiXSS41DkqLrac",
+        "toolName": "mcp__echo__echo",
+        "result": "MCP_WORKS",
+        "isError": false,
+        "durationMs": 11,
+        "turnIndex": 0,
+        "metadata": {
+          "serverName": "echo",
+          "toolName": "echo",
+          "isReadOnly": true,
+          "annotations": {
+            "readOnlyHint": true
+          }
+        }
+      },
+      "index": 15
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01P3s4iEj11S9XaV38inhNy9",
+        "toolName": "mcp__echo__uppercase",
+        "result": "HELLO WORLD",
+        "isError": false,
+        "durationMs": 2,
+        "turnIndex": 0,
+        "metadata": {
+          "serverName": "echo",
+          "toolName": "uppercase",
+          "isReadOnly": false,
+          "annotations": {
+            "destructiveHint": true
+          }
+        }
+      },
+      "index": 16
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 744,
+          "outputTokens": 125,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.004107
+        },
+        "timestamp": 1775741872993
+      },
+      "index": 17
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775741872993
+      },
+      "index": 18
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Here",
+        "turnIndex": 1
+      },
+      "index": 19
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " are the results:\n\n1. **Uppercase conversion**: \"hello world\" → \"HELLO WORLD\"\n2. **Echo result**: \"MCP_WORKS\" → \"",
+        "turnIndex": 1
+      },
+      "index": 20
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "MCP_WORKS\"\n\nBoth tools executed successfully!",
+        "turnIndex": 1
+      },
+      "index": 21
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Here are the results:\n\n1. **Uppercase conversion**: \"hello world\" → \"HELLO WORLD\"\n2. **Echo result**: \"MCP_WORKS\" → \"MCP_WORKS\"\n\nBoth tools executed successfully!",
+        "turnIndex": 1
+      },
+      "index": 22
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 947,
+          "outputTokens": 55,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003666
+        },
+        "timestamp": 1775741875129
+      },
+      "index": 23
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "5b8a638b-cbba-49f6-970d-957ecee61f9c",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1691,
+          "outputTokens": 180,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.007773,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775741875130
+      },
+      "index": 24
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "name": "idris",
+  "displayName": "Vera",
+  "kind": "agent",
+  "description": "Research & competitive intel operator. Makes sure you know more about your market than your competitors do. Runs deep research on companies, people, and markets; monitors competitors' pricing, launches, funding, hiring, and news on a cadence; and maintains living briefs where every claim is sourced and dated. Spawns researchers in parallel to cover many targets at once, verifies load-bearing claims against primary sources before stating them, tracks what changed since last time, and drops a one-page 'what changed and why it matters' in Notion — with a Slack heads-up when something is urgent.",
+  "version": "0.1.0",
+  "productId": "ownware",
+  "locked": false,
+  "tags": [
+    "research",
+    "competitive-intel",
+    "market-research",
+    "monitoring",
+    "briefs",
+    "due-diligence",
+    "analysis",
+    "sourcing"
+  ],
+  "metadata": {
+    "icon": "I",
+    "color": "violet",
+    "category": "Research",
+    "role": "Research & competitive intel",
+    "avatar": {
+      "bg": "#170F2B",
+      "fg": "#D8C5FF",
+      "accent": "#8B5BFF",
+      "symbol": "<circle cx=\"28\" cy=\"28\" r=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\"/><line x1=\"37.5\" y1=\"37.5\" x2=\"50\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/><path d=\"M28 21 L34 33 L22 33 Z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linejoin=\"round\" stroke-opacity=\"0.9\"/>"
+    },
+    "pixelAvatar": {
+      "hair": "topknot",
+      "hi": 2,
+      "si": 4,
+      "ti": 2,
+      "face": "wide",
+      "expr": "wink",
+      "glasses": "none",
+      "facial": "none",
+      "headwear": "none",
+      "earrings": true,
+      "headset": false,
+      "blush": false
+    },
+    "requiredSecrets": []
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 150,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": ["shell_execute"],
+    "custom": [],
+    "mcp": {},
+    "composio": {
+      "toolkits": ["notion", "googledrive", "slack"]
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "sources": ["AGENTS.md"],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": ["skills/"],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": { "enabled": false, "provider": "local" },
+    "zones": { "enabled": true, "overrides": [] }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "90m"
+  },
+  "subagents": [
+    {
+      "name": "target-researcher",
+      "description": "Researches ONE target — a company, person, or market — in depth and returns a structured, sourced, dated brief. Pulls from web search, fetches primary sources, and drives the browser for JS-gated pages (pricing, dynamic dashboards). Read-only: never writes briefs, never publishes, never spawns. Idris spawns one per target to cover many competitors in parallel."
+    },
+    {
+      "name": "fact-checker",
+      "description": "Verifies a specific load-bearing claim — a price, a funding amount, a headcount, a launch date, a named hire — against primary sources. Returns confirmed / contradicted / unverifiable with the source and date. Web-only, fast, no side effects. Idris runs it on the claims that will drive a decision before they enter a brief."
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": { "type": "fraction", "threshold": 0.8 },
+    "retain": { "type": "messages", "count": 6 },
+    "toolResultDrop": { "enabled": true }
+  },
+  "checkpoint": { "store": "file" },
+  "cache": { "ttl": "1h" },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "files", "tasks", "url", "pdf", "csv", "html", "image"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

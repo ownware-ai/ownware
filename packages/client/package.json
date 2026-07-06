@@ -1,0 +1,57 @@
+{
+  "name": "@ownware/client",
+  "version": "0.1.0",
+  "description": "Ownware client SDK — drive your agent over the gateway wire contract (HTTP + SSE) from Node or the browser. Zero dependencies; fetch + ReadableStream only.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build && bun run test"
+  },
+  "files": [
+    "dist",
+    "spec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@ownware/cortex": "workspace:*",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@ownware/loom": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Ownware Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ownware-ai/ownware.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "sdk",
+    "sse",
+    "ownware"
+  ]
+}

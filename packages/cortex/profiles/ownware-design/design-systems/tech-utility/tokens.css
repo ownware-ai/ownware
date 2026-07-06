@@ -1,0 +1,51 @@
+/* Tech Utility — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is #0d1117 (deep slate) NOT #000000. Pure black eats the gaps
+ *     between --surface and --surface-2; the deep slate preserves them.
+ *   - --surface-2 exists in this system (not in the lighter systems) because
+ *     elevated surfaces in dense dark layouts need a real second tier — popovers,
+ *     modals, sticky table headers all need to read as "above the card."
+ *   - --accent is cool blue (#58a6ff) to match the surface temperature.
+ *     Warm accents on dark surfaces drift into the experimental zone.
+ *   - Semantic colors run intentionally vivid (--good, --warn, --bad). State
+ *     color is load-bearing here; readability beats subtlety.
+ *   - --accent-fg is the dark base — accent buttons here are outline-style by
+ *     default; on the rare filled-accent button, dark text on bright blue.
+ */
+
+:root {
+  /* surface ladder — three tiers */
+  --bg:         #0d1117;
+  --surface:    #161b22;
+  --surface-2:  #1f242c;
+
+  /* foreground ladder */
+  --fg:     #e6edf3;
+  --muted:  #8b949e;
+  --border: #30363d;
+
+  /* accent — cool blue */
+  --accent:    #58a6ff;
+  --accent-fg: #0d1117;
+
+  /* semantic — vivid on dark, intentionally */
+  --good: #3fb950;
+  --warn: #d29922;
+  --bad:  #f85149;
+
+  /* shape — small radii, utility register */
+  --radius:      6px;
+  --radius-pill: 999px;
+
+  /* typography — system sans + mono, no serif */
+  --font-display: -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', SF Mono, Menlo, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

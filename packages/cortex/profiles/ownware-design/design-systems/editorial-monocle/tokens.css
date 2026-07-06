@@ -1,0 +1,47 @@
+/* Editorial Monocle — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --accent is the SAME near-black as --fg. This is the discipline of the
+ *     system — primary actions are black-filled, not chromatic. Do not change
+ *     this unless the brand explicitly demands a chromatic accent (and even
+ *     then, introduce a new token rather than overriding --accent).
+ *   - --bg is warm off-white (#fafaf7) not cool — the warm cast reads as paper.
+ *   - --radius is 4px — editorial-print rarely rounds; just enough to read as
+ *     web rather than newsprint.
+ *   - --good and --bad run half a step warmer than typical to match the warm
+ *     surface ladder.
+ */
+
+:root {
+  /* surface ladder — warm off-white */
+  --bg:      #fafaf7;
+  --surface: #ffffff;
+
+  /* foreground ladder */
+  --fg:     #1a1a1a;
+  --muted:  #6b6b6b;
+  --border: #e8e6e0;
+
+  /* accent — same near-black as --fg, deliberately monochrome */
+  --accent:    #1a1a1a;
+  --accent-fg: #ffffff;
+
+  /* semantic — half-step warm to match the warm-white surface */
+  --good: #2f7d4a;
+  --bad:  #b53a2a;
+
+  /* shape */
+  --radius:      4px;
+  --radius-pill: 999px;
+
+  /* typography */
+  --font-display: "Times New Roman", Georgia, "Iowan Old Style", "Hoefler Text", serif;
+  --font-body:    -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

@@ -1,0 +1,79 @@
+name: Bug Report
+description: Report a bug in Loom
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please fill in the details below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: Describe the bug clearly
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal code or steps to reproduce the issue
+      placeholder: |
+        ```ts
+        import { Loom } from 'loom'
+        const agent = new Loom({ model: 'anthropic:claude-sonnet-4-20250514' })
+        // This fails because...
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Core Loop
+        - Provider (Anthropic)
+        - Provider (OpenAI)
+        - Provider (Google)
+        - Tools (filesystem)
+        - Tools (shell)
+        - Compaction
+        - Permissions
+        - Checkpoint
+        - Streaming/Events
+        - CLI
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Loom Version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      placeholder: "22.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true

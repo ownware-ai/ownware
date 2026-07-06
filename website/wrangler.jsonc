@@ -1,0 +1,8 @@
+{
+  // Cloudflare Pages config for this docs site. `pages_build_output_dir` is the
+  // folder of built static files to serve (produced by `npm run build`).
+  // Deploy with:  npx wrangler pages deploy dist --project-name=ownware-docs
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ownware-docs",
+  "pages_build_output_dir": "dist"
+}

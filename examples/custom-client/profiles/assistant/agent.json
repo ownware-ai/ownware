@@ -1,0 +1,21 @@
+{
+  "name": "assistant",
+  "description": "A general-purpose assistant: reads and writes files, searches the web, remembers what you tell it.",
+  "model": "openai:gpt-5.5",
+  "tools": {
+    "preset": "full",
+    "deny": [
+      "shell_execute"
+    ]
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ]
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask"
+  }
+}

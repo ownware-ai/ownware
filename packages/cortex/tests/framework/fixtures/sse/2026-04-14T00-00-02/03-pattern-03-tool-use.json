@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-04-14T00:00:02.335Z",
+  "metadata": {
+    "prompt": "Read /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-GAccbB/pattern3.txt",
+    "profileId": "sse-tools",
+    "threadId": "thread_e36a467c9748",
+    "expectedBehavior": "Calls a read-file tool, then reports content"
+  },
+  "eventCount": 0,
+  "eventCounts": {},
+  "completed": false,
+  "errors": [],
+  "analysis": {
+    "text": "",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0
+    }
+  },
+  "events": []
+}

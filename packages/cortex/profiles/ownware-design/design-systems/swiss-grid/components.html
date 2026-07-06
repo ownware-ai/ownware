@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Swiss Grid — reference components</title>
+    <meta name="description" content="Reference fixture for design-systems/swiss-grid. International typographic style — strict 12-column grid, Helvetica, one red accent." />
+    <style>
+      :root {
+        --bg:      #ffffff;
+        --surface: #ffffff;
+        --fg:      #000000;
+        --muted:   #787878;
+        --border:  #000000;
+        --accent:       #d80027;
+        --accent-hover: #b80020;
+        --accent-fg:    #ffffff;
+        --good: #007a3d;
+        --warn: #ffcc00;
+        --bad:  #d80027;
+        --radius:      0px;
+        --radius-pill: 0px;
+        --font-display: 'Helvetica Neue', 'Akzidenz Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+        --font-body:    'Helvetica Neue', 'Akzidenz Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { min-height: 100vh; background: var(--bg); color: var(--fg); font: 400 15px/1.4 var(--font-body); }
+      .wrap { max-width: 1280px; margin-inline: auto; padding: 80px 32px; }
+      .grid12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
+      header { border-bottom: 1px solid var(--border); padding-bottom: 18px; margin-bottom: 80px; }
+      .mast { font: 700 13px/1 var(--font-body); letter-spacing: 0.16em; text-transform: uppercase; grid-column: span 4; }
+      .issue { color: var(--muted); font: 400 13px/1 var(--font-body); letter-spacing: 0.06em; grid-column: span 8; text-align: right; }
+      .eyebrow { font: 700 13px/1 var(--font-body); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); grid-column: span 12; margin: 0 0 28px; }
+      h1 { font: 700 96px/1.0 var(--font-display); letter-spacing: -0.025em; margin: 0; grid-column: span 8; }
+      h1 .accent { color: var(--accent); }
+      .lead { color: var(--muted); font: 400 17px/1.45 var(--font-body); grid-column: 9 / span 4; align-self: end; }
+      .rule { grid-column: span 12; border-top: 4px solid var(--accent); margin: 64px 0 32px; }
+      .body { grid-column: 1 / span 7; font-size: 15px; line-height: 1.5; }
+      .body p { margin: 0 0 16px; max-width: 60ch; }
+      .meta { grid-column: 9 / span 4; font: 400 13px/1.5 var(--font-body); color: var(--muted); padding-top: 4px; }
+      .meta strong { display: block; font-weight: 700; color: var(--fg); letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; margin-bottom: 6px; }
+      .actions { grid-column: span 12; display: flex; gap: 12px; padding-top: 32px; border-top: 1px solid var(--border); margin-top: 56px; }
+      .btn { display: inline-flex; align-items: center; height: 42px; padding: 0 20px; border-radius: 0; font: 700 13px/1 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--fg); cursor: pointer; }
+      .btn-primary   { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+      .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+      .btn-secondary { background: transparent; color: var(--fg); }
+      .btn-secondary:hover { background: var(--fg); color: var(--bg); }
+      @media (max-width: 800px) { h1 { font-size: 56px; grid-column: span 12; } .lead { grid-column: span 12; } .body, .meta { grid-column: span 12; } }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="grid12">
+        <span class="mast">Ownware Foundation</span>
+        <span class="issue">Vol. 04 · No. 12 · Spring 2026</span>
+      </header>
+      <section class="grid12">
+        <p class="eyebrow">A NOTE ON THE GRID</p>
+        <h1>Form follows<br/><span class="accent">function.</span></h1>
+        <p class="lead">A reference layout demonstrating the strict 12-column grid, Helvetica setting, and single red accent that define Swiss typographic discipline.</p>
+        <div class="rule"></div>
+        <div class="body">
+          <p>The grid is the framework within which composition becomes possible. Without it, the page is decoration. Every heading, every body column, every caption sits on a column line — the eye perceives the order even where the lines are invisible.</p>
+          <p>Reach for this system when the brief calls for cultural seriousness or typographic discipline rather than fashionable softness. Reach for something else when the artifact should feel warm, friendly, or contemporary-SaaS.</p>
+        </div>
+        <aside class="meta">
+          <strong>Editor</strong>
+          Ownware Design<br/><br/>
+          <strong>Type</strong>
+          Helvetica Neue 400 / 700<br/><br/>
+          <strong>Grid</strong>
+          12 columns · 24px gutter
+        </aside>
+        <div class="actions">
+          <a class="btn btn-primary" href="#">Read essay</a>
+          <a class="btn btn-secondary" href="#">View archive</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

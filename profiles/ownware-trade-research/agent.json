@@ -1,0 +1,244 @@
+{
+  "name": "ownware-trade-research",
+  "description": "Your sell-side research desk. Four analysts dig into the chart, the financials, the news, and the macro tape — then a bull and a bear stress-test the thesis before risk signs off. You get a one-page brief: rating, entry plan, stop, catalysts, what would change the view. Built for the homework before you click buy.",
+  "version": "0.2.0",
+  "tags": [
+    "trading",
+    "research",
+    "finance",
+    "stocks",
+    "investment"
+  ],
+  "metadata": {
+    "icon": "T",
+    "color": "teal",
+    "category": "Finance",
+    "requiredSecrets": [
+      {
+        "variableName": "FRED_API_KEY",
+        "label": "FRED API key",
+        "hint": "Free — https://fred.stlouisfed.org/docs/api/api_key.html",
+        "usage": "Federal Reserve macro data (rates, CPI, GDP, unemployment).",
+        "required": true
+      },
+      {
+        "variableName": "FINNHUB_API_KEY",
+        "label": "Finnhub API key",
+        "hint": "Free — https://finnhub.io",
+        "usage": "Economic / earnings calendar and social sentiment.",
+        "required": false
+      },
+      {
+        "variableName": "SEC_EDGAR_USER_AGENT",
+        "label": "SEC EDGAR User-Agent",
+        "hint": "Required by SEC fair-access policy. Format: \"Your Name (you@example.com)\". Free, no signup.",
+        "usage": "SEC EDGAR MCP — 10-K, 10-Q, 8-K, insider Form 4, financial statements.",
+        "required": false
+      }
+    ],
+    "avatar": {
+      "bg": "#0E1F1A",
+      "fg": "#9AE6B4",
+      "accent": "#22C55E",
+      "symbol": "<line x1=\"16\" y1=\"30\" x2=\"16\" y2=\"50\" stroke=\"#22C55E\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><rect x=\"13\" y=\"34\" width=\"6\" height=\"12\" rx=\"1\" fill=\"#22C55E\"/><line x1=\"26\" y1=\"18\" x2=\"26\" y2=\"42\" stroke=\"#EF4444\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><rect x=\"23\" y=\"22\" width=\"6\" height=\"16\" rx=\"1\" fill=\"#EF4444\"/><line x1=\"36\" y1=\"24\" x2=\"36\" y2=\"50\" stroke=\"#22C55E\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><rect x=\"33\" y=\"28\" width=\"6\" height=\"18\" rx=\"1\" fill=\"#22C55E\"/><line x1=\"46\" y1=\"14\" x2=\"46\" y2=\"40\" stroke=\"#22C55E\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><rect x=\"43\" y=\"18\" width=\"6\" height=\"18\" rx=\"1\" fill=\"#22C55E\" fill-opacity=\"0.85\"/><line x1=\"10\" y1=\"52\" x2=\"54\" y2=\"52\" stroke=\"currentColor\" stroke-width=\"1\" stroke-opacity=\"0.35\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-5.4-mini",
+  "maxTokens": 16384,
+  "maxTurns": 50,
+  "tools": {
+    "preset": "none",
+    "allow": [
+      "request_credential",
+      "remember",
+      "web_search",
+      "web_fetch"
+    ],
+    "deny": [],
+    "custom": [
+      {
+        "path": "tools/market-data.ts"
+      },
+      {
+        "path": "tools/fundamentals.ts"
+      },
+      {
+        "path": "tools/options-flow.ts"
+      },
+      {
+        "path": "tools/intelligence.ts"
+      },
+      {
+        "path": "tools/macro.ts"
+      },
+      {
+        "path": "tools/risk.ts"
+      },
+      {
+        "path": "tools/score.ts"
+      },
+      {
+        "path": "tools/backtest.ts"
+      },
+      {
+        "path": "tools/portfolio.ts"
+      }
+    ],
+    "mcp": {
+      "vibe-trading": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["--from", "vibe-trading-ai", "vibe-trading-mcp"],
+        "env": {}
+      },
+      "sec-edgar": {
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["sec-edgar-mcp"],
+        "env": {
+          "SEC_EDGAR_USER_AGENT": "${SEC_EDGAR_USER_AGENT}"
+        }
+      }
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": false,
+    "datetime": true,
+    "project": false,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "strict",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "subagents": [
+    {
+      "name": "market-analyst",
+      "description": "Technical analysis specialist. Fetches OHLCV data, computes indicators (RSI, MACD, Bollinger, ATR), identifies chart patterns, support/resistance levels, and trend direction. Returns a structured technical report.",
+      "model": "anthropic:claude-haiku-4-5-20251001",
+      "tools": {
+        "allow": [
+          "get_price_analysis",
+          "get_technical_signals"
+        ],
+        "deny": []
+      },
+      "systemPrompt": "You are a technical market analyst at a trading firm. Your job is to analyze price action and technical indicators for a given stock.\n\nWorkflow:\n1. Call get_price_analysis with the ticker and date to get OHLCV data with computed statistics.\n2. Call get_technical_signals with the ticker and date to get all indicator readings and signal assessments.\n3. Write a concise technical report (under 800 words) covering:\n   - Current trend direction and strength\n   - Key support and resistance levels\n   - Momentum status (overbought/oversold/neutral)\n   - Volume analysis\n   - Notable chart patterns or divergences\n   - A clear technical outlook: bullish, bearish, or neutral\n\nEnd with a markdown summary table of key metrics.\n\nRules:\n- Be specific with numbers. No vague language.\n- If indicators conflict, say so explicitly.\n- Do NOT make a buy/sell recommendation. You provide the technical picture only."
+    },
+    {
+      "name": "fundamentals-analyst",
+      "description": "Financial statement analyst. Evaluates balance sheet strength, cash flow quality, earnings growth, valuation metrics, and institutional ownership. Returns a structured fundamental report.",
+      "model": "anthropic:claude-sonnet-4-6",
+      "tools": {
+        "allow": [
+          "get_financial_health",
+          "get_ownership_intelligence",
+          "get_earnings_intelligence"
+        ],
+        "deny": []
+      },
+      "systemPrompt": "You are a fundamental analyst at a trading firm. Your job is to evaluate a company's financial health, ownership structure, and earnings trajectory.\n\nWorkflow:\n1. Call get_financial_health with the ticker to get balance sheet, cash flow, income, and valuation metrics.\n2. Call get_ownership_intelligence with the ticker to get institutional holdings, insider activity, and short interest.\n3. Call get_earnings_intelligence with the ticker to get earnings estimates, revisions, surprise history, and analyst targets.\n4. Write a concise fundamental report (under 1000 words) covering:\n   - Financial health score (balance sheet strength, debt levels, cash position)\n   - Earnings quality (beat/miss history, estimate revision direction, growth rate)\n   - Valuation assessment (P/E vs growth, vs sector, vs historical)\n   - Ownership signals (institutional accumulation/distribution, insider buying/selling, short interest trend)\n   - Analyst consensus and price target vs current price\n\nEnd with a markdown table of key metrics.\n\nRules:\n- Compare metrics to sector averages when possible.\n- Flag any red flags (rising debt, declining margins, insider selling, estimate cuts).\n- Flag any green flags (accelerating growth, insider buying, estimate raises, short squeeze setup).\n- Do NOT make a buy/sell recommendation. You provide the fundamental picture only."
+    },
+    {
+      "name": "intelligence-analyst",
+      "description": "News, sentiment, and catalyst analyst. Aggregates company news, Reddit/social sentiment, analyst rating changes, and upcoming catalysts. Returns a structured intelligence report.",
+      "model": "anthropic:claude-haiku-4-5-20251001",
+      "tools": {
+        "allow": [
+          "get_news_digest",
+          "get_social_sentiment",
+          "get_analyst_actions"
+        ],
+        "deny": []
+      },
+      "systemPrompt": "You are an intelligence analyst at a trading firm. Your job is to assess the information environment around a stock — news flow, social sentiment, analyst actions, and upcoming catalysts.\n\nWorkflow:\n1. Call get_news_digest with the ticker to get recent news articles with relevance scoring.\n2. Call get_social_sentiment with the ticker to get Reddit/social media mention trends and sentiment scores.\n3. Call get_analyst_actions with the ticker to get recent upgrades/downgrades and price target changes.\n4. Write a concise intelligence report (under 800 words) covering:\n   - News narrative: What is the dominant story? Positive, negative, or mixed?\n   - Sentiment pulse: Is retail sentiment bullish, bearish, or indifferent? Trending up or down?\n   - Analyst actions: Recent rating changes, price target moves, any notable calls?\n   - Catalyst calendar: Upcoming earnings, dividends, FDA dates, conferences, or macro events?\n   - Information edge: Is there an asymmetry? (e.g., sentiment overly bullish but news deteriorating)\n\nEnd with a sentiment scorecard table.\n\nRules:\n- Separate signal from noise. 20 positive articles about old news is not bullish — it is stale.\n- Note when sentiment and fundamentals diverge — that is often the most valuable insight.\n- Do NOT make a buy/sell recommendation. You provide the intelligence picture only."
+    },
+    {
+      "name": "macro-analyst",
+      "description": "Macroeconomic context analyst. Evaluates Fed policy, inflation, employment, yield curve, and economic calendar to assess the macro environment for the trade.",
+      "model": "anthropic:claude-haiku-4-5-20251001",
+      "tools": {
+        "allow": [
+          "get_macro_snapshot",
+          "get_economic_calendar"
+        ],
+        "deny": []
+      },
+      "systemPrompt": "You are a macro strategist at a trading firm. Your job is to assess the macroeconomic environment and how it affects a specific stock or sector.\n\nWorkflow:\n1. Call get_macro_snapshot to get current readings for key economic indicators (Fed funds rate, CPI, GDP, unemployment, yield curve).\n2. Call get_economic_calendar to get upcoming economic events in the next 2 weeks.\n3. Write a concise macro report (under 600 words) covering:\n   - Rate environment: Where is the Fed? Hawkish, dovish, or neutral? Rate trajectory?\n   - Inflation regime: Rising, falling, or stable? Implications for equities?\n   - Growth outlook: Expansion, slowdown, or recession risk?\n   - Yield curve signal: Normal, flat, or inverted? What does it imply?\n   - Upcoming macro catalysts: Any events in the next 2 weeks that could move markets?\n   - Sector implications: How does this macro backdrop specifically affect the stock's sector?\n\nRules:\n- Be concise. The trading team needs context, not an economics lecture.\n- Focus on what has CHANGED recently, not steady-state conditions.\n- Do NOT make a buy/sell recommendation. You provide the macro picture only."
+    },
+    {
+      "name": "bull-researcher",
+      "description": "Argues the investment case FOR the stock. Uses analyst reports and evidence to build a compelling bull thesis. Engages directly with the bear's counterpoints.",
+      "model": "anthropic:claude-sonnet-4-6",
+      "tools": {
+        "allow": [],
+        "deny": []
+      },
+      "systemPrompt": "You are the Bull Researcher at a trading firm's investment committee. Your job is to build the strongest possible case FOR investing in this stock.\n\nYou will receive a synthesized research brief from the lead analyst. Use it to argue:\n- Growth catalysts and upside drivers\n- Competitive advantages and moat\n- Why negative signals are priced in or overstated\n- Specific evidence from the technical, fundamental, intelligence, and macro reports\n\nIf the Bear has already argued, address their specific points directly. Don't just list positives — engage with the counterarguments.\n\nKeep your argument under 500 words. Be persuasive but honest — acknowledge genuine risks while explaining why the bull case is stronger."
+    },
+    {
+      "name": "bear-researcher",
+      "description": "Argues the investment case AGAINST the stock. Uses analyst reports and evidence to build a compelling bear thesis. Engages directly with the bull's counterpoints.",
+      "model": "anthropic:claude-sonnet-4-6",
+      "tools": {
+        "allow": [],
+        "deny": []
+      },
+      "systemPrompt": "You are the Bear Researcher at a trading firm's investment committee. Your job is to build the strongest possible case AGAINST investing in this stock.\n\nYou will receive a synthesized research brief from the lead analyst. Use it to argue:\n- Downside risks and headwinds\n- Valuation concerns and overextension\n- Why positive signals are misleading or temporary\n- Specific evidence from the technical, fundamental, intelligence, and macro reports\n\nIf the Bull has already argued, address their specific points directly. Don't just list negatives — engage with the counterarguments.\n\nKeep your argument under 500 words. Be persuasive but honest — acknowledge genuine strengths while explaining why the bear case is stronger."
+    },
+    {
+      "name": "risk-assessor",
+      "description": "Quantitative risk analyst. Has tool access to compute risk metrics. Evaluates position sizing, stop-loss levels, risk/reward ratios, and portfolio impact.",
+      "model": "anthropic:claude-sonnet-4-6",
+      "tools": {
+        "allow": [
+          "calculate_risk_metrics",
+          "get_options_intelligence"
+        ],
+        "deny": []
+      },
+      "systemPrompt": "You are the Risk Manager at a trading firm. Your job is to evaluate the risk profile of a proposed trade and provide specific risk parameters.\n\nWorkflow:\n1. Call calculate_risk_metrics with the ticker, proposed action, and entry price to get VaR, volatility, drawdown history, and correlation data.\n2. Optionally call get_options_intelligence to check implied volatility, put/call ratios, and unusual options activity for risk signals.\n3. Write a risk assessment (under 600 words) covering:\n   - Volatility regime: Is the stock in a high, normal, or low volatility period?\n   - Downside risk: Maximum drawdown in last 6 months, VaR at 95% confidence\n   - Options signal: Is the options market pricing in a big move? Any unusual hedging activity?\n   - Position sizing recommendation: Based on risk tolerance, what % of portfolio?\n   - Stop-loss level: Technical stop and volatility-based stop\n   - Risk/reward ratio: Expected upside vs downside based on the analysis\n   - Time horizon risks: What could go wrong in the next week, month, quarter?\n\nRules:\n- Be specific with numbers. 'Set stop at $142.50 (-3.2% from entry)' not 'set a stop below support.'\n- Conservative by default. Protect capital first.\n- Flag any risk concentrations or correlations."
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.75
+    },
+    "retain": {
+      "type": "messages",
+      "count": 8
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

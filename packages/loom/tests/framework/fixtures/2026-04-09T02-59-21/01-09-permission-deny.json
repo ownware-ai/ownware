@@ -1,0 +1,275 @@
+{
+  "recordedAt": "2026-04-09T02:59:21.661Z",
+  "metadata": {
+    "prompt": "Write sensitive content — deny",
+    "expectedBehavior": "permission.request → deny → tool NOT executed → graceful recovery"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 6,
+    "text.complete": 2,
+    "permission.request": 1,
+    "permission.response": 1,
+    "turn.end": 2,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll attempt to use the write_sensitive tool to write \"DENIED_CONTENT\".Permission denied.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [
+      {
+        "toolName": "write_sensitive",
+        "granted": false
+      }
+    ],
+    "usage": {
+      "inputTokens": 1329,
+      "outputTokens": 83,
+      "costUsd": 0.000436
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "14689a11-ba17-44f6-8638-2a5287b90dea",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775703559495
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775703559495
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll attempt",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to use the write_sensitive tool to write \"DENIED_CONTENT\".",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "toolName": "write_sensitive",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "delta": "{\"content\"",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "delta": ": ",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "delta": "\"DENIED_CON",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "delta": "TEN",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "delta": "T\"}",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll attempt to use the write_sensitive tool to write \"DENIED_CONTENT\".",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "type": "permission.request",
+      "data": {
+        "type": "permission.request",
+        "requestId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "toolName": "write_sensitive",
+        "input": {
+          "content": "DENIED_CONTENT"
+        },
+        "reason": "Tool requires explicit approval",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "type": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01KHDGtCMCR5xhgQeBKr31e6",
+        "granted": false,
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 614,
+          "outputTokens": 77,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00024975
+        },
+        "timestamp": 1775703560830
+      },
+      "index": 14
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775703560830
+      },
+      "index": 15
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Permission",
+        "turnIndex": 1
+      },
+      "index": 16
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " denied.",
+        "turnIndex": 1
+      },
+      "index": 17
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Permission denied.",
+        "turnIndex": 1
+      },
+      "index": 18
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 715,
+          "outputTokens": 6,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00018625
+        },
+        "timestamp": 1775703561659
+      },
+      "index": 19
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "14689a11-ba17-44f6-8638-2a5287b90dea",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1329,
+          "outputTokens": 83,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.000436,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775703561660
+      },
+      "index": 20
+    }
+  ]
+}

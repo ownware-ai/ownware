@@ -1,0 +1,154 @@
+{
+  "recordedAt": "2026-04-09T01:53:18.955Z",
+  "metadata": {
+    "prompt": "Spawn calc-helper sub-agent",
+    "tools": "calculator + agent_spawn",
+    "expectedBehavior": "agent_spawn succeeds, sub-agent computes 99"
+  },
+  "eventCount": 11,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 6,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I appreciate your request, but I need to let you know that I don't have access to an \"agent_spawn\" tool. Looking at my available tools, I only have access to:\n\n- **calculate**: A simple math expression evaluator\n\nSince I don't have the agent_spawn tool you're referencing, I cannot spawn a sub-agent as requested. \n\nHowever, I can help you get the answer you need. Would you like me to:\n1. Use the calculate tool directly to compute 9 * 11, or\n2. Check if there's a different way you'd like me to proceed?\n\nPlease let me know how you'd like to proceed.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 665,
+      "outputTokens": 146,
+      "costUsd": 0.00034875
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "c7411def-6cf9-4fc7-bc21-2c056bd828e0",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775699596956
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775699596956
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I appreciate",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " your request, but I need to let you know that I don't have access to an \"agent_spawn\" tool. Looking at my available tools, I only",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " have access to:\n\n- **calculate**: A simple math expression evaluator\n\nSince I don",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "'t have the agent_spawn tool you're referencing, I cannot spawn a sub-agent as requested. \n\nHowever",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", I can help you get the answer you need. Would you like me to:\n1. Use the calculate tool directly to compute 9 * 11",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", or\n2. Check if there's a different way you'd like me to proceed?\n\nPlease let me know how you'd like to proceed.",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I appreciate your request, but I need to let you know that I don't have access to an \"agent_spawn\" tool. Looking at my available tools, I only have access to:\n\n- **calculate**: A simple math expression evaluator\n\nSince I don't have the agent_spawn tool you're referencing, I cannot spawn a sub-agent as requested. \n\nHowever, I can help you get the answer you need. Would you like me to:\n1. Use the calculate tool directly to compute 9 * 11, or\n2. Check if there's a different way you'd like me to proceed?\n\nPlease let me know how you'd like to proceed.",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 665,
+          "outputTokens": 146,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00034875
+        },
+        "timestamp": 1775699598954
+      },
+      "index": 9
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "c7411def-6cf9-4fc7-bc21-2c056bd828e0",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 665,
+          "outputTokens": 146,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00034875,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775699598954
+      },
+      "index": 10
+    }
+  ]
+}

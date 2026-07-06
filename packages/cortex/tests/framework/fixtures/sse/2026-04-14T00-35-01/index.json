@@ -1,0 +1,115 @@
+{
+  "runStamp": "2026-04-14T00-35-01",
+  "totalStreams": 10,
+  "streams": [
+    {
+      "file": "01-pattern-01-text-streaming.json",
+      "name": "pattern-01-text-streaming",
+      "metadata": {
+        "prompt": "Say exactly: HELLO PATTERN ONE",
+        "profileId": "sse-text",
+        "threadId": "thread_92d7296403d9",
+        "expectedBehavior": "text.delta events accumulate to \"HELLO PATTERN ONE\""
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "02-pattern-02-multi-turn-1.json",
+      "name": "pattern-02-multi-turn-1",
+      "metadata": {
+        "prompt": "Remember this code: VIOLET-9921",
+        "threadId": "thread_02aa8f933ee3",
+        "expectedBehavior": "Acknowledges receipt of code"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "03-pattern-03-tool-use.json",
+      "name": "pattern-03-tool-use",
+      "metadata": {
+        "prompt": "Read /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-hV6a1U/pattern3.txt",
+        "profileId": "sse-tools",
+        "threadId": "thread_6dca59acab2a",
+        "expectedBehavior": "Calls a read-file tool, then reports content"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "04-pattern-04-thinking.json",
+      "name": "pattern-04-thinking",
+      "metadata": {
+        "prompt": "Math problem with reasoning",
+        "profileId": "sse-thinking",
+        "threadId": "thread_216a64dce3a0",
+        "expectedBehavior": "May produce thinking.delta events; will produce text answer"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "05-pattern-05-sonnet.json",
+      "name": "pattern-05-sonnet",
+      "metadata": {
+        "prompt": "Say HI",
+        "profileId": "sse-thinking",
+        "expectedBehavior": "Sonnet response, higher per-token cost"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "06-pattern-05-haiku.json",
+      "name": "pattern-05-haiku",
+      "metadata": {
+        "prompt": "Say HI",
+        "profileId": "sse-haiku",
+        "expectedBehavior": "Haiku response, lower per-token cost"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "07-pattern-07-ordering.json",
+      "name": "pattern-07-ordering",
+      "metadata": {
+        "prompt": "Say OK",
+        "expectedBehavior": "stream.start → text.delta+ → turn.end → done"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "08-pattern-08-chunks.json",
+      "name": "pattern-08-chunks",
+      "metadata": {
+        "prompt": "Count one to ten",
+        "expectedBehavior": "Many text.delta events (streaming, not single chunk)"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "09-pattern-09-reload.json",
+      "name": "pattern-09-reload",
+      "metadata": {
+        "prompt": "Say hello (after reload)",
+        "expectedBehavior": "Response should reflect new pirate personality"
+      },
+      "eventCount": 0,
+      "completed": false
+    },
+    {
+      "file": "10-pattern-10-long-output.json",
+      "name": "pattern-10-long-output",
+      "metadata": {
+        "prompt": "20 colors with descriptions",
+        "expectedBehavior": "Many text.delta events over a longer stream"
+      },
+      "eventCount": 0,
+      "completed": false
+    }
+  ]
+}

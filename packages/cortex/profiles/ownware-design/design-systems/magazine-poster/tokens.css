@@ -1,0 +1,54 @@
+/* Magazine Poster — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --font-display is a heavy serif (Recoleta / Tiempos / similar). The
+ *     genre lives or dies on display-serif weight; substituting a sans
+ *     here flips the system into 'editorial-monocle' territory.
+ *   - --bg is warm paper, not white. The whole atmosphere assumes a
+ *     warm-paper substrate. White as a canvas reads as digital, not
+ *     printed.
+ *   - --accent is one saturated note (red is the default; pick yellow,
+ *     blue, or green as alternates per artifact). NEVER more than one
+ *     chromatic accent; the genre depends on the contrast between the
+ *     warm monochrome palette and a single bold note.
+ *   - --radius is 0px. Magazine-poster aesthetics use hard rectangles;
+ *     rounded corners drift toward 'editorial-monocle' or 'soft-clay'.
+ *   - --border is the warm body color, mid-contrast; mainly used for
+ *     fine rule lines and table dividers.
+ */
+
+:root {
+  /* surface — warm paper canvas, clean white only for the rare elevated tile */
+  --bg:      #f3eee3;
+  --surface: #ffffff;
+
+  /* foreground ladder — deep ink */
+  --fg:     #0a0a0a;
+  --muted:  #5a554c;
+  --border: #dbd4c4;
+
+  /* accent — one saturated note (red default; see DESIGN.md for alternates) */
+  --accent:       #e63946;
+  --accent-hover: #c92a36;
+  --accent-fg:    #ffffff;
+
+  /* semantic — desaturated to live on the warm paper */
+  --good: #3a7a4e;
+  --warn: #c88a1a;
+  --bad:  #b03030;
+
+  /* shape — hard rectangles are the genre */
+  --radius:      0px;
+  --radius-pill: 0px;
+
+  /* typography — heavy serif display is non-negotiable */
+  --font-display: 'Recoleta', 'Tiempos Headline', 'Playfair Display', 'Times New Roman', Georgia, serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

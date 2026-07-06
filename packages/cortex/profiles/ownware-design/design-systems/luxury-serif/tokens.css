@@ -1,0 +1,54 @@
+/* Luxury Serif — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --bg is warm stone (#f1ece1), not white. The luxury read depends on
+ *     the paper being warm and slightly grain-toned, never pure white.
+ *   - --accent is deep oxblood (#5e1a23). Substitutable per artifact for
+ *     forest green (#1f3d2c), ink navy (#1a2a4a), or muted bronze
+ *     (#8a5e2f). ONE accent per artifact; the genre depends on a single
+ *     mature chromatic note against the warm monochrome.
+ *   - --fg is warm near-black (#1a1612), with a faint sepia. Pure black
+ *     on warm stone reads as cold — luxury never reads as cold.
+ *   - --radius is 0–4px deliberately. Heavy rounding reads as consumer
+ *     SaaS, not luxury.
+ *   - --font-display is a heavy serif (Recoleta / Fraunces / Cormorant).
+ *     The whole system pivots on the display face having weight + class.
+ *   - --border is warm hairline (#d2c9b6) for the rare fine rule line.
+ *     Most "borders" in this system are actually whitespace.
+ */
+
+:root {
+  /* surface — warm stone canvas, clean paper-white card tier */
+  --bg:      #f1ece1;
+  --surface: #ffffff;
+
+  /* foreground ladder — warm near-black, no cold cast */
+  --fg:     #1a1612;
+  --muted:  #7a6f60;
+  --border: #d2c9b6;
+
+  /* accent — deep oxblood (alt: forest #1f3d2c / navy #1a2a4a / bronze #8a5e2f) */
+  --accent:       #5e1a23;
+  --accent-hover: #491218;
+  --accent-fg:    #f1ece1;
+
+  /* semantic — desaturated, warm-tuned */
+  --good: #2f6e3f;
+  --warn: #b58020;
+  --bad:  #8a2a2a;
+
+  /* shape — sharp, almost rectangular */
+  --radius:      4px;
+  --radius-pill: 999px;
+
+  /* typography — heavy display serif is the genre */
+  --font-display: 'Recoleta', 'Fraunces', 'Cormorant Garamond', 'Iowan Old Style', 'Times New Roman', Georgia, serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

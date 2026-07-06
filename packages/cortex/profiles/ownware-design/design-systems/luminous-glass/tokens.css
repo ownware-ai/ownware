@@ -1,0 +1,51 @@
+/* Luminous Glass — tokens.css
+ * Reference: see ./DESIGN.md for rationale, role descriptions, signature moves.
+ *
+ * Agents: paste the :root block verbatim into the artifact's first <style>
+ * tag, then reference everything via var(--…) from then on.
+ *
+ * Notes on non-obvious bindings:
+ *   - --surface is a translucent white-on-dark. It REQUIRES the body to
+ *     paint a gradient floor; on a flat dark background the panel reads
+ *     as muddy grey, not glass. Always pair with the radial-gradient body
+ *     treatment described in DESIGN.md.
+ *   - --border is also translucent-on-dark. A solid hairline kills the
+ *     glass effect; keep the alpha.
+ *   - --accent is a single violet. The genre tolerates a SECOND accent
+ *     only as a gradient stop on the background — never as a second
+ *     interactive color.
+ *   - --radius is large (16px). Smaller corners read as a regular dark
+ *     theme, not glass.
+ */
+
+:root {
+  /* surface — dark floor + translucent glass panel */
+  --bg:      #0b0f1a;
+  --surface: rgba(255, 255, 255, 0.06);
+
+  /* foreground ladder — high contrast on the dark floor */
+  --fg:     #f5f7ff;
+  --muted:  #8a93b0;
+  --border: rgba(255, 255, 255, 0.10);
+
+  /* accent — one violet, the only chromatic action color */
+  --accent:       #7c5cfc;
+  --accent-hover: #8e72ff;
+  --accent-fg:    #ffffff;
+
+  /* semantic — used sparingly, always paired with an icon */
+  --good: #4ade80;
+  --warn: #fbbf24;
+  --bad:  #fb7185;
+
+  /* shape — generous radius is part of the genre */
+  --radius:      16px;
+  --radius-pill: 999px;
+
+  /* typography — clean geometric sans, no flourishes */
+  --font-display: 'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-body:    'Inter', -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }

@@ -1,0 +1,249 @@
+{
+  "recordedAt": "2026-04-09T13:47:40.134Z",
+  "metadata": {
+    "prompt": "First write — approve and remember",
+    "expectedBehavior": "permission.request → approve → tool executes"
+  },
+  "eventCount": 17,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 4,
+    "permission.request": 1,
+    "permission.response": 1,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "Done. \"FIRST_WRITE\" has been written to the sensitive location.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "write_sensitive",
+        "result": "Written: FIRST_WRITE",
+        "isError": false,
+        "durationMs": 55
+      }
+    ],
+    "agents": [],
+    "permissions": [
+      {
+        "toolName": "write_sensitive",
+        "granted": true
+      }
+    ],
+    "usage": {
+      "inputTokens": 1283,
+      "outputTokens": 78,
+      "costUsd": 0.00041825
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "121d40bd-bc8c-48a4-84dc-5deee0394684",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775742457027
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775742457027
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "toolName": "write_sensitive",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "delta": "{\"content",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "delta": "\": \"FIRST_",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "delta": "WRITE\"}",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "permission.request",
+      "data": {
+        "type": "permission.request",
+        "requestId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "toolName": "write_sensitive",
+        "input": {
+          "content": "FIRST_WRITE"
+        },
+        "reason": "Tool requires explicit approval",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "granted": true,
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01W1ZTgKqdP4hwjTf2mDCTBn",
+        "toolName": "write_sensitive",
+        "result": "Written: FIRST_WRITE",
+        "isError": false,
+        "durationMs": 55,
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 603,
+          "outputTokens": 58,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00022325
+        },
+        "timestamp": 1775742459179
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775742459179
+      },
+      "index": 11
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Done",
+        "turnIndex": 1
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ". \"FIRST_WRITE\" has been written to the sensitive location.",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Done. \"FIRST_WRITE\" has been written to the sensitive location.",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 680,
+          "outputTokens": 20,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000195
+        },
+        "timestamp": 1775742460091
+      },
+      "index": 15
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "121d40bd-bc8c-48a4-84dc-5deee0394684",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1283,
+          "outputTokens": 78,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00041825,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775742460116
+      },
+      "index": 16
+    }
+  ]
+}

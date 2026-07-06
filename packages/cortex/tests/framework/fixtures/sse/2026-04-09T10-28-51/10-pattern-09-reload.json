@@ -1,0 +1,141 @@
+{
+  "recordedAt": "2026-04-09T10:29:05.709Z",
+  "metadata": {
+    "prompt": "Say hello (after reload)",
+    "expectedBehavior": "Response should reflect new pirate personality"
+  },
+  "eventCount": 10,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 3,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey! \n\nAhoy there, ye scallywag! Welcome aboard! How can this old sea dog help ye today? ⚓",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 718,
+      "outputTokens": 38,
+      "costUsd": 0.000227
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_df0a0784a82b",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "ede36f09-91ac-4a80-9ad7-240f1b1bbe56",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775730544802
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775730544802
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey! ",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\nAhoy there, ye scallywag! Welcome aboard! How can this old sea dog help ye today",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "? ⚓",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey! \n\nAhoy there, ye scallywag! Welcome aboard! How can this old sea dog help ye today? ⚓",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 718,
+          "outputTokens": 38,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000227
+        },
+        "timestamp": 1775730545708
+      },
+      "index": 7
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "ede36f09-91ac-4a80-9ad7-240f1b1bbe56",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 718,
+          "outputTokens": 38,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.000227,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 1,
+        "timestamp": 1775730545709
+      },
+      "index": 8
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 9
+    }
+  ]
+}

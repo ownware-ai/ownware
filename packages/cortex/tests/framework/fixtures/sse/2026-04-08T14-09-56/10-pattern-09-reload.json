@@ -1,0 +1,121 @@
+{
+  "recordedAt": "2026-04-08T14:10:16.505Z",
+  "metadata": {
+    "prompt": "Say hello (after reload)",
+    "expectedBehavior": "Response should reflect new pirate personality"
+  },
+  "eventCount": 9,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 3,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey! \n\nAhoy there, ye scallywag! Welcome aboard! What be ye needin' help with on this fine day? 🏴‍☠️",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 718,
+      "outputTokens": 46,
+      "costUsd": 0.000237
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_738a2f4d972d",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "48e8bc33-f36c-4aab-a589-5118e27a605f",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775657415131
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775657415131
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey! ",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\nAhoy there, ye scallywag! Welcome aboard! What be ye needin' help",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " with on this fine day? 🏴‍☠️",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey! \n\nAhoy there, ye scallywag! Welcome aboard! What be ye needin' help with on this fine day? 🏴‍☠️",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 718,
+          "outputTokens": 46,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.000237
+        },
+        "timestamp": 1775657416504
+      },
+      "index": 7
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 8
+    }
+  ]
+}

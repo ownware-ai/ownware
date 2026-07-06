@@ -1,0 +1,14 @@
+{
+  "name": "ownware-quickstart",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Build an agent, serve it, talk to it — the Ownware quickstart.",
+  "type": "module",
+  "scripts": {
+    "test": "echo 'quickstart example — no tests'",
+    "typecheck": "echo 'quickstart example — no typecheck'"
+  },
+  "dependencies": {
+    "ownware": "workspace:*"
+  }
+}

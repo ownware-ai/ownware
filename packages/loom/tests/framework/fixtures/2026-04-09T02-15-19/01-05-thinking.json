@@ -1,0 +1,145 @@
+{
+  "recordedAt": "2026-04-09T02:15:19.242Z",
+  "metadata": {
+    "prompt": "Think step by step: 47 * 83",
+    "model": "sonnet",
+    "expectedBehavior": "thinking.delta events with reasoning, then text.delta with answer"
+  },
+  "eventCount": 10,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 5,
+    "text.complete": 1,
+    "turn.end": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n   141  (47 × 3)\n  3760  (47 × 80)\n  ----\n  3901\n```\n\nLet me break this down:\n\n1) First, multiply 47 × 3 = 141\n2) Then, multiply 47 × 80 = 3,760\n3) Add the results: 141 + 3,760 = 3,901\n\nTherefore, 47 × 83 = 3,901",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 46,
+      "outputTokens": 146,
+      "costUsd": 0.002328
+    },
+    "turnCount": 1
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "e27ef25d-d9fe-4c72-b548-4efb6d213bc9",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775700916316
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700916316
+      },
+      "index": 1
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll",
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "----\n   141  (47 × 3)\n  3760  (47 × 80)\n  ----\n  3901\n```\n\nLet me break this down:",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1) First, multiply 47 × 3 = 141\n2) Then, multiply 47 × 80 = 3,760",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n3) Add the results: 141 + 3,760 = 3,901\n\nTherefore, 47 × 83 = 3,901",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll solve 47 × 83 step by step using the standard multiplication method.\n\n```\n    47\n  × 83\n  ----\n   141  (47 × 3)\n  3760  (47 × 80)\n  ----\n  3901\n```\n\nLet me break this down:\n\n1) First, multiply 47 × 3 = 141\n2) Then, multiply 47 × 80 = 3,760\n3) Add the results: 141 + 3,760 = 3,901\n\nTherefore, 47 × 83 = 3,901",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 46,
+          "outputTokens": 146,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.002328
+        },
+        "timestamp": 1775700919242
+      },
+      "index": 8
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "e27ef25d-d9fe-4c72-b548-4efb6d213bc9",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 46,
+          "outputTokens": 146,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.002328,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 1,
+        "timestamp": 1775700919242
+      },
+      "index": 9
+    }
+  ]
+}

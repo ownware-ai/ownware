@@ -1,0 +1,211 @@
+{
+  "recordedAt": "2026-04-09T10:04:56.526Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 19,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 13,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey! Here be 20 colors for ye:\n\n1. **Red** - Fierce and bold, the color of passion and fire\n2. **Blue** - Calm and deep, like the vast ocean waters\n3. **Green** - Fresh and natural, the color of growing things\n4. **Yellow** - Bright and cheerful, like the sun itself\n5. **Purple** - Regal and mysterious, a blend of red and blue\n6. **Orange** - Warm and energetic, between red and yellow\n7. **Pink** - Soft and gentle, a lighter shade of red\n8. **Brown** - Earthy and steady, the color of soil and wood\n9. **Black** - Dark and powerful, the absence of all light\n10. **White** - Pure and clean, the presence of all colors\n11. **Gray** - Neutral and balanced, between black and white\n12. **Cyan** - Cool and modern, a bright blue-green\n13. **Magenta** - Vibrant and bold, a mix of red and blue\n14. **Teal** - Sophisticated and calming, a dark cyan\n15. **Gold** - Precious and warm, the color of treasure\n16. **Silver** - Sleek and elegant, like polished metal\n17. **Navy** - Deep and formal, a dark shade of blue\n18. **Coral** - Tropical and lively, a pinkish-orange\n19. **Olive** - Muted and earthy, a brownish-green\n20. **Crimson** - Rich and intense, a deep red",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 366,
+      "costUsd": 0.00063925
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_542ce412a78d",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "f0caa2d8-d980-4c1c-93d5-9cba80a79b4e",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775729093286
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775729093286
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey! Here",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " be 20 colors for ye:\n\n1. **Red** - Fierce and bold",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", the color of passion and fire\n2. **Blue** - Calm and deep, like the vast ocean waters",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n3. **Green** - Fresh and natural, the color of growing things\n4. **Yellow** - Bright and cheerful, like the sun itself\n5. **Purple** - R",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "egal and mysterious, a blend of red and blue\n6. **Orange** - Warm and energetic, between red and yellow\n7. **Pink",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Soft and gentle, a lighter shade of red\n8. **Brown** - Earthy and steady, the color of soil and wood\n9. **Black** - Dark and powerful",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", the absence of all light\n10. **White** - Pure and clean, the presence of all colors\n11. **Gray** - Neutral and balanced",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", between black and white\n12. **Cyan** - Cool and modern, a bright blue-green\n13. **",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Magenta** - Vibrant and bold, a mix of red and blue\n14. **Teal** - Sophisticated and calming, a dark cyan\n15. **Gold** - Precious",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and warm, the color of treasure\n16. **Silver** - Sleek and elegant, like polished metal\n17. **Navy** - Deep and formal",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", a dark shade of blue\n18. **Coral** - Tropical and lively, a pinkish-orange\n19. **",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Olive** - Muted and earthy, a brownish-green\n20. **Crimson** - Rich",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " and intense, a deep red",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey! Here be 20 colors for ye:\n\n1. **Red** - Fierce and bold, the color of passion and fire\n2. **Blue** - Calm and deep, like the vast ocean waters\n3. **Green** - Fresh and natural, the color of growing things\n4. **Yellow** - Bright and cheerful, like the sun itself\n5. **Purple** - Regal and mysterious, a blend of red and blue\n6. **Orange** - Warm and energetic, between red and yellow\n7. **Pink** - Soft and gentle, a lighter shade of red\n8. **Brown** - Earthy and steady, the color of soil and wood\n9. **Black** - Dark and powerful, the absence of all light\n10. **White** - Pure and clean, the presence of all colors\n11. **Gray** - Neutral and balanced, between black and white\n12. **Cyan** - Cool and modern, a bright blue-green\n13. **Magenta** - Vibrant and bold, a mix of red and blue\n14. **Teal** - Sophisticated and calming, a dark cyan\n15. **Gold** - Precious and warm, the color of treasure\n16. **Silver** - Sleek and elegant, like polished metal\n17. **Navy** - Deep and formal, a dark shade of blue\n18. **Coral** - Tropical and lively, a pinkish-orange\n19. **Olive** - Muted and earthy, a brownish-green\n20. **Crimson** - Rich and intense, a deep red",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 366,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00063925
+        },
+        "timestamp": 1775729096514
+      },
+      "index": 17
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 18
+    }
+  ]
+}

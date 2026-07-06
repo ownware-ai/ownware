@@ -1,0 +1,54 @@
+{
+  "name": "ownware",
+  "version": "0.1.0",
+  "description": "Ownware — build your own agent, run it yourself, reach it everywhere. Umbrella package: one import for the quickstart surface.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ownware": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'ownware is a re-export surface — covered by @ownware/loom and @ownware/cortex suites'",
+    "prepublishOnly": "bun run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ownware/cortex": "workspace:*",
+    "@ownware/loom": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Ownware Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ownware-ai/ownware.git",
+    "directory": "packages/ownware"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "self-hosted",
+    "agent-platform",
+    "llm"
+  ]
+}

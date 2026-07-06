@@ -1,0 +1,259 @@
+{
+  "recordedAt": "2026-04-09T02:05:37.653Z",
+  "metadata": {
+    "prompt": "Write sensitive content — approve",
+    "expectedBehavior": "permission.request → approve → tool executes"
+  },
+  "eventCount": 18,
+  "eventCounts": {
+    "session.start": 1,
+    "turn.start": 2,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 5,
+    "permission.request": 1,
+    "permission.response": 1,
+    "tool.call.end": 1,
+    "turn.end": 2,
+    "text.delta": 2,
+    "text.complete": 1,
+    "session.end": 1
+  },
+  "completed": true,
+  "endReason": "end_turn",
+  "errors": [],
+  "analysis": {
+    "text": "Done. I've written \"APPROVED_CONTENT\" to the sensitive location.",
+    "thinking": "",
+    "tools": [
+      {
+        "toolName": "write_sensitive",
+        "result": "Written: APPROVED_CONTENT",
+        "isError": false,
+        "durationMs": 51
+      }
+    ],
+    "agents": [],
+    "permissions": [
+      {
+        "toolName": "write_sensitive",
+        "granted": true
+      }
+    ],
+    "usage": {
+      "inputTokens": 1287,
+      "outputTokens": 78,
+      "costUsd": 0.00041925
+    },
+    "turnCount": 2
+  },
+  "events": [
+    {
+      "type": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "36c7e8d3-d24b-4201-a5f4-64057c6609f2",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775700335502
+      },
+      "index": 0
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775700335502
+      },
+      "index": 1
+    },
+    {
+      "type": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "toolName": "write_sensitive",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 2
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "delta": "{\"cont",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "delta": "ent\"",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "delta": ": \"APPROVED",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "type": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "delta": "_CONTENT\"}",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "type": "permission.request",
+      "data": {
+        "type": "permission.request",
+        "requestId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "toolName": "write_sensitive",
+        "input": {
+          "content": "APPROVED_CONTENT"
+        },
+        "reason": "Tool requires explicit approval",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "type": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "granted": true,
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "type": "tool.call.end",
+      "data": {
+        "type": "tool.call.end",
+        "toolCallId": "toolu_01EN5zjKuvC5uczYYNqKS2oz",
+        "toolName": "write_sensitive",
+        "result": "Written: APPROVED_CONTENT",
+        "isError": false,
+        "durationMs": 51,
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 605,
+          "outputTokens": 58,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00022375
+        },
+        "timestamp": 1775700336541
+      },
+      "index": 11
+    },
+    {
+      "type": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775700336541
+      },
+      "index": 12
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Done",
+        "turnIndex": 1
+      },
+      "index": 13
+    },
+    {
+      "type": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ". I've written \"APPROVED_CONTENT\" to the sensitive location.",
+        "turnIndex": 1
+      },
+      "index": 14
+    },
+    {
+      "type": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Done. I've written \"APPROVED_CONTENT\" to the sensitive location.",
+        "turnIndex": 1
+      },
+      "index": 15
+    },
+    {
+      "type": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 682,
+          "outputTokens": 20,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0001955
+        },
+        "timestamp": 1775700337653
+      },
+      "index": 16
+    },
+    {
+      "type": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "36c7e8d3-d24b-4201-a5f4-64057c6609f2",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 1287,
+          "outputTokens": 78,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.00041925,
+          "model": "anthropic:claude-haiku-4-5-20251001"
+        },
+        "turnCount": 2,
+        "timestamp": 1775700337653
+      },
+      "index": 17
+    }
+  ]
+}

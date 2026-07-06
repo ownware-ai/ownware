@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "ownware-design-system/v1",
+  "id": "playful-pop",
+  "name": "Playful Pop",
+  "category": "consumer",
+  "surface": "web",
+  "summary": "Bright multi-accent canvas with bold chunky type and rounded shapes. The kids-app / creator-tool / consumer-landing zone — works when the artifact should feel fun, energetic, and unapologetically colorful.",
+  "swatches": ["#fff5d0", "#ffffff", "#1a1438", "#ff5d8f", "#7fd6c2", "#1a1438"],
+  "source": { "type": "starter", "author": "ownware" },
+  "files": { "design": "DESIGN.md", "tokens": "tokens.css", "components": "components.html" }
+}

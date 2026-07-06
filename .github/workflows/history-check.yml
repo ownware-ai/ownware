@@ -1,0 +1,57 @@
+name: History Check
+
+# Rejects PRs whose branch has no common ancestor with main.
+#
+# Why this exists: GitHub's merge UI does NOT refuse merges of unrelated
+# histories. Another agent project (hermes-agent) learned this the hard way —
+# their PR #25045 was merged from a branch that had been disconnected from
+# main's history (an accidental `git checkout --orphan` / re-initialized
+# `.git/`). The PR landed cleanly with its intended one-file change, but its
+# parent-less root commit was grafted into main as a second root and
+# collapsed `git blame` for ~1500 files onto that single commit. We adopt
+# their guard before it can happen here.
+#
+# NOTE: no `paths:` filter — a required check must always report a status.
+# Path-gated workflows leave the check "pending" forever when no matching
+# files change, which blocks merge.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check-common-ancestor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # full history on both sides for merge-base
+
+      - name: Reject PRs with no common ancestor on main
+        run: |
+          # `git merge-base` exits non-zero AND prints nothing when the two
+          # commits share no ancestor. Check both signals explicitly.
+          if ! BASE=$(git merge-base origin/main HEAD 2>/dev/null) || [ -z "$BASE" ]; then
+            echo ""
+            echo "::error::This PR has no common ancestor with main."
+            echo ""
+            echo "Your branch's history is disconnected from main. Common causes:"
+            echo "  - the branch was created with 'git checkout --orphan'"
+            echo "  - '.git/' was re-initialized at some point during the work"
+            echo "  - the branch was force-pushed from an unrelated repository"
+            echo ""
+            echo "Merging an unrelated-history PR grafts a parent-less root commit"
+            echo "into main and collapses git blame for every file in that snapshot."
+            echo ""
+            echo "To fix, rebase your changes onto current main:"
+            echo "  git fetch origin main"
+            echo "  git checkout -b fix-branch origin/main"
+            echo "  # re-apply your changes (cherry-pick, copy files, etc.)"
+            echo "  git push -f origin fix-branch"
+            exit 1
+          fi
+          echo "::notice::Common ancestor with main: $BASE"

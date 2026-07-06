@@ -1,0 +1,142 @@
+{
+  "name": "Ari",
+  "displayName": "Ari",
+  "description": "Your everyday assistant — the all-rounder you start with. Answers questions, drafts and edits, plans your day, runs quick research, and handles the small jobs across your email, calendar, docs, and chat. Knows when to just do it and when to check first, learns how you like things, and gets more useful the more you work together.",
+  "version": "0.1.0",
+  "productId": "ownware",
+  "metadata": {
+    "icon": "D",
+    "color": "mix",
+    "category": "General",
+    "role": "General assistant",
+    "avatar": {
+      "bg": "brand-gradient",
+      "fg": "#FFFFFF",
+      "accent": "#8B5BFF",
+      "symbol": "<line x1=\"32\" y1=\"14\" x2=\"32\" y2=\"50\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/><line x1=\"14\" y1=\"32\" x2=\"50\" y2=\"32\" stroke=\"currentColor\" stroke-width=\"2.8\" stroke-linecap=\"round\"/><line x1=\"19\" y1=\"19\" x2=\"45\" y2=\"45\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-opacity=\"0.7\"/><line x1=\"45\" y1=\"19\" x2=\"19\" y2=\"45\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-opacity=\"0.7\"/><circle cx=\"32\" cy=\"32\" r=\"4\" fill=\"currentColor\"/>"
+    },
+    "pixelAvatar": {
+      "hair": "short",
+      "hi": 2,
+      "si": 1,
+      "ti": 0,
+      "face": "wide",
+      "expr": "calm",
+      "glasses": "square",
+      "facial": "none",
+      "headwear": "none",
+      "earrings": true,
+      "headset": true,
+      "blush": true
+    }
+  },
+  "tags": [
+    "general",
+    "assistant",
+    "email",
+    "calendar",
+    "scheduling",
+    "research",
+    "writing",
+    "drafting",
+    "tasks",
+    "web"
+  ],
+  "model": "openai:gpt-5.4",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTurns": 100,
+  "maxTokens": 16384,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [],
+    "custom": [],
+    "mcp": {},
+    "composio": {
+      "toolkits": [
+        "gmail",
+        "googlecalendar",
+        "googledrive",
+        "slack",
+        "notion"
+      ]
+    }
+  },
+  "context": {
+    "git": true,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [
+    {
+      "name": "scout",
+      "description": "Fast read-only lookup. One focused question answered from the web or local files — a definition, a current number, a quick fact check. Cited. Use for quick facts; use researcher for anything needing multiple sources.",
+      "profile": "scout"
+    },
+    {
+      "name": "researcher",
+      "description": "Deep web researcher. Multi-source search, reads primary documents, drives the browser when a site needs it, triangulates, and returns a cited brief with confidence levels. Use for 'research X', 'compare options', 'current state of Y', 'find primary sources'. Read-only.",
+      "profile": "researcher"
+    },
+    {
+      "name": "general",
+      "description": "General read+write subtask helper. Takes a self-contained chunk end-to-end — drafting or reworking a document, reorganizing files, pulling content together — and reports back. Use for bounded make/write tasks that aren't quick lookups or deep research.",
+      "profile": "general"
+    }
+  ],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "image", "url", "pdf", "csv", "diff",
+      "txt", "video", "audio", "files", "tasks", "plan"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}

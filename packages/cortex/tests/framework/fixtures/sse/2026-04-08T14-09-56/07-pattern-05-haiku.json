@@ -1,0 +1,104 @@
+{
+  "recordedAt": "2026-04-08T14:10:12.564Z",
+  "metadata": {
+    "prompt": "Say HI",
+    "profileId": "sse-haiku",
+    "expectedBehavior": "Haiku response, lower per-token cost"
+  },
+  "eventCount": 7,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 1,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "HI",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 701,
+      "outputTokens": 5,
+      "costUsd": 0.0001815
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_b7d7e992ec50",
+        "profileId": "sse-haiku"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "47fc40f2-261f-4ce4-8b02-569817b2eb23",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775657409220
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775657409220
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "HI",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "HI",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 701,
+          "outputTokens": 5,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.0001815
+        },
+        "timestamp": 1775657412561
+      },
+      "index": 5
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 6
+    }
+  ]
+}

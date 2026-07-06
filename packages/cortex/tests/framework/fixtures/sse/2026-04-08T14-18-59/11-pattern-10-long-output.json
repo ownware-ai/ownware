@@ -1,0 +1,229 @@
+{
+  "recordedAt": "2026-04-08T14:19:20.981Z",
+  "metadata": {
+    "prompt": "20 colors with descriptions",
+    "expectedBehavior": "Many text.delta events over a longer stream"
+  },
+  "eventCount": 21,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 15,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "Arr matey!\n\n1. **Red** - Bold and passionate, evokes energy and urgency\n2. **Blue** - Calm and trustworthy, associated with the sky and sea\n3. **Green** - Natural and refreshing, symbolizes growth and health\n4. **Yellow** - Cheerful and bright, brings warmth and optimism\n5. **Purple** - Regal and creative, represents mystery and imagination\n6. **Orange** - Vibrant and social, combines red's energy with yellow's joy\n7. **Pink** - Soft and playful, conveys sweetness and tenderness\n8. **Brown** - Earthy and stable, suggests warmth and reliability\n9. **Black** - Powerful and elegant, creates contrast and sophistication\n10. **White** - Pure and clean, represents simplicity and light\n11. **Gray** - Neutral and balanced, conveys calm and professionalism\n12. **Teal** - Cool and modern, blends blue's calm with green's renewal\n13. **Navy** - Deep and formal, a sophisticated shade of blue\n14. **Gold** - Luxurious and precious, symbolizes wealth and success\n15. **Silver** - Sleek and futuristic, suggests sophistication and shine\n16. **Crimson** - Deep red, intense and dramatic\n17. **Turquoise** - Tropical and refreshing, bright blue-green blend\n18. **Coral** - Warm and inviting, a blend of pink and orange\n19. **Olive** - Earthy and muted, represents calm and tradition\n20. **Violet** - Mystical and artistic, a deeper shade of purple",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 727,
+      "outputTokens": 380,
+      "costUsd": 0.00065675
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_0c776bbbd6e8",
+        "profileId": "sse-text"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "fbe66d33-9ff6-43e6-a08c-3b8993cf4066",
+        "model": "anthropic:claude-haiku-4-5-20251001",
+        "timestamp": 1775657957278
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775657957278
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Arr matey!",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n\n1. **Red** - Bold and passionate, evokes energy and urg",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ency\n2. **Blue** - Calm and trustworthy, associated with the sky and sea\n3. **Green** - Natural and refresh",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "ing, symbolizes growth and health\n4. **Yellow** - Cheerful and bright, brings warmth and optimism\n5. **Purple",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "** - Regal and creative, represents mystery and imagination\n6. **Orange** - Vibrant and social, combines",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " red's energy with yellow's joy\n7. **Pink** - Soft and playful, conveys sweetness and tenderness\n8. **",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Brown** - Earthy and stable, suggests warmth and reliability\n9. **Black** - Powerful and elegant",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", creates contrast and sophistication\n10. **White** - Pure and clean, represents simplicity and light\n11. **Gray** - Neutral and balanced",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", conveys calm and professionalism\n12. **Teal** - Cool and modern, blends blue's calm with green's renewal\n13. **",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "Navy** - Deep and formal, a sophisticated shade of blue\n14. **Gold** - Luxurious and precious",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", symbolizes wealth and success\n15. **Silver** - Sleek and futuristic, suggests sophistication and shine\n16. **Crimson** - Deep red",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": ", intense and dramatic\n17. **Turquoise** - Tropical and refreshing, bright blue-green blend",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "\n18. **Coral** - Warm and inviting, a blend of pink and orange\n19. **Olive** - Earthy and m",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "uted, represents calm and tradition\n20. **Violet** - Mystical and artistic, a deeper shade",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " of purple",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "Arr matey!\n\n1. **Red** - Bold and passionate, evokes energy and urgency\n2. **Blue** - Calm and trustworthy, associated with the sky and sea\n3. **Green** - Natural and refreshing, symbolizes growth and health\n4. **Yellow** - Cheerful and bright, brings warmth and optimism\n5. **Purple** - Regal and creative, represents mystery and imagination\n6. **Orange** - Vibrant and social, combines red's energy with yellow's joy\n7. **Pink** - Soft and playful, conveys sweetness and tenderness\n8. **Brown** - Earthy and stable, suggests warmth and reliability\n9. **Black** - Powerful and elegant, creates contrast and sophistication\n10. **White** - Pure and clean, represents simplicity and light\n11. **Gray** - Neutral and balanced, conveys calm and professionalism\n12. **Teal** - Cool and modern, blends blue's calm with green's renewal\n13. **Navy** - Deep and formal, a sophisticated shade of blue\n14. **Gold** - Luxurious and precious, symbolizes wealth and success\n15. **Silver** - Sleek and futuristic, suggests sophistication and shine\n16. **Crimson** - Deep red, intense and dramatic\n17. **Turquoise** - Tropical and refreshing, bright blue-green blend\n18. **Coral** - Warm and inviting, a blend of pink and orange\n19. **Olive** - Earthy and muted, represents calm and tradition\n20. **Violet** - Mystical and artistic, a deeper shade of purple",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 727,
+          "outputTokens": 380,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-haiku-4-5-20251001",
+          "costUsd": 0.00065675
+        },
+        "timestamp": 1775657960980
+      },
+      "index": 19
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 20
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "recordedAt": "2026-04-08T14:02:02.051Z",
+  "metadata": {
+    "prompt": "Math problem with reasoning",
+    "profileId": "sse-thinking",
+    "threadId": "thread_a8f284640c17",
+    "expectedBehavior": "May produce thinking.delta events; will produce text answer"
+  },
+  "eventCount": 10,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 1,
+    "text.delta": 4,
+    "text.complete": 1,
+    "turn.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll calculate 47 × 83 step by step:\n\n**Method: Breaking down using distribution**\n47 × 83 = 47 × (80 + 3)\n= (47 × 80) + (47 × 3)\n= 3,760 + 141\n= 3,901\n\n**Answer: 3,901**",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [],
+    "usage": {
+      "inputTokens": 728,
+      "outputTokens": 87,
+      "costUsd": 0.003489
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_a8f284640c17",
+        "profileId": "sse-thinking"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "dd916875-1e63-4ed1-8a28-25172d2951a7",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775656919123
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775656919123
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " calculate 47 × 83 step by step:\n\n**Method: Breaking down using distribution",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "**\n47 × 83 = 47 × (80 + 3)\n= (47 × 80) + (47 × 3)\n=",
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " 3,760 + 141\n= 3,901\n\n**Answer: 3,901**",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll calculate 47 × 83 step by step:\n\n**Method: Breaking down using distribution**\n47 × 83 = 47 × (80 + 3)\n= (47 × 80) + (47 × 3)\n= 3,760 + 141\n= 3,901\n\n**Answer: 3,901**",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 728,
+          "outputTokens": 87,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.003489
+        },
+        "timestamp": 1775656922047
+      },
+      "index": 8
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 9
+    }
+  ]
+}

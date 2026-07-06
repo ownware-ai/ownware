@@ -1,0 +1,466 @@
+{
+  "recordedAt": "2026-04-09T10:30:48.200Z",
+  "metadata": {
+    "prompt": "Write to file — deny permission",
+    "profileId": "coder",
+    "threadId": "thread_8d56532fcf93",
+    "expectedBehavior": "permission.request → deny → write blocked"
+  },
+  "eventCount": 39,
+  "eventCounts": {
+    "stream.start": 1,
+    "session.start": 1,
+    "turn.start": 2,
+    "text.delta": 4,
+    "tool.call.start": 1,
+    "tool.call.args_delta": 21,
+    "text.complete": 2,
+    "permission.request": 1,
+    "permission.response": 1,
+    "turn.end": 2,
+    "checkpoint.saved": 1,
+    "session.end": 1,
+    "done": 1
+  },
+  "completed": true,
+  "errors": [],
+  "analysis": {
+    "text": "I'll attempt to write \"FORBIDDEN\" to the specified file.I acknowledge that I cannot write to that file - the action was denied by the permission system.",
+    "thinking": "",
+    "tools": [],
+    "agents": [],
+    "permissions": [
+      {
+        "type": "permission.request",
+        "requestId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "toolName": "writeFile",
+        "input": {
+          "file_path": "/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-IGPanI/perm-sandbox/deny-target.txt",
+          "content": "FORBIDDEN"
+        },
+        "reason": "Tool requires explicit approval",
+        "turnIndex": 0,
+        "zoneLevel": 2,
+        "zoneName": "build",
+        "explanation": "Execute in workspace: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-IGPanI/perm-sandbox/deny-target.txt"
+      }
+    ],
+    "usage": {
+      "inputTokens": 10795,
+      "outputTokens": 159,
+      "costUsd": 0.03477
+    }
+  },
+  "events": [
+    {
+      "event": "stream.start",
+      "data": {
+        "threadId": "thread_8d56532fcf93",
+        "profileId": "coder"
+      },
+      "index": 0
+    },
+    {
+      "event": "session.start",
+      "data": {
+        "type": "session.start",
+        "sessionId": "5ae8fe39-c79a-4f71-a677-c227d00e7d2c",
+        "model": "anthropic:claude-sonnet-4-20250514",
+        "timestamp": 1775730643279
+      },
+      "index": 1
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 0,
+        "timestamp": 1775730643279
+      },
+      "index": 2
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I'll attempt",
+        "turnIndex": 0
+      },
+      "index": 3
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " to write \"FORBIDDEN\" to the specified file.",
+        "turnIndex": 0
+      },
+      "index": 4
+    },
+    {
+      "event": "tool.call.start",
+      "data": {
+        "type": "tool.call.start",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "toolName": "writeFile",
+        "input": {},
+        "turnIndex": 0
+      },
+      "index": 5
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "",
+        "turnIndex": 0
+      },
+      "index": 6
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "{\"f",
+        "turnIndex": 0
+      },
+      "index": 7
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "ile_pa",
+        "turnIndex": 0
+      },
+      "index": 8
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "th\"",
+        "turnIndex": 0
+      },
+      "index": 9
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": ": \"/va",
+        "turnIndex": 0
+      },
+      "index": 10
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "r/",
+        "turnIndex": 0
+      },
+      "index": 11
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "folders/s1/",
+        "turnIndex": 0
+      },
+      "index": 12
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "hlc001ps1",
+        "turnIndex": 0
+      },
+      "index": 13
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "k58b_",
+        "turnIndex": 0
+      },
+      "index": 14
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "t77k953y6",
+        "turnIndex": 0
+      },
+      "index": 15
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "m0000gn/T",
+        "turnIndex": 0
+      },
+      "index": 16
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "/cortex-",
+        "turnIndex": 0
+      },
+      "index": 17
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "fw-IGP",
+        "turnIndex": 0
+      },
+      "index": 18
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "anI/",
+        "turnIndex": 0
+      },
+      "index": 19
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "perm-sandbo",
+        "turnIndex": 0
+      },
+      "index": 20
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "x/deny-targ",
+        "turnIndex": 0
+      },
+      "index": 21
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "et.tx",
+        "turnIndex": 0
+      },
+      "index": 22
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "t\"",
+        "turnIndex": 0
+      },
+      "index": 23
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": ", \"cont",
+        "turnIndex": 0
+      },
+      "index": 24
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "ent\": \"FORB",
+        "turnIndex": 0
+      },
+      "index": 25
+    },
+    {
+      "event": "tool.call.args_delta",
+      "data": {
+        "type": "tool.call.args_delta",
+        "toolCallId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "delta": "IDDEN\"}",
+        "turnIndex": 0
+      },
+      "index": 26
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I'll attempt to write \"FORBIDDEN\" to the specified file.",
+        "turnIndex": 0
+      },
+      "index": 27
+    },
+    {
+      "event": "permission.request",
+      "data": {
+        "type": "permission.request",
+        "requestId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "toolName": "writeFile",
+        "input": {
+          "file_path": "/var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-IGPanI/perm-sandbox/deny-target.txt",
+          "content": "FORBIDDEN"
+        },
+        "reason": "Tool requires explicit approval",
+        "turnIndex": 0,
+        "zoneLevel": 2,
+        "zoneName": "build",
+        "explanation": "Execute in workspace: /var/folders/s1/hlc001ps1k58b_t77k953y6m0000gn/T/cortex-fw-IGPanI/perm-sandbox/deny-target.txt"
+      },
+      "index": 28
+    },
+    {
+      "event": "permission.response",
+      "data": {
+        "type": "permission.response",
+        "requestId": "toolu_01CjL8NNDhUAoMpVyAFFMiXQ",
+        "granted": false,
+        "turnIndex": 0
+      },
+      "index": 29
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 0,
+        "stopReason": "tool_use",
+        "usage": {
+          "inputTokens": 5317,
+          "outputTokens": 137,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.018006
+        },
+        "timestamp": 1775730646274
+      },
+      "index": 30
+    },
+    {
+      "event": "checkpoint.saved",
+      "data": {
+        "type": "checkpoint.saved",
+        "checkpointId": "5ae8fe39-c79a-4f71-a677-c227d00e7d2c",
+        "turnIndex": 0
+      },
+      "index": 31
+    },
+    {
+      "event": "turn.start",
+      "data": {
+        "type": "turn.start",
+        "turnIndex": 1,
+        "timestamp": 1775730646276
+      },
+      "index": 32
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": "I",
+        "turnIndex": 1
+      },
+      "index": 33
+    },
+    {
+      "event": "text.delta",
+      "data": {
+        "type": "text.delta",
+        "text": " acknowledge that I cannot write to that file - the action was denied by the permission system.",
+        "turnIndex": 1
+      },
+      "index": 34
+    },
+    {
+      "event": "text.complete",
+      "data": {
+        "type": "text.complete",
+        "text": "I acknowledge that I cannot write to that file - the action was denied by the permission system.",
+        "turnIndex": 1
+      },
+      "index": 35
+    },
+    {
+      "event": "turn.end",
+      "data": {
+        "type": "turn.end",
+        "turnIndex": 1,
+        "stopReason": "end_turn",
+        "usage": {
+          "inputTokens": 5478,
+          "outputTokens": 22,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "model": "anthropic:claude-sonnet-4-20250514",
+          "costUsd": 0.016764
+        },
+        "timestamp": 1775730648199
+      },
+      "index": 36
+    },
+    {
+      "event": "session.end",
+      "data": {
+        "type": "session.end",
+        "sessionId": "5ae8fe39-c79a-4f71-a677-c227d00e7d2c",
+        "reason": "end_turn",
+        "totalUsage": {
+          "inputTokens": 10795,
+          "outputTokens": 159,
+          "cacheReadTokens": 0,
+          "cacheCreationTokens": 0,
+          "costUsd": 0.03477,
+          "model": "anthropic:claude-sonnet-4-20250514"
+        },
+        "turnCount": 2,
+        "timestamp": 1775730648199
+      },
+      "index": 37
+    },
+    {
+      "event": "done",
+      "data": {
+        "status": "complete"
+      },
+      "index": 38
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "name": "general",
+  "kind": "helper",
+  "description": "General-purpose read+write subtask helper. Handles a self-contained chunk of work end-to-end and reports back — drafting or reworking a document, reorganizing or transforming files, pulling content together from a few sources. Use for delegatable subtasks that don't fit scout (quick lookup) or researcher (deep web research). Can write files; does not send messages or run shell.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "general",
+    "writing",
+    "files",
+    "read-write"
+  ],
+  "metadata": {
+    "icon": "square-pen",
+    "color": "mix",
+    "category": "Research Helpers",
+    "avatar": {
+      "bg": "#1E2433",
+      "fg": "#BFD0F0",
+      "accent": "#6E8BD6",
+      "symbol": "<path d=\"M18 44 L18 38 L40 16 L46 22 L24 44 Z\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linejoin=\"round\" fill=\"none\"/><line x1=\"18\" y1=\"48\" x2=\"46\" y2=\"48\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"/>"
+    }
+  },
+  "model": "openai:gpt-5.4",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 30,
+  "tools": {
+    "preset": "none",
+    "allow": [
+      "readFile",
+      "writeFile",
+      "editFile",
+      "listFiles",
+      "glob",
+      "grep",
+      "web_search",
+      "web_fetch"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "20m"
+  },
+  "criticalReminder": "SELF-CONTAINED SUBTASK: do the one chunk of work the parent delegated, then report back concisely — what you did, which files you touched, and anything the parent needs to decide. You may read and write files, but you NEVER send email/messages or take any external action — the parent owns all outbound actions. If the task turns out to be bigger or more ambiguous than briefed, stop and report rather than guessing your way through it.",
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

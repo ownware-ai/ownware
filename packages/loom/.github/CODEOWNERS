@@ -1,0 +1,12 @@
+# Security-sensitive paths require security review
+SECURITY.md                     @ownware/security
+src/security/                   @ownware/security
+src/permissions/                @ownware/security
+src/tools/builtins/shell*       @ownware/security
+
+# Core engine requires maintainer review
+src/core/                       @ownware/maintainers
+src/provider/                   @ownware/maintainers
+
+# Release workflows
+.github/workflows/release.yml  @ownware/maintainers

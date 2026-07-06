@@ -1,0 +1,91 @@
+{
+  "name": "general",
+  "kind": "helper",
+  "description": "General-purpose helper. A capable read+edit subagent the parent dispatches for self-contained subtasks that don't fit explore (read-only) / planner (design) / verifier (test). Returns a concise report.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "general-purpose"
+  ],
+  "metadata": {
+    "icon": "wand",
+    "color": "violet",
+    "category": "Engineering Helpers",
+    "avatar": {
+      "bg": "#241A3A",
+      "fg": "#C9B6F2",
+      "accent": "#8E6BFF",
+      "symbol": "<circle cx=\"32\" cy=\"32\" r=\"4\" fill=\"currentColor\"/><circle cx=\"32\" cy=\"32\" r=\"14\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\"/><circle cx=\"32\" cy=\"32\" r=\"24\" stroke=\"currentColor\" stroke-width=\"1.6\" fill=\"none\" stroke-opacity=\"0.55\"/>"
+    }
+  },
+  "model": "openrouter:kimi-k2.6",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 30,
+  "tools": {
+    "preset": "full",
+    "allow": [],
+    "deny": [
+      "agent_spawn"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": true,
+    "cwd": true,
+    "datetime": false,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "30m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "name": "ownware-frontend",
+  "kind": "agent",
+  "description": "Ownware Frontend — UI components, polish, accessibility, animations. Reads design canvases as references when available. Builds the parts users actually see and touch.",
+  "version": "0.1.0",
+  "productId": "ownware-coder",
+  "locked": true,
+  "tags": [
+    "frontend",
+    "ui",
+    "components",
+    "polish",
+    "accessibility"
+  ],
+  "metadata": {
+    "icon": "F",
+    "color": "violet",
+    "category": "Engineering",
+    "avatar": {
+      "bg": "#231642",
+      "fg": "#D4C2FF",
+      "accent": "#7C5CFC",
+      "symbol": "<rect x=\"14\" y=\"14\" width=\"36\" height=\"36\" rx=\"4\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\"/><line x1=\"14\" y1=\"22\" x2=\"50\" y2=\"22\" stroke=\"currentColor\" stroke-width=\"2.2\"/><circle cx=\"19\" cy=\"18\" r=\"1.2\" fill=\"currentColor\"/><circle cx=\"24\" cy=\"18\" r=\"1.2\" fill=\"currentColor\"/><rect x=\"19\" y=\"28\" width=\"12\" height=\"3\" rx=\"1\" fill=\"currentColor\"/><rect x=\"19\" y=\"36\" width=\"22\" height=\"2.2\" rx=\"1\" fill=\"currentColor\" opacity=\"0.6\"/><rect x=\"19\" y=\"42\" width=\"16\" height=\"2.2\" rx=\"1\" fill=\"currentColor\" opacity=\"0.6\"/>"
+    }
+  },
+  "model": "anthropic:claude-sonnet-4-6",
+  "smallFastModel": "anthropic:claude-haiku-4-5",
+  "maxTokens": 16384,
+  "maxTurns": 100,
+  "thinking": {
+    "enabled": true,
+    "budgetTokens": 8000
+  },
+  "tools": {
+    "preset": "coding",
+    "allow": [
+      "readFile",
+      "editFile",
+      "writeFile",
+      "grep",
+      "glob",
+      "ls",
+      "shell"
+    ],
+    "deny": [
+      "browser_*",
+      "image_generate",
+      "speech_synthesize",
+      "speech_transcribe"
+    ],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": true,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "60m"
+  },
+  "subagents": [],
+  "compaction": {
+    "strategy": "summarize",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.8
+    },
+    "retain": {
+      "type": "messages",
+      "count": 6
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  },
+  "panes": {
+    "allowedKinds": [
+      "chat", "markdown", "code", "diff", "files", "html", "url", "image", "json", "txt"
+    ],
+    "defaultAgentPlacement": "split",
+    "newTabPresets": []
+  }
+}
