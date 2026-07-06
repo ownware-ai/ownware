@@ -24,6 +24,13 @@
         "vitest": "^3.0.0",
       },
     },
+    "examples/custom-client": {
+      "name": "ownware-custom-client",
+      "version": "0.1.0",
+      "dependencies": {
+        "ownware": "workspace:*",
+      },
+    },
     "examples/quickstart": {
       "name": "ownware-quickstart",
       "version": "0.1.0",
@@ -112,6 +119,9 @@
     "packages/ownware": {
       "name": "ownware",
       "version": "0.1.0",
+      "bin": {
+        "ownware": "./dist/cli.js",
+      },
       "dependencies": {
         "@ownware/cortex": "workspace:*",
         "@ownware/loom": "workspace:*",
@@ -645,6 +655,8 @@
     "outdent": ["outdent@0.5.0", "", {}, "sha512-/jHxFIzoMXdqPzTaCpFzAAWhpkSjZPF4Vsn6jAfNpmbH/ymsmd7Qc6VE9BGn0L6YMj6uwpQLxCECpus4ukKS9Q=="],
 
     "ownware": ["ownware@workspace:packages/ownware"],
+
+    "ownware-custom-client": ["ownware-custom-client@workspace:examples/custom-client"],
 
     "ownware-quickstart": ["ownware-quickstart@workspace:examples/quickstart"],
 
