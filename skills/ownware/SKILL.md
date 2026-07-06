@@ -1,5 +1,5 @@
 ---
-name: building-ownware-agents
+name: ownware
 description: Build, run, serve, and embed AI agents with Ownware — the open-source, self-hostable agent platform (npm package `ownware` + the `ownware` CLI). An agent is a text profile (agent.json + SOUL.md); serve it with OwnwareGateway as one HTTP+SSE service and reach it from a web/React app, mobile, Slack, Telegram, or the terminal. Use when the user wants to build their own AI agent, scaffold or edit an Ownware profile, run or serve an agent, wire the gateway run/events/resume/models API into an app, add a messaging channel or schedule, or asks about Ownware, OwnwareGateway, agent.json, or SOUL.md.
 ---
 
