@@ -11,6 +11,22 @@ Two ways to work with it: the **`ownware` CLI** (fastest — build and serve fro
 
 For anything not covered here, read the canonical docs — start at the agent doc index **`docs/llms.txt`** (https://github.com/ownware-ai/ownware/blob/main/docs/llms.txt). Field-level detail (full `agent.json`, the event vocabulary, channels, security) is in [reference.md](reference.md) — read it when you need specifics.
 
+## When a user asks you to build one
+
+Drive the whole flow for them — a one-line request ("build me an agent that…") should end with a working, running agent, not just files on disk.
+
+**First, understand — don't guess.**
+- **Get grounded in the docs.** Read [reference.md](reference.md) end to end (it ships with this skill — a local read), and for anything it doesn't cover, open the matching page via `docs/llms.txt`. Base what you build on Ownware's real behavior, never on assumptions.
+- **Ask a few sharp questions first** — but only where the answer changes what you build: what the agent should *do*, its tone/personality, which model (a cloud key, or keyless `ollama:llama3.2`), and where it should live (terminal, a channel like Telegram, or an app). Assume sensible defaults for everything else, state them in one line, and confirm the plan before scaffolding. Don't interrogate — a handful of pointed questions, then go.
+
+**Then drive the flow:**
+
+1. **Scaffold** the profile (`ownware init` or `ownware profile new <name>`), then edit `agent.json` + `SOUL.md` to match what they asked for — personality, tools, model.
+2. **Give it a model so it can reply** — ask the user for a provider key and run `ownware key add`, or set a keyless `ollama:llama3.2`. Never leave it model-less (it would hang with no answer).
+3. **Channel** (if they want it on Telegram/Slack/etc.) — ask for the credential when you reach that step (e.g. a Telegram bot token from @BotFather), then `ownware channel add`.
+4. **Serve and actually test end to end** — `ownware serve`, then run it / send a real message and show the user the output. Never claim it works without driving it.
+5. **Ask for what you need as you go** (keys, tokens); never invent or hardcode a secret. Keep the gateway on localhost unless the user asks to expose it.
+
 ## Install
 
 ```bash
