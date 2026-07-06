@@ -20,7 +20,7 @@
  * journey tests.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { createTestGateway, type TestGateway } from '../../framework/harness/index.js'
 
 // Provider SDKs throw at import time without API keys.
@@ -244,15 +244,20 @@ describe('Decoupled run — API contract', () => {
     expect(runRes.status).toBe(200)
     expect(runRes.body.threadId).toBeDefined()
 
-    // Give the background runner a moment to fail (no API key) and clean up
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    // After the runner finishes (with error, since no API key),
-    // it should have cleaned up the runtime
-    const runtime = gw.state.getRuntime(runRes.body.threadId)
-    expect(runtime).toBeUndefined()
-
-    // The runner should no longer track it as active
-    expect(gw.runner.isRunning(runRes.body.threadId)).toBe(false)
+    // Poll until the background runner fails (no API key) and cleans up.
+    // A fixed `setTimeout(2000)` here raced on slow CI runners where cleanup
+    // took longer than 2s, leaving the runtime still present → flaky failure
+    // ("expected { session: Session … } to be undefined"). `vi.waitFor` is
+    // deterministic: it passes the instant cleanup lands, and only fails if
+    // cleanup never happens within the generous timeout.
+    await vi.waitFor(
+      () => {
+        // After the runner finishes (with error, since no API key), it should
+        // have cleaned up the runtime and no longer track it as active.
+        expect(gw.state.getRuntime(runRes.body.threadId)).toBeUndefined()
+        expect(gw.runner.isRunning(runRes.body.threadId)).toBe(false)
+      },
+      { timeout: 15000, interval: 50 },
+    )
   })
 })
