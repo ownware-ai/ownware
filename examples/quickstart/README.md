@@ -1,29 +1,34 @@
-# Ownware quickstart — your own agent in three commands
+# Ownware quickstart — your own agent in four commands
 
 ```bash
-ownware init                       # 1. build it  — a starter agent in ./profiles/assistant
-ownware run assistant "hello"      # 2. talk to it — streamed in your terminal, no server
-ownware serve                      # 3. serve it  — the whole backend, one process
+ownware init                                             # 1. build it  — a starter agent in ./profiles/assistant
+ownware profile set assistant --model ollama:llama3.2    # 2. give it a keyless local model (or add a cloud key, below)
+ownware run assistant "hello"                            # 3. talk to it — streamed in your terminal, no server
+ownware serve                                            # 4. serve it  — the whole backend, one process
 ```
 
 That's the whole arc: **build → talk → serve.** No `serve.mjs`, no `chat.mjs`, no glue —
 one command does each step. Full command list: [the `ownware` CLI reference](../../docs/reference/cli.md).
 
-> **In this repo (before the npm publish):** run these as `bun run ownware …` — e.g.
-> `bun run ownware init`. Once `ownware` is installed globally (`npm i -g ownware`), drop
-> the prefix. Requires Node ≥ 22 and, from source, `bun install && bun run build` once.
+> **Install:** `npm i -g ownware` (Node ≥ 22), then run the commands as-is.
+> **Working from this repo's source?** Run `bun install && bun run build` once, then
+> prefix each command with `bun run` — e.g. `bun run ownware init`.
 
-**No API key?** Install [Ollama](https://ollama.com) and it answers fully local, free:
+**No API key?** Install [Ollama](https://ollama.com) and it answers fully local, free
+(that's the `ollama:llama3.2` line above):
 
 ```bash
 brew install ollama && ollama pull llama3.2                              # macOS
 curl -fsSL https://ollama.com/install.sh | sh && ollama pull llama3.2    # Linux
 ```
 
-Have a key? Save it once — encrypted, never exported again:
+Have a key? Save it once — encrypted, never exported again. With an OpenAI key you can
+skip the model line entirely (`ownware init` defaults to `openai:gpt-5.5`); for another
+provider, set a matching model too (e.g. `ownware profile set assistant --model
+anthropic:claude-sonnet-4-6`):
 
 ```bash
-ownware key add anthropic          # or openai · google · openrouter
+ownware key add openai             # or anthropic · google · openrouter
 ```
 
 ## What each command does

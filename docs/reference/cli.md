@@ -52,7 +52,7 @@ Scaffold `./profiles/<name>/` with a starter `agent.json` + `SOUL.md`. Idempoten
 
 | Flag | Meaning |
 |---|---|
-| `--model <id>` | Set the model in `agent.json` (default `anthropic:claude-sonnet-4-6`). |
+| `--model <id>` | Set the model in `agent.json` (default `openai:gpt-5.5`). |
 | `--description <text>` | Set the one-line description. |
 | `--open` | Open the new folder in your file manager after creating it. |
 

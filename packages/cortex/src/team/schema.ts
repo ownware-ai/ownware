@@ -20,7 +20,12 @@
  */
 
 import { z } from 'zod'
-import { productSlugSchema } from '../product/manifest.js'
+// Legacy surface-slug shape (the product catalog was removed; `surface`
+// is now a free-form kebab slug defaulting to 'ownware').
+const productSlugSchema = z
+  .string()
+  .min(1)
+  .regex(/^[a-z][a-z0-9-]*$/, 'must be a lowercase kebab slug')
 
 // ---------------------------------------------------------------------------
 // Task — everything on the board is one of these (L2)

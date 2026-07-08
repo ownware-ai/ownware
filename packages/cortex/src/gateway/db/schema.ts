@@ -2460,4 +2460,45 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE schedules ADD COLUMN deliver_target TEXT;
     `,
   },
+  {
+    version: 49,
+    name: '049_drop_legacy_desktop_tables',
+    destructive: {
+      reason:
+        'Scope-to-core: the legacy desktop verticals (design canvas, edit-by-talking, ' +
+        'workspace build-boards) were removed from the gateway — every read/write code ' +
+        'path for these tables is deleted, so the data is unreachable dead weight. ' +
+        'Rows held desktop-UI state (canvas metadata, thread↔design/edit joins, build ' +
+        'boards), never conversation history; threads/messages are untouched.',
+    },
+    sql: `
+      -- Scope-to-core (2026-07-08): the legacy desktop client's verticals
+      -- were removed from the gateway (design canvas, edit-by-talking
+      -- binding, workspace build-boards). Their tables' entire read/write
+      -- code paths are gone, so the tables drop rather than rot. Join
+      -- tables first, then parents. workspace_panes is NOT dropped here —
+      -- its data-layer code is still present and is removed in a
+      -- follow-up migration alongside that sweep.
+      DROP TABLE IF EXISTS thread_designs;
+      DROP TABLE IF EXISTS designs;
+      DROP TABLE IF EXISTS thread_edits;
+      DROP TABLE IF EXISTS board_findings;
+      DROP TABLE IF EXISTS board_slices;
+      DROP TABLE IF EXISTS boards;
+    `,
+  },
+  {
+    version: 50,
+    name: '050_drop_workspace_panes',
+    destructive: {
+      reason:
+        'Scope-to-core follow-up: the desktop pane substrate (HTTP surface, tool, and ' +
+        'data-layer code) is fully removed, so the workspace_panes table is unreachable ' +
+        'dead weight. Rows held desktop tab/pane layout state only — never conversation ' +
+        'history; threads/messages are untouched.',
+    },
+    sql: `
+      DROP TABLE IF EXISTS workspace_panes;
+    `,
+  },
 ]

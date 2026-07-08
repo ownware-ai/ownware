@@ -38,9 +38,9 @@ Optionally give it a personality:
 You are a concise, helpful assistant for my project.
 ```
 
-Every other setting (model, tools, security) has a sensible default — see [Profile format](../agents/profile-format.md). The default model is `anthropic:claude-sonnet-4-6`.
+Every other setting (model, tools, security) has a sensible default — see [Profile format](../agents/profile-format.md). The default model is `openai:gpt-5.5`.
 
-> **The agent needs a model to reply.** With no model key set, the run starts but never answers. Either set a provider key first (`export ANTHROPIC_API_KEY=…`, or `ownware key add anthropic` for the encrypted vault), or point the profile at a local model — add `"model": "ollama:llama3.2"` to `agent.json` and run Ollama (no key needed). See [Models](../models/overview.md).
+> **The agent needs a model to reply.** With no model key set, the run starts but never answers. Either set a provider key first (`export OPENAI_API_KEY=…`, or `ownware key add openai` for the encrypted vault), or point the profile at a local model — add `"model": "ollama:llama3.2"` to `agent.json` and run Ollama (no key needed). Prefer another provider? Set the profile model to it (e.g. `"model": "anthropic:claude-sonnet-4-6"` plus `ownware key add anthropic`). See [Models](../models/overview.md).
 
 ## 3. Serve it
 

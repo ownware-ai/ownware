@@ -31,10 +31,11 @@ globally — run `node packages/cortex/dist/cli.js …` or alias it. Confirm you
 ## "It looks like it ran, but the agent never answers"
 
 The most common cause: **no model is available.** A fresh profile defaults to
-`anthropic:claude-sonnet-4-6`, which needs a key. The run starts (you get a `threadId`)
+`openai:gpt-5.5`, which needs a key. The run starts (you get a `threadId`)
 but produces no reply. Fix one of:
 
-- Set a key: `ownware key add anthropic` (or `export ANTHROPIC_API_KEY=…`).
+- Set a key: `ownware key add openai` (or `export OPENAI_API_KEY=…`). Using another
+  provider? Set the profile model to it and add that provider's key instead.
 - Go keyless: point the profile at Ollama — `ownware profile set <profile> --model ollama:llama3.2` — and make sure Ollama is running.
 
 Check what's usable right now: `curl http://localhost:3011/api/v1/models` and look for

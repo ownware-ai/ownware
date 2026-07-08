@@ -19,7 +19,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   CreateThreadSchema,
   CreateWorkspaceSchema,
-  RunRequestSchema,
   CreateLocalProfileSchema,
   SetSettingSchema,
   SetProviderKeySchema,
@@ -541,15 +540,9 @@ describe('Zod validation schemas', () => {
     expect(result.success).toBe(true)
   })
 
-  it('RunRequestSchema: valid input passes', () => {
-    const result = RunRequestSchema.safeParse({ prompt: 'Hello' })
-    expect(result.success).toBe(true)
-  })
-
-  it('RunRequestSchema: empty prompt fails', () => {
-    const result = RunRequestSchema.safeParse({ prompt: '' })
-    expect(result.success).toBe(false)
-  })
+  // RunRequestSchema tests removed — the run body is validated by the run
+  // handler's own strict schema (handlers/run.ts) and covered by the run
+  // handler integration tests; the drifted duplicate export was deleted.
 
   it('CreateLocalProfileSchema: valid input passes', () => {
     const result = CreateLocalProfileSchema.safeParse({ displayName: 'Alice' })

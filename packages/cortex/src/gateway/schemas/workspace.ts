@@ -14,7 +14,12 @@
  */
 
 import { z } from 'zod'
-import { productSlugSchema } from '../../product/manifest.js'
+// Legacy product-slug shape kept for wire compat (the product catalog
+// itself was removed).
+const productSlugSchema = z
+  .string()
+  .min(1)
+  .regex(/^[a-z][a-z0-9-]*$/, 'must be a lowercase kebab slug')
 
 export const CreateWorkspaceRequestSchema = z.object({
   path: z.string().min(1, 'path is required'),

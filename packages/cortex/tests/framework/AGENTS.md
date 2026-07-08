@@ -41,11 +41,9 @@ tests/framework/
 │   ├── mcp.contract.ts
 │   ├── settings.contract.ts
 │   ├── providers.contract.ts
-│   ├── onboarding.contract.ts
-│   └── session.contract.ts
+│   └── …one per endpoint group
 │
 ├── journeys/              ← Layer 2: Stateful user flows
-│   ├── 01-onboarding.journey.ts
 │   ├── 02-profile-lifecycle.journey.ts
 │   ├── 03-workspace-flow.journey.ts
 │   ├── 04-single-run.journey.ts
@@ -55,7 +53,6 @@ tests/framework/
 │   ├── 08-dashboard-accuracy.journey.ts
 │   ├── 09-search-and-export.journey.ts
 │   ├── 10-settings-persistence.journey.ts
-│   ├── 11-session-recovery.journey.ts
 │   ├── 12-error-handling.journey.ts
 │   └── 13-isolation.journey.ts
 │
@@ -270,14 +267,6 @@ npx vitest run tests/framework/
 
 ### Search (1)
 - `GET /api/v1/search`
-
-### Onboarding (2)
-- `POST /api/v1/onboarding/role`
-- `POST /api/v1/onboarding/complete`
-
-### Session (2)
-- `GET /api/v1/session/state`
-- `POST /api/v1/session/restore`
 
 ### Debug (2)
 - `GET /api/v1/debug/events`

@@ -26,20 +26,12 @@ import type { RateLimiter } from './middleware/rate-limit.js'
 import { createAccessLogger } from './middleware/access-log.js'
 import type { AccessLogger } from './middleware/access-log.js'
 import { healthHandler, appVersionHandler, connectivityHandler } from './handlers/health.js'
-import { productsHandler } from './handlers/products.js'
-import { detectedAppsHandler } from './handlers/detected-apps.js'
 import { createProfileHandlers } from './handlers/profiles.js'
 import { createSkillHandlers } from './handlers/profile-skills.js'
 import { PendingReconciles } from './pending-reconcile.js'
 import { createThreadHandlers } from './handlers/threads.js'
-import { createDesignHandlers } from './handlers/designs.js'
-import { createEditTargetHandlers } from './handlers/edit-targets.js'
 import { TeamModule } from '../team/module.js'
 import { createTeamHandlers } from '../team/handlers.js'
-import { createDesignsRawHandlers } from './handlers/designs-raw.js'
-import { createFontsHandlers } from './handlers/fonts.js'
-import { createDesignsFilesHandlers } from './handlers/designs-files.js'
-import { createDesignSystemsListHandlers } from './handlers/design-systems-list.js'
 import { createRunHandlers } from './handlers/run.js'
 import {
   SqliteScheduleStore,
@@ -72,27 +64,10 @@ import { createGatewayEventsHandler } from './handlers/gateway-events.js'
 import { createTaskHandlers } from './handlers/tasks.js'
 import { TaskEventBus } from '../tasks/event-bus.js'
 import { SqliteTaskStore } from '../tasks/store.js'
-import { BoardEventBus, SqliteBoardStore } from '../boards/index.js'
-import { createBoardHandlers } from './handlers/boards.js'
 import { createScheduleHandlers } from './handlers/schedules.js'
 import { createApprovalHandlers } from './handlers/approvals.js'
 import { createMemorySystem, type MemorySystem } from '../memory/index.js'
 import { createMemoryHandlers } from './handlers/memory.js'
-import {
-  createTerminalAgentHandlers,
-  createTerminalUserHandlers,
-  createTerminalWorkspaceHandlers,
-} from './handlers/terminal.js'
-import { createFilesHandlers } from './handlers/files.js'
-import { createDesignFsEventsHandlers } from './handlers/designs-fs-events.js'
-import {
-  FilesEventBus,
-  createFilesService,
-  DesignFsEventBus,
-  createDesignFsService,
-  type DesignFsService,
-  type FilesService,
-} from '../files/index.js'
 import { TerminalEventBus } from '../terminal/event-bus.js'
 import { TerminalSessionRegistry } from '../terminal/session-registry.js'
 import { WebSearchService } from '../connector/web-search/service.js'
@@ -108,11 +83,6 @@ import {
   type WorkspaceEventBus,
 } from './workspace-event-bus.js'
 import { createWorkspaceEventsHandler } from './handlers/workspace-events.js'
-import {
-  createPaneEventBus,
-  type PaneEventBus,
-} from './pane-event-bus.js'
-import { createPaneEventsHandler } from './handlers/pane-events.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { ConnectorsToolProvider } from '../connector/providers/connectors-tool-provider.js'
 import { ConnectorConnectionsStore } from '../connector/connections/store.js'
@@ -135,18 +105,14 @@ import { credentialVault, decrypt as decryptCredentialValue } from '../connector
 import { InstallIdentity } from '../identity/install-identity.js'
 import { createDebugHandlers } from './handlers/debug.js'
 import { createWorkspaceHandlers } from './handlers/workspaces.js'
-import { createPaneHandlers } from './handlers/panes.js'
 import { createDashboardHandlers } from './handlers/dashboard.js'
 import { createSettingsHandlers } from './handlers/settings.js'
 import { createProviderHandlers } from './handlers/providers.js'
 import { createTranscribeHandlers } from './handlers/transcribe.js'
 import { createSearchHandlers } from './handlers/search.js'
-import { createOnboardingHandlers } from './handlers/onboarding.js'
 import { createModelCatalogHandler, createCatalogHandler } from './handlers/catalog.js'
 import { VARIABLE_NAME_TO_PROVIDER_ID, llmProviderById } from './llm-providers.js'
-import { createSniffHandler } from './handlers/connector-sniff.js'
 import { createMCPRegisterHandlers } from './handlers/mcp-register.js'
-import { createSessionHandlers } from './handlers/session.js'
 import { createActivityHandlers } from './handlers/activity.js'
 import { createAgentEventHandlers } from './handlers/agent-events.js'
 import { createPermissionHandlers } from './handlers/permissions.js'
@@ -314,19 +280,9 @@ export class OwnwareGateway {
    * 2026-05-16). Threaded into the workspace handler factory (so
    * emits fire on create / update / archive / delete) and into the
    * workspace-events SSE handler (so subscribers receive
-   * invalidate-only hints). Panes are out-of-scope here — see
-   * `paneEventBus` below for the per-workspace pane channel.
+   * invalidate-only hints).
    */
   readonly workspaceEventBus: WorkspaceEventBus
-  /**
-   * Per-workspace pane CRUD event bus (audit #2 C3 / F1b, 2026-05-16,
-   * Chunk #20). Keyed by `wsId` at the bus layer — a pane mutation in
-   * workspace A is only delivered to listeners subscribed to A. Threaded
-   * into the pane handler factory (so emits fire on create / patch /
-   * delete / reorder) and into the pane-events SSE handler (so
-   * subscribers receive invalidate-only hints scoped to their workspace).
-   */
-  readonly paneEventBus: PaneEventBus
   /**
    * Per-thread pending-reconcile tracker. Owns both the "this thread
    * needs a reconcile on its next turn" set and the per-thread
@@ -349,18 +305,6 @@ export class OwnwareGateway {
    */
   readonly taskStore: SqliteTaskStore
   /**
-   * Process-wide board event bus — paired with `boardStore`. The
-   * `board_write` / `board_update` tools write through the store; this
-   * bus fans `board.updated` events out to SSE clients.
-   */
-  readonly boardEventBus: BoardEventBus
-  /**
-   * SQLite-backed board store (the top rung of the work ladder). Passed
-   * into `run.ts` so a workspace session carries the board tools, and
-   * into the board HTTP/SSE handlers.
-   */
-  readonly boardStore: SqliteBoardStore
-  /**
    * Memory system (memories + proposals + user identity + event bus).
    * Shared across the gateway. Passed into:
    *   - run.ts so each session is assembled with a bound `remember`
@@ -370,33 +314,14 @@ export class OwnwareGateway {
    */
   readonly memorySystem: MemorySystem
   /**
-   * Per-workspace PTY sessions. Two kinds:
-   *   - agent: exactly one per workspace, lazy-spawned, written to
-   *     only by Loom's `shell_execute` via the scoped runner.
-   *   - user: 0..N per workspace, created explicitly by the client.
-   * All sessions are killed on gateway shutdown.
+   * Per-workspace agent PTY sessions — exactly one per workspace,
+   * lazy-spawned, written to only by Loom's `shell_execute` via the
+   * scoped runner. Killed on gateway shutdown. (The desktop terminal
+   * panel's HTTP/SSE surface was removed; the registry stays because
+   * it is the engine-side shell-state substrate.)
    */
   readonly terminalEventBus: TerminalEventBus
   readonly terminalRegistry: TerminalSessionRegistry
-  /**
-   * Files panel backend. `FilesEventBus` fans out `files.updated`
-   * frames to every SSE subscriber; `FilesService` owns per-
-   * workspace chokidar watchers + the git adapter. Watchers are
-   * lazy-spawned on first subscribe and killed on the gateway's
-   * stop path.
-   */
-  readonly filesEventBus: FilesEventBus
-  readonly filesService: FilesService
-  /**
-   * Per-design filesystem watcher backend (Slice B4). Parallel to
-   * `filesService` because designs are a separate vertical (Principle
-   * 22) and don't require git — `DesignFsService` wraps chokidar
-   * directly and emits per-path invalidation hints
-   * `{ designId, path, kind }` on `DesignFsEventBus`. Consumed by the
-   * canvas via `GET /api/v1/designs/:id/fs-events`.
-   */
-  readonly designFsEventBus: DesignFsEventBus
-  readonly designFsService: DesignFsService
   /**
    * Shared `WebSearchService`. The connector handlers, the status-bus
    * emitter for web-search PATCH, and `assembleAgent()` (via run.ts)
@@ -596,12 +521,9 @@ export class OwnwareGateway {
     this.connectorStatusBus = createConnectorStatusBus()
     this.credentialEventBus = createCredentialEventBus()
     this.workspaceEventBus = createWorkspaceEventBus()
-    this.paneEventBus = createPaneEventBus()
     this.pendingReconciles = new PendingReconciles()
     this.taskEventBus = new TaskEventBus()
     this.taskStore = new SqliteTaskStore(this.state.rawDbHandle, this.taskEventBus)
-    this.boardEventBus = new BoardEventBus()
-    this.boardStore = new SqliteBoardStore(this.state.rawDbHandle, this.boardEventBus)
     // Per-profile scheduling store (own vertical, migration 43).
     this.scheduleStore = new SqliteScheduleStore(this.state.rawDbHandle)
     this.approvalStore = new SqliteApprovalStore(this.state.rawDbHandle)
@@ -614,25 +536,6 @@ export class OwnwareGateway {
       bus: this.terminalEventBus,
       workspaces: {
         getWorkspacePath: (wsId) => this.state.getWorkspace(wsId)?.path ?? null,
-      },
-    })
-    this.filesEventBus = new FilesEventBus()
-    this.filesService = createFilesService({
-      bus: this.filesEventBus,
-      workspaces: {
-        getWorkspacePath: (wsId) => this.state.getWorkspace(wsId)?.path ?? null,
-      },
-    })
-    this.designFsEventBus = new DesignFsEventBus()
-    this.designFsService = createDesignFsService({
-      bus: this.designFsEventBus,
-      designs: {
-        getDesignPath: (designId) => {
-          const design = this.state.getDesign(designId)
-          if (design == null) return null
-          const ws = this.state.getWorkspace(design.workspaceId)
-          return ws?.path ?? null
-        },
       },
     })
     this.webSearchService = new WebSearchService({ settings: this.state })
@@ -1584,13 +1487,6 @@ export class OwnwareGateway {
       this.bridgeCatalogStop = null
     }
 
-    // Persist session state before shutdown
-    try {
-      this.state.saveSessionState()
-    } catch {
-      // Best-effort — don't prevent shutdown
-    }
-
     // Abort in-flight team member sessions BEFORE draining the runner —
     // member loops are scheduler-owned (not in the runner's map) and
     // must not outlive the gateway. Board state is already durable;
@@ -1648,24 +1544,6 @@ export class OwnwareGateway {
       // Best-effort — don't prevent shutdown
     }
 
-    // Close every per-workspace file watcher. Chokidar keeps native
-    // fsevents/inotify handles open; without this shutdown SIGTERM
-    // leaves them lingering + accumulating across gateway restarts
-    // in dev.
-    try {
-      await this.filesService.shutdown()
-    } catch {
-      // Best-effort — don't prevent shutdown
-    }
-
-    // Close every per-design fs watcher (Slice B4). Same rationale as
-    // filesService.shutdown above — chokidar holds native fs handles.
-    try {
-      await this.designFsService.shutdown()
-    } catch {
-      // Best-effort — don't prevent shutdown
-    }
-
     // Stop the retention timer so it doesn't fire after shutdown.
     if (this.stopRetention !== null) {
       this.stopRetention()
@@ -1702,7 +1580,6 @@ export class OwnwareGateway {
     this.connectorStatusBus.clear()
     this.credentialEventBus.clear()
     this.workspaceEventBus.clear()
-    this.paneEventBus.clear()
 
     // Stop rate limiter cleanup timer
     if (this.rateLimiter) {
@@ -1820,12 +1697,6 @@ export class OwnwareGateway {
     )
     const skills = createSkillHandlers(this.registry, userProfilesDir)
     const threads = createThreadHandlers(this.state, { runner: this.runner })
-    const designs = createDesignHandlers(this.state, { registry: this.registry })
-    const editTargets = createEditTargetHandlers(this.state)
-    const designsRaw = createDesignsRawHandlers(this.state)
-    const fonts = createFontsHandlers({ dataDir: this.opts.dataDir })
-    const designsFiles = createDesignsFilesHandlers(this.state)
-    const designSystemsList = createDesignSystemsListHandlers({ registry: this.registry })
 
     // Build connector handlers EARLY so its `registry` is available
     // when we wire the connectors() agent-tool provider into the
@@ -1891,7 +1762,6 @@ export class OwnwareGateway {
     const run = createRunHandlers(this.state, this.registry, this.runner, {
       webSearchService: this.webSearchService,
       taskStore: this.taskStore,
-      boardStore: this.boardStore,
       credentialStore: this.credentialStore,
       terminalRegistry: this.terminalRegistry,
       pendingReconciles: this.pendingReconciles,
@@ -1968,7 +1838,6 @@ export class OwnwareGateway {
     })
     const teams = createTeamHandlers(this.teamModule)
     const tasks = createTaskHandlers({ store: this.taskStore, bus: this.taskEventBus })
-    const boards = createBoardHandlers({ store: this.boardStore, bus: this.boardEventBus })
     const schedules = createScheduleHandlers({
       store: this.schedules,
       runNow: (id) => this.scheduleRunner?.runNow(id) ?? Promise.resolve(null),
@@ -1985,28 +1854,6 @@ export class OwnwareGateway {
           })
         : null
     const memory = createMemoryHandlers({ system: this.memorySystem })
-    const terminalAgent = createTerminalAgentHandlers({
-      registry: this.terminalRegistry,
-      bus: this.terminalEventBus,
-    })
-    const terminalUser = createTerminalUserHandlers({
-      registry: this.terminalRegistry,
-      bus: this.terminalEventBus,
-      dataDir: this.opts.dataDir,
-    })
-    const terminalWorkspace = createTerminalWorkspaceHandlers({
-      registry: this.terminalRegistry,
-      bus: this.terminalEventBus,
-      dataDir: this.opts.dataDir,
-    })
-    const files = createFilesHandlers({
-      service: this.filesService,
-      bus: this.filesEventBus,
-    })
-    const designFsEvents = createDesignFsEventsHandlers({
-      service: this.designFsService,
-      bus: this.designFsEventBus,
-    })
     const tools = createToolHandlers(this.registry)
     const mcp = createMCPHandlers(this.registry, this.state, {
       statusBus: this.connectorStatusBus,
@@ -2018,9 +1865,6 @@ export class OwnwareGateway {
       terminalRegistry: this.terminalRegistry,
       eventBus: this.workspaceEventBus,
     })
-    const panes = createPaneHandlers(this.state, {
-      eventBus: this.paneEventBus,
-    })
     const dashboard = createDashboardHandlers(this.state)
     const settings = createSettingsHandlers(this.state)
     const providers = createProviderHandlers({
@@ -2030,8 +1874,6 @@ export class OwnwareGateway {
     })
     const transcribe = createTranscribeHandlers({ store: this.credentialStore })
     const searchHandlers = createSearchHandlers(this.state, this.registry)
-    const onboarding = createOnboardingHandlers(this.state)
-    const session = createSessionHandlers(this.state)
     const activity = createActivityHandlers(this.state)
     const agentEvents = createAgentEventHandlers(this.state)
     const permissions = createPermissionHandlers(this.state)
@@ -2039,7 +1881,6 @@ export class OwnwareGateway {
     // Health
     this.router.get('/api/v1/health', healthHandler)
     // Canonical product catalog — cortex-owned, read by every client.
-    this.router.get('/api/v1/products', productsHandler)
 
     // Multiplexed gateway invalidation SSE channel (production-perf
     // audit, 2026-05-17 → -18). One connection carries
@@ -2133,66 +1974,6 @@ export class OwnwareGateway {
     this.router.get('/api/v1/threads/:threadId/team-board', teams.getBoardForThread)
     this.router.post('/api/v1/team-runs/:runId/cancel', teams.cancelRun)
 
-    this.router.post('/api/v1/workspaces/:wsId/designs', designs.createDesign)
-    this.router.get('/api/v1/workspaces/:wsId/designs', designs.listDesigns)
-    this.router.post('/api/v1/threads/:threadId/design', designs.linkThreadDesign)
-    this.router.get('/api/v1/threads/:threadId/design', designs.getThreadDesign)
-    // Edit-by-talking — bind a Builder thread to the agent it edits (durable +
-    // queryable; the client re-injects the edit context per turn from this).
-    this.router.post('/api/v1/threads/:threadId/edit-target', editTargets.link)
-    // Read the binding on reopen → a bound thread re-enters edit mode.
-    this.router.get('/api/v1/threads/:threadId/edit-target', editTargets.getTarget)
-    // An agent's edit conversations, newest-first — backs the edit-thread
-    // switcher + resume-latest.
-    this.router.get('/api/v1/profiles/:slug/edits', editTargets.listForAgent)
-    // Slice BC3 (2026-05-27) — reverse lookup so the workspace-strip
-    // child-picker chip can navigate from a picked design to its
-    // linked thread. 200 with `{ threadId }` or `null` body; 404 only
-    // when the design id itself doesn't exist.
-    this.router.get('/api/v1/designs/:designId/thread', designs.getDesignThread)
-    // All threads for a design, most-recent-first — backs the chat-head
-    // thread switcher so a design can host multiple sessions.
-    this.router.get('/api/v1/designs/:designId/threads', designs.listThreadsForDesign)
-    this.router.post('/api/v1/designs/:designId/seed-template', designs.seedTemplate)
-    // Slice B1.6 (2026-05-27) — atomic name + slug rename. Slug
-    // renames also move the on-disk slug folder + rewrite the design's
-    // workspace path in one transaction.
-    this.router.patch('/api/v1/designs/:designId', designs.updateDesign)
-    // Slice B2.1 — raw subresource streaming so prototype iframes can
-    // load multi-file designs via URL-load (script src, link href).
-    // The router's trailing `*path` splat captures nested paths.
-    this.router.get('/api/v1/designs/:designId/raw/*path', designsRaw.getRaw)
-    // S1 (canvas truth) — authoritative disk listing of a design's
-    // workspace folder. The canvas seeds its file map from this, not
-    // from replayed chat tool-calls, so unexecuted writes can't show as
-    // phantom "saved" files.
-    this.router.get('/api/v1/designs/:designId/files', designsRaw.getFiles)
-    // Thumbnail capture sink — Electron renders the design offscreen and
-    // PUTs the PNG here; the canvas/lobby tiles read it back via
-    // `/raw/.thumb.png`. Fixed filename at the workspace root (no path
-    // param → no traversal), PNG-signature checked.
-    this.router.put('/api/v1/designs/:designId/thumbnail', designsRaw.putThumbnail)
-    // Slice B3.1 — human-write endpoint for design workspace files
-    // (sketch JSONs today; poster JSONs, image sidecars, etc later).
-    // The agent's writeFile tool covers agent-driven writes; this
-    // covers Save buttons in the canvas without an LLM round-trip.
-    this.router.post('/api/v1/designs/:designId/files/*path', designsFiles.writeFile)
-    // Local-first Google Fonts proxy — design HTML's font `<link>`s are
-    // rewritten to point here so fonts load from the user's own machine
-    // (cached on disk after first fetch) instead of phoning Google's CDN
-    // from a CSP-restricted sandbox. `?u=` is host-locked (SSRF-safe).
-    this.router.get('/api/v1/fonts/css', fonts.getCss)
-    this.router.get('/api/v1/fonts/file', fonts.getFile)
-    // Slice B4 — per-design fs-events SSE for the canvas auto-reload
-    // loop. Per-path `{ designId, path, kind }` invalidation hints;
-    // client re-fetches via the raw endpoint above.
-    this.router.get('/api/v1/designs/:designId/fs-events', designFsEvents.streamEvents)
-    this.router.get('/api/v1/profiles/:profileId/design-systems', designSystemsList.listDesignSystems)
-    this.router.get(
-      '/api/v1/profiles/:profileId/design-systems/:dsId/content',
-      designSystemsList.getDesignSystemContent,
-    )
-
     // Tasks — the agent's TODO list, written by Loom's `todo_write`
     // tool via a per-thread store adapter, surfaced here for the client
     // (workspace panels T03/T04). SSE stream carries
@@ -2201,17 +1982,8 @@ export class OwnwareGateway {
     this.router.patch('/api/v1/threads/:threadId/tasks/:taskId', tasks.updateTaskStatus)
     this.router.get('/api/v1/threads/:threadId/tasks/events', tasks.streamTaskEvents)
 
-    // Boards — the top rung of the work ladder (todo → plan → board).
-    // Written by the `board_write` / `board_update` tools; user actions
-    // (Approve / Resume / Discard, tick a slice, resolve a finding) come
-    // through the POST/PATCH routes. Boards scope to a WORKSPACE (they
-    // outlive any one chat), so the list + SSE stream are workspace-keyed.
-    this.router.get('/api/v1/workspaces/:workspaceId/boards', boards.listBoards)
-    this.router.get('/api/v1/workspaces/:workspaceId/boards/events', boards.streamBoardEvents)
-    this.router.get('/api/v1/boards/:boardId', boards.getBoard)
-    this.router.post('/api/v1/boards/:boardId/status', boards.setBoardStatus)
-    this.router.patch('/api/v1/boards/:boardId/slices/:sliceId', boards.updateSlice)
-    this.router.patch('/api/v1/boards/:boardId/findings/:findingId', boards.updateFinding)
+    // (The desktop workspace build-board HTTP surface was removed with the
+    // legacy desktop shell. Agent Teams' board is separate — see team/.)
 
     // Per-profile scheduling ("Ownware Calendar") — CRUD + pause/resume +
     // run-now + run history.
@@ -2254,50 +2026,9 @@ export class OwnwareGateway {
     this.router.put('/api/v1/user/identity', memory.putIdentity)
     this.router.get('/api/v1/memory/events', memory.streamMemoryEvents)
 
-    // Terminal — two disjoint kinds of PTY per workspace.
-    //
-    //   agent: exactly one, lazy-spawned, written to only by
-    //     Loom's `shell_execute` via the scoped runner. The HTTP
-    //     surface is deliberately read-only from the client's point
-    //     of view — there is no /input route.
-    //
-    //   user: 0..N, explicit create/destroy. Each has an opaque UUID;
-    //     agent has no handle to these.
-    this.router.post('/api/v1/workspaces/:wsId/terminal/agent/resize', terminalAgent.resize)
-    this.router.post('/api/v1/workspaces/:wsId/terminal/agent/reset', terminalAgent.reset)
-    this.router.get('/api/v1/workspaces/:wsId/terminal/agent/events', terminalAgent.streamEvents)
-    // Paginated line-based read with optional regex filter. Agent-facing
-    // counterpart to the SSE /events stream; lets `shell_execute`
-    // (later items in the shell-sessions board) pull deltas instead of
-    // holding an open SSE connection per turn. See
-    // `handlers/terminal.ts` for query + response shape.
-    this.router.get('/api/v1/workspaces/:wsId/terminal/agent/output', terminalAgent.readOutput)
-
-    this.router.post('/api/v1/workspaces/:wsId/terminals/user', terminalUser.create)
-    this.router.get('/api/v1/workspaces/:wsId/terminals/user', terminalUser.list)
-    this.router.delete('/api/v1/workspaces/:wsId/terminals/user/:id', terminalUser.drop)
-    this.router.post('/api/v1/workspaces/:wsId/terminals/user/:id/input', terminalUser.writeInput)
-    this.router.post('/api/v1/workspaces/:wsId/terminals/user/:id/resize', terminalUser.resize)
-    this.router.post('/api/v1/workspaces/:wsId/terminals/user/:id/signal', terminalUser.sendSignal)
-    this.router.get('/api/v1/workspaces/:wsId/terminals/user/:id/events', terminalUser.streamEvents)
-    this.router.get('/api/v1/workspaces/:wsId/terminals/user/:id/output', terminalUser.readOutput)
-    this.router.get('/api/v1/workspaces/:wsId/terminals/user/:id/output/dump', terminalUser.dumpOutput)
-
-    // Multiplexed terminal surface — ONE SSE for all of a workspace's terminals
-    // + one input/resize endpoint that routes by terminalId (the coder dock).
-    this.router.get('/api/v1/workspaces/:wsId/terminal/stream', terminalWorkspace.stream)
-    this.router.post('/api/v1/workspaces/:wsId/terminal/input', terminalWorkspace.writeInput)
-    this.router.post('/api/v1/workspaces/:wsId/terminal/resize', terminalWorkspace.resize)
-
-    // Files panel — git-backed list of modified files + on-demand
-    // unified diff + SSE live updates. Watcher spawns lazily on
-    // first subscribe; killed in stop(). See
-    // `packages/cortex/src/files/` for the adapter + service.
-    this.router.get('/api/v1/workspaces/:wsId/files', files.listFiles)
-    this.router.get('/api/v1/workspaces/:wsId/files/diff', files.getDiff)
-    this.router.get('/api/v1/workspaces/:wsId/files/original', files.getOriginal)
-    this.router.get('/api/v1/workspaces/:wsId/files/tree', files.listTree)
-    this.router.get('/api/v1/workspaces/:wsId/files/events', files.streamEvents)
+    // (The desktop terminal-panel and files-panel HTTP surfaces were removed
+    // with the legacy desktop shell. The agent PTY registry stays — it is the
+    // engine-side substrate `shell_execute` persists into per workspace.)
 
     // Run — POST /run starts a background agent, returns { threadId }.
     // Client connects to GET /threads/:tid/agents/root/events for SSE.
@@ -2464,11 +2195,6 @@ export class OwnwareGateway {
       createCatalogHandler({ registry: connectorHandlers.registry }),
     )
 
-    this.router.post(
-      '/api/v1/connectors/sniff',
-      createSniffHandler(connectorHandlers.registry),
-    )
-
     // Session 1.5a — per-source status endpoint. The client renders the
     // Composio section as a disabled empty-state when the key isn't set.
     const sourcesStatusHandler = createSourcesStatusHandler({
@@ -2631,10 +2357,12 @@ export class OwnwareGateway {
     // T21 (2026-04-22): GET /api/v1/mcp/servers removed.
     //   → use GET /api/v1/connectors?source=mcp.
 
-    // Workspaces
+    // Workspaces — project-folder registry. A workspace gives an HTTP
+    // run a filesystem root (`workspaceId` on POST /run → workspacePath
+    // → the agent's zone boundary + shell cwd). Platform surface, kept.
+    // (The desktop-only browse/history/file-tree extras were removed.)
     this.router.get('/api/v1/workspaces', workspaces.list)
     this.router.post('/api/v1/workspaces', workspaces.create)
-    this.router.post('/api/v1/workspaces/browse', workspaces.browse)
     // Workspace CRUD SSE channel (audit #2 C2 / F1a, 2026-05-16). MUST
     // be registered BEFORE `GET /api/v1/workspaces/:workspaceId` — the
     // router iterates in registration order and the `:workspaceId`
@@ -2653,39 +2381,9 @@ export class OwnwareGateway {
     this.router.put('/api/v1/workspaces/:workspaceId', workspaces.update)
     this.router.delete('/api/v1/workspaces/:workspaceId', workspaces.remove)
     this.router.get('/api/v1/workspaces/:workspaceId/threads', workspaces.listThreads)
-    this.router.get('/api/v1/workspaces/:workspaceId/history', workspaces.listHistory)
-    this.router.get('/api/v1/workspaces/:workspaceId/files', workspaces.listFiles)
 
-    // Workspace panes — universal pane substrate (replaced the legacy
-    // /workspaces/:id/tabs endpoints in slice 1b.9).
-    //
-    // Per-workspace pane SSE channel (audit #2 C3 / F1b, 2026-05-16,
-    // Chunk #20). MUST be registered BEFORE
-    // `PATCH/DELETE /workspaces/:workspaceId/panes/:paneId` so the
-    // `:paneId` pattern doesn't shadow `/events` and dispatch to
-    // patch / delete with params.paneId === 'events'. Same gotcha as
-    // the workspace channel in Chunk #19 and the credentials channel
-    // in Chunk #16. The handler reads `:wsId` (we keep this naming
-    // here to match `terminal/agent/events` — the existing
-    // per-workspace SSE — so a single client transport reads the same
-    // param name across every per-workspace channel).
-    const paneEventsHandler = createPaneEventsHandler({
-      bus: this.paneEventBus,
-      state: this.state,
-    })
-    this.router.get(
-      '/api/v1/workspaces/:wsId/panes/events',
-      paneEventsHandler.streamPaneEvents,
-    )
-    this.router.get('/api/v1/workspaces/:workspaceId/panes', panes.listPanes)
-    this.router.post('/api/v1/workspaces/:workspaceId/panes', panes.createPane)
-    this.router.put('/api/v1/workspaces/:workspaceId/panes', panes.reorderPanes)
-    this.router.patch('/api/v1/workspaces/:workspaceId/panes/:paneId', panes.patchPane)
-    this.router.delete('/api/v1/workspaces/:workspaceId/panes/:paneId', panes.deletePane)
-    this.router.get('/api/v1/workspaces/:workspaceId/layout', panes.getLayout)
-    this.router.put('/api/v1/workspaces/:workspaceId/layout', panes.setLayout)
-    // Wave 5: file-event flow path source.
-    this.router.get('/api/v1/workspaces/:workspaceId/panes/source', panes.readPaneSource)
+    // (The desktop pane substrate — pane CRUD/layout/SSE — was removed
+    // with the legacy desktop shell.)
 
     // Dashboard
     this.router.get('/api/v1/dashboard', dashboard.getDashboard)
@@ -2720,22 +2418,9 @@ export class OwnwareGateway {
     // Search
     this.router.get('/api/v1/search', searchHandlers.search)
 
-    // Onboarding
-    this.router.post('/api/v1/onboarding/role', onboarding.setRole)
-    this.router.post('/api/v1/onboarding/complete', onboarding.complete)
-
-    // Session
-    this.router.get('/api/v1/session/state', session.getState)
-    this.router.post('/api/v1/session/restore', session.restore)
-
     // App info
     this.router.get('/api/v1/app/version', appVersionHandler)
     this.router.get('/api/v1/connectivity', connectivityHandler)
-
-    // Detected apps — Spotlight + bridge folder + Claude Desktop /
-    // Code config. Replaces the parallel Electron-side scanner.
-    // The client's renderer fetches this on /tools open.
-    this.router.get('/api/v1/detected-apps', detectedAppsHandler)
 
     // Debug
     this.router.get('/api/v1/debug/events', debug.getEvents)

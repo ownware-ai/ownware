@@ -193,10 +193,8 @@ check('MCP server profileIds has 2 entries', battleSrv !== undefined && battleSr
 r = await api('PUT', '/api/v1/settings/appearance', { theme: 'dark', fontSize: '14' })
 check('PUT /settings/appearance returns 200', r.status === 200)
 
-// ── 18. Session persistence ──
-gw.state.saveSessionState()
-const sessionState = gw.state.getSessionState()
-check('Session state saved', sessionState !== null && sessionState.hasSession)
+// ── 18. Session persistence ── (removed — legacy desktop crash-restore
+// surface was deleted from the gateway)
 
 // ── 19. Thread export ──
 r = await api('GET', `/api/v1/threads/${threadId}/export?format=markdown`)

@@ -6,7 +6,7 @@ Packages: `ownware` (umbrella, the quickstart surface), `@ownware/loom` (agent r
 
 ## Getting started
 
-- [Quickstart](getting-started/quickstart.md): a live agent in three commands, no API key required
+- [Quickstart](getting-started/quickstart.md): a live agent in four commands, no API key required
 - [Installation](getting-started/installation.md): add Ownware to your own project and serve a profile
 - [Thinking in Ownware](getting-started/thinking-in-ownware.md): the mental model — profile, engine, gateway, channel — and where security lives
 

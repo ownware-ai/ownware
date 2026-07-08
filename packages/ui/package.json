@@ -1,0 +1,56 @@
+{
+  "name": "@ownware/ui",
+  "version": "0.1.0",
+  "description": "Ownware chat kit — the headless core. Framework-agnostic reducer that turns the gateway's SSE event stream into ChatState (message rows, streaming text, tool cards, approval card). Zero dependencies; the React binding (@ownware/react) and the <script> embed both sit on this.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build && bun run test"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Ownware Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ownware-ai/ownware.git",
+    "directory": "packages/ui"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "chat",
+    "ui",
+    "reducer",
+    "sse",
+    "ownware"
+  ]
+}

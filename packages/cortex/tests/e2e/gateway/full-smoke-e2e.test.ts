@@ -129,7 +129,6 @@ describe('auth enforcement', () => {
     '/api/v1/settings',
     '/api/v1/providers',
     '/api/v1/search?q=test',
-    '/api/v1/session/state',
     '/api/v1/app/version',
     '/api/v1/connectivity',
     '/api/v1/storage/stats',
@@ -470,114 +469,11 @@ describe('workspaces endpoints', () => {
     expect(Array.isArray(body)).toBe(true)
   })
 
-  it('POST /workspaces/browse → 200 { path, entries }', async () => {
-    const { status, body } = await post('/api/v1/workspaces/browse', { path: tempDir })
-    expect(status).toBe(200)
-    expect(body.path).toBeTruthy()
-    expect(Array.isArray(body.entries)).toBe(true)
-  })
+  // (browse removed with the legacy desktop shell)
 })
 
-// ═══════════════════════════════════════════════════════════════════════
-// WORKSPACE PANES + FILE TREE
-// ═══════════════════════════════════════════════════════════════════════
-
-// Slice 1b.9 removed the legacy /workspaces/:id/tabs surface (migration
-// 025 dropped workspace_tabs). Open-view state lives in workspace_panes
-// now — a chat pane's config carries (profileId, threadId), and the
-// thread is created separately via POST /threads.
-describe('workspace panes + files', () => {
-  let wsId: string
-  let pane1Id: string
-  let pane2Id: string
-  let thread1Id: string
-
-  it('setup: create workspace', async () => {
-    const wsPath = join(tempDir, 'panes-ws')
-    await mkdir(wsPath, { recursive: true })
-    const { body } = await post('/api/v1/workspaces', { path: wsPath, name: 'Panes WS' })
-    wsId = body.id
-  })
-
-  it('GET /workspaces/:id/panes → 200 (initially empty)', async () => {
-    const { status, body } = await json(`/api/v1/workspaces/${wsId}/panes`)
-    expect(status).toBe(200)
-    expect(Array.isArray(body.items)).toBe(true)
-    expect(body.items.length).toBe(0)
-    expect(body.total).toBe(0)
-  })
-
-  it('POST /workspaces/:id/panes → 201 creates chat pane at position 0', async () => {
-    const { body: thread } = await post('/api/v1/threads', {
-      profileId: 'smoke-bot',
-      title: 'First Pane Thread',
-    })
-    thread1Id = thread.id
-
-    const { status, body } = await post(`/api/v1/workspaces/${wsId}/panes`, {
-      config: { kind: 'chat', profileId: 'smoke-bot', threadId: thread.id },
-      title: 'First Pane',
-    })
-    expect(status).toBe(201)
-    expect(body.pane).toBeTruthy()
-    expect(body.pane.zone).toBe('tabs') // chat panes default to the tab strip
-    expect(body.pane.position).toBe(0)
-    expect(body.pane.focused).toBe(true) // new panes auto-focus in their zone
-    pane1Id = body.pane.id
-  })
-
-  it('POST /workspaces/:id/panes (second) → position 1', async () => {
-    const { body: thread } = await post('/api/v1/threads', {
-      profileId: 'smoke-bot',
-      title: 'Second Pane Thread',
-    })
-    const { body } = await post(`/api/v1/workspaces/${wsId}/panes`, {
-      config: { kind: 'chat', profileId: 'smoke-bot', threadId: thread.id },
-      title: 'Second Pane',
-    })
-    expect(body.pane.position).toBe(1)
-    pane2Id = body.pane.id
-  })
-
-  it('PUT /workspaces/:id/panes → 200 reorders within a zone', async () => {
-    const { status, body } = await put(`/api/v1/workspaces/${wsId}/panes`, {
-      zone: 'tabs',
-      ids: [pane2Id, pane1Id],
-    })
-    expect(status).toBe(200)
-    expect(body[0].id).toBe(pane2Id)
-    expect(body[0].position).toBe(0)
-    expect(body[1].id).toBe(pane1Id)
-    expect(body[1].position).toBe(1)
-  })
-
-  it('DELETE /workspaces/:id/panes/:paneId → 200; thread survives', async () => {
-    const { status, body } = await del(`/api/v1/workspaces/${wsId}/panes/${pane1Id}`)
-    expect(status).toBe(200)
-    expect(body.closed).toBe(true)
-
-    const { body: listBody } = await json(`/api/v1/workspaces/${wsId}/panes`)
-    expect(listBody.items.length).toBe(1)
-
-    // Closing a pane never deletes the thread it wrapped.
-    const { status: threadStatus } = await json(`/api/v1/threads/${thread1Id}`)
-    expect(threadStatus).toBe(200)
-  })
-
-  it('GET /workspaces/:id/files/tree → 200 with entries', async () => {
-    // The depth-recursive /workspaces/:id/files tree was superseded by
-    // the lazy per-directory /files/tree listing (coder explorer) —
-    // entries are { name, path, type }.
-    const { body: wsBody } = await post('/api/v1/workspaces', { path: workspaceDir })
-    const { status, body } = await json(`/api/v1/workspaces/${wsBody.id}/files/tree`)
-    expect(status).toBe(200)
-    expect(Array.isArray(body.entries)).toBe(true)
-
-    const names = body.entries.map((e: any) => e.name)
-    expect(names).toContain('README.md')
-    expect(names).toContain('src')
-  })
-})
+// (The desktop pane + file-tree e2e section was removed with the legacy
+// desktop shell.)
 
 // ═══════════════════════════════════════════════════════════════════════
 // DASHBOARD
@@ -674,19 +570,8 @@ describe('settings + providers + search + onboarding', () => {
     expect(Array.isArray(body)).toBe(true)
   })
 
-  it('POST /onboarding/role → 200', async () => {
-    const { status } = await post('/api/v1/onboarding/role', {
-      role: 'engineer',
-      name: 'Smoke',
-    })
-    expect(status).toBe(200)
-  })
-
-  it('POST /onboarding/complete → 200', async () => {
-    const { status, body } = await post('/api/v1/onboarding/complete', {})
-    expect(status).toBe(200)
-    expect(body.completed).toBe(true)
-  })
+  // Onboarding-wizard endpoint tests removed — the legacy desktop first-run
+  // endpoints /api/v1/onboarding/{role,complete} were deleted from the gateway.
 })
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -711,17 +596,8 @@ describe('mcp + catalog + session', () => {
     expect(body).toBeTruthy()
   })
 
-  it('GET /session/state → 200', async () => {
-    const { status, body } = await json('/api/v1/session/state')
-    expect(status).toBe(200)
-    expect('hasSession' in body || body.hasSession !== undefined).toBeTruthy()
-  })
-
-  it('POST /session/restore → 200', async () => {
-    const { status, body } = await post('/api/v1/session/restore', {})
-    expect(status).toBe(200)
-    expect(body.restored).toBe(true)
-  })
+  // /session/{state,restore} tests removed — the legacy desktop
+  // crash-restore endpoints were deleted from the gateway.
 })
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -813,10 +689,9 @@ describe('SQLite integrity', () => {
     ).all() as Array<{ name: string }>).map(r => r.name)
     db.close()
 
-    // workspace_tabs was dropped by migration 025 (slice 1b.9) — panes
-    // (workspace_panes, migration 024) are the canonical open-view store.
     // Provider keys live in the credentials vault (migration 015), not a
-    // dedicated provider_keys table.
+    // dedicated provider_keys table. Legacy desktop tables (workspace_panes,
+    // designs, boards, thread_edits…) were dropped by migrations 049/050.
     const expectedTables = [
       '_migrations',
       'app_state',
@@ -830,7 +705,6 @@ describe('SQLite integrity', () => {
       'threads',
       'usage_records',
       'user_settings',
-      'workspace_panes',
       'workspace_profiles',
       'workspaces',
     ]
@@ -847,33 +721,8 @@ describe('SQLite integrity', () => {
     expect(max.v).toBeGreaterThanOrEqual(4)
   })
 
-  it('FK cascade: deleting workspace removes its panes', () => {
-    const db = new Database(dbPath)
-    db.pragma('foreign_keys = ON')
-
-    // Create workspace + pane via raw SQL to test cascade
-    const wsId = `ws_test_cascade_${Date.now()}`
-    db.prepare(
-      'INSERT INTO workspaces (id, name, path, status, last_opened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run(wsId, 'Cascade Test', `/tmp/cascade-${Date.now()}`, 'active', new Date().toISOString(), new Date().toISOString(), new Date().toISOString())
-
-    const paneId = `pane_test_${Date.now()}`
-    db.prepare(
-      'INSERT INTO workspace_panes (id, workspace_id, kind, zone, title, config_json, metadata_json, position, focused) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(
-      paneId, wsId, 'chat', 'tabs', 'test',
-      '{"kind":"chat","profileId":"smoke-bot","threadId":"thread_cascade_test"}',
-      '{"openedBy":"user","pinned":false,"closeable":true}',
-      0, 0,
-    )
-
-    // Delete workspace → pane should cascade
-    db.prepare('DELETE FROM workspaces WHERE id = ?').run(wsId)
-
-    const pane = db.prepare('SELECT * FROM workspace_panes WHERE id = ?').get(paneId)
-    db.close()
-    expect(pane).toBeUndefined()
-  })
+  // (The workspace_panes FK-cascade test was removed with the pane substrate
+  // — the table itself was dropped by migration 050.)
 })
 
 // ═══════════════════════════════════════════════════════════════════════

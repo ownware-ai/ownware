@@ -49,7 +49,7 @@ src/
 ├── schedules/            # Cron-style proactive schedules
 ├── team/                 # Board-orchestrated multi-agent teams
 ├── terminal/             # Agent PTY + user PTY
-└── tools/                # Kernel-level tools (open_pane, …)
+└── tools/                # Kernel-level tools (currently empty — the legacy desktop pane tools were removed)
 ```
 
 ### Key Module Responsibilities
@@ -171,15 +171,6 @@ the system and registering as MCP tools.
 
 **Rule: If it's about WHAT agent to run, it goes in Cortex. If it's about HOW to run an agent, it goes in Loom.**
 
-## Runtime Abstraction
-
-- Every session executes on a **Runtime**. Default: `loom-local` (in-process Loom engine).
-- **External runtimes** shell out to local CLIs installed on the user's machine. The daemon auto-detects them on `PATH`. Concrete runtime IDs are defined by the runtime registry, not enumerated here.
-- `Profile.runtime_id` selects which runtime executes the profile. The gateway handler lives at `gateway/handlers/runtimes.ts`.
-- Runtimes **report available tools, models, and version back to the gateway on registration** (via `POST /api/v1/runtimes/:id/update`) and heartbeat every 30s (via `POST /api/v1/runtimes/:id/ping`).
-- Stale runtimes (no ping > 2min) are swept to `offline` by a periodic background job — not deleted.
-- Rule: Loom never knows about external runtimes. Runtime selection happens in Cortex; Loom sees either its own in-process session or nothing.
-
 ## Tool UI Descriptor relay
 
 The `/api/v1/connectors` response carries an optional `uiDescriptor`
@@ -215,19 +206,6 @@ lockstep.
 - Clients track `lastMessageTime`; if no message (including heartbeat) arrives for >60s, the client force-reconnects. This defeats half-open TCP connections that `onclose` never fires for.
 - On reconnect, the client does a **full re-fetch of all subscribed query keys**. Assume everything is stale.
 - **SSE never carries business payloads** — it carries `{ type, resource_id }` invalidation hints only. Clients re-fetch via HTTP to get the actual data. This keeps the cache as the single source of truth and avoids race conditions between SSE writes and HTTP reads.
-
-## Assignee Polymorphism
-
-- Ticket and issue assignees use `assignee_kind` ∈ (`'profile'`, `'user'`) + `assignee_id`. A single FK column with a discriminator.
-- **Never** add `assignee_profile_id` and `assignee_user_id` as separate columns — that violates the "humans and agents as peers" invariant and doubles every query's join complexity.
-- It makes reassigning across human↔agent a single-column update. The same pattern applies to `filer_kind` + `filer_id` on tickets filed by agents vs. users.
-
-## Context Re-injection
-
-- On every **Phase A** (specialist session start) AND every **reminder injection** (every 15 turns or on context compaction), the assembler re-reads ticket state from the DB. Do **not** rely on in-context staleness — a ticket closed 30 minutes ago by a peer must not be acted on as if still open.
-- Specialists must see the **current** board + ticket status, not a snapshot from when the session opened.
-- Applies to: the ticket itself (status, notes, assignee), the parent board (goal, checklist, peer ticket summaries), and any `waits_on` dependencies.
-- The profile assembler owns this — it builds the system prompt from live DB state on every regeneration, never caching across turns.
 
 ## PR Guidelines
 

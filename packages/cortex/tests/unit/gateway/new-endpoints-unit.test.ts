@@ -10,8 +10,6 @@ import {
   SaveSettingsSchema,
   SaveProviderSchema,
   ValidateProviderSchema,
-  OnboardingRoleSchema,
-  OnboardingCompleteSchema,
 } from '../../../src/gateway/validation/schemas.js'
 import { scoreMatch } from '../../../src/gateway/handlers/search.js'
 
@@ -76,33 +74,8 @@ describe('Zod schemas — new endpoints', () => {
     })
   })
 
-  describe('OnboardingRoleSchema', () => {
-    it('accepts role only', () => {
-      expect(OnboardingRoleSchema.safeParse({ role: 'engineer' }).success).toBe(true)
-    })
-
-    it('accepts role + name', () => {
-      expect(OnboardingRoleSchema.safeParse({ role: 'engineer', name: 'Alice' }).success).toBe(true)
-    })
-
-    it('rejects empty role', () => {
-      expect(OnboardingRoleSchema.safeParse({ role: '' }).success).toBe(false)
-    })
-
-    it('rejects unknown keys (strict)', () => {
-      expect(OnboardingRoleSchema.safeParse({ role: 'x', extra: true }).success).toBe(false)
-    })
-  })
-
-  describe('OnboardingCompleteSchema', () => {
-    it('accepts empty object', () => {
-      expect(OnboardingCompleteSchema.safeParse({}).success).toBe(true)
-    })
-
-    it('accepts profileIds array', () => {
-      expect(OnboardingCompleteSchema.safeParse({ profileIds: ['coder', 'writer'] }).success).toBe(true)
-    })
-  })
+  // Onboarding schema tests removed — the legacy desktop first-run endpoints
+  // and their schemas were deleted from the gateway.
 })
 
 // ---------------------------------------------------------------------------

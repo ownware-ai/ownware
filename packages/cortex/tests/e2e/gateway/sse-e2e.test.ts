@@ -296,61 +296,8 @@ describe('SSE hardening e2e', () => {
     })
   })
 
-  // ── Session state ──────────────────────────────────────────────────
-
-  describe('session state endpoints', () => {
-    it('GET /session/state returns hasSession: false initially', async () => {
-      const res = await api('/api/v1/session/state')
-      expect(res.status).toBe(200)
-      const body = await res.json() as { hasSession: boolean }
-      // May or may not have session depending on workspace state
-      expect(typeof body.hasSession).toBe('boolean')
-    })
-
-    it('POST /session/restore returns restore result', async () => {
-      const res = await api('/api/v1/session/restore', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      expect(res.status).toBe(200)
-      const body = await res.json() as { restored: boolean; workspaceCount: number; tabCount: number }
-      expect(body.restored).toBe(true)
-      expect(typeof body.workspaceCount).toBe('number')
-      expect(typeof body.tabCount).toBe('number')
-    })
-
-    it('session state survives gateway restart', async () => {
-      // Create a workspace so there's session data
-      const createRes = await api('/api/v1/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: tempDir, name: 'SSE Test Workspace' }),
-      })
-      expect(createRes.status).toBe(201)
-
-      // Stop gateway (this triggers saveSessionState)
-      await gateway.stop()
-
-      // Start a fresh gateway on the same DB
-      gateway = new OwnwareGateway({
-        port: 0,
-        profilesDir: join(tempDir, 'profiles'),
-        dbPath,
-        dataDir: join(tempDir, 'data'),
-      })
-      await gateway.start()
-      token = gateway.token
-
-      // Check session state persisted
-      const stateRes = await api('/api/v1/session/state')
-      expect(stateRes.status).toBe(200)
-      const body = await stateRes.json() as { hasSession: boolean; workspaces?: Array<{ name: string }> }
-      expect(body.hasSession).toBe(true)
-      expect(body.workspaces).toBeDefined()
-      expect(body.workspaces!.length).toBeGreaterThan(0)
-      expect(body.workspaces!.some(ws => ws.name === 'SSE Test Workspace')).toBe(true)
-    }, 15_000)
-  })
+  // Session-state endpoint tests removed — the legacy desktop crash-restore
+  // surface (/api/v1/session/{state,restore}) was deleted from the gateway.
 
   // ── Abort endpoint ──────────────────────────────────────────────────
 

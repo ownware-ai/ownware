@@ -6,7 +6,7 @@ type: reference
 
 # Profile format
 
-A profile is a **directory of text files**. Editing the files IS building the agent — no SDK, no build step. This page is the reference for the fields you'll actually use: the directory layout, every everyday `agent.json` field with its default, and the companion files (`SOUL.md`, `AGENTS.md`, `skills/`, `tools/`, `helpers/`). A few UI/product-internal fields (`productId`, `locked`, and the `panes` layout block) are omitted here — they're set by the desktop app, not hand-edited.
+A profile is a **directory of text files**. Editing the files IS building the agent — no SDK, no build step. This page is the reference for the fields you'll actually use: the directory layout, every everyday `agent.json` field with its default, and the companion files (`SOUL.md`, `AGENTS.md`, `skills/`, `tools/`, `helpers/`). A few reserved, product-internal fields (`productId`, `locked`, and the `panes` layout block) are omitted here — they're managed by tooling and not meant for hand-editing.
 
 ```
 profiles/my-agent/
@@ -51,7 +51,7 @@ Everything below is optional and defaulted. The schema is validated by `ProfileS
 
 | Field | Type / values | Default | Meaning |
 |---|---|---|---|
-| `model` | `provider:model` string | `"anthropic:claude-sonnet-4-6"` | The main model. Any provider — `"openai:gpt-4o"`, `"google:gemini-2.5-flash"`, `"ollama:llama3.2"` (local, free). See [Models](../models/overview.md). |
+| `model` | `provider:model` string | `"openai:gpt-5.5"` | The main model. Any provider — `"anthropic:claude-sonnet-4-6"`, `"google:gemini-2.5-flash"`, `"ollama:llama3.2"` (local, free). See [Models](../models/overview.md). |
 | `smallFastModel` | `provider:model` string | — | Optional cheap model for side-tasks (thread titles, classification). A common pairing is Sonnet main + `"anthropic:claude-haiku-4-5"` here. |
 | `temperature` | number 0–2 | provider default | Sampling temperature. |
 | `maxTokens` | number | `16384` | Max output tokens per turn. |

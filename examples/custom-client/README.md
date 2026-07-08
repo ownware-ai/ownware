@@ -16,7 +16,8 @@ node chat.mjs       # a ~100-line terminal client using only fetch + SSE
   nothing beyond the [run API](../../docs/gateway/run-api.md), so any language with HTTP + SSE
   can do the same.
 
-> In this repo, before the npm publish, run these after `bun install && bun run build`.
+> In your own project, install the library first (`npm i ownware`). In this repo, run
+> these after `bun install && bun run build` (the examples resolve the workspace packages).
 > No API key? A running [Ollama](https://ollama.com) is picked up automatically.
 
 **New here? Start with the CLI in [`../quickstart/`](../quickstart/) — it's the fast path.**

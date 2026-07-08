@@ -18,7 +18,7 @@ app as a library, `npm i ownware` and import `OwnwareGateway`. Power users can d
 **Can I run it without any API key?**
 Yes. Install [Ollama](https://ollama.com), `ollama pull llama3.2`, and point your profile
 at `ollama:llama3.2`. Everything runs locally, free and private. Add a cloud key later with
-`ownware key add anthropic` (or openai / google / openrouter) when you want a bigger model.
+`ownware key add openai` (or anthropic / google / openrouter) when you want a bigger model.
 
 **Which model should I pick?**
 Start keyless with Ollama to try it. For real work, a frontier cloud model (Anthropic,

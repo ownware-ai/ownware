@@ -5,14 +5,12 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Dirent } from 'node:fs'
-import { existsSync, mkdirSync, statSync, readdirSync, lstatSync } from 'node:fs'
-import { basename, resolve, join, relative } from 'node:path'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { sendJSON, sendError, readJSON } from '../router.js'
 import type { GatewayState } from '../state.js'
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from '../types.js'
-import { listProducts, getDefaultProfileId } from '../../product/manifest.js'
 import {
   CreateWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
@@ -43,15 +41,6 @@ export interface WorkspaceHandlerDeps {
    */
   readonly eventBus?: WorkspaceEventBus
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const FILE_TREE_DEFAULT_DEPTH = 3
-const FILE_TREE_MAX_DEPTH = 5
-const FILE_TREE_MAX_ENTRIES_PER_DIR = 1000
-const FILE_TREE_SKIP = new Set(['.git', 'node_modules', '.next', 'dist', '.cache', '__pycache__', '.venv', '.tox'])
 
 export function createWorkspaceHandlers(
   state: GatewayState,
@@ -122,20 +111,9 @@ export function createWorkspaceHandlers(
     const name = body.name ?? basename(absPath)
     const ws = state.createWorkspace(absPath, name)
 
-    // Seed `lastProfileId` from the product manifest so a brand-new workspace
-    // opens on a real agent with zero client-side guessing. Without this the
-    // field is null and every client must reinvent the "which agent do I land
-    // on?" fallback — the gap that produced the client's hardcoded
-    // `lastProfileId: 'ownware-code'`. The default product is the workspace's
-    // first activeProduct (DB-defaulted to 'ownware'); its declared
-    // defaultProfileId is the landing agent (manifest-driven, one source).
-    const defaultProduct = ws.activeProducts[0] ?? listProducts()[0]?.slug
-    const defaultProfileId =
-      defaultProduct != null ? getDefaultProfileId(defaultProduct) : undefined
-    const created =
-      defaultProfileId != null
-        ? (state.updateWorkspace(ws.id, { lastProfileId: defaultProfileId }) ?? ws)
-        : ws
+    // (The product-manifest-driven default-profile stamp was removed with
+    // the legacy product catalog.)
+    const created = ws
 
     // Fan-out hint AFTER the row is durable. Invalidate-only — payload
     // never carries the workspace's writable data. Audit #2 C2 / F1a.
@@ -228,174 +206,11 @@ export function createWorkspaceHandlers(
     sendJSON(res, 200, state.listThreadsByWorkspace(id))
   }
 
-  // POST /api/v1/workspaces/browse — list directories for web file picker
-  async function browse(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const body = await readJSON<{ path?: string }>(req)
-    const basePath = resolve((body?.path ?? homedir()).replace(/^~/, homedir()))
-
-    if (!existsSync(basePath) || !statSync(basePath).isDirectory()) {
-      sendError(res, 400, `Invalid directory: ${basePath}`)
-      return
-    }
-
-    try {
-      const entries = readdirSync(basePath, { withFileTypes: true })
-        .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-        .map(e => ({
-          name: e.name,
-          path: join(basePath, e.name),
-          isGitRepo: existsSync(join(basePath, e.name, '.git')),
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-
-      sendJSON(res, 200, { path: basePath, parent: resolve(basePath, '..'), entries })
-    } catch {
-      sendError(res, 500, `Failed to read directory: ${basePath}`)
-    }
-  }
-
-  // ── History (per-workspace thread list) ─────────────────────────────
-  //
-  // The legacy /workspaces/:id/tabs surface was removed in slice 1b.9
-  // (migration 025 dropped the workspace_tabs table). Tab management
-  // is now expressed as workspace_panes of kind='chat' in the tabs
-  // zone, served by /workspaces/:id/panes (handlers/panes.ts).
-  // History below is the only surviving non-pane workspace endpoint —
-  // it joins workspace_panes to flag which threads are currently
-  // open in a chat pane.
-
-  // GET /api/v1/workspaces/:workspaceId/history?search=&limit=&offset=
-  //
-  // Every thread ever created in this workspace. Each entry carries `hasOpenTab` + `openTabId`
-  // so the history drawer can render "Reopen" for closed threads
-  // and "Focus" (activate the existing tab) for open ones.
-  async function listHistory(
-    req: IncomingMessage,
-    res: ServerResponse,
-    params: Record<string, string>,
-  ): Promise<void> {
-    const wsId = params['workspaceId']!
-    const ws = state.getWorkspace(wsId)
-    if (!ws) {
-      sendError(res, 404, `Workspace "${wsId}" not found`)
-      return
-    }
-
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
-    const search = url.searchParams.get('search') ?? undefined
-    const limitRaw = url.searchParams.get('limit')
-    const offsetRaw = url.searchParams.get('offset')
-    const opts: { search?: string; limit?: number; offset?: number } = {}
-    if (search !== undefined && search.trim().length > 0) opts.search = search
-    if (limitRaw !== null) {
-      const limit = Number.parseInt(limitRaw, 10)
-      if (Number.isFinite(limit) && limit > 0) opts.limit = limit
-    }
-    if (offsetRaw !== null) {
-      const offset = Number.parseInt(offsetRaw, 10)
-      if (Number.isFinite(offset) && offset >= 0) opts.offset = offset
-    }
-
-    sendJSON(res, 200, state.listWorkspaceHistory(wsId, opts))
-  }
-
-  // GET /api/v1/workspaces/:workspaceId/files?depth=3
-  async function listFiles(req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
-    const wsId = params['workspaceId']!
-    const ws = state.getWorkspace(wsId)
-    if (!ws) {
-      sendError(res, 404, `Workspace "${wsId}" not found`)
-      return
-    }
-
-    if (!existsSync(ws.path)) {
-      sendError(res, 410, `Workspace path no longer exists: ${ws.path}`)
-      return
-    }
-
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
-    const depth = Math.min(
-      parseInt(url.searchParams.get('depth') ?? String(FILE_TREE_DEFAULT_DEPTH), 10) || FILE_TREE_DEFAULT_DEPTH,
-      FILE_TREE_MAX_DEPTH,
-    )
-
-    const entries = buildFileTree(ws.path, ws.path, depth)
-    sendJSON(res, 200, { path: ws.path, entries })
-  }
+  // (The desktop-only browse / history / file-tree endpoints were removed
+  // with the legacy desktop shell.)
 
   return {
     list, create, get, update, remove,
-    listThreads, browse,
-    listHistory,
-    listFiles,
+    listThreads,
   }
-}
-
-// ---------------------------------------------------------------------------
-// File tree builder
-// ---------------------------------------------------------------------------
-
-interface FileEntry {
-  readonly name: string
-  readonly path: string
-  readonly type: 'file' | 'directory'
-  readonly size?: number
-  readonly modifiedAt?: string
-  readonly children?: readonly FileEntry[]
-}
-
-function buildFileTree(rootPath: string, currentPath: string, depth: number): FileEntry[] {
-  if (depth <= 0) return []
-
-  let entries: Dirent[]
-  try {
-    entries = readdirSync(currentPath, { withFileTypes: true }) as Dirent[]
-  } catch {
-    return []
-  }
-
-  const result: FileEntry[] = []
-  let count = 0
-
-  // Sort: directories first, then alphabetical
-  const sorted = entries
-    .filter(e => !e.name.startsWith('.') && !FILE_TREE_SKIP.has(e.name))
-    .sort((a, b) => {
-      if (a.isDirectory() && !b.isDirectory()) return -1
-      if (!a.isDirectory() && b.isDirectory()) return 1
-      return a.name.localeCompare(b.name)
-    })
-
-  for (const entry of sorted) {
-    if (count >= FILE_TREE_MAX_ENTRIES_PER_DIR) break
-    count++
-
-    const fullPath = join(currentPath, entry.name)
-    const relPath = relative(rootPath, fullPath)
-
-    if (entry.isDirectory()) {
-      const children = depth > 1 ? buildFileTree(rootPath, fullPath, depth - 1) : undefined
-      result.push({
-        name: entry.name,
-        path: relPath,
-        type: 'directory',
-        children,
-      })
-    } else {
-      try {
-        const stat = lstatSync(fullPath)
-        result.push({
-          name: entry.name,
-          path: relPath,
-          type: 'file',
-          size: stat.size,
-          modifiedAt: stat.mtime.toISOString(),
-        })
-      } catch {
-        result.push({ name: entry.name, path: relPath, type: 'file' })
-      }
-    }
-  }
-
-  return result
 }

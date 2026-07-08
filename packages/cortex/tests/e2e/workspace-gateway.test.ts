@@ -163,29 +163,7 @@ describe('Workspace Gateway E2E', () => {
     })
   })
 
-  // ── Browse ─────────────────────────────────────────────────────────
-
-  describe('Browse endpoint', () => {
-    it('POST /workspaces/browse — lists directories', async () => {
-      const { status, data } = await post(`${API(port)}/workspaces/browse`, {
-        path: tmpDir,
-      })
-      expect(status).toBe(200)
-      expect(data.path).toBe(tmpDir)
-      expect(Array.isArray(data.entries)).toBe(true)
-      // Should find our test-project directory
-      const found = data.entries.find((e: any) => e.name === 'test-project')
-      expect(found).toBeDefined()
-      expect(found.isGitRepo).toBe(true)
-    })
-
-    it('POST /workspaces/browse — invalid path returns 400', async () => {
-      const { status } = await post(`${API(port)}/workspaces/browse`, {
-        path: '/nonexistent/directory',
-      })
-      expect(status).toBe(400)
-    })
-  })
+  // (Browse endpoint removed with the legacy desktop shell.)
 
   // ── Threads in workspace ───────────────────────────────────────────
 

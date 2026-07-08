@@ -57,7 +57,6 @@ Every client screen maps to specific tests:
 
 | Client Screen | Contract Tests | Journey Tests |
 |---------------|---------------|---------------|
-| Splash / Onboarding | onboarding.contract | 01-onboarding |
 | Home / Dashboard | dashboard.contract | 08-dashboard-accuracy |
 | Profiles | profiles.contract | 02-profile-lifecycle |
 | Tools / MCP | mcp.contract | 02-profile (MCP attach) |

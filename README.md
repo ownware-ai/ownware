@@ -99,10 +99,11 @@ and own its bugs; you inherit a good one and point it at any model.
 - **Ownware** is a Claude-Code-*class* harness for *any* model, that you own and run
   yourself. That's the empty middle nobody else fills.
 
-> **Status:** early and moving fast. The npm publish is imminent; until it lands, install
-> from source (below). The engine, gateway, channels, and security are built and covered by
-> an automated test suite (7,000+ tests across the packages); the five channel adapters are
-> at varying maturity. It's early software — expect rough edges and tell us where you hit them.
+> **Status:** early and moving fast. The package is live on npm (`npm i -g ownware`);
+> contributors can also run it from source (below). The engine, gateway, channels, and
+> security are built and covered by an automated test suite (7,000+ tests across the
+> packages); the five channel adapters are at varying maturity. It's early software —
+> expect rough edges and tell us where you hit them.
 
 ## Step 0 — Install
 
@@ -114,7 +115,7 @@ npm  install -g ownware      # or:  bun add -g ownware  ·  pnpm add -g ownware
 
 Now you have the `ownware` command. Check it: `ownware --help`.
 
-> 📦 **Not on npm quite yet** (days away). Until then, run it from source — the same
+> 📦 **Contributing, or want the bleeding edge?** Run it from source — the same
 > commands, just prefixed with `bun run`:
 > ```bash
 > git clone https://github.com/ownware-ai/ownware.git && cd ownware
@@ -138,7 +139,7 @@ profiles/assistant/
 **Editing these files IS building the agent.** No SDK, no build step, no wizard. Open
 `SOUL.md` and change its personality. Open `agent.json` and:
 
-- pick any model — `"anthropic:claude-sonnet-4-6"`, `"openai:gpt-4o"`,
+- pick any model — `"openai:gpt-5.5"`, `"anthropic:claude-sonnet-4-6"`,
   `"ollama:llama3.2"` (local, free)…
 - give it tools — built-in presets (files, shell, web), **any MCP server**, 400+ SaaS
   apps via Composio, or your own custom tool files
@@ -154,7 +155,7 @@ Full format: [docs/agents/profile-format.md](docs/agents/profile-format.md)
 **Now talk to it — right here, no server:**
 
 ```bash
-ownware key add anthropic          # save a key once (or go keyless with Ollama)
+ownware key add openai             # save a key once (or go keyless with Ollama)
 ownware run assistant "hello — introduce yourself"
 ```
 
@@ -184,7 +185,7 @@ curl -X POST http://localhost:3011/api/v1/run \
 ```
 
 **No API key?** Install Ollama (`ollama pull llama3.2`) and it answers fully local.
-Have a key? `ownware key add anthropic` stores it encrypted.
+Have a key? `ownware key add openai` (or `anthropic` · `google` · `openrouter`) stores it encrypted.
 
 ### How deployment works (today)
 
@@ -310,18 +311,17 @@ the answer is *yes* when compliance asks "can we actually deploy this?" Full sto
 
 Built and test-covered today: engine + gateway, profile format, CLI verbs, keyless first
 answer, bind-safety, `@ownware/client` + wire spec, five channel adapters in-process,
-schedules with channel delivery.
+schedules with channel delivery — all of it installable from npm (`npm i -g ownware`).
 
 Next, roughly in order:
 
-1. **npm publish** — `npm i ownware` instead of a clone.
-2. **The UI kit (`@ownware/ui`)** — a white-label, themeable chat UI served by the
+1. **The UI kit (`@ownware/ui`)** — a white-label, themeable chat UI served by the
    gateway + a `<script>` embed widget: your brand on your landing page, inside your
    SaaS, as your product's support agent — your users never see Ownware.
-3. **One-click deploy templates** — Docker + Railway/Render/Fly buttons.
-4. **Embed adapters** — Shopify / WordPress / Wix: install your agent into your own
+2. **One-click deploy templates** — Docker + Railway/Render/Fly buttons.
+3. **Embed adapters** — Shopify / WordPress / Wix: install your agent into your own
    store like any other plugin.
-5. **Live demo recordings** — "it answered in my Slack" and security-in-action clips.
+4. **Live demo recordings** — "it answered in my Slack" and security-in-action clips.
 
 ## Give us a hand
 

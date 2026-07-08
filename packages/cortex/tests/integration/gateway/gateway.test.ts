@@ -235,9 +235,11 @@ describe('POST /api/v1/profiles (create)', () => {
     expect(status).toBe(400)
   })
 
-  it('rejects missing productId (slice-08 new requirement)', async () => {
+  it('accepts missing productId — optional, defaults to the open product (201)', async () => {
+    // productId is optional (gateway-audit slice A1) — a headless "build your
+    // own agent" client creates with just a name; the schema defaults it.
     const { status } = await post('/api/v1/profiles', { name: 'no-pid' })
-    expect(status).toBe(400)
+    expect(status).toBe(201)
   })
 
   it('rejects duplicate name', async () => {
@@ -595,115 +597,5 @@ describe('CORS', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Workspace history (post-1b.9)
-//
-// The legacy /workspaces/:id/tabs surface was removed in slice 1b.9
-// (migration 025 dropped workspace_tabs). Open-view state now lives
-// in workspace_panes — covered exhaustively by the panes contract +
-// migration suites under tests/framework/contracts/panes.contract.ts
-// and tests/integration/gateway/{migration-024-workspace-panes,
-// workspace-panes-db,migration-025-drop-workspace-tabs}.test.ts.
-//
-// What survives here are the history-drawer flows that 1b.9 rewired
-// to JOIN workspace_panes for the `hasOpenTab` flag.
-// ---------------------------------------------------------------------------
-
-describe('workspace history', () => {
-  let wsId: string
-  let wsDir: string
-
-  beforeAll(async () => {
-    wsDir = await mkdtemp(join(tmpdir(), 'cortex-history-test-'))
-    const { status, body } = await post('/api/v1/workspaces', {
-      path: wsDir,
-      name: 'history-test',
-    })
-    expect([200, 201]).toContain(status)
-    wsId = body.id
-  })
-
-  afterAll(async () => {
-    await rm(wsDir, { recursive: true, force: true })
-  })
-
-  it('flags hasOpenTab=true while a chat pane is open and false after closing it', async () => {
-    // Seed: create a thread, then open a chat pane that wraps it.
-    const { body: thread } = await post('/api/v1/threads', {
-      workspaceId: wsId,
-      profileId: 'test-agent',
-      title: 'history-flag',
-    })
-    const { status: sCreate, body: paneRes } = await post(
-      `/api/v1/workspaces/${wsId}/panes`,
-      {
-        config: { kind: 'chat', profileId: 'test-agent', threadId: thread.id },
-        focused: true,
-      },
-    )
-    expect([200, 201]).toContain(sCreate)
-    const paneId = paneRes.pane.id
-
-    // History flags the thread as having an open pane.
-    const { status: sH1, body: h1 } = await get(`/api/v1/workspaces/${wsId}/history`)
-    expect(sH1).toBe(200)
-    const open = h1.items.find((e: any) => e.id === thread.id)
-    expect(open).toBeTruthy()
-    expect(open.hasOpenTab).toBe(true)
-    expect(open.openTabId).toBe(paneId)
-
-    // Close the pane → flag flips back, thread itself survives.
-    const { status: sDel } = await del(`/api/v1/workspaces/${wsId}/panes/${paneId}`)
-    expect(sDel).toBe(200)
-    const { body: h2 } = await get(`/api/v1/workspaces/${wsId}/history`)
-    const closed = h2.items.find((e: any) => e.id === thread.id)
-    expect(closed).toBeTruthy()
-    expect(closed.hasOpenTab).toBe(false)
-    expect(closed.openTabId).toBeNull()
-  })
-
-  it('history search matches on title', async () => {
-    await post('/api/v1/threads', {
-      workspaceId: wsId,
-      profileId: 'test-agent',
-      title: 'super-unique-marker',
-    })
-    const { status, body } = await get(
-      `/api/v1/workspaces/${wsId}/history?search=super-unique`,
-    )
-    expect(status).toBe(200)
-    expect(body.items.length).toBeGreaterThanOrEqual(1)
-    expect(
-      body.items.every((i: any) => (i.title ?? '').includes('super-unique')),
-    ).toBe(true)
-  })
-
-  it('DELETE /threads/:id removes the thread, its chat pane, and its history entry', async () => {
-    const { body: thread } = await post('/api/v1/threads', {
-      workspaceId: wsId,
-      profileId: 'test-agent',
-      title: 'to-nuke',
-    })
-    await post(`/api/v1/workspaces/${wsId}/panes`, {
-      config: { kind: 'chat', profileId: 'test-agent', threadId: thread.id },
-      focused: true,
-    })
-
-    const { status: sDel } = await del(`/api/v1/threads/${thread.id}`)
-    expect(sDel).toBe(204)
-
-    const { status: sMissing } = await get(`/api/v1/threads/${thread.id}`)
-    expect(sMissing).toBe(404)
-
-    // The chat pane that wrapped this thread is gone too.
-    const { body: panes } = await get(`/api/v1/workspaces/${wsId}/panes`)
-    const stillThere = panes.items.find(
-      (p: any) => p.kind === 'chat' && p.config?.threadId === thread.id,
-    )
-    expect(stillThere).toBeUndefined()
-
-    // And history forgets the thread entirely.
-    const { body: hist } = await get(`/api/v1/workspaces/${wsId}/history`)
-    expect(hist.items.find((i: any) => i.id === thread.id)).toBeUndefined()
-  })
-})
+// (The desktop workspace-history/pane flows were removed with the legacy
+// desktop shell.)

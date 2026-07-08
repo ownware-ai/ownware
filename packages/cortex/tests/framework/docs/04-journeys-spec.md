@@ -11,35 +11,11 @@ depends on the last. They mirror what a real user does in the UI client.
 
 ## Test Files
 
-### `journeys/01-onboarding.journey.ts`
+### (removed) `journeys/01-onboarding.journey.ts`
 
-**Screen**: Splash → Onboarding
-**API key needed**: YES (for provider validation)
-
-```
-Step 1: Fresh state
-  → GET /session/state → hasSession: false
-  → GET /settings → empty or defaults
-
-Step 2: Set display name
-  → POST /onboarding/role { displayName: 'Test User', role: 'developer' }
-  → Verify local profile created
-
-Step 3: Save API key
-  → POST /providers { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY }
-  → Verify key hint returned (sk-a...XXXX)
-
-Step 4: Validate key works
-  → POST /providers/validate { provider: 'anthropic' }
-  → Verify reachable: true, latencyMs > 0
-
-Step 5: Complete onboarding
-  → POST /onboarding/complete
-  → GET /settings → onboarding.completed = 'true'
-
-Step 6: Verify persistence
-  → GET /providers → anthropic listed with hasKey: true
-```
+The legacy desktop first-run flow (`/session/state`, `/onboarding/*`) was
+deleted from the gateway; this journey went with it. Provider-key setup is
+covered by the providers contract tests.
 
 ### `journeys/02-profile-lifecycle.journey.ts`
 

@@ -86,26 +86,7 @@ export type { UsageEntry, SourceChip, UnderstandingSlice } from './profile/under
 // Understanding store — the additive, race-free on-disk profile.json (per-writer slices)
 export { writeUnderstandingSlice, readUnderstanding, understandingSlicesDir } from './profile/understanding-store.js'
 
-// Product manifest — canonical, validated catalog of Ownware products
-export {
-  PRODUCTS,
-  PRODUCT_SLUG_RE,
-  ProductPolicySchema,
-  ProductStatusSchema,
-  ProductManifestEntrySchema,
-  ProductManifestSchema,
-  listProducts,
-  listProductSlugs,
-  getProduct,
-  isKnownProduct,
-  getProductPolicy,
-  getDefaultProfileId,
-} from './product/manifest.js'
-export type {
-  ProductManifestEntry,
-  ProductPolicy,
-  ProductStatus,
-} from './product/manifest.js'
+// (The product catalog exports were removed with the legacy desktop shell.)
 
 // Persistent permission store
 export { PermissionStore, permissionStore } from './permissions/index.js'
@@ -144,28 +125,8 @@ export type {
   Workspace,
   WorkspaceDetail,
   WorkspaceProfileEntry,
-  WorkspaceHistoryEntry,
-  WorkspaceHistoryResponse,
   CreateWorkspaceRequest,
   UpdateWorkspaceRequest,
-  // Workspace panes — universal pane substrate
-  PaneZone,
-  PaneSource,
-  PaneConfig,
-  PaneKind,
-  PaneAttachment,
-  PaneMetadata,
-  PanePlacement,
-  DockviewSerializedLayout,
-  WorkspacePane,
-  CreateWorkspacePaneRequest,
-  CreateWorkspacePaneResponse,
-  UpdateWorkspacePaneRequest,
-  ReorderWorkspacePanesRequest,
-  SetWorkspaceLayoutRequest,
-  WorkspaceLayoutResponse,
-  WorkspacePaneListResponse,
-  CloseWorkspacePaneResponse,
   // MCP
   MCPServerRecord,
   CreateMCPServerRequest,
@@ -225,10 +186,6 @@ export type {
   AppState,
   AppVersion,
   AuditLogEntry,
-  // Session
-  SessionState,
-  PersistedSessionState,
-  SessionWorkspace,
   // Search
   SearchResult,
   // File tree
@@ -247,8 +204,6 @@ export {
   UpdateThreadSchema,
   CreateWorkspaceSchema,
   UpdateWorkspaceSchema,
-  RunRequestSchema,
-  ResumeRequestSchema,
   CreateProfileSchema,
   UpdateProfileSchema,
   GenerateProfileSchema,
@@ -261,20 +216,10 @@ export {
   SetSettingSchema,
   SetProviderKeySchema,
   SetProfileMetadataSchema,
-  PaneConfigSchema,
-  PaneKindSchema,
-  PANE_KINDS,
-  PaneMetadataSchema,
-  CreateWorkspacePaneSchema,
-  UpdateWorkspacePaneSchema,
-  ReorderWorkspacePanesSchema,
-  SetWorkspaceLayoutSchema,
   SetAppStateSchema,
   SaveSettingsSchema,
   SaveProviderSchema,
   ValidateProviderSchema,
-  OnboardingRoleSchema,
-  OnboardingCompleteSchema,
 } from './gateway/validation/schemas.js'
 
 // Gateway event contract — re-exports Loom core events + gateway wrappers
@@ -335,19 +280,5 @@ export type {
   EnvVarStatus,
 } from './connector/types.js'
 
-// open_pane tool — types + schemas (slice 3.2c) + runtime factory (slice 3.3)
-export {
-  OPEN_PANE_TOOL_NAME,
-  OpenPaneToolInputSchema,
-  narrowPaneConfigSchema,
-  createOpenPaneTool,
-} from './tools/open-pane/index.js'
-export type {
-  OpenPaneToolInput,
-  OpenPaneToolResult,
-  OpenPaneToolFailure,
-  OpenPaneToolError,
-  OpenPaneToolResponse,
-  OpenPaneToolInputParsed,
-  CreateOpenPaneToolOptions,
-} from './tools/open-pane/index.js'
+// (The desktop `open_pane` tool exports were removed with the legacy
+// desktop shell.)

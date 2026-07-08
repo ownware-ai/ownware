@@ -24,5 +24,10 @@ client_secret_*.json
 # licenses); publishing any of it would be a strategy and license leak.
 .catalyst/
 
+# Owner-only private rules — never published. OWNER.md is the private twin of
+# AGENTS.md/CLAUDE.md. (The commit-window git hooks live in .git/hooks/, which git
+# never pushes, so they need no ignore entry here.)
+OWNER.md
+
 # Personal, machine-local ignores belong in .git/info/exclude — keep this file
 # intentional and reviewable (it is part of the security surface).

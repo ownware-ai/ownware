@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Build your own agent, talk to it, and serve it — in three commands with the ownware CLI. No API key required.
+description: Build your own agent, talk to it, and serve it — in four commands with the ownware CLI. No API key required.
 type: howto
 ---
 
@@ -12,23 +12,24 @@ By the end of this page you've built your own agent, talked to it in the termina
 > **Prerequisites** — Node ≥ 22. Install the CLI with `npm i -g ownware` (or `bun add -g
 > ownware`). No API key needed if you have [Ollama](https://ollama.com) (see step 2).
 >
-> **From a source checkout** (before the npm publish): run `bun install && bun run build`
+> **From a source checkout** (for contributors): run `bun install && bun run build`
 > once, then use `bun run ownware …` wherever this page says `ownware …`.
 
-## The three commands
+## The four commands
 
 ```bash
 ownware init                                              # 1. build it
-ownware profile set assistant --model ollama:llama3.2     #    give it a keyless local model (step 2)
+ownware profile set assistant --model ollama:llama3.2     # 2. give it a keyless local model
 ownware run assistant "hello"                             # 3. talk to it — no server
 ownware serve                                             # 4. serve it — the whole backend
 ```
 
 Build → talk → serve is the whole arc. The one line in the middle points the agent at a
-model: `ownware init` defaults `agent.json` to `anthropic:claude-sonnet-4-6` (needs a key),
-so for the **keyless** path you switch it to a local Ollama model first. Prefer a cloud
-model? Skip that line and run `ownware key add anthropic` instead. Everything below is those
-steps, explained.
+model: `ownware init` defaults `agent.json` to `openai:gpt-5.5` (needs a key), so for the
+**keyless** path you switch it to a local Ollama model first. Prefer a cloud model? Skip
+that line and run `ownware key add openai` instead (or point the profile at another
+provider — `ownware profile set assistant --model anthropic:claude-sonnet-4-6` plus
+`ownware key add anthropic`). Everything below is those steps, explained.
 
 ## 1. Build your agent
 
@@ -64,7 +65,7 @@ server"). Then set the model: `ownware profile set assistant --model ollama:llam
 **Or a cloud key** — saved once, encrypted in `~/.ownware`, never exported again:
 
 ```bash
-ownware key add anthropic        # or openai · google · openrouter
+ownware key add openai           # or anthropic · google · openrouter
 ```
 
 ## 3. Talk to it — right here, no server

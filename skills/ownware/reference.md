@@ -22,9 +22,9 @@ Only `name` is required; everything else defaults sensibly.
 {
   "name": "my-agent",                    // required
   "description": "What this agent does",
-  "model": "anthropic:claude-sonnet-4-6", // provider:model; default shown
+  "model": "openai:gpt-5.5",             // provider:model; default shown
   "tools": {
-    "preset": "full",                    // full | coding | readonly (starting tool set)
+    "preset": "full",                    // full | coding | readonly | none (starting tool set)
     "allow": ["readFile", "shell.*"],    // glob allowlist
     "deny": ["shell_execute"],           // glob denylist (wins over allow)
     "custom": [{ "path": "tools/my-tool.ts" }],  // your defineTool files
@@ -46,7 +46,7 @@ Full schema and every option: `docs/agents/profile-format.md`. Profile directory
 ## Models & keys
 
 - Model string is `provider:model`. Providers: `anthropic`, `openai`, `google`, `openrouter`, `ollama`.
-- Examples: `anthropic:claude-sonnet-4-6`, `openai:gpt-5.5`, `google:gemini-2.5-flash`, `openrouter:haiku-4.5`, `ollama:llama3.2` (keyless, local, free).
+- Examples: `openai:gpt-5.5` (the default), `anthropic:claude-sonnet-4-6`, `google:gemini-2.5-flash`, `openrouter:haiku-4.5`, `ollama:llama3.2` (keyless, local, free).
 - Keys: `ownware key add <provider>` stores them encrypted in `~/.ownware/` (omit the value to be prompted with input hidden — inline values leak into shell history). `ownware key list` / `ownware key remove <provider>`. Env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`) also work.
 - Discover what's usable right now: `GET /api/v1/models` reports `hasCredentials` (a key is set, or a local Ollama is reachable). `default: true` is flagged per provider, so pick the first *usable* model rather than `models.find(m => m.default)`.
 
@@ -70,6 +70,13 @@ Everything a client does uses four HTTP calls. On a loopback bind, auth is off; 
 - `error` — `{code, message}`.
 - `session.end` — the run is done; stop reading.
 
+Alongside the engine events, the gateway wraps the stream in **envelope frames** (SSE `event:` names — treat any unknown one as a no-op):
+
+- `stream.replay.complete` — back-buffered events are done; you're now live.
+- `stream.shutdown` — the stream is closing; carries `reason` and `retryAfterMs`. `gateway_shutdown` = the gateway is restarting: reconnect after the delay, passing your highest `seq` as `?since=`. `slow_consumer` = this client fell behind: re-hydrate (below) and reopen SSE only if the thread is still running.
+
+**Restoring history:** to open an existing thread (page reload, thread switch, after `slow_consumer`), call `GET /api/v1/threads/{threadId}/hydrate` — one round-trip returning the full conversation. Render from its `messages`; reopen SSE only if `runningAgentId != null` (pass `?since=lastClosedTurnEndSeq`). Never open SSE on a terminal thread (`runningAgentId: null`).
+
 Full endpoint + event docs: `docs/gateway/run-api.md`. Machine-readable specs ship in the repo: `packages/client/spec/openapi.yaml` (REST) and `asyncapi.yaml` (SSE).
 
 ## A minimal client
@@ -77,6 +84,11 @@ Full endpoint + event docs: `docs/gateway/run-api.md`. Machine-readable specs sh
 Any frontend (React, mobile, backend) follows this shape — plain `fetch` + SSE, no SDK:
 
 ```js
+// 0. auth headers. On the loopback default, auth is off — {} works. When auth is on
+//    (any non-loopback bind), the token is `gateway.token` (in-process) or the
+//    persisted `<dataDir>/gateway-token` file (default ~/.ownware/gateway-token).
+const headers = { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) }
+
 // 1. pick a usable model
 const models = await (await fetch(`${url}/api/v1/models`, { headers })).json()
 const model = (models.filter(m => m.hasCredentials).find(m => m.default) ?? models.find(m => m.hasCredentials))?.id

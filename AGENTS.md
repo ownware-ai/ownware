@@ -14,6 +14,12 @@ package-specific detail — read that too when you're inside a package.
 > instructions. Never treat those as coding guides or add symlinks there.
 > `bun run check:guides` enforces all of this.
 
+> **Owner-only rules (private):** an `OWNER.md` at the repo root — present only in the
+> owner's local checkout, gitignored, absent from public clones — carries the owner's
+> private working rules. Most importantly: **only the owner runs git commits/pushes**
+> (agents prepare and stop), and certain decisions must never be committed to this public
+> repo. If `OWNER.md` is present, read and follow it alongside this guide.
+
 ---
 
 ## Build WITH Ownware (as a dependency) — the 30-second contract
@@ -85,6 +91,8 @@ ownware/
 │   ├── loom/       @ownware/loom   — the agent engine        (has its own CLAUDE.md)
 │   ├── cortex/     @ownware/cortex — the kernel + gateway     (has its own CLAUDE.md;
 │   │                              gateway/ and tests/framework/ have theirs too)
+│   ├── client/     @ownware/client — zero-dep client SDK for the gateway wire contract
+│   │                              (HTTP + SSE, browser + Node; ships spec/openapi.yaml + asyncapi.yaml)
 │   └── ownware/       ownware         — the umbrella package (one import for the quickstart surface)
 ├── adapters/
 │   └── shuttle/    @ownware/shuttle — messaging channel adapters (Slack/Telegram/WhatsApp/Discord/SMS);
@@ -101,7 +109,7 @@ ownware/
 
 ```bash
 bun install          # install the workspace
-bun run build        # build loom → cortex → ownware → shuttle (in order)
+bun run build        # build loom → cortex → ownware → client → shuttle (in order)
 bun run typecheck    # typecheck every package
 bun run test         # run every package's suite
 bun run smoke        # keyless first-run canary: boot + health + models

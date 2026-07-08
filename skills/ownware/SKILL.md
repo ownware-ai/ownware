@@ -65,9 +65,9 @@ Everything else defaults sensibly. The common shape you'll actually write:
 {
   "name": "my-agent",
   "description": "What this agent does",
-  "model": "anthropic:claude-sonnet-4-6",     // provider:model — or "ollama:llama3.2" (keyless, local)
+  "model": "openai:gpt-5.5",                  // provider:model — or "ollama:llama3.2" (keyless, local)
   "tools": {
-    "preset": "full",                          // full | coding | readonly  (the starting tool set)
+    "preset": "full",                          // full | coding | readonly | none  (the starting tool set)
     "deny": ["shell_execute"],                 // glob denylist; also "allow", "custom", "mcp", "composio"
     "custom": [{ "path": "tools/my-tool.ts" }] // your own defineTool files
   },
@@ -76,7 +76,7 @@ Everything else defaults sensibly. The common shape you'll actually write:
 }
 ```
 
-Alongside `agent.json` in the folder: `SOUL.md` (system prompt — personality + rules), optional `AGENTS.md` (memory), `tools/` (custom tools), `skills/`. Editing these files **is** customizing the agent. The default model is `anthropic:claude-sonnet-4-6`. The full schema — `tools.mcp`, `composio`, `context`, `execution`, `hooks` — is in [reference.md](reference.md).
+Alongside `agent.json` in the folder: `SOUL.md` (system prompt — personality + rules), optional `AGENTS.md` (memory), `tools/` (custom tools), `skills/`. Editing these files **is** customizing the agent. The default model is `openai:gpt-5.5`. The full schema — `tools.mcp`, `composio`, `context`, `execution`, `hooks` — is in [reference.md](reference.md).
 
 Scaffold with `ownware profile new <name>`; manage with `ownware profile list · show · set · open · remove`.
 
@@ -85,12 +85,12 @@ Scaffold with `ownware profile new <name>`; manage with `ownware profile list ·
 The agent needs a model to reply. Two options:
 
 ```bash
-ownware key add anthropic          # store a provider key, encrypted (or: openai · google · openrouter)
+ownware key add openai             # store a provider key, encrypted (or: anthropic · google · openrouter)
 # — or keyless, fully local —
 ownware profile set my-agent --model ollama:llama3.2   # run Ollama; no key needed
 ```
 
-Model strings are `provider:model` (e.g. `anthropic:claude-sonnet-4-6`, `openrouter:haiku-4.5`, `ollama:llama3.2`). With no model configured, the run starts but never answers.
+Model strings are `provider:model` (e.g. `openai:gpt-5.5` — the default, `anthropic:claude-sonnet-4-6`, `openrouter:haiku-4.5`, `ollama:llama3.2`). Pair the key with the profile's provider: a non-OpenAI key needs a matching `ownware profile set <name> --model <provider:model>`. With no model configured, the run starts but never answers.
 
 ## Serve it — the gateway
 
@@ -119,7 +119,7 @@ POST /api/v1/threads/{threadId}/resume            {action: "approve"|"deny"}  (a
 GET  /api/v1/models                               list models; filter hasCredentials
 ```
 
-A React/web client `POST`s to `/run`, then tails the SSE stream (text deltas, tool calls, permission requests, cost, end). Keep one `threadId` for a conversation. It needs nothing but `fetch` + SSE, so any language/framework can do it. See the full flow and event vocabulary in [reference.md](reference.md), and the runnable reference client at `examples/custom-client/chat.mjs` in the repo. Full endpoint docs: `docs/gateway/run-api.md`.
+A React/web client `POST`s to `/run`, then tails the SSE stream (text deltas, tool calls, permission requests, cost, end). Keep one `threadId` for a conversation. To restore history (page reload, thread reopen), `GET /api/v1/threads/{threadId}/hydrate` returns the whole conversation in one call — render from its `messages`, and reopen SSE only if `runningAgentId != null`. It needs nothing but `fetch` + SSE, so any language/framework can do it. See the full flow and event vocabulary in [reference.md](reference.md), and the runnable reference client at `examples/custom-client/chat.mjs` in the repo. Full endpoint docs: `docs/gateway/run-api.md`.
 
 ## Reach people — channels
 

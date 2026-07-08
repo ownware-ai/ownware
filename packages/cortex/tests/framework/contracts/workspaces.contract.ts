@@ -7,7 +7,6 @@
  * PUT    /api/v1/workspaces/:id
  * DELETE /api/v1/workspaces/:id
  * GET    /api/v1/workspaces/:id/threads
- * POST   /api/v1/workspaces/browse
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -118,11 +117,6 @@ describe('Contract: Workspaces', () => {
     expect(r.status).toBe(200)
     expect(Array.isArray(r.body)).toBe(true)
     expect(r.body.length).toBe(2)
-  })
-
-  it('POST /workspaces/browse returns file tree for valid path', async () => {
-    const r = await gw.client.post('/api/v1/workspaces/browse', { path: gw.tmpDir })
-    expect(r.status).toBe(200)
   })
 
   it('GET /workspaces?status=active filters by status', async () => {

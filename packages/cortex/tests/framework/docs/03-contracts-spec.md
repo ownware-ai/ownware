@@ -246,17 +246,10 @@ DELETE /api/v1/providers/:provider
   ✓ removes key
 ```
 
-### `contracts/onboarding.contract.ts`
+### (removed) onboarding contract
 
-```
-POST /api/v1/onboarding/role
-  ✓ saves user role
-  ✓ returns 200
-
-POST /api/v1/onboarding/complete
-  ✓ marks onboarding done
-  ✓ returns 200
-```
+The legacy desktop first-run endpoints (`/api/v1/onboarding/*`) were deleted
+from the gateway; their contract tests went with them.
 
 ### `contracts/session.contract.ts`
 

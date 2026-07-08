@@ -71,17 +71,8 @@ export interface Workspace {
 }
 
 // ---------------------------------------------------------------------------
-// Product (catalog)
+// (The product catalog was removed with the legacy desktop shell.)
 // ---------------------------------------------------------------------------
-
-/**
- * A product's CONTRACT record, served by `GET /api/v1/products`. Slug,
- * profilePolicy, defaultProfileId, status — no presentation. Clients layer
- * name / accent / glyph / copy on top, keyed by slug. The single source of
- * truth is `src/product/manifest.ts`; this re-export simply exposes it on the
- * gateway wire surface so consumers import product shapes from one place.
- */
-export type { ProductManifestEntry as Product } from '../product/manifest.js'
 
 export interface WorkspaceDetail extends Workspace {
   /** Profiles used in this workspace + their thread counts. */
@@ -90,37 +81,6 @@ export interface WorkspaceDetail extends Workspace {
   readonly activeThreads: number
   /** Total thread count. */
   readonly totalThreads: number
-}
-
-// ---------------------------------------------------------------------------
-// Designs — Ownware Design product per-design metadata
-//
-// Slice 7a (2026-05-24). Per root CLAUDE.md Principle 22 (new concerns
-// get new verticals), Ownware Design's per-design state lives in its
-// OWN tables (`designs` + `thread_designs`) rather than as bolted-on
-// columns on the universal `threads` table. Coder threads never touch
-// these structures. Marketing later gets its own `drafts` table when
-// it ships real per-draft workspaces — no generalized "child" concept.
-// ---------------------------------------------------------------------------
-
-/** A design artifact inside a parent workspace. */
-export interface Design {
-  readonly id: string
-  /** Parent workspace this design belongs to. */
-  readonly workspaceId: string
-  /** Stable URL/folder slug — also the on-disk folder name under
-   *  `<ws>/.ownware/app/ownware-design/<slug>/`. Unique per workspace. */
-  readonly slug: string
-  /** Canvas kind — drives which per-kind body the client's dispatcher
-   *  mounts. Closed enum mirrored by the client's design-lobby store. */
-  readonly kind: 'prototype' | 'sketch' | 'deck' | 'image' | 'video' | 'hyperframe'
-  /** Display name. Defaults to a humanized form of `slug` when omitted. */
-  readonly name: string | null
-  /** Template the design was forked from, if any (e.g.
-   *  `'ownware/walkthrough'`). NULL when started from scratch. */
-  readonly templateSource: string | null
-  readonly createdAt: string
-  readonly updatedAt: string
 }
 
 export interface WorkspaceProfileEntry {
@@ -716,11 +676,11 @@ export interface RunRequest {
   readonly approvalRunId?: string
 }
 
-/** Per-turn active context shape (Slice A5b). */
+/** Per-turn active context shape. Skills the composer pinned for this
+ *  turn. (Design-system + canvas-selection inputs were removed with the
+ *  legacy desktop design vertical.) */
 export interface ActiveContextInput {
   readonly skills?: readonly ActiveSkillRef[]
-  readonly designSystems?: readonly ActiveDesignSystemRef[]
-  readonly selection?: ActiveSelectionRef
 }
 
 /** Skill the composer pinned for this turn. Cortex resolves content
@@ -728,37 +688,6 @@ export interface ActiveContextInput {
 export interface ActiveSkillRef {
   readonly id: string
   readonly name: string
-}
-
-/** Design-system summary the composer pinned for this turn. The
- *  fields mirror the lightweight shape returned by
- *  `GET /api/v1/profiles/:profileId/design-systems`. Cortex inlines
- *  these verbatim; the agent calls `apply_design_system` for the
- *  full tokens when it actually needs them. */
-export interface ActiveDesignSystemRef {
-  readonly id: string
-  readonly name: string
-  readonly category?: string
-  readonly surface?: string
-  readonly swatches?: readonly string[]
-  readonly summary?: string
-}
-
-/** Most-recent iframe selection (Slice B2.5). Single-slot — replaced
- *  by each new click in the prototype canvas. */
-export interface ActiveSelectionRef {
-  readonly tag: string
-  readonly selector: string
-  /** outerHTML; cortex truncates over MAX bytes to keep the prompt
-   *  bounded. */
-  readonly outerHTML: string
-  /** Design-relative page the element lives on (e.g. `index.html`). The
-   *  agent opens this file directly instead of globbing to find it. */
-  readonly file?: string
-  /** Design tokens the element's CSS references, with current values.
-   *  Lets the agent change colour/size without reading `styles.css`. */
-  readonly appliedTokens?: readonly { readonly name: string; readonly value: string }[]
-  readonly url?: string
 }
 
 /** A file attachment sent by the client. */
@@ -1191,268 +1120,9 @@ export interface RecentActivityEntry {
   readonly timestamp: string
 }
 
-// (WorkspaceTab / WorkspaceTabWithThread / WorkspaceTabListResponse /
-//  CloseTabResponse types removed in slice 1b.9 — workspace_tabs was
-//  dropped in migration 025; the canonical pane store is workspace_panes
-//  and the wire types live in the pane block above.)
+// (The desktop pane substrate + workspace-history wire types were removed
+// with the legacy desktop shell.)
 
-/**
- * A thread in workspace history, plus a flag telling the drawer
- * whether the thread is currently open as a tab. Drives the
- * "Reopen" vs "Focus" affordance.
- */
-export interface WorkspaceHistoryEntry extends Thread {
-  readonly hasOpenTab: boolean
-  readonly openTabId: string | null
-}
-
-export interface WorkspaceHistoryResponse {
-  readonly items: readonly WorkspaceHistoryEntry[]
-  readonly total: number
-}
-
-// ---------------------------------------------------------------------------
-// Workspace panes — universal pane substrate
-// ---------------------------------------------------------------------------
-//
-// A pane is a typed render surface inside a workspace. Every right-hand
-// surface in the workspace is one — chat tabs, agent-opened viewers
-// (markdown/image/url/code/etc), and side-panel tools (terminal/files/
-// tasks/plan). The `kind` discriminator drives the renderer; the `zone`
-// places the pane in either the universal top tab bar (`'tabs'`) or the
-// side panel (`'side'`).
-//
-// The pane substrate persists server-side via a sibling
-// `workspace_panes` table, gated through `/api/v1/workspaces/:id/panes`.
-// It supersedes the legacy `workspace_tabs` table — chat panes are
-// migrated in place; the legacy table is dropped once clients cut over.
-
-/** Where a pane lives in the workspace layout. */
-export type PaneZone = 'tabs' | 'side'
-
-/** Source descriptor used by content-shaped panes. */
-export type PaneSource =
-  | { readonly origin: 'path'; readonly path: string }
-  | { readonly origin: 'url'; readonly url: string }
-  | { readonly origin: 'inline'; readonly content: string }
-
-/**
- * All pane kinds the substrate persists. Adding a new kind is an
- * additive change to this union plus the matching Zod entry — the client's
- * registry decides whether to render it; the gateway always stores it.
- */
-export type PaneConfig =
-  | { readonly kind: 'chat'; readonly profileId: string; readonly threadId: string }
-  | { readonly kind: 'markdown'; readonly source: PaneSource }
-  | {
-      readonly kind: 'code'
-      readonly source: PaneSource
-      readonly language?: string
-      readonly filename?: string
-    }
-  | { readonly kind: 'image'; readonly source: PaneSource; readonly alt?: string }
-  | { readonly kind: 'url'; readonly source: Extract<PaneSource, { origin: 'url' }> }
-  | { readonly kind: 'html'; readonly source: PaneSource }
-  | { readonly kind: 'mermaid'; readonly source: PaneSource }
-  | { readonly kind: 'pdf'; readonly source: PaneSource }
-  | { readonly kind: 'video'; readonly source: PaneSource }
-  | { readonly kind: 'audio'; readonly source: PaneSource }
-  | { readonly kind: 'csv'; readonly source: PaneSource }
-  | {
-      readonly kind: 'diff'
-      readonly before: PaneSource
-      readonly after: PaneSource
-      readonly language?: string
-    }
-  | { readonly kind: 'txt'; readonly source: PaneSource }
-  | { readonly kind: 'json'; readonly source: PaneSource }
-  | { readonly kind: 'terminal'; readonly cwd?: string; readonly shell?: string }
-  | { readonly kind: 'files'; readonly rootPath: string }
-  | { readonly kind: 'tasks'; readonly workspaceId: string }
-  | { readonly kind: 'plan'; readonly planId: string }
-  | { readonly kind: 'chrome'; readonly url: string; readonly devtools: boolean }
-  | { readonly kind: '3d'; readonly source: PaneSource }
-  | { readonly kind: 'notebook'; readonly source: PaneSource }
-  | { readonly kind: 'scratchpad'; readonly remoteUrl: string }
-
-export type PaneKind = PaneConfig['kind']
-
-/** Optional resource a pane is "attached to" — drives future db-table
- *  / file-edit / connector-status pane semantics. Metadata only today. */
-export type PaneAttachment =
-  | { readonly kind: 'database'; readonly databaseId: string }
-  | { readonly kind: 'connector'; readonly connectorId: string }
-  | { readonly kind: 'file'; readonly path: string }
-
-/** Provenance + lifecycle metadata that doesn't belong inside the
- *  typed config. Stored as `metadata_json` in the gateway. */
-export interface PaneMetadata {
-  readonly openedBy: 'user' | 'agent' | 'system'
-  /** Sub-agent id that opened this pane (drives group + badge UI). */
-  readonly subagentId?: string
-  /** Human-friendly sub-agent name shown on the badge. */
-  readonly subagentLabel?: string
-  /** When set, this pane's group hides while a different chat is focused. */
-  readonly scopedToChatId?: string
-  /** "Pin globally" — visible regardless of chat focus. */
-  readonly pinned: boolean
-  /** Some system panes can't be closed by the user (rare). */
-  readonly closeable: boolean
-  /** Optional resource reference (database, file, connector). */
-  readonly attachedTo?: PaneAttachment
-}
-
-/**
- * Placement hint sent with `POST /workspaces/:id/panes` for tabs-zone
- * panes. The server stores the resulting pane unchanged; the client
- * uses this hint to decide where Dockview should slot it. Side-zone
- * panes ignore placement (they take the next free slot).
- *
- * Variants:
- *   - `'split'`   — split to the right of the active group, both visible.
- *   - `'new-tab'` — add as a new tab in the active group.
- *   - `{ in: groupId }`    — place inside an explicit Dockview group.
- *   - `{ after: paneId }`  — insert immediately after a specific pane.
- */
-export type PanePlacement =
-  | 'split'
-  | 'new-tab'
-  | { readonly in: string }
-  | { readonly after: string }
-
-/**
- * Opaque Dockview-serialized layout JSON. The gateway stores + returns
- * this verbatim — Dockview owns the shape, we don't validate it.
- */
-export type DockviewSerializedLayout = string
-
-/** A pane as persisted by the gateway and returned to clients. */
-export interface WorkspacePane {
-  readonly id: string
-  readonly workspaceId: string
-  readonly kind: PaneKind
-  readonly zone: PaneZone
-  readonly title: string
-  readonly config: PaneConfig
-  readonly metadata: PaneMetadata
-  /** Stable order within (workspaceId, zone). Server-assigned. */
-  readonly position: number
-  /** True when this pane is the active one in its zone. At most one
-   *  per (workspaceId, zone) — enforced by a partial unique index. */
-  readonly focused: boolean
-  /** Dockview group id when the serialized layout assigns one. Null
-   *  for fresh panes that haven't yet been laid out. */
-  readonly groupId: string | null
-  readonly openedAt: string
-}
-
-/**
- * `POST /workspaces/:id/panes` request body.
- *
- * Server derives `kind` from `config.kind` — no top-level kind field.
- * Server fills `id`, `workspaceId`, `position`, `openedAt` and applies
- * defaults for unset metadata fields (`pinned: false`, `closeable: true`,
- * `openedBy: 'user'` unless overridden).
- */
-export interface CreateWorkspacePaneRequest {
-  /** Defaults to `'tabs'`. */
-  readonly zone?: PaneZone
-  readonly title?: string
-  readonly config: PaneConfig
-  readonly metadata?: Partial<PaneMetadata>
-  readonly placement?: PanePlacement
-  /** When `true`, server transactionally focuses this pane in its zone
-   *  (clearing any other focused pane in the same zone). Default `false`
-   *  for `zone: 'side'`, `true` for `zone: 'tabs'` (matches today's
-   *  open-tab UX). */
-  readonly focused?: boolean
-}
-
-export interface CreateWorkspacePaneResponse {
-  readonly pane: WorkspacePane
-  /** Echoes the placement hint so clients can drive layout updates
-   *  without re-deriving. Null when no hint was sent or when the pane
-   *  went to the side zone. */
-  readonly placement: PanePlacement | null
-}
-
-/**
- * `PATCH /workspaces/:id/panes/:paneId` request body.
- *
- * `focused: true` uses the transactional activation helper to maintain
- * the "exactly one focused per zone" invariant. `focused: false` is
- * rejected — defocus only happens via another pane becoming focused or
- * this pane being closed.
- */
-export interface UpdateWorkspacePaneRequest {
-  readonly title?: string
-  readonly position?: number
-  readonly focused?: true
-  readonly pinned?: boolean
-  /** Pass `null` to clear the scope (pin globally). */
-  readonly scopedToChatId?: string | null
-  /** Dockview group reassignment. `null` clears. */
-  readonly groupId?: string | null
-  /** Mutating the typed config changes the pane's content. */
-  readonly config?: PaneConfig
-  readonly metadata?: Partial<PaneMetadata>
-}
-
-export interface ReorderWorkspacePanesRequest {
-  /** Reorder is scoped to a single zone. Server validates all `ids`
-   *  belong to (workspaceId, zone) and assigns positions
-   *  `0..ids.length - 1` in order. */
-  readonly zone: PaneZone
-  readonly ids: readonly string[]
-}
-
-/**
- * PATCH/PUT body for the workspace layout endpoint.
- *
- * Both fields are optional, but the validator (see
- * `SetWorkspaceLayoutSchema`) requires at least one to be present —
- * blank requests aren't useful. Clients can update one field without
- * read-modify-write of the other.
- *
- * `sideTrackWidth` is a px value persisted per workspace by the
- * `<WorkspaceShellSplitter>` drag handle (slice 2 of the FileViewer
- * redesign). Clamped to `[360, 5000]` at the wire boundary; the client
- * applies a tighter per-frame max (60vw) on render.
- */
-export interface SetWorkspaceLayoutRequest {
-  readonly layout?: DockviewSerializedLayout
-  readonly sideTrackWidth?: number
-}
-
-/**
- * Response shape for `GET /layout` and `PUT /layout`. Both fields
- * are independently nullable — a freshly-opened workspace has neither
- * set, and updating one doesn't clear the other.
- */
-export interface WorkspaceLayoutResponse {
-  readonly layout: DockviewSerializedLayout | null
-  readonly sideTrackWidth: number | null
-}
-
-export interface WorkspacePaneListResponse {
-  readonly items: readonly WorkspacePane[]
-  readonly total: number
-  /** Dockview-serialized layout for the tabs zone, or null if not set yet. */
-  readonly layout: DockviewSerializedLayout | null
-  /**
-   * User-chosen side-track width in px, or null when the user hasn't
-   * dragged it. The client falls back to the computed `columnCount * 560`
-   * formula when null.
-   */
-  readonly sideTrackWidth: number | null
-}
-
-export interface CloseWorkspacePaneResponse {
-  readonly closed: true
-  /** Next pane to focus in the same zone, if any. Server picks the
-   *  nearest sibling so the UI doesn't have to reconcile. */
-  readonly nextFocusedPaneId: string | null
-}
 
 /** File tree node for workspace browser. */
 export interface FileTreeNode {
@@ -1476,36 +1146,6 @@ export interface SettingsResponse {
   readonly theme: string
   readonly fontSize: number
   readonly providers: readonly ProviderInfo[]
-}
-
-/** Current session state (runtime). */
-export interface SessionState {
-  readonly sessionId: string
-  readonly startedAt: string
-  readonly activeThreads: number
-  readonly activeAgents: number
-}
-
-/** Persisted session state for crash recovery. */
-export interface PersistedSessionState {
-  readonly hasSession: boolean
-  readonly workspaces?: readonly SessionWorkspace[]
-  readonly tabs?: Readonly<Record<string, readonly SessionTab[]>>
-  readonly savedAt?: string
-}
-
-/** Workspace entry in persisted session state. */
-export interface SessionWorkspace {
-  readonly id: string
-  readonly name: string
-  readonly path: string
-}
-
-/** Tab entry in persisted session state. */
-export interface SessionTab {
-  readonly threadId: string | null
-  readonly profileId: string | null
-  readonly title: string
 }
 
 /** Connectivity check result. */

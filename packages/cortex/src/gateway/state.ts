@@ -23,10 +23,7 @@ import type {
   PaginatedResult, UsageBucket, DashboardRange, DashboardKPIs,
   ProfileBreakdownRow, RecentActivityRow,
   LocalProfile, UserSettings, ProfileMetadata,
-  WorkspacePane, PaneConfig, PaneMetadata, PaneZone,
   AppState, AuditLogEntry,
-  PersistedSessionState, SessionWorkspace,
-  Design,
 } from './types.js'
 import { CortexDatabase } from './db/database.js'
 import { EventBus } from './event-bus.js'
@@ -711,80 +708,8 @@ export class GatewayState {
     return this.db.listProfileMetadata()
   }
 
-  listWorkspaceHistory(
-    workspaceId: string,
-    opts?: { search?: string; limit?: number; offset?: number },
-  ) {
-    return this.db.listWorkspaceHistory(workspaceId, opts)
-  }
+  // (Desktop pane/history proxy methods removed with the legacy desktop shell.)
 
-  // ── Workspace Panes (universal pane substrate, SQLite-backed) ─────
-
-  createWorkspacePane(
-    workspaceId: string,
-    pane: {
-      readonly config: PaneConfig
-      readonly metadata: PaneMetadata
-      readonly zone: PaneZone
-      readonly title?: string
-      readonly position?: number
-      readonly focused?: boolean
-    },
-  ): WorkspacePane {
-    return this.db.createWorkspacePane(workspaceId, pane)
-  }
-
-  getWorkspacePanes(workspaceId: string): WorkspacePane[] {
-    return this.db.getWorkspacePanes(workspaceId)
-  }
-
-  getWorkspacePane(paneId: string): WorkspacePane | undefined {
-    return this.db.getWorkspacePane(paneId)
-  }
-
-  updateWorkspacePane(
-    paneId: string,
-    updates: {
-      readonly title?: string
-      readonly position?: number
-      readonly pinned?: boolean
-      readonly scopedChatId?: string | null
-      readonly groupId?: string | null
-      readonly config?: PaneConfig
-      readonly metadata?: PaneMetadata
-    },
-  ): WorkspacePane | undefined {
-    return this.db.updateWorkspacePane(paneId, updates)
-  }
-
-  focusWorkspacePane(paneId: string): WorkspacePane | undefined {
-    return this.db.focusWorkspacePane(paneId)
-  }
-
-  reorderWorkspacePanes(
-    workspaceId: string,
-    zone: PaneZone,
-    ids: readonly string[],
-  ): WorkspacePane[] {
-    return this.db.reorderWorkspacePanes(workspaceId, zone, ids)
-  }
-
-  deleteWorkspacePane(paneId: string): {
-    readonly closed: boolean
-    readonly workspaceId: string | null
-    readonly zone: PaneZone | null
-    readonly nextFocusedPaneId: string | null
-  } {
-    return this.db.deleteWorkspacePane(paneId)
-  }
-
-  getWorkspacePaneLayout(workspaceId: string): string | null {
-    return this.db.getWorkspacePaneLayout(workspaceId)
-  }
-
-  setWorkspacePaneLayout(workspaceId: string, layout: string): void {
-    this.db.setWorkspacePaneLayout(workspaceId, layout)
-  }
 
   /**
    * User-chosen side-track width (px) for the workspace. Returns
@@ -912,168 +837,13 @@ export class GatewayState {
   // ── Session persistence (crash recovery) ────────────────────────────
 
   /**
-   * Persist current session state to SQLite (app_state table).
-   * Captures the list of active workspaces. Per-workspace open
-   * tabs/panes are NOT included here — workspace_panes IS the
-   * persistent store, so reopening a workspace re-loads them via
-   * `usePanes` from that table directly. The `tabs` field is kept
-   * on the wire shape (optional) for backwards-compat with restored
-   * state from older builds; new writes leave it absent.
+   * (Removed) Desktop crash-restore persistence lived here — dropped with the
+   * legacy desktop client's `/session/{state,restore}` endpoints.
    */
-  saveSessionState(): void {
-    const workspaces = this.db.listWorkspaces('active')
-    const sessionWorkspaces: SessionWorkspace[] = workspaces.items.map(ws => ({
-      id: ws.id,
-      name: ws.name,
-      path: ws.path,
-    }))
 
-    const state: PersistedSessionState = {
-      hasSession: sessionWorkspaces.length > 0,
-      workspaces: sessionWorkspaces,
-      savedAt: new Date().toISOString(),
-    }
-
-    this.db.setAppState('session', JSON.stringify(state))
-  }
-
-  /**
-   * Read persisted session state. Returns null if none saved.
-   */
-  getSessionState(): PersistedSessionState | null {
-    const row = this.db.getAppState('session')
-    if (!row) return null
-    try {
-      return JSON.parse(row.value) as PersistedSessionState
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * Restore a previously saved session — re-activates workspaces.
-   * Returns the count of restored workspaces and tabs.
-   */
-  restoreSession(): { workspaceCount: number; tabCount: number } {
-    const saved = this.getSessionState()
-    if (!saved || !saved.hasSession || !saved.workspaces) {
-      return { workspaceCount: 0, tabCount: 0 }
-    }
-
-    let workspaceCount = 0
-    let tabCount = 0
-
-    for (const ws of saved.workspaces) {
-      // Re-activate workspace if it exists
-      const existing = this.db.getWorkspace(ws.id)
-      if (existing) {
-        this.db.updateWorkspace(ws.id, { status: 'active' })
-        workspaceCount++
-
-        // Restore tabs for this workspace
-        const savedTabs = saved.tabs?.[ws.id]
-        if (savedTabs) {
-          tabCount += savedTabs.length
-        }
-      }
-    }
-
-    return { workspaceCount, tabCount }
-  }
-
-  // ── Designs (Ownware Design — Slice 7a) ─────────────────────────────
-  //
-  // Thin proxy layer over the database methods. Each handler calls
-  // through GatewayState to keep the wire boundary single-source.
-  // See `database.ts` (createDesign / getDesign / …) for the queries
-  // and `Design` in `types.ts` for the public type. Per root CLAUDE.md
-  // Principle 22, these are Design-PRODUCT-scoped (not generic).
-
-  createDesign(
-    workspaceId: string,
-    slug: string,
-    kind: Design['kind'],
-    opts?: {
-      readonly name?: string | undefined
-      readonly templateSource?: string | undefined
-    },
-  ): Design {
-    return this.db.createDesign(workspaceId, slug, kind, opts)
-  }
-
-  getDesign(id: string): Design | undefined {
-    return this.db.getDesign(id)
-  }
-
-  /** Update a design's mutable fields. Slug renames also rewrite the
-   *  paired workspace's `path` in the same transaction. Returns the
-   *  updated row, or `undefined` when the design id doesn't exist.
-   *  Filesystem-side `fs.rename` is the handler's responsibility —
-   *  see `gateway/handlers/designs.ts` for the FS-first → DB-second
-   *  ordering with rollback. Slice B1.6 (2026-05-27). */
-  updateDesign(
-    id: string,
-    updates: {
-      readonly name?: string | null
-      readonly slug?: string
-      readonly newWorkspacePath?: string
-      /** Canvas kind switch — metadata-only, agent re-reads on next
-       *  turn. Slice B1.7. */
-      readonly kind?: Design['kind']
-      /** Template switch — metadata-only, `useSendDesignMessage`
-       *  re-reads on next turn and re-bakes `<template-reference>`.
-       *  `null` clears the pin. Slice B1.9. */
-      readonly templateSource?: string | null
-    },
-  ): Design | undefined {
-    return this.db.updateDesign(id, updates)
-  }
-
-  getDesignBySlug(workspaceId: string, slug: string): Design | undefined {
-    return this.db.getDesignBySlug(workspaceId, slug)
-  }
-
-  listDesignsForWorkspace(workspaceId: string): readonly Design[] {
-    return this.db.listDesignsForWorkspace(workspaceId)
-  }
-
-  linkThreadToDesign(threadId: string, designId: string): void {
-    this.db.linkThreadToDesign(threadId, designId)
-  }
-
-  getDesignForThread(threadId: string): Design | undefined {
-    return this.db.getDesignForThread(threadId)
-  }
-
-  /** Threads linked to a design, most-recent-first. Used by the chip
-   *  switcher to navigate from a chosen design back to a thread. */
-  getThreadsForDesign(designId: string): readonly string[] {
-    return this.db.getThreadsForDesign(designId)
-  }
-
-  unlinkThreadFromDesign(threadId: string): boolean {
-    return this.db.unlinkThreadFromDesign(threadId)
-  }
-
-  /** Bind a Builder thread to the agent (slug) it edits — edit-by-talking's
-   *  durable binding (mirrors linkThreadToDesign). */
-  linkThreadToEdit(threadId: string, profileSlug: string): void {
-    this.db.linkThreadToEdit(threadId, profileSlug)
-  }
-
-  /** The agent slug a Builder thread is editing, or undefined. */
-  getEditForThread(threadId: string): string | undefined {
-    return this.db.getEditForThread(threadId)
-  }
-
-  /** Thread ids that have edited this agent, most-recently-bound first. */
-  getThreadsForEdit(profileSlug: string): readonly string[] {
-    return this.db.getThreadsForEdit(profileSlug)
-  }
-
-  deleteDesign(id: string): boolean {
-    return this.db.deleteDesign(id)
-  }
+  // (Design-canvas proxy methods removed — the legacy desktop design
+  // vertical's HTTP surface was deleted; the tables drop in a later
+  // cleanup migration.)
 
   // ── Utility ──────────────────────────────────────────────────────────
 

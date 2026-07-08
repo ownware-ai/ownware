@@ -126,19 +126,21 @@ describe('TeamStore — teams', () => {
     expect(config.productId).toBe('ownware-coder')
   })
 
-  it('rejects an unknown product surface at the schema boundary', async () => {
+  it('accepts any kebab-slug surface, rejects malformed slugs (product catalog removed)', async () => {
     const { CreateTeamSchema } = await import('../../../src/team/schema.js')
+    // `surface` is a free-form kebab slug now — the product catalog that
+    // used to validate it was removed with the legacy desktop shell.
     const ok = CreateTeamSchema.safeParse({
       name: 'x',
       displayName: 'X',
-      surface: 'ownware-design',
+      surface: 'any-kebab-slug',
       members: [{ slug: 'a', profileId: 'p', role: 'R' }],
     })
     expect(ok.success).toBe(true)
     const bad = CreateTeamSchema.safeParse({
       name: 'x',
       displayName: 'X',
-      surface: 'not-a-real-product',
+      surface: 'Not A Slug!',
       members: [{ slug: 'a', profileId: 'p', role: 'R' }],
     })
     expect(bad.success).toBe(false)

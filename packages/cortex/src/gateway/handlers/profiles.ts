@@ -17,11 +17,6 @@ import { z } from 'zod'
 import { ProfileSchema } from '../../profile/schema.js'
 import { countResolvedTools } from '../../profile/tool-policy.js'
 import { deepMergePartial } from '../../profile/merge.js'
-import {
-  isKnownProduct,
-  getProductPolicy,
-  listProductSlugs,
-} from '../../product/manifest.js'
 
 /**
  * Resolve a parent profile's `subagents` list into the wire shape the
@@ -435,34 +430,9 @@ export function createProfileHandlers(
       return
     }
 
-    // productId is required since slice-08 of product-base-shift Phase 2.
-    if (typeof body.productId !== 'string' || body.productId.length === 0) {
-      sendError(res, 400, 'Missing required field: productId')
-      return
-    }
-    // productId must name a real product in the canonical catalog — not just
-    // any kebab string. A typo'd slug would orphan the profile (no product UI
-    // would host it), so reject it loudly here at the boundary rather than
-    // letting the client silently drop the profile on read.
-    if (!isKnownProduct(body.productId)) {
-      sendError(
-        res,
-        400,
-        `Unknown product "${body.productId}". Valid products: ${listProductSlugs().join(', ')}`,
-      )
-      return
-    }
-    // Closed products ship a fixed first-party team and do not accept
-    // user-authored profiles (their surface is bespoke — IDE, canvas, doc).
-    // Only the open product (Ownware) hosts custom profiles.
-    if (getProductPolicy(body.productId) === 'closed') {
-      sendError(
-        res,
-        403,
-        `Product "${body.productId}" does not accept custom profiles — it ships a fixed first-party team.`,
-      )
-      return
-    }
+    // `productId` is a legacy, inert field — accepted for compat (older
+    // agent.json files still carry it), never gated. The product catalog
+    // was removed with the legacy desktop shell.
 
     if (registry.has(body.name)) {
       sendError(res, 409, `Profile "${body.name}" already exists`)
@@ -480,13 +450,25 @@ export function createProfileHandlers(
         name: body.name,
         description: body.description ?? '',
         model: body.model ?? 'anthropic:claude-sonnet-4-20250514',
-        productId: body.productId,
       }
+      // Only stamp productId when the client actually chose one — an absent
+      // productId means "product-agnostic", not "the default product".
+      if (body.productId) config['productId'] = body.productId
       if (body.tools) config['tools'] = body.tools
       if (body.security) config['security'] = body.security
 
-      // Validate with Zod before writing
-      const validated = ProfileSchema.parse(config)
+      // Validate with Zod before writing — a malformed field (e.g. a
+      // non-kebab productId) is the CLIENT's error, so answer 400, not 500.
+      const parsed = ProfileSchema.safeParse(config)
+      if (!parsed.success) {
+        sendError(
+          res,
+          400,
+          parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '),
+        )
+        return
+      }
+      const validated = parsed.data
       await writeFile(join(profileDir, 'agent.json'), JSON.stringify(validated, null, 2))
 
       // Write SOUL.md
@@ -506,7 +488,10 @@ export function createProfileHandlers(
         id: body.name,
         name: body.name,
         path: profileDir,
-        productId: body.productId,
+        // Reflect the effective value written to disk — the schema defaults an
+        // absent productId to the open `'ownware'` product (see A7: the whole
+        // concept is slated for removal).
+        productId: (validated as { productId?: string }).productId ?? null,
         created: true,
       })
     } catch (err) {
@@ -835,18 +820,7 @@ Respond with ONLY the JSON object, no markdown fences, no explanation.`
     try {
       const loaded = await registry.get(profileId)
 
-      // A fork inherits the source's productId (it stays inside the same
-      // product). Closed products ship a fixed first-party team and do not
-      // accept user-authored profiles, so forking one would smuggle a custom
-      // profile into a closed product. Reject it — same policy as create.
-      if (getProductPolicy(loaded.config.productId) === 'closed') {
-        sendError(
-          res,
-          403,
-          `Product "${loaded.config.productId}" does not accept custom profiles — "${profileId}" cannot be forked.`,
-        )
-        return
-      }
+      // (The closed-product fork gate was removed with the product catalog.)
 
       // Generate the destination slug:
       //   • If `body.name` is supplied, use it (with `-2/-3` suffixing

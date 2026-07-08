@@ -1,8 +1,11 @@
 /**
- * Integration tests for slice-08 of product-base-shift Phase 2:
+ * Integration tests for profile create/duplicate:
  *
- *   • `POST /api/v1/profiles` now requires `productId` in the body
- *     and writes it into `agent.json`.
+ *   • `POST /api/v1/profiles` treats `productId` as OPTIONAL — a
+ *     product-agnostic profile ("build your own agent", no product
+ *     taxonomy) is the default; an explicit slug is still validated and
+ *     written into `agent.json`. (gateway-audit board slice A1; the whole
+ *     `products` concept is slated for removal in A7.)
  *   • `POST /api/v1/profiles/:id/duplicate` now accepts an optional
  *     `{ name?, soulMd?, description? }` body for the client's "Fork"
  *     surface. Slug-conflict suffixing (`-2`, `-3`, …) stays.
@@ -96,17 +99,26 @@ async function readDiskSoul(slug: string): Promise<string> {
   return readFile(join(dataDir, 'profiles', slug, 'SOUL.md'), 'utf-8')
 }
 
-describe('POST /api/v1/profiles — productId is required and round-trips', () => {
-  it('400 when productId is missing', async () => {
+describe('POST /api/v1/profiles — productId is optional and round-trips', () => {
+  it('201 when productId is omitted — client need not pass one; schema defaults to open ownware', async () => {
     const r = await post('/api/v1/profiles', {
       name: 'no-product-id',
-      description: 'should be rejected',
+      description: 'build-your-own-agent, no product required from the client',
     })
-    expect(r.status).toBe(400)
-    expect(JSON.stringify(r.body)).toContain('productId')
+    expect(r.status).toBe(201)
+    expect(r.body.id).toBe('no-product-id')
+    // The client no longer has to choose a product; the schema defaults an
+    // absent productId to the OPEN 'ownware' product (not a closed product
+    // shell). Headless "POST /profiles {name}" now works.
+    expect(r.body.productId).toBe('ownware')
+
+    const onDisk = await readDiskAgentJson('no-product-id')
+    expect(onDisk['productId']).toBe('ownware')
   })
 
-  it('400 when productId is not a kebab slug', async () => {
+  it('400 when an explicit productId is malformed (not a kebab slug)', async () => {
+    // The product CATALOG gate was removed — productId is inert — but the
+    // schema still requires kebab-slug shape, rejected as a client error.
     const r = await post('/api/v1/profiles', {
       name: 'bad-slug',
       productId: 'Ownware Coder',

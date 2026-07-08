@@ -8,12 +8,14 @@
     "packages/cortex",
     "packages/ownware",
     "packages/client",
+    "packages/ui",
+    "packages/react",
     "examples/quickstart",
     "examples/custom-client",
     "adapters/*"
   ],
   "scripts": {
-    "build": "bun run --filter='@ownware/loom' build && bun run --filter='@ownware/cortex' build && bun run --filter='ownware' build && bun run --filter='@ownware/client' build && bun run --filter='@ownware/shuttle' build",
+    "build": "bun run --filter='@ownware/loom' build && bun run --filter='@ownware/cortex' build && bun run --filter='ownware' build && bun run --filter='@ownware/client' build && bun run --filter='@ownware/ui' build && bun run --filter='@ownware/react' build && bun run --filter='@ownware/shuttle' build",
     "typecheck": "bun run --filter='*' typecheck",
     "test": "bun run --filter='*' test",
     "quickstart": "bun run build && echo '' && echo '  Built. Now:  bun run ownware init  ->  bun run ownware run assistant \"hello\"  ->  bun run ownware serve' && echo '  walkthrough: examples/quickstart/README.md' && echo ''",

@@ -528,19 +528,8 @@ describe('workspaces', () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('session persistence', () => {
-  it('GET /session/state returns session data after creating workspaces', async () => {
-    const sessionDir = join(tempDir, 'session-test')
-    await mkdir(sessionDir, { recursive: true })
-    const { body: ws } = await post('/api/v1/workspaces', { path: sessionDir, name: 'Session WS' })
-
-    // Save session state
-    gateway.state.saveSessionState()
-
-    const { status, body } = await json('/api/v1/session/state')
-    expect(status).toBe(200)
-    expect(body.hasSession).toBe(true)
-    expect(body.workspaces.length).toBeGreaterThan(0)
-  })
+  // The /session/state crash-restore endpoint test was removed with the
+  // legacy desktop surface; DB durability across restart is covered below.
 
   it('data survives gateway restart on same DB', async () => {
     // Create data
@@ -632,22 +621,8 @@ describe('search', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════
-// 11. ONBOARDING
+// 11. ONBOARDING — removed (legacy desktop first-run endpoints deleted)
 // ═══════════════════════════════════════════════════════════════════════
-
-describe('onboarding', () => {
-  it('full onboarding flow', async () => {
-    const { status: roleStatus } = await post('/api/v1/onboarding/role', {
-      role: 'developer',
-      name: 'Battle Tester',
-    })
-    expect(roleStatus).toBe(200)
-
-    const { status: completeStatus, body } = await post('/api/v1/onboarding/complete', {})
-    expect(completeStatus).toBe(200)
-    expect(body.completed).toBe(true)
-  })
-})
 
 // ═══════════════════════════════════════════════════════════════════════
 // 12. APP INFO

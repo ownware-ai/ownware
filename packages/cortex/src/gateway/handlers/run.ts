@@ -56,7 +56,6 @@ import { CredentialHITL } from '../../credential/hitl.js'
 import { ThreadCredentialRuntime } from '../../credential/runtime.js'
 import { credentialVault } from '../../connector/credentials/vault.js'
 import type { SqliteTaskStore } from '../../tasks/store.js'
-import type { SqliteBoardStore } from '../../boards/index.js'
 import type { CredentialStore } from '../../credential/store/index.js'
 import { selectSttProvider } from '../../speech/index.js'
 import { createThreadScopedTaskStore } from '../../tasks/scoped-store.js'
@@ -78,34 +77,10 @@ const ActiveSkillRefSchema = z.object({
   name: z.string().min(1),
 }).strict()
 
-const ActiveDesignSystemRefSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  category: z.string().optional(),
-  surface: z.string().optional(),
-  swatches: z.array(z.string()).optional(),
-  summary: z.string().optional(),
-}).strict()
-
-const ActiveSelectionRefSchema = z.object({
-  tag: z.string().min(1),
-  selector: z.string().min(1),
-  outerHTML: z.string(),
-  // Design-relative page the selected element lives on (e.g.
-  // `index.html`) — lets the agent open the right file directly.
-  file: z.string().optional(),
-  // Tokens the element's CSS references (+ current values) — lets the
-  // agent change colour/size without reading styles.css to find the token.
-  appliedTokens: z
-    .array(z.object({ name: z.string(), value: z.string() }).strict())
-    .optional(),
-  url: z.string().optional(),
-}).strict()
-
+// (Design-system + canvas-selection active-context inputs were removed with
+// the legacy desktop design vertical — skills are the remaining per-turn pin.)
 const ActiveContextInputSchema = z.object({
   skills: z.array(ActiveSkillRefSchema).optional(),
-  designSystems: z.array(ActiveDesignSystemRefSchema).optional(),
-  selection: ActiveSelectionRefSchema.optional(),
 }).strict()
 
 /**
@@ -207,15 +182,6 @@ export interface RunHandlerDeps {
    * Omitted → `applyRunSafety` fails closed to read-only (no place to park).
    */
   readonly approvalStore?: SqliteApprovalStore
-  /**
-   * Shared board store (the top rung of the work ladder). When provided
-   * AND the run has a workspace, each session gets the `board_write` /
-   * `board_update` tools bound to (store, workspaceId, threadId) so the
-   * agent can lay out and drive a board, persisted to SQLite + emitting
-   * `board.updated` bus events. Optional — runs without a workspace, and
-   * unit tests that don't need boards, omit it.
-   */
-  readonly boardStore?: SqliteBoardStore
   /**
    * Unified credential store. When provided, each session gets an
    * `sttProvider` on its config (resolved from the highest-priority
@@ -514,34 +480,8 @@ export function createRunHandlers(
           timeoutMs: profileToAssemble.config.security.hitlTimeoutMs,
         })
 
-        // Wire the pane runtime when the run has a workspace context.
-        // This registers the cortex-shipped `open_pane` tool against
-        // the gateway state for THIS workspace, and threads
-        // `activeThreadId` so panes the agent opens auto-scope to the
-        // chat pane that owns this thread. Without a workspaceId
-        // (rare: scripted /run with no workspace), paneRuntime is
-        // omitted and the `open_pane` tool is not registered — the
-        // pre-3a behaviour.
-        const paneRuntime = workspaceId
-          ? {
-              state,
-              workspaceId,
-              activeThreadId: threadId!,
-            }
-          : undefined
-
-        // Wire the board tools when the run has both a workspace and a
-        // board store. A board scopes to a workspace, so a workspace-less
-        // run (scripted /run) gets no board tools. `originThreadId` is the
-        // chat drafting the board.
-        const board =
-          workspaceId && deps.boardStore != null
-            ? {
-                store: deps.boardStore,
-                workspaceId,
-                originThreadId: threadId!,
-              }
-            : undefined
+        // (The desktop pane runtime + workspace build-board tool wiring
+        // were removed with the legacy desktop shell.)
 
         // Late-bound HITL reference for `approve` hook actions. The
         // HumanInTheLoop instance is constructed AFTER assembly (it needs
@@ -626,8 +566,6 @@ export function createRunHandlers(
           ...(deps.memorySystem !== undefined
             ? { memory: { system: deps.memorySystem, threadId: threadId! } }
             : {}),
-          ...(paneRuntime !== undefined ? { paneRuntime } : {}),
-          ...(board !== undefined ? { board } : {}),
           // F4.b: route MCPManager state transitions onto the status
           // bus so transport closures hit the connector SSE channel
           // without waiting for the next tool call to probe the dead
@@ -635,19 +573,19 @@ export function createRunHandlers(
           ...(deps.connectorStatusBus !== undefined
             ? { connectorStatusBus: deps.connectorStatusBus }
             : {}),
-          // Slice A5b — composer-picked active context for this turn.
-          // The assembler builds <active-skills> / <active-design-systems>
-          // / <active-selection> blocks in the system prompt so the agent
-          // follows the user's pinned skill rubric + design tokens +
-          // iframe selection anchor on the very next turn.
+          // Composer-picked active context for this turn. The assembler
+          // builds the <active-skills> block in the system prompt so the
+          // agent follows the user's pinned skill rubric on the very
+          // next turn.
           ...(body.activeContext !== undefined
             ? { activeContext: body.activeContext }
             : {}),
           // Slice B10 — per-turn vertical-owned system-prompt extension.
-          // Cortex is a passthrough. The Design vertical builds the
-          // `<design-metadata>` + `<design-brief>` blocks client-side
-          // and ships them here; cortex stays product-agnostic
-          // (Principle 22 — no per-vertical block names in shared code).
+          // Cortex is a passthrough: the string is concatenated into the
+          // assembled system prompt without parsing, so any client
+          // vertical can attach its own context blocks while cortex
+          // stays product-agnostic (Principle 22 — no per-vertical block
+          // names in shared code).
           ...(body.systemPromptAppend !== undefined &&
           body.systemPromptAppend.length > 0
             ? { systemPromptAppend: body.systemPromptAppend }

@@ -286,38 +286,8 @@ describe('GET /api/v1/search', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Onboarding
-// ---------------------------------------------------------------------------
-
-describe('Onboarding endpoints', () => {
-  it('POST /onboarding/role → sets role and display name', async () => {
-    const { status, body } = await post('/api/v1/onboarding/role', {
-      role: 'engineer',
-      name: 'Test User',
-    })
-    expect(status).toBe(200)
-    expect(body.role).toBe('engineer')
-    expect(body.displayName).toBe('Test User')
-  })
-
-  it('POST /onboarding/role → uses role as display name if no name', async () => {
-    const { status, body } = await post('/api/v1/onboarding/role', { role: 'designer' })
-    expect(status).toBe(200)
-    expect(body.displayName).toBe('designer')
-  })
-
-  it('POST /onboarding/role → rejects empty role', async () => {
-    const { status } = await post('/api/v1/onboarding/role', { role: '' })
-    expect(status).toBe(400)
-  })
-
-  it('POST /onboarding/complete → marks onboarding done', async () => {
-    const { status, body } = await post('/api/v1/onboarding/complete', {})
-    expect(status).toBe(200)
-    expect(body.completed).toBe(true)
-  })
-})
+// (Onboarding-wizard endpoint tests removed — the legacy desktop first-run
+// endpoints /api/v1/onboarding/{role,complete} were deleted from the gateway.)
 
 // ---------------------------------------------------------------------------
 // App Version

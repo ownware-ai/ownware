@@ -67,10 +67,6 @@ import {
   type Memory,
 } from '../memory/index.js'
 import { createPlanTools } from '../plans/index.js'
-import { createBoardTools } from '../boards/index.js'
-import type { SqliteBoardStore } from '../boards/index.js'
-import { createOpenPaneTool } from '../tools/open-pane/index.js'
-import type { GatewayState } from '../gateway/state.js'
 import { normalizeModelId } from '../gateway/catalog/models/index.js'
 import { credentialStore } from '../connector/mcp/credentials.js'
 import { createStubTool } from '../connector/stub-tool.js'
@@ -253,65 +249,6 @@ export interface AssembleOptions {
     readonly threadId: string
   }
   /**
-   * Per-session pane substrate binding.
-   *
-   * When set, the assembler injects the cortex-shipped `open_pane`
-   * tool into the session's tool list, with its input schema
-   * narrowed to `profile.config.panes.allowedKinds`. The tool's
-   * `execute()` calls `state.createWorkspacePane(workspaceId, ...)`,
-   * so closure-capturing both gives the agent a single, scoped
-   * authority over THIS workspace's pane substrate without the
-   * ability to address any other workspace.
-   *
-   * Omitted → no `open_pane` tool is registered. Behaviour is
-   * identical to the pre-3.3 code path: the profile schema's `panes`
-   * block still validates and persists, but the agent has no way to
-   * call into it. Tests that don't exercise the pane substrate (and
-   * the no-database CLI / direct-Loom callers) leave this unset.
-   *
-   * The tool is omitted automatically when
-   * `profile.config.panes.allowedKinds` is empty — a profile that
-   * permits no kinds gets no tool, even with a paneRuntime wired.
-   */
-  readonly paneRuntime?: {
-    readonly state: GatewayState
-    readonly workspaceId: string
-    /**
-     * The thread id this session is running. Optional — when set, the
-     * `open_pane` tool auto-scopes every non-chat pane it opens to the
-     * chat pane that owns this thread (`metadata.scopedToChatId =
-     * <chatPaneId>`). Threading it as `activeThreadId` (not directly as
-     * `activeChatPaneId`) means the tool resolves the chat pane fresh
-     * at fire time — the pane substrate enforces a 1:1 thread→chatPane
-     * uniqueness via the partial unique index
-     * `idx_workspace_panes_chat_thread`, so this lookup is
-     * deterministic. Omitted → tool opens unscoped panes (today's
-     * behaviour for callers that haven't been updated).
-     *
-     * Wired by `gateway/handlers/run.ts` against the running thread.
-     * Wave 3a of the workspace-tab-architecture work.
-     */
-    readonly activeThreadId?: string
-  }
-  /**
-   * Per-session board binding (the top rung of the work ladder).
-   *
-   * When set, the assembler injects the cortex-shipped `board_write` /
-   * `board_update` tools, bound to (store, workspaceId, originThreadId)
-   * so the agent can lay out and drive a board scoped to THIS workspace.
-   * Same gating as the plan tools: presets `coding` / `full`, or an
-   * explicit `tools.allow: ['board_write', 'board_update']`.
-   *
-   * Omitted → no board tools are registered. Tests, CLI, and direct-Loom
-   * callers (and any run without a workspace) leave this unset. Loom
-   * stays domain-neutral; "boards" are a Cortex product convention.
-   */
-  readonly board?: {
-    readonly store: SqliteBoardStore
-    readonly workspaceId: string
-    readonly originThreadId: string | null
-  }
-  /**
    * Connector status bus the gateway wires to the unified
    * `/api/v1/connectors/events` SSE channel. When provided, the
    * assembler subscribes to the live `MCPManager` so every transport
@@ -328,28 +265,13 @@ export interface AssembleOptions {
   /**
    * Composer-picked active context for THIS turn (Slice A5b).
    *
-   * When present, the assembler renders three blocks into the system
-   * prompt right after `memory` and before `context`:
-   *
-   *   <active-skills>   — for each pinned skill, inline the body from
-   *                       `profile.skills[i].content`. Lookups by
-   *                       `id` against `profile.skills[*].name`.
-   *                       Unknown ids are silently skipped (the
-   *                       picker filters by loaded skills, so this is
-   *                       only hit on a stale chip whose skill was
-   *                       removed since the last refresh).
-   *   <active-design-systems>
-   *                     — REMOVED 2026-05-27 (slice B1.8.B). The Design
-   *                       vertical now bakes DESIGN.md + tokens.css
-   *                       verbatim into this block client-side via
-   *                       `build-system-prompt-append.ts`. Cortex's
-   *                       `activeContext.designSystems` schema stays
-   *                       for typed metadata, but no block is emitted
-   *                       from here.
-   *   <active-selection>
-   *                     — the most-recent iframe click from the
-   *                       prototype canvas (tag, selector, outerHTML
-   *                       truncated to keep the prompt bounded).
+   * When present, the assembler renders the `<active-skills>` block into
+   * the system prompt right after `memory` and before `context`: for
+   * each pinned skill, the body from `profile.skills[i].content` is
+   * inlined. Lookups by `id` against `profile.skills[*].name`; unknown
+   * ids are silently skipped (the picker filters by loaded skills, so
+   * this is only hit on a stale chip whose skill was removed since the
+   * last refresh).
    *
    * Rebuilt per-turn since `assembleAgent` runs once per /run. Purely
    * additive — omitted in tests and any caller that doesn't yet ship
@@ -394,36 +316,16 @@ export interface AssembleOptions {
 
 /** Mirrors `gateway/types.ts:ActiveContextInput`. Kept private to the
  *  assembler boundary so the assembler is callable by direct-Loom
- *  consumers without importing gateway types. */
+ *  consumers without importing gateway types. (Design-system + canvas-
+ *  selection inputs were removed with the legacy desktop design
+ *  vertical — skills are the remaining per-turn pin.) */
 export interface ActiveContextInput {
   readonly skills?: readonly ActiveSkillRef[]
-  readonly designSystems?: readonly ActiveDesignSystemRef[]
-  readonly selection?: ActiveSelectionRef
 }
 
 export interface ActiveSkillRef {
   readonly id: string
   readonly name: string
-}
-
-export interface ActiveDesignSystemRef {
-  readonly id: string
-  readonly name: string
-  readonly category?: string
-  readonly surface?: string
-  readonly swatches?: readonly string[]
-  readonly summary?: string
-}
-
-export interface ActiveSelectionRef {
-  readonly tag: string
-  readonly selector: string
-  readonly outerHTML: string
-  /** Design-relative page the element lives on (e.g. `index.html`). */
-  readonly file?: string
-  /** Tokens the element's CSS references (+ current values). */
-  readonly appliedTokens?: readonly { readonly name: string; readonly value: string }[]
-  readonly url?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -496,8 +398,6 @@ export async function assembleAgent(
     mcpManager,
     mcpStubs,
     memoryContext,
-    options.paneRuntime ?? null,
-    options.board ?? null,
   )
 
   // 4. Run connector tool providers — the vendor-agnostic seam every
@@ -600,8 +500,6 @@ async function assembleTools(
   mcpManager: MCPManager | null,
   mcpStubs: Tool[],
   memoryContext: MemoryContext | null,
-  paneRuntime: AssembleOptions['paneRuntime'] | null,
-  board: AssembleOptions['board'] | null,
 ): Promise<Tool[]> {
   const toolsConfig = profile.config.tools
   let tools: Tool[] = []
@@ -682,56 +580,8 @@ async function assembleTools(
     tools.push(...createPlanTools())
   }
 
-  // a.6b) Cortex-shipped board tools — `board_write` / `board_update`.
-  //       The top rung of the work ladder. Same gating as the plan
-  //       tools (presets `coding` / `full`, or explicit allow), AND a
-  //       per-session `board` binding (store + workspace + thread) must
-  //       be wired — a board scopes to a workspace, so a run with no
-  //       workspace gets no board tools. Loom stays domain-neutral;
-  //       "boards" are a Cortex product convention. NOT pane-coupled —
-  //       the coder vertical never uses the pane host.
-  const boardAllowedByPreset =
-    toolsConfig.preset === 'full' || toolsConfig.preset === 'coding'
-  const boardExplicitlyAllowed =
-    toolsConfig.allow.includes('board_write') ||
-    toolsConfig.allow.includes('board_update')
-  if (
-    board != null &&
-    (boardAllowedByPreset || boardExplicitlyAllowed) &&
-    !tools.some(t => t.name === 'board_write')
-  ) {
-    tools.push(...createBoardTools(board))
-  }
-
-  // a.7) Cortex-shipped `open_pane` tool — wired per-session against
-  //      the gateway's pane substrate. Two gates:
-  //        1. The caller passed a paneRuntime (state + workspaceId).
-  //           Tests, CLI, and direct-Loom callers leave this unset
-  //           and get no pane tool — preserving pre-3.3 behaviour.
-  //        2. The profile permits at least one pane kind. The schema
-  //           defaults `panes.allowedKinds` to ['chat', 'markdown'],
-  //           so this gate is informational for hand-rolled profiles
-  //           that explicitly empty the array.
-  //      Injected BEFORE allow/deny so a profile that explicitly
-  //      denies `open_pane` (e.g. a sandbox profile) cleanly removes
-  //      the tool — same model as the plan tools above.
-  if (
-    paneRuntime != null &&
-    profile.config.panes.allowedKinds.length > 0 &&
-    !tools.some(t => t.name === 'open_pane')
-  ) {
-    tools.push(
-      createOpenPaneTool({
-        state: paneRuntime.state,
-        workspaceId: paneRuntime.workspaceId,
-        allowedKinds: profile.config.panes.allowedKinds,
-        defaultPlacement: profile.config.panes.defaultAgentPlacement,
-        ...(paneRuntime.activeThreadId !== undefined
-          ? { activeThreadId: paneRuntime.activeThreadId }
-          : {}),
-      }),
-    )
-  }
+  // (The desktop board tools + `open_pane` pane-substrate wiring were
+  // removed with the legacy desktop shell.)
 
   // b) Apply allow/deny policy (deny always wins).
   //
@@ -1780,27 +1630,20 @@ function createCheckpointStore(profile: LoadedProfile): CheckpointStore | null {
 }
 
 // ---------------------------------------------------------------------------
-// Active-context renderer (Slice A5b)
+// Active-context renderer
 // ---------------------------------------------------------------------------
 
-/** Maximum outerHTML bytes for the <active-selection> block before
- *  truncation. Enough to give the agent ~50 lines of HTML context
- *  without blowing past the system-prompt budget. */
-const ACTIVE_SELECTION_MAX_HTML_BYTES = 4_000
-
-/** Build the `<active-skills> / <active-design-systems> /
- *  <active-selection>` block for the current turn. Returns `null`
+/** Build the `<active-skills>` block for the current turn. Returns `null`
  *  when there's nothing to render — the assembler skips emit so the
- *  prompt stays byte-identical to the pre-A5b shape for legacy
- *  callers that don't pass `activeContext`.
+ *  prompt stays byte-identical for legacy callers that don't pass
+ *  `activeContext`.
  *
  *  Unknown skill ids are silently skipped (the chip store may have a
  *  stale id whose skill was removed between turns). Known skills
- *  inline `profile.skills[i].content` verbatim. DS entries inline the
- *  lightweight summary the picker already sent — the agent calls
- *  `apply_design_system` if it wants the full tokens. The selection
- *  block carries the iframe-bridge anchor truncated to a bounded byte
- *  budget. */
+ *  inline `profile.skills[i].content` verbatim. (The design-system and
+ *  canvas-selection blocks were removed with the legacy desktop design
+ *  vertical; vertical-specific context ships via the generic
+ *  `systemPromptAppend` passthrough instead.) */
 export function renderActiveContextFragment(
   profile: LoadedProfile,
   active: ActiveContextInput | undefined,
@@ -1808,94 +1651,30 @@ export function renderActiveContextFragment(
   if (active == null) return null
 
   const skills = active.skills ?? []
-  const designSystems = active.designSystems ?? []
-  const selection = active.selection ?? null
+  if (skills.length === 0) return null
 
-  if (skills.length === 0 && designSystems.length === 0 && selection == null) {
-    return null
-  }
-
-  const parts: string[] = []
-
-  // <active-skills>
-  if (skills.length > 0) {
-    const blocks: string[] = []
-    for (const ref of skills) {
-      const loaded = profile.skills.find((s) => s.name === ref.id)
-      if (!loaded) {
-        // Stale chip — skill no longer present in the loaded profile.
-        // Skip silently; logging in the prompt itself would be noise.
-        continue
-      }
-      const body = loaded.content.trim()
-      blocks.push(
-        `<skill name="${escapeAttr(ref.id)}">\n${body}\n</skill>`,
-      )
+  const blocks: string[] = []
+  for (const ref of skills) {
+    const loaded = profile.skills.find((s) => s.name === ref.id)
+    if (!loaded) {
+      // Stale chip — skill no longer present in the loaded profile.
+      // Skip silently; logging in the prompt itself would be noise.
+      continue
     }
-    if (blocks.length > 0) {
-      parts.push(
-        '<active-skills>\nThe user pinned these skills to the composer for this turn. Follow their rubric / framework on this response.\n\n' +
-          blocks.join('\n\n') +
-          '\n</active-skills>',
-      )
-    }
-  }
-
-  // <active-design-systems> — REMOVED in slice B1.8.B (2026-05-27).
-  //
-  // The Design vertical now owns this block client-side via
-  // `build-system-prompt-append.ts:renderActiveDesignSystems`. It
-  // bakes the full DESIGN.md + tokens.css verbatim each turn instead
-  // of the lightweight summary this branch used to emit (which forced
-  // the agent to call `apply_design_system` to actually see tokens).
-  //
-  // Per Principle 22 — cortex's shared assembler does not know about
-  // Design-specific block names. The block ships via the generic
-  // `systemPromptAppend` passthrough (Slice B10). The
-  // `activeContext.designSystems` typed input still flows through this
-  // schema so the wire stays available for non-Design clients (or
-  // future analytics) that want the chip metadata as a structured
-  // field — we just don't render the block from here anymore. The
-  // associated `<active-design-systems>` specs were removed from
-  // `tests/unit/assembler/active-context.test.ts` in the same slice.
-
-  // <active-selection>
-  if (selection != null) {
-    const html = truncateForPrompt(selection.outerHTML, ACTIVE_SELECTION_MAX_HTML_BYTES)
-    const fileLine = selection.file != null && selection.file !== ''
-      ? `\n  file: ${selection.file}`
-      : ''
-    const urlLine = selection.url != null && selection.url !== ''
-      ? `\n  url: ${selection.url}`
-      : ''
-    // The tokens this element already references (+ current values). With
-    // these, "change the colour" needs no styles.css read — the agent sees
-    // which token drives the element and `set_tokens` it (or scopes it).
-    const tokensLine =
-      selection.appliedTokens != null && selection.appliedTokens.length > 0
-        ? `\n  tokens: ${selection.appliedTokens
-            .map((t) => (t.value !== '' ? `${t.name}=${t.value}` : t.name))
-            .join(', ')}`
-        : ''
-    parts.push(
-      `<active-selection>\nThe user clicked an element in the canvas — this is the anchor for your next edit. Go straight to \`file\`: read ONLY that file (and \`styles.css\` if you need a token not listed below), find the element by its \`selector\` (a \`data-cx-id\` when present, else the body-relative path), and re-issue just that unit — \`write_component\` if it's a reusable \`parts/\` piece, \`write_page\` for a one-off region, or \`set_tokens\` for a shared colour/size. The \`tokens\` line lists the tokens this element already uses (and their current values), so a colour/size change usually needs no file read at all. Do NOT glob the folder or scan other pages; the file is named here. Default to changing only this element; if the change would touch a shared token used elsewhere, scope it or ask which the user means.\n\n  tag: ${selection.tag}\n  selector: ${selection.selector}${fileLine}${tokensLine}${urlLine}\n  outerHTML: |\n    ${indentMultiline(html, '    ')}\n</active-selection>`,
+    const body = loaded.content.trim()
+    blocks.push(
+      `<skill name="${escapeAttr(ref.id)}">\n${body}\n</skill>`,
     )
   }
+  if (blocks.length === 0) return null
 
-  return parts.length > 0 ? parts.join('\n\n') : null
+  return (
+    '<active-skills>\nThe user pinned these skills to the composer for this turn. Follow their rubric / framework on this response.\n\n' +
+    blocks.join('\n\n') +
+    '\n</active-skills>'
+  )
 }
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function truncateForPrompt(s: string, maxBytes: number): string {
-  // Byte-count via TextEncoder for correctness on multi-byte runs.
-  // For ASCII / common HTML this is effectively char count.
-  if (s.length <= maxBytes) return s
-  return s.slice(0, maxBytes) + `\n[…truncated to ${maxBytes} bytes]`
-}
-
-function indentMultiline(s: string, prefix: string): string {
-  return s.split('\n').join('\n' + prefix)
 }
