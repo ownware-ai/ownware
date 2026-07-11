@@ -29,3 +29,13 @@ export type {
 } from './types.js'
 
 export { initialChatState, chatReducer, applyEvents, addUserMessage } from './reducer.js'
+
+export type {
+  ToolUIKind,
+  ToolUISummary,
+  ToolUIPreview,
+  ToolUIOpenAction,
+  ToolUIDescriptor,
+  ToolRender,
+} from './descriptors.js'
+export { BUILTIN_DESCRIPTORS, describeToolCall } from './descriptors.js'

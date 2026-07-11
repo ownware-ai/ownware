@@ -84,6 +84,14 @@ export interface HealthResult {
   readonly [key: string]: unknown
 }
 
+/** One entry from GET /api/v1/profiles — a pickable agent. */
+export interface ProfileSummary {
+  readonly id: string
+  readonly name?: string
+  readonly description?: string
+  readonly [key: string]: unknown
+}
+
 /**
  * The minimal seam a channel adapter (or any driver) needs. `OwnwareClient`
  * implements it; tests substitute an in-memory fake.
@@ -203,6 +211,14 @@ export class OwnwareClient implements GatewayClient {
     const res = await this.doFetch(`${this.base}/api/v1/models`, { headers: this.headers(false) })
     if (!res.ok) throw new Error(`ownware /models failed: ${res.status} ${await safeText(res)}`)
     return (await res.json()) as ModelEntry[]
+  }
+
+  /** The profiles this gateway serves — the pickable agents (for a Studio-style shell). */
+  async profiles(): Promise<ProfileSummary[]> {
+    const res = await this.doFetch(`${this.base}/api/v1/profiles`, { headers: this.headers(false) })
+    if (!res.ok) throw new Error(`ownware /profiles failed: ${res.status} ${await safeText(res)}`)
+    const data = (await res.json()) as ProfileSummary[] | { profiles?: ProfileSummary[] }
+    return Array.isArray(data) ? data : (data.profiles ?? [])
   }
 
   /** Liveness — the one unauthenticated route. */

@@ -91,8 +91,15 @@ export const ownwareChatCss = `
   background: var(--ow-surface); overflow: hidden; }
 .ow-tool-head { display: flex; align-items: center; gap: 8px; padding: 8px 11px; }
 .ow-tool-name { font-family: var(--ow-mono); font-size: 12.5px; color: var(--ow-ink); }
-.ow-tool-arg { font-size: 12.5px; color: var(--ow-ink-3); min-width: 0; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
+.ow-tool-verb { font-size: 13px; font-weight: 600; color: var(--ow-ink); flex: none; }
+.ow-tool-arg { font-family: var(--ow-mono); font-size: 12px; color: var(--ow-ink-2); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ow-tool-line { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ow-ink-3); padding: 1px 2px; }
+.ow-tool-line .ow-tool-verb { font-size: 12.5px; font-weight: 600; color: var(--ow-ink-2); }
+.ow-tool-open { font-size: 11.5px; color: var(--ow-accent); text-decoration: none; flex: none; }
+.ow-tool-open:hover { text-decoration: underline; }
+.ow-diff-add { color: var(--ow-success); }
+.ow-diff-del { color: var(--ow-danger); }
 .ow-tool-status { margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
   font-size: 11.5px; color: var(--ow-ink-3); flex: none; }
 .ow-tool-status.done { color: var(--ow-success); }
@@ -145,4 +152,63 @@ export const ownwareChatCss = `
 @media (prefers-reduced-motion: reduce) {
   .ow-caret, .ow-spin { animation: none !important; }
 }
+`
+
+/** Styles for <OwnwareStudio> — the shell (sidebar + chat). Reuses the same
+ *  --ow-* tokens; inject alongside ownwareChatCss. */
+export const OW_STUDIO_STYLE_ID = 'ow-studio-styles'
+
+export const ownwareStudioCss = `
+.ow-studio {
+  --ow-bg: #0F0F0E; --ow-surface: #181817; --ow-surface-2: #1F1F1E;
+  --ow-hairline: rgba(255,255,255,.09); --ow-hairline-2: rgba(255,255,255,.16);
+  --ow-ink: #F4F3F0; --ow-ink-2: #B4B3AE; --ow-ink-3: #8C8B86;
+  --ow-accent: #93A9F9; --ow-accent-wash: rgba(147,169,249,.13);
+  --ow-action: #F4F3F0; --ow-on-action: #141414; --ow-action-hover: #E7E5E0;
+  --ow-font: "Instrument Sans","Helvetica Neue",Helvetica,system-ui,sans-serif;
+  --ow-mono: "IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  display: grid; grid-template-columns: 250px 1fr; height: 100%; width: 100%;
+  background: var(--ow-bg); color: var(--ow-ink); font-family: var(--ow-font); font-size: 15px;
+  border: 1px solid var(--ow-hairline); border-radius: 12px; overflow: hidden; box-sizing: border-box;
+}
+.ow-studio[data-ow-theme="light"] {
+  --ow-bg: #F4F3F0; --ow-surface: #FFFFFF; --ow-surface-2: #F0EFEC;
+  --ow-hairline: rgba(0,0,0,.10); --ow-hairline-2: rgba(0,0,0,.15);
+  --ow-ink: #141414; --ow-ink-2: #565654; --ow-ink-3: #83827E;
+  --ow-accent: #2A45C6; --ow-accent-wash: rgba(42,69,198,.08);
+  --ow-action: #141414; --ow-on-action: #F4F3F0; --ow-action-hover: #282827;
+}
+.ow-studio *, .ow-studio *::before, .ow-studio *::after { box-sizing: border-box; }
+.ow-studio button, .ow-studio select { font: inherit; cursor: pointer; }
+.ow-studio select { color: var(--ow-ink); }
+.ow-studio .ow-chat { border: none; border-radius: 0; height: 100%; }
+
+.ow-side { display: flex; flex-direction: column; min-height: 0; padding: 12px;
+  border-right: 1px solid var(--ow-hairline); background: var(--ow-surface); }
+.ow-side-brand { display: flex; align-items: center; gap: 8px; padding: 4px 6px 14px; }
+.ow-side-brand .ow-mark { width: 20px; height: 20px; color: var(--ow-accent); }
+.ow-side-brand b { font-weight: 700; letter-spacing: -.01em; }
+.ow-new { display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px;
+  border-radius: 8px; background: var(--ow-action); color: var(--ow-on-action);
+  font-weight: 600; font-size: 13.5px; border: none; }
+.ow-new:hover { background: var(--ow-action-hover); }
+.ow-side-label { font-family: var(--ow-mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ow-ink-3); padding: 14px 6px 5px; }
+.ow-profile { width: 100%; height: 34px; padding: 0 10px; border-radius: 7px;
+  background: var(--ow-bg); color: var(--ow-ink); border: 1px solid var(--ow-hairline);
+  font-size: 13.5px; }
+.ow-convos { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; margin-top: 4px; }
+.ow-convo { text-align: left; padding: 8px 10px; border-radius: 7px; font-size: 13.5px;
+  color: var(--ow-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  position: relative; border: none; background: none; width: 100%; }
+.ow-convo:hover { background: var(--ow-surface-2); }
+.ow-convo.active { background: var(--ow-accent-wash); color: var(--ow-ink); }
+.ow-convo.active::before { content: ""; position: absolute; left: 0; top: 50%; width: 2px;
+  height: 14px; margin-top: -7px; background: var(--ow-accent); border-radius: 2px; }
+.ow-side-foot { margin-top: auto; padding: 10px 6px 2px; font-size: 11px; color: var(--ow-ink-3);
+  border-top: 1px solid var(--ow-hairline); }
+.ow-side-foot b { color: var(--ow-ink-2); font-weight: 600; }
+.ow-main { min-width: 0; min-height: 0; display: flex; }
+.ow-main > * { flex: 1; min-width: 0; }
+.ow-hidden { display: none !important; }
 `

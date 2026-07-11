@@ -16,6 +16,12 @@ export type {
   AgentTransport,
 } from './useOwnwareAgent.js'
 
+export { OwnwareChat } from './components/OwnwareChat.js'
+export type { OwnwareChatProps } from './components/OwnwareChat.js'
+export { OwnwareStudio } from './components/OwnwareStudio.js'
+export type { OwnwareStudioProps, StudioProfile } from './components/OwnwareStudio.js'
+export { ownwareChatCss, ownwareStudioCss } from './components/styles.js'
+
 export type {
   ChatState,
   ChatStatus,

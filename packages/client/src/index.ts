@@ -23,6 +23,7 @@ export type {
   GatewayEvent,
   ResumeInput,
   ModelEntry,
+  ProfileSummary,
   HealthResult,
   GatewayClient,
   OwnwareClientOptions,
