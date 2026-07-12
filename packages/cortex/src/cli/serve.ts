@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { ollamaInstallHint } from '@ownware/loom'
 import { OwnwareGateway } from '../gateway/server.js'
+import { gatewayTokenPath } from '../gateway/token-store.js'
 import { pickRunnableDefaultModel } from '../gateway/catalog/models/index.js'
 
 export interface ServeFlags {
@@ -148,14 +149,15 @@ export async function serveCommand(argv: string[]): Promise<void> {
     console.log(`  Channels: ${channels.started.join(', ')}  (in-process — answering + schedule delivery)`)
   }
   if (!loopback) {
+    const tokenFile = gatewayTokenPath(gateway.dataDir)
     console.log()
     console.log('  Auth is ON (non-loopback bind). Clients need:')
-    console.log(`    Authorization: Bearer ${gateway.token}`)
-    console.log('  The token persists at <dataDir>/gateway-token (0600) across restarts.')
+    console.log('    Authorization: Bearer <token>')
+    console.log(`  Read the token from ${tokenFile} (0600); never paste it into shared logs.`)
   }
   console.log()
   console.log(`  Try it:  curl${scheme === 'https' ? ' -k' : ''} -X POST ${url}/api/v1/run \\`)
-  if (!loopback) console.log(`             -H "Authorization: Bearer ${gateway.token}" \\`)
+  if (!loopback) console.log('             -H "Authorization: Bearer <token>" \\')
   console.log("             -H 'Content-Type: application/json' \\")
   console.log(`             -d '{"profileId":"${exampleProfile}","prompt":"hello"}'`)
   console.log()

@@ -117,7 +117,6 @@ describe('rate limiting', () => {
   })
 
   it('returns 429 when rate limit exceeded', async () => {
-    // Start a new gateway with very low limits for testing
     const rlTempDir = await mkdtemp(join(tmpdir(), 'cortex-rl-test-'))
     const rlProfileDir = join(rlTempDir, 'profiles', 'mini')
     await mkdir(rlProfileDir, { recursive: true })
@@ -128,13 +127,48 @@ describe('rate limiting', () => {
       tools: { preset: 'none' },
     }))
 
-    // We can't easily override the rate limit per-gateway, so we'll
-    // test by creating a separate gateway. The default is 60/min.
-    // Instead, verify the 429 response format is correct by
-    // checking the gateway's rate limiter directly.
-    // The full rate limiting behavior is tested in unit tests.
+    const limited = new OwnwareGateway({
+      port: 0,
+      profilesDir: join(rlTempDir, 'profiles'),
+      dataDir: join(rlTempDir, 'data'),
+      tls: false,
+      disableAuth: false,
+      disableRateLimit: false,
+      disableAccessLog: true,
+    })
 
-    await rm(rlTempDir, { recursive: true, force: true })
+    try {
+      await limited.start()
+      const url = `http://127.0.0.1:${limited.port}/api/v1/run`
+      const request = () => fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${limited.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      })
+
+      for (let i = 0; i < 10; i++) {
+        expect((await request()).status).not.toBe(429)
+      }
+
+      const throttled = await request()
+      expect(throttled.status).toBe(429)
+      expect(throttled.headers.get('retry-after')).toMatch(/^\d+$/)
+      const correlationId = throttled.headers.get('x-ownware-correlation-id')
+      expect(correlationId).toMatch(/^[0-9a-f-]{36}$/)
+      await expect(throttled.json()).resolves.toMatchObject({
+        error: 'rate_limited',
+        message: 'Too many requests. Please slow down.',
+        category: 'rate_limit',
+        retryAfter: expect.any(Number),
+        correlationId,
+      })
+    } finally {
+      await limited.stop()
+      await rm(rlTempDir, { recursive: true, force: true })
+    }
   })
 })
 

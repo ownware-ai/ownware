@@ -135,15 +135,21 @@ export class HumanInTheLoop {
    * @param requestId - The request to respond to
    * @param approved - Whether to allow the action
    */
-  respond(requestId: string, approved: boolean): void {
+  respond(requestId: string, approved: boolean): boolean {
     const pending = this.pendingRequests.get(requestId)
-    if (!pending) return
+    if (!pending) return false
 
     clearTimeout(pending.timer)
     this.pendingRequests.delete(requestId)
     pending.resolve(approved)
 
     this.emitter.emit('approval_response', { requestId, approved })
+    return true
+  }
+
+  /** True only while this exact request can still be decided. */
+  hasPending(requestId: string): boolean {
+    return this.pendingRequests.has(requestId)
   }
 
   /**

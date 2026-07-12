@@ -25,7 +25,7 @@
  *   - It does not run any profile loaders
  */
 
-import { lstat, readdir, readlink } from 'node:fs/promises'
+import { lstat, readdir, realpath } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { InstallError } from './errors.js'
 
@@ -66,6 +66,7 @@ export interface TreeStats {
 
 export async function validateTree(opts: ValidateTreeOptions): Promise<TreeStats> {
   const root = resolve(opts.profileDir)
+  const realRoot = await realpath(root)
   const allowCustomCode = opts.allowCustomCode === true
   const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES
@@ -88,9 +89,13 @@ export async function validateTree(opts: ValidateTreeOptions): Promise<TreeStats
       // whose target resolves OUTSIDE the profile root is a path-escape
       // even if the file at the target happens to exist.
       if (entry.isSymbolicLink()) {
-        const linkTarget = await readlink(entryAbs)
-        const targetAbs = resolve(dirAbs, linkTarget)
-        if (!isInside(root, targetAbs)) {
+        let targetInside = false
+        try {
+          targetInside = isInside(realRoot, await realpath(entryAbs))
+        } catch {
+          // Dangling/unreadable links are not safe candidate material.
+        }
+        if (!targetInside) {
           pathEscapes.push(entryRel)
           continue
         }

@@ -24,6 +24,8 @@ export type InstallErrorCode =
   | 'unsupported_helper'
   | 'manifest_not_found'
   | 'profile_load_failed'
+  | 'profile_in_use'
+  | 'rollback_failed'
 
 export interface InstallErrorDetail {
   readonly invalid_url: { readonly url: string }
@@ -38,6 +40,11 @@ export interface InstallErrorDetail {
   readonly unsupported_helper: { readonly helper: string; readonly reason: string }
   readonly manifest_not_found: { readonly path: string }
   readonly profile_load_failed: { readonly profile: string; readonly reason: string }
+  readonly profile_in_use: { readonly profile: string }
+  readonly rollback_failed: {
+    readonly phase: 'install' | 'update' | 'fork' | 'cleanup'
+    readonly profiles: readonly string[]
+  }
 }
 
 /**
@@ -99,6 +106,12 @@ function defaultMessage<C extends InstallErrorCode>(
     case 'profile_load_failed': {
       const d = detail as InstallErrorDetail['profile_load_failed']
       return `Profile '${d.profile}' failed to load: ${d.reason}`
+    }
+    case 'profile_in_use':
+      return `Profile '${(detail as InstallErrorDetail['profile_in_use']).profile}' is active or has in-flight runs and cannot be uninstalled`
+    case 'rollback_failed': {
+      const d = detail as InstallErrorDetail['rollback_failed']
+      return `Profile ${d.phase} could not be rolled back completely for: ${d.profiles.join(', ')}`
     }
     default: {
       const exhaustive: never = code

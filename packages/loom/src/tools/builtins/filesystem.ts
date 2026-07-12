@@ -1204,28 +1204,10 @@ function globToRegex(pattern: string): RegExp {
 
 export const grep: Tool = defineTool({
   name: 'grep',
-  cacheKey: (input, ctx) => {
-    // grep can scan thousands of files, so we don't try to mtime each
-    // one — the cost would dwarf the cache win. Instead key by stable
-    // JSON of input + cwd. The (small) tradeoff: if the agent edits
-    // a file then re-runs the same grep within a session, the second
-    // call hits cached (potentially stale) output. In practice agents
-    // grep, then read the matching files individually — the readFile
-    // mtime check catches the staleness one level down. For the rare
-    // tasks where this matters, the agent can vary the grep input
-    // slightly to bypass the cache.
-    try {
-      const stable = JSON.stringify(
-        Object.keys(input).sort().reduce((acc, k) => {
-          (acc as Record<string, unknown>)[k] = (input as Record<string, unknown>)[k]
-          return acc
-        }, {} as Record<string, unknown>),
-      )
-      return `${ctx.cwd}|${stable}`
-    } catch {
-      return null
-    }
-  },
+  // Deliberately uncached: a directory-wide content version cannot be proven
+  // cheaply, and query+cwd caching returned removed matches after file edits.
+  // Durable source indexes use immutable version IDs; raw filesystem grep does
+  // not get to imitate that guarantee.
   description:
     'Search file contents. Returns matching lines with file paths and line numbers.\n' +
     '- Powered by ripgrep: fast, parallel, and respects .gitignore by default (set no_ignore: true to override).\n' +

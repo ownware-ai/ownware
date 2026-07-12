@@ -13,11 +13,15 @@ import { resolve, join } from 'node:path'
 import { mkdirSync, existsSync, writeFileSync, unlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { DEFAULT_DATA_DIR_NAME } from '../constants.js'
-import { Router } from './router.js'
+import { Router, sendError } from './router.js'
 import { GatewayState } from './state.js'
 import { ProfileRegistry } from '../profile/registry.js'
 import { migrateMarketplaceInstalledNames } from '../profile/ownware-bundle.js'
-import { generateSessionToken, createAuthMiddleware } from './middleware/auth.js'
+import { generateSessionToken } from './middleware/auth.js'
+import { createPrincipalAuthMiddleware } from './auth/principal-middleware.js'
+import { DelegatedPrincipalStore, ScopedPrincipalService } from './auth/scoped-principal.js'
+import { RunIdempotencyStore } from './idempotency.js'
+import { GatewayRunStore } from './run-store.js'
 import { createHostGuard } from './middleware/host-guard.js'
 import { loadOrCreateGatewayToken, gatewayTokenPath } from './token-store.js'
 import { isOllamaReachable, PROVIDER_ENV_HINTS } from '@ownware/loom'
@@ -26,6 +30,27 @@ import type { RateLimiter } from './middleware/rate-limit.js'
 import { createAccessLogger } from './middleware/access-log.js'
 import type { AccessLogger } from './middleware/access-log.js'
 import { healthHandler, appVersionHandler, connectivityHandler } from './handlers/health.js'
+import { createCapabilitiesHandler } from './handlers/capabilities.js'
+import {
+  createActivateCandidateHandler,
+  createDeleteCandidateHandler,
+  createGetCandidateHandler,
+  createGetDeploymentHandler,
+  createListCandidatesHandler,
+  createPauseProfileHandler,
+  createRollbackCandidateHandler,
+  createResumeProfileHandler,
+  createStageCandidateHandler,
+  validateCandidate,
+} from './handlers/candidates.js'
+import { CandidateStore } from './candidate-store.js'
+import { CandidateStager } from '../profile/candidate-stager.js'
+import { CandidateRetirer } from '../profile/candidate-retirer.js'
+import {
+  CandidateActivator,
+  CandidateDeploymentManager,
+  CandidateProfileResolver,
+} from '../profile/candidate-activation.js'
 import { createProfileHandlers } from './handlers/profiles.js'
 import { createSkillHandlers } from './handlers/profile-skills.js'
 import { PendingReconciles } from './pending-reconcile.js'
@@ -117,6 +142,22 @@ import { createActivityHandlers } from './handlers/activity.js'
 import { createAgentEventHandlers } from './handlers/agent-events.js'
 import { createPermissionHandlers } from './handlers/permissions.js'
 import { createMarketplaceHandlers } from './handlers/marketplace.js'
+import { recoverInterruptedProfileUpdates } from '../profile/update/index.js'
+import { createPrincipalHandlers } from './handlers/principals.js'
+import {
+  createGetSourceHandler,
+  createListSourcesHandler,
+  createRegisterSourceHandler,
+} from './handlers/sources.js'
+import { SourceStore } from './source-store.js'
+import { SourceUploadStore } from './source-upload-store.js'
+import {
+  createCompleteSourceUploadHandler,
+  createGetSourceVersionHandler,
+  createSourceUploadSessionHandler,
+  createWriteSourceUploadChunkHandler,
+} from './handlers/source-uploads.js'
+import { SourceByteStore } from './source-byte-store.js'
 import { SessionRunner } from './session-runner.js'
 import { loadRetentionConfig, startRetentionSchedule, runRetentionOnce, type RetentionStats } from './retention.js'
 
@@ -241,6 +282,9 @@ export class OwnwareGateway {
    * regardless of env/opts.
    */
   private readonly authDisabled: boolean
+  readonly principalService: ScopedPrincipalService
+  readonly runIdempotency: RunIdempotencyStore
+  readonly runStore: GatewayRunStore
   /**
    * Background run manager. Owns the generator iteration lifecycle
    * so agent runs survive SSE disconnects, tab closes, and refreshes.
@@ -516,7 +560,13 @@ export class OwnwareGateway {
     this._token = authDisabled ? generateSessionToken() : loadOrCreateGatewayToken(dataDir)
     this.router = new Router()
     this.state = new GatewayState(effectiveDbPath)
-    this.runner = new SessionRunner(this.state)
+    this.principalService = new ScopedPrincipalService({
+      ownerToken: this._token,
+      store: new DelegatedPrincipalStore(this.state.rawDbHandle),
+    })
+    this.runIdempotency = new RunIdempotencyStore(this.state.rawDbHandle)
+    this.runStore = new GatewayRunStore(this.state.rawDbHandle, this._token)
+    this.runner = new SessionRunner(this.state, this.runStore)
     this.registry = new ProfileRegistry()
     this.connectorStatusBus = createConnectorStatusBus()
     this.credentialEventBus = createCredentialEventBus()
@@ -622,14 +672,12 @@ export class OwnwareGateway {
     // DISABLED on loopback (audit Hazard 24, see GatewayOptions doc);
     // FORCED ON for any non-loopback bind.
     if (!this.authDisabled) {
-      const tokenPreview = this._token.slice(0, 8)
       console.warn(
         '[ownware] auth middleware ENABLED — clients must include ' +
           '`Authorization: Bearer <token>`. Read the token from ' +
           `\`${gatewayTokenPath(dataDir)}\` (0600) or \`gateway.token\` in-process. ` +
           'Never paste it into shared logs.',
       )
-      console.warn(`[ownware] session token (redacted): ${tokenPreview}…`)
     }
 
     // Wire middleware chain: host guard (non-loopback) → auth → rate limit
@@ -637,7 +685,11 @@ export class OwnwareGateway {
       // DNS-rebinding guard — see middleware/host-guard.ts.
       this.router.use(createHostGuard({ allowedHosts: opts.allowedHosts ?? [] }))
     }
-    this.router.use(createAuthMiddleware(this._token, { disabled: this.authDisabled }))
+    this.router.use(createPrincipalAuthMiddleware(
+      this._token,
+      this.principalService,
+      { disabled: this.authDisabled },
+    ))
 
     // Rate limiting and access logging are auto-disabled in test mode
     // (when dbPath is explicitly set). Override with explicit true/false.
@@ -1042,6 +1094,13 @@ export class OwnwareGateway {
     // 0. Ensure the user profiles dir exists. Bundled is read-only.
     const globalProfilesDir = join(this.opts.dataDir, 'profiles')
     mkdirSync(globalProfilesDir, { recursive: true })
+    const profileRecovery = await recoverInterruptedProfileUpdates(this.opts.dataDir)
+    if (profileRecovery.restored > 0 || profileRecovery.finalized > 0) {
+      console.log(
+        `  profiles: recovered ${profileRecovery.restored} interrupted replacement(s), ` +
+        `finalized ${profileRecovery.finalized} completed replacement(s)`,
+      )
+    }
 
     // Run boot-time credential migrations (currently: file vault
     // import). LLM keys live in the credentials store from the moment
@@ -1230,6 +1289,10 @@ export class OwnwareGateway {
     //     crash or unclean shutdown. No in-memory runtime survives a
     //     restart, so every 'active' thread is a zombie.
     try {
+      const recoveredRuns = this.runStore.recoverInterrupted()
+      if (recoveredRuns > 0) {
+        console.log(`  runs: marked ${recoveredRuns} interrupted run(s) indeterminate after restart`)
+      }
       const recovered = this.state.recoverOrphanedThreads()
       if (recovered > 0) {
         console.log(
@@ -1296,6 +1359,24 @@ export class OwnwareGateway {
 
     bootLap('connector reconcile bus setup')
 
+    // Recover upload staging before any route can accept more bytes. Bytes
+    // beyond a durable SQLite checkpoint are crash residue and are truncated;
+    // a shorter file remains untouched so the next scoped write reports the
+    // explicit storage-inconsistent state rather than inventing progress.
+    const sourceRecoveryStore = new SourceUploadStore(this.state.rawDbHandle)
+    const sourceRecoveryBytes = new SourceByteStore(
+      join(this.opts.dataDir, 'source-storage'),
+    )
+    const inconsistentUploads = await sourceRecoveryBytes.recoverOpenUploads(
+      sourceRecoveryStore.listOpenCheckpoints(),
+    )
+    if (inconsistentUploads.length > 0) {
+      console.warn(
+        `[ownware] source uploads: ${inconsistentUploads.length} open upload(s) have fewer staged bytes than their durable checkpoint`,
+      )
+    }
+    bootLap('source upload recovery')
+
     // 3. Register routes
     this.registerRoutes()
     bootLap('registerRoutes')
@@ -1328,11 +1409,10 @@ export class OwnwareGateway {
       res: ServerResponse,
     ): void => {
       const start = Date.now()
-      this.router.handle(req, res).catch(err => {
-        console.error('Unhandled gateway error:', err)
+      this.router.handle(req, res).catch(_err => {
+        console.error('[ownware] unhandled gateway request failure')
         if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: 'internal_error', message: 'Internal server error' }))
+          sendError(res, 500, 'Internal server error', 'internal_error')
         }
       }).finally(() => {
         if (this.accessLogger) {
@@ -1689,11 +1769,38 @@ export class OwnwareGateway {
     // All profile WRITE operations target the user dir. The bundled
     // `opts.profilesDir` is read-only and must never be mutated at runtime.
     const userProfilesDir = join(this.opts.dataDir, 'profiles')
+    const candidateStore = new CandidateStore(this.state.rawDbHandle)
+    const sourceStore = new SourceStore(this.state.rawDbHandle)
+    const sourceUploadStore = new SourceUploadStore(this.state.rawDbHandle)
+    const sourceByteStore = new SourceByteStore(join(this.opts.dataDir, 'source-storage'))
+    candidateStore.recoverInterrupted()
+    const candidateResolver = new CandidateProfileResolver({
+      candidatesRoot: join(this.opts.dataDir, 'profile-candidates'),
+      store: candidateStore,
+    })
+    const candidateStager = new CandidateStager({
+      candidatesRoot: join(this.opts.dataDir, 'profile-candidates'),
+      store: candidateStore,
+    })
+    const candidateRetirer = new CandidateRetirer({
+      candidatesRoot: join(this.opts.dataDir, 'profile-candidates'),
+      store: candidateStore,
+    })
+    const candidateActivator = new CandidateActivator({
+      store: candidateStore,
+      resolver: candidateResolver,
+    })
+    const candidateDeployment = new CandidateDeploymentManager({
+      store: candidateStore,
+      resolver: candidateResolver,
+      activeRunCount: (profileId) => this.runStore.countActiveForProfile(profileId),
+    })
     const profiles = createProfileHandlers(
       this.registry,
       userProfilesDir,
       this.state,
       this.pendingReconciles,
+      candidateStore,
     )
     const skills = createSkillHandlers(this.registry, userProfilesDir)
     const threads = createThreadHandlers(this.state, { runner: this.runner })
@@ -1760,6 +1867,10 @@ export class OwnwareGateway {
       }),
     ]
     const run = createRunHandlers(this.state, this.registry, this.runner, {
+      runStore: this.runStore,
+      idempotencyStore: this.runIdempotency,
+      candidateResolver,
+      candidateStore,
       webSearchService: this.webSearchService,
       taskStore: this.taskStore,
       credentialStore: this.credentialStore,
@@ -1875,11 +1986,114 @@ export class OwnwareGateway {
     const transcribe = createTranscribeHandlers({ store: this.credentialStore })
     const searchHandlers = createSearchHandlers(this.state, this.registry)
     const activity = createActivityHandlers(this.state)
-    const agentEvents = createAgentEventHandlers(this.state)
+    const agentEvents = createAgentEventHandlers(this.state, this.runStore)
     const permissions = createPermissionHandlers(this.state)
+    const principals = createPrincipalHandlers({
+      state: this.state,
+      registry: this.registry,
+      service: this.principalService,
+      authEnabled: !this.authDisabled,
+      candidateStore,
+    })
 
     // Health
     this.router.get('/api/v1/health', healthHandler)
+    // Deliberate public contract discovery. This is not a route inventory.
+    this.router.get(
+      '/api/v1/capabilities',
+      createCapabilitiesHandler(() => this.rateLimiter?.limits ?? {
+        enabled: false,
+        windowSeconds: 60,
+        generalRequests: 0,
+        runStarts: 0,
+      }),
+      { operation: 'gateway.capabilities' },
+    )
+    this.router.post('/api/v1/auth/delegations', principals.issue)
+    this.router.post('/api/v1/auth/delegations/:tokenId/revoke', principals.revoke)
+    this.router.post(
+      '/api/v1/sources',
+      createRegisterSourceHandler(sourceStore, this.runIdempotency),
+      { operation: 'sources.register' },
+    )
+    this.router.get(
+      '/api/v1/sources',
+      createListSourcesHandler(sourceStore),
+      { operation: 'sources.list' },
+    )
+    this.router.get(
+      '/api/v1/sources/:sourceId',
+      createGetSourceHandler(sourceStore),
+      { operation: 'sources.read' },
+    )
+    this.router.post(
+      '/api/v1/sources/:sourceId/upload-sessions',
+      createSourceUploadSessionHandler(
+        sourceStore, sourceUploadStore, this.runIdempotency,
+      ),
+      { operation: 'source_uploads.create' },
+    )
+    this.router.patch(
+      '/api/v1/source-uploads/:uploadId',
+      createWriteSourceUploadChunkHandler(sourceUploadStore, sourceByteStore),
+      { operation: 'source_uploads.write' },
+    )
+    this.router.post(
+      '/api/v1/source-uploads/:uploadId/complete',
+      createCompleteSourceUploadHandler(sourceUploadStore, sourceByteStore),
+      { operation: 'source_uploads.complete' },
+    )
+    this.router.get(
+      '/api/v1/sources/:sourceId/versions/:sourceVersionId',
+      createGetSourceVersionHandler(sourceUploadStore),
+      { operation: 'source_versions.read' },
+    )
+    this.router.post('/api/v1/candidates/validate', validateCandidate, { operation: 'candidates.validate' })
+    this.router.post(
+      '/api/v1/candidates/stage',
+      createStageCandidateHandler(candidateStager),
+      { operation: 'candidates.stage' },
+    )
+    this.router.post(
+      '/api/v1/candidates/activate',
+      createActivateCandidateHandler(candidateActivator),
+      { operation: 'candidates.activate' },
+    )
+    this.router.post(
+      '/api/v1/candidates/rollback',
+      createRollbackCandidateHandler(candidateActivator),
+      { operation: 'candidates.rollback' },
+    )
+    this.router.get(
+      '/api/v1/profile-candidates/:candidateId',
+      createGetCandidateHandler(candidateStore),
+      { operation: 'candidates.read' },
+    )
+    this.router.delete(
+      '/api/v1/profile-candidates/:candidateId',
+      createDeleteCandidateHandler(candidateRetirer, candidateStore),
+      { operation: 'candidates.delete' },
+    )
+    this.router.get(
+      '/api/v1/profiles/:profileId/candidates',
+      createListCandidatesHandler(candidateStore),
+      { operation: 'candidates.list' },
+    )
+    this.router.get(
+      '/api/v1/profiles/:profileId/deployment',
+      createGetDeploymentHandler(candidateStore, this.runStore),
+      { operation: 'profiles.deployment.read' },
+    )
+    this.router.post(
+      '/api/v1/profiles/:profileId/pause',
+      createPauseProfileHandler(candidateDeployment, this.runIdempotency),
+      { operation: 'profiles.pause' },
+    )
+    this.router.post(
+      '/api/v1/profiles/:profileId/resume',
+      createResumeProfileHandler(candidateDeployment, this.runIdempotency),
+      { operation: 'profiles.resume' },
+    )
     // Canonical product catalog — cortex-owned, read by every client.
 
     // Multiplexed gateway invalidation SSE channel (production-perf
@@ -1904,7 +2118,7 @@ export class OwnwareGateway {
     this.router.get('/api/v1/events', gatewayEventsHandler.streamGatewayEvents)
 
     // Profiles
-    this.router.get('/api/v1/profiles', profiles.listProfiles)
+    this.router.get('/api/v1/profiles', profiles.listProfiles, { operation: 'profiles.list' })
     // Static `/profiles/zones` MUST precede `/profiles/:profileId` — the
     // router matches in registration order, so otherwise "zones" would be
     // captured as a profileId.
@@ -1925,6 +2139,10 @@ export class OwnwareGateway {
       dataDir: this.opts.dataDir,
       registry: this.registry,
       ownwareBundleDir: this.opts.profilesDir,
+      canUninstallProfile: (profileId) =>
+        candidateStore.getActive(profileId) === null &&
+        this.runStore.countActiveForProfile(profileId) === 0 &&
+        !this.state.hasActiveRuntime(profileId),
       ...(process.env['OWNWARE_BUNDLE_VERSION'] !== undefined
         ? { ownwareBundleVersion: process.env['OWNWARE_BUNDLE_VERSION'] }
         : {}),
@@ -2032,10 +2250,19 @@ export class OwnwareGateway {
 
     // Run — POST /run starts a background agent, returns { threadId }.
     // Client connects to GET /threads/:tid/agents/root/events for SSE.
-    this.router.post('/api/v1/run', run.run)
-    this.router.post('/api/v1/threads/:threadId/resume', run.resume)
-    this.router.post('/api/v1/threads/:threadId/abort', run.abort)
+    this.router.post('/api/v1/run', run.run, { operation: 'runs.start' })
+    // Literal route must precede /runs/:runId or "active" is parsed as an ID.
     this.router.get('/api/v1/runs/active', run.listActiveRuns)
+    this.router.get('/api/v1/runs/:runId', run.getRun, { operation: 'runs.snapshot' })
+    this.router.get('/api/v1/runs/:runId/events', agentEvents.streamRunEvents, { operation: 'runs.events' })
+    this.router.post('/api/v1/threads/:threadId/resume', run.resume, { operation: 'runs.resume.legacy' })
+    this.router.post(
+      '/api/v1/runs/:runId/permissions/:requestId/decision',
+      run.decidePermission,
+      { operation: 'runs.resume' },
+    )
+    this.router.post('/api/v1/runs/:runId/cancel', run.cancelRun, { operation: 'runs.abort' })
+    this.router.post('/api/v1/threads/:threadId/abort', run.abort, { operation: 'runs.abort.legacy' })
     this.router.get('/api/v1/threads/:threadId/workspace-roots', run.listWorkspaceRoots)
     this.router.delete('/api/v1/threads/:threadId/workspace-roots', run.revokeWorkspaceRoot)
 
@@ -2112,7 +2339,11 @@ export class OwnwareGateway {
     // on POST /api/v1/run, so each agent's full event log can be
     // rendered independently.
     this.router.get('/api/v1/threads/:threadId/agents', agentEvents.listThreadAgents)
-    this.router.get('/api/v1/threads/:threadId/agents/:agentId/events', agentEvents.streamAgentEvents)
+    this.router.get(
+      '/api/v1/threads/:threadId/agents/:agentId/events',
+      agentEvents.streamAgentEvents,
+      { operation: 'runs.events' },
+    )
     this.router.get('/api/v1/threads/:threadId/agents/:agentId/events/history', agentEvents.getAgentEventHistory)
 
     // Retention admin — force a retention pass and read the last result.

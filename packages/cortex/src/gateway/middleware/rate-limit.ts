@@ -25,7 +25,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { sendJSON } from '../router.js'
+import { sendError } from '../router.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -86,8 +86,16 @@ interface Bucket {
 export interface RateLimiter {
   /** Middleware function. Returns true if allowed, false if rate-limited (response sent). */
   check(req: IncomingMessage, res: ServerResponse): boolean
+  readonly limits: RateLimitDescriptor
   /** Stop the cleanup timer (for graceful shutdown). */
   stop(): void
+}
+
+export interface RateLimitDescriptor {
+  readonly enabled: boolean
+  readonly windowSeconds: 60
+  readonly generalRequests: number
+  readonly runStarts: number
 }
 
 export function createRateLimiter(opts?: {
@@ -107,6 +115,12 @@ export function createRateLimiter(opts?: {
   if (opts?.disabled === true || DISABLE_VIA_ENV) {
     return {
       check: () => true,
+      limits: {
+        enabled: false,
+        windowSeconds: 60,
+        generalRequests: 0,
+        runStarts: 0,
+      },
       stop: () => { /* no-op */ },
     }
   }
@@ -173,11 +187,14 @@ export function createRateLimiter(opts?: {
       const retryAfterSec = Math.ceil((tokensNeeded / bucket.maxTokens) * (REFILL_INTERVAL_MS / 1000))
 
       res.setHeader('Retry-After', String(retryAfterSec))
-      sendJSON(res, 429, {
-        error: 'rate_limited',
-        message: 'Too many requests. Please slow down.',
-        retryAfter: retryAfterSec,
-      })
+      sendError(
+        res,
+        429,
+        'Too many requests. Please slow down.',
+        'rate_limited',
+        'rate_limit',
+        { retryAfter: retryAfterSec },
+      )
       return false
     }
 
@@ -189,5 +206,14 @@ export function createRateLimiter(opts?: {
     clearInterval(cleanupTimer)
   }
 
-  return { check, stop }
+  return {
+    check,
+    limits: {
+      enabled: true,
+      windowSeconds: 60,
+      generalRequests: generalLimit,
+      runStarts: runLimit,
+    },
+    stop,
+  }
 }

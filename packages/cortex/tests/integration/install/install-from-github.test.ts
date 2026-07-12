@@ -405,6 +405,27 @@ describe('installProfileFromGithub: rejection paths', () => {
 })
 
 describe('installProfileFromGithub: atomicity', () => {
+  it('removes a target that landed before sidecar creation failed', async () => {
+    if (!gitOk) return
+    const bare = await makeBareRepo()
+    await bare.pushFiles({
+      'cortex.profile.json': JSON.stringify({
+        schema: 1,
+        id: 'acme/finance',
+        summary: 's',
+        profiles: [{ name: 'finance', path: 'profiles/finance' }],
+      }),
+      'profiles/finance/agent.json': JSON.stringify({ name: 'finance' }),
+      // A directory at the reserved sidecar path makes the atomic sidecar
+      // rename fail after the profile directory itself has already landed.
+      'profiles/finance/.ownware-origin.json/blocker': 'reserved',
+    })
+    const dataDir = await makeTempDir('cortex-data-')
+
+    await expect(installFromBare({ bare, dataDir })).rejects.toBeDefined()
+    expect(await fileExists(join(dataDir, 'profiles', 'acme__finance__finance'))).toBe(false)
+  })
+
   it('rolls back already-placed profiles when one fails mid-install', async () => {
     if (!gitOk) return
     const bare = await makeBareRepo()

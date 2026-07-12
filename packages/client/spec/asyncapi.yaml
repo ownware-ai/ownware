@@ -1,13 +1,13 @@
 # The Ownware gateway wire contract — SSE event vocabulary, v1.
 #
 # Companion to openapi.yaml. Every frame on
-# GET /api/v1/threads/{threadId}/agents/root/events is one JSON object
+# GET /api/v1/runs/{runId}/events is one JSON object
 # carrying `type` and `seq`. `seq` is the resume cursor: reconnect with
 # ?since=<highest seen> and the stream resumes without replaying.
 #
 # THE TERMINATION RULE (the one thing every consumer must know): the
-# root stream NEVER closes on its own — a new POST /run may arrive any
-# time. One run's reply is finished at:
+# run-scoped stream closes after its bounded terminal event. One run's reply
+# is finished at:
 #   - turn.end whose stopReason is NOT tool_use / pause_turn, or
 #   - turn.interrupted, error, or stream.shutdown.
 # @ownware/client's streamReply() encodes exactly this.
@@ -15,11 +15,11 @@
 asyncapi: 3.0.0
 info:
   title: Ownware Gateway — run event stream
-  version: 0.1.0
+  version: 0.17.0
 
 channels:
   runEvents:
-    address: /api/v1/threads/{threadId}/agents/root/events
+    address: /api/v1/runs/{runId}/events
     messages:
       textDelta:
         name: text.delta
@@ -57,16 +57,18 @@ channels:
       permissionRequest:
         name: permission.request
         summary: >
-          Run paused, awaiting approval. Answer via POST
-          /threads/{threadId}/resume {"action":"approve"|"deny"}.
+          Run paused, awaiting an exact decision. Answer via POST
+          /runs/{runId}/permissions/{requestId}/decision with the emitted
+          operationHash.
         payload:
           type: object
-          required: [type, seq, toolName]
+          required: [type, seq, toolName, requestId, operationHash]
           properties:
             type: { const: permission.request }
             seq: { type: integer }
             toolName: { type: string }
             requestId: { type: string }
+            operationHash: { type: string, pattern: '^[0-9a-f]{64}$' }
       turnEnd:
         name: turn.end
         summary: >
@@ -105,8 +107,8 @@ channels:
         name: stream.shutdown
         summary: >
           Gateway is closing THIS socket (e.g. slow_consumer). TERMINAL
-          for the connection — re-hydrate, then reconnect only if the
-          thread is still running.
+          for the connection — re-hydrate the run snapshot, then reconnect
+          only if that run is still non-terminal.
         payload:
           type: object
           required: [type, seq]

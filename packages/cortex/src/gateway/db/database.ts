@@ -448,6 +448,25 @@ export class CortexDatabase {
     return row.max_seq
   }
 
+  /** Earliest retained seq inside one run's exclusive/inclusive bounds. */
+  getAgentEventMinSeq(
+    threadId: string,
+    agentId: string,
+    afterSeq: number,
+    throughSeq?: number,
+  ): number | null {
+    const row = throughSeq === undefined
+      ? this.db.prepare(`
+          SELECT MIN(seq) AS min_seq FROM agent_events
+          WHERE thread_id = ? AND agent_id = ? AND seq > ?
+        `).get(threadId, agentId, afterSeq) as { min_seq: number | null }
+      : this.db.prepare(`
+          SELECT MIN(seq) AS min_seq FROM agent_events
+          WHERE thread_id = ? AND agent_id = ? AND seq > ? AND seq <= ?
+        `).get(threadId, agentId, afterSeq, throughSeq) as { min_seq: number | null }
+    return row.min_seq
+  }
+
   /**
    * Highest seq of a `turn.end` event on the agent's stream, or 0 if no
    * turn has ever closed. The client uses this as the SSE `?since` cursor

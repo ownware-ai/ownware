@@ -8,8 +8,9 @@
  *
  *   import { OwnwareClient } from '@ownware/client'
  *   const ownware = new OwnwareClient({ baseUrl: 'http://localhost:4000', token })
- *   const { threadId } = await ownware.run({ profileId: 'assistant', prompt: 'hello' })
- *   for await (const ev of ownware.streamReply(threadId)) {
+ *   const { runId } = await ownware.run({ profileId: 'assistant', prompt: 'hello' })
+ *   if (!runId) throw new Error('Gateway does not support run snapshots')
+ *   for await (const ev of ownware.streamReply(runId)) {
  *     if (ev.type === 'delta') process.stdout.write(ev.text)
  *   }
  *
@@ -18,18 +19,64 @@
 
 export type {
   RunInput,
+  RunAttachmentInput,
   RunResult,
+  DurableRunStatus,
+  RunSnapshot,
   StreamReplyOptions,
   GatewayEvent,
   ResumeInput,
+  PermissionDecisionInput,
+  PermissionDecisionResult,
+  RunCancellationResult,
   ModelEntry,
   ProfileSummary,
   HealthResult,
+  GatewayContractDescriptor,
+  GatewayCapability,
+  PublicGatewayLimits,
+  CapabilityRequirements,
+  CapabilityNegotiationResult,
+  IssueDelegationInput,
+  DelegatedPrincipal,
+  IssueDelegationResult,
+  CandidateUploadFile,
+  ValidateCandidateInput,
+  CandidateFinding,
+  CandidateValidationResult,
+  StageCandidateInput,
+  CandidateStageResult,
+  ActivateCandidateInput,
+  CandidateActivationResult,
+  CandidateRollbackResult,
+  ProfileRoutingState,
+  ProfileDeploymentHealth,
+  ProfileDeploymentMutationInput,
+  ProfileDeploymentResult,
+  CandidatePublicState,
+  CandidateStatus,
+  CandidateList,
+  ProfileDeploymentStatus,
+  CandidateDeletionResult,
+  SourceKind,
+  SourceClassification,
+  SourceAuthority,
+  RegisterSourceInput,
+  SourceHealth,
+  SourceManifest,
+  SourceListOptions,
+  SourceList,
+  CreateSourceUploadSessionInput,
+  SourceUploadSession,
+  WriteSourceUploadChunkInput,
+  SourceUploadChunkResult,
+  SourceVersionManifest,
+  SourceUploadCompletionResult,
   GatewayClient,
   OwnwareClientOptions,
   HttpGatewayClientOptions,
 } from './client.js'
-export { OwnwareClient, HttpGatewayClient } from './client.js'
+export { OwnwareClient, OwnwareError, HttpGatewayClient } from './client.js'
 
 export type { RunStreamEvent } from './run-stream.js'
 export { interpretSseEvent } from './run-stream.js'

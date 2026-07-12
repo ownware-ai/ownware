@@ -19,6 +19,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { sendError } from './router.js'
 
 const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
 const ALLOWED_HEADERS = 'Content-Type, Authorization'
@@ -75,11 +76,7 @@ export function handleCORS(
   // Block mutating requests from disallowed origins. This catches
   // cross-origin form POSTs and sendBeacon calls that skip preflight.
   if (!allowed && MUTATING_METHODS.has(method)) {
-    res.writeHead(403, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({
-      error: 'forbidden_origin',
-      message: 'Cross-origin request blocked',
-    }))
+    sendError(res, 403, 'Cross-origin request blocked', 'forbidden_origin', 'auth')
     return true
   }
 

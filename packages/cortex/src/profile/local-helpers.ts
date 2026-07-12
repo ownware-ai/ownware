@@ -17,6 +17,7 @@
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadProfile, type LoadedProfile } from './loader.js'
+import { resolveContainedProfilePath } from './path-containment.js'
 
 /**
  * If `<parentDir>/helpers/<name>/agent.json` (or `.yaml`/`.yml`) exists,
@@ -34,7 +35,11 @@ export async function resolveLocalHelperDir(
   // Defensive: refuse names that could traverse out of helpers/.
   if (!isSafeHelperName(helperName)) return null
 
-  const helperDir = join(parentDir, 'helpers', helperName)
+  const helperDir = await resolveContainedProfilePath(
+    parentDir,
+    join('helpers', helperName),
+    'Local helper path',
+  )
   for (const filename of ['agent.json', 'agent.yaml', 'agent.yml']) {
     if (await fileExists(join(helperDir, filename))) {
       return helperDir

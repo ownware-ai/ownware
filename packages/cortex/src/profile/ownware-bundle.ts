@@ -30,6 +30,7 @@ import { z } from 'zod'
 import { hashProfileDir } from './dir-hash.js'
 import { loadProfile, type LoadedProfile } from './loader.js'
 import { atomicWriteJson } from './install/atomic-write.js'
+import { InstallError } from './install/errors.js'
 import {
   ORIGIN_SIDECAR_FILE,
   type OriginSidecar,
@@ -355,19 +356,31 @@ export class OwnwareBundle {
     }
 
     await mkdir(this.userDir, { recursive: true })
-    await cp(sourceDir, targetDir, { recursive: true })
+    // The target is considered touched before copy begins: cp, hashing, or
+    // sidecar creation can all fail after leaving bytes behind.
+    try {
+      await cp(sourceDir, targetDir, { recursive: true })
 
-    const installedHash = await hashProfileDir(targetDir)
-    const sidecar: OriginSidecarOwnwareBundle = {
-      kind: 'ownware-marketplace',
-      profileName: name,
-      bundledFrom: this.bundledFrom,
-      bundleVersion: this.bundleVersion,
-      installedAt: new Date().toISOString(),
-      installedHash,
+      const installedHash = await hashProfileDir(targetDir)
+      const sidecar: OriginSidecarOwnwareBundle = {
+        kind: 'ownware-marketplace',
+        profileName: name,
+        bundledFrom: this.bundledFrom,
+        bundleVersion: this.bundleVersion,
+        installedAt: new Date().toISOString(),
+        installedHash,
+      }
+      await atomicWriteJson(join(targetDir, ORIGIN_SIDECAR_FILE), sidecar)
+      return { path: targetDir, sidecar }
+    } catch (err) {
+      try {
+        await rm(targetDir, { recursive: true, force: true })
+        if (await dirExists(targetDir)) throw new Error('target remains')
+      } catch {
+        throw new InstallError('rollback_failed', { phase: 'install', profiles: [name] })
+      }
+      throw err
     }
-    await atomicWriteJson(join(targetDir, ORIGIN_SIDECAR_FILE), sidecar)
-    return { path: targetDir, sidecar }
   }
 
   /**
@@ -386,10 +399,25 @@ export class OwnwareBundle {
     await rename(targetDir, backup)
     try {
       const result = await this.install(name)
-      try { await rm(backup, { recursive: true, force: true }) } catch { /* */ }
+      try {
+        await rm(backup, { recursive: true, force: true })
+        if (await dirExists(backup)) throw new Error('backup remains')
+      } catch {
+        throw new InstallError('rollback_failed', { phase: 'cleanup', profiles: [name] })
+      }
       return result
     } catch (err) {
-      try { await rename(backup, targetDir) } catch { /* */ }
+      // A cleanup failure happens after the new version is valid and live;
+      // restoring would overwrite it. Report the actual partial state.
+      if (err instanceof InstallError && err.code === 'rollback_failed' && err.detail.phase === 'cleanup') {
+        throw err
+      }
+      try {
+        await rename(backup, targetDir)
+        if (!(await dirExists(targetDir))) throw new Error('restore missing')
+      } catch {
+        throw new InstallError('rollback_failed', { phase: 'update', profiles: [name] })
+      }
       throw err
     }
   }

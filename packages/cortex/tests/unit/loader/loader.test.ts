@@ -3,6 +3,9 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { loadProfile } from '../../../src/profile/loader.js'
 import {
   createTempProfile,
@@ -239,6 +242,63 @@ describe('loadProfile: custom tool paths', () => {
     // Should not throw for file existence check
     const profile = await loadProfile(dir)
     expect(profile.config.tools.custom).toHaveLength(1)
+  })
+
+  it('rejects an existing absolute custom-tool reference outside the profile', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'ownware-loader-outside-'))
+    cleanups.push(() => rm(outside, { recursive: true, force: true }))
+    const outsideTool = join(outside, 'outside.js')
+    await writeFile(outsideTool, 'export const outside = true')
+    const { dir } = track(await createTempProfile({
+      'agent.json': JSON.stringify({
+        name: 'test',
+        tools: { custom: [{ path: outsideTool }] },
+      }),
+    }))
+
+    await expect(loadProfile(dir)).rejects.toThrow(/inside the profile directory|relative/i)
+  })
+
+  it('rejects a custom-tool symlink whose real target is outside the profile', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'ownware-loader-outside-'))
+    cleanups.push(() => rm(outside, { recursive: true, force: true }))
+    const outsideTool = join(outside, 'outside.js')
+    await writeFile(outsideTool, 'export const outside = true')
+    const { dir } = track(await createTempProfile({
+      'agent.json': JSON.stringify({
+        name: 'test',
+        tools: { custom: [{ path: 'tools/escape.js' }] },
+      }),
+    }))
+    await mkdir(join(dir, 'tools'), { recursive: true })
+    await symlink(outsideTool, join(dir, 'tools/escape.js'))
+
+    await expect(loadProfile(dir)).rejects.toThrow(/inside the profile directory|symlink/i)
+  })
+})
+
+describe('loadProfile: skill directory containment', () => {
+  it('rejects an absolute skill directory outside the profile', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'ownware-skills-outside-'))
+    cleanups.push(() => rm(outside, { recursive: true, force: true }))
+    await writeFile(join(outside, 'outside.md'), '---\nname: outside\n---\nprivate')
+    const { dir } = track(await createTempProfile({
+      'agent.json': JSON.stringify({ name: 'test', skills: { dirs: [outside] } }),
+    }))
+
+    await expect(loadProfile(dir)).rejects.toThrow(/inside the profile directory|relative/i)
+  })
+
+  it('rejects a skill directory symlink whose real target is outside', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'ownware-skills-outside-'))
+    cleanups.push(() => rm(outside, { recursive: true, force: true }))
+    await writeFile(join(outside, 'outside.md'), '---\nname: outside\n---\nprivate')
+    const { dir } = track(await createTempProfile({
+      'agent.json': JSON.stringify({ name: 'test', skills: { dirs: ['skills'] } }),
+    }))
+    await symlink(outside, join(dir, 'skills'))
+
+    await expect(loadProfile(dir)).rejects.toThrow(/inside the profile directory|symlink/i)
   })
 })
 

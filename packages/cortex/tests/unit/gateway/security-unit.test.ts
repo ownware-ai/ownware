@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRateLimiter } from '../../../src/gateway/middleware/rate-limit.js'
 import { createAccessLogger } from '../../../src/gateway/middleware/access-log.js'
 import { handleCORS, DEFAULT_CORS_ORIGINS } from '../../../src/gateway/cors.js'
+import { sendError } from '../../../src/gateway/router.js'
 import {
   MCPCredentialStore,
   encryptCredential,
@@ -58,6 +59,12 @@ function createMockRes(): { res: ServerResponse; headers: Record<string, string>
     on: vi.fn(),
   } as unknown as ServerResponse
   return { res, ...state }
+}
+
+function sentJson(res: ServerResponse): Record<string, unknown> {
+  const end = res.end as unknown as { mock: { calls: Array<[string?]> } }
+  const body = end.mock.calls.at(-1)?.[0]
+  return JSON.parse(body ?? '{}') as Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -172,8 +179,59 @@ describe('rate limiter', () => {
     expect((mock.res.setHeader as any).mock.calls.some(
       (c: [string, string]) => c[0] === 'Retry-After'
     )).toBe(true)
+    expect(sentJson(mock.res)).toMatchObject({
+      error: 'rate_limited',
+      message: 'Too many requests. Please slow down.',
+      category: 'rate_limit',
+      retryAfter: expect.any(Number),
+      correlationId: expect.any(String),
+    })
 
     rl.stop()
+  })
+})
+
+describe('common HTTP error envelope', () => {
+  it.each([
+    [401, 'unauthorized', 'auth'],
+    [403, 'forbidden', 'auth'],
+    [413, 'payload_too_large', 'invalid_request'],
+    [429, 'rate_limited', 'rate_limit'],
+    [503, 'service_unavailable', 'overload'],
+  ] as const)('maps status %s to a stable code and bounded category', (status, error, category) => {
+    const { res } = createMockRes()
+    sendError(res, status, 'Safe recovery message')
+
+    const body = sentJson(res)
+    expect(body).toEqual({
+      error,
+      message: 'Safe recovery message',
+      category,
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    expect((res.setHeader as any).mock.calls).toContainEqual([
+      'X-Ownware-Correlation-Id',
+      body.correlationId,
+    ])
+  })
+
+  it('does not let supplemental details override stable or generated fields', () => {
+    const { res } = createMockRes()
+    sendError(res, 429, 'Safe recovery message', 'rate_limited', 'rate_limit', {
+      error: 'caller_value',
+      message: 'caller value',
+      category: 'unknown',
+      correlationId: 'caller-value',
+      retryAfter: 12,
+    })
+
+    expect(sentJson(res)).toEqual({
+      error: 'rate_limited',
+      message: 'Safe recovery message',
+      category: 'rate_limit',
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      retryAfter: 12,
+    })
   })
 })
 
@@ -360,7 +418,12 @@ describe('CORS', () => {
     const handled = handleCORS(req, res, DEFAULT_CORS_ORIGINS)
     expect(handled).toBe(true)
     expect((res.writeHead as any).mock.calls[0]?.[0]).toBe(403)
-    expect((res.end as any).mock.calls[0]?.[0]).toContain('forbidden_origin')
+    expect(sentJson(res)).toEqual({
+      error: 'forbidden_origin',
+      message: 'Cross-origin request blocked',
+      category: 'auth',
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
   })
 
   it('rejects mutating DELETE from disallowed origin with 403', () => {

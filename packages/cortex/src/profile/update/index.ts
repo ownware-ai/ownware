@@ -15,6 +15,7 @@ export {
   applyProfileUpdate,
   findProfilesForRepo,
   uninstallProfilesForRepo,
+  recoverInterruptedProfileUpdates,
 } from './apply-update.js'
 export type {
   UpdateStrategy,

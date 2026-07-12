@@ -37,6 +37,8 @@ import type { GatewayState } from '../state.js'
 import type { BusEvent, Unsubscribe } from '../event-bus.js'
 import { ROOT_AGENT_ID } from '../event-bus.js'
 import { trace, traceEnabled } from '../trace.js'
+import { authorizePrincipalScope, getRequestPrincipal } from '../auth/scoped-principal.js'
+import type { GatewayRunStore } from '../run-store.js'
 import type {
   StreamStartEvent,
   StreamReplayCompleteEvent,
@@ -85,6 +87,22 @@ const GATEWAY_SHUTDOWN_RETRY_AFTER_MS = 5_000
 const DEFAULT_MAX_PENDING_WRITES = 1_000
 const DEFAULT_MAX_REPLAY_BUFFER = 5_000
 const SLOW_CONSUMER_RETRY_AFTER_MS = 10_000
+
+/**
+ * The public run stream exposes the identity needed to decide a permission,
+ * not the internal raw tool input that produced it. The legacy owner thread
+ * stream remains unchanged until its broader event-storage contract is
+ * migrated; this projection is the public boundary.
+ */
+function projectPublicRunEvent(event: Record<string, unknown>): Record<string, unknown> {
+  if (event['type'] !== 'permission.request') return event
+  return {
+    type: 'permission.request',
+    requestId: event['requestId'],
+    toolName: event['toolName'],
+    operationHash: event['operationHash'],
+  }
+}
 
 function readPositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]
@@ -151,7 +169,7 @@ function toStreamShutdownEvent(
   }
 }
 
-export function createAgentEventHandlers(state: GatewayState) {
+export function createAgentEventHandlers(state: GatewayState, runStore?: GatewayRunStore) {
   /**
    * GET /api/v1/threads/:threadId/agents/:agentId/events
    *
@@ -161,6 +179,7 @@ export function createAgentEventHandlers(state: GatewayState) {
     req: IncomingMessage,
     res: ServerResponse,
     params: Record<string, string>,
+    options: { readonly publicRun?: boolean } = {},
   ): Promise<void> {
     const threadId = params['threadId']!
     const agentId = params['agentId']!
@@ -168,6 +187,15 @@ export function createAgentEventHandlers(state: GatewayState) {
     const thread = state.getThreadAnywhere(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
+      return
+    }
+    const principal = getRequestPrincipal(req)
+    if ((principal?.kind === 'delegated' && agentId !== ROOT_AGENT_ID) ||
+        !authorizePrincipalScope(req, {
+          workspaceId: thread.workspaceId ?? undefined,
+          profileId: thread.profileId,
+        })) {
+      sendError(res, 403, 'Delegated principal does not allow this event stream', 'principal_scope_denied', 'auth')
       return
     }
 
@@ -285,7 +313,10 @@ export function createAgentEventHandlers(state: GatewayState) {
           ts: Date.now(),
         })
       }
-      return enqueueWrite(entry.event.type, { ...entry.event, seq: entry.seq }).then(() => {
+      const projected = options.publicRun
+        ? projectPublicRunEvent(entry.event as unknown as Record<string, unknown>)
+        : entry.event
+      return enqueueWrite(entry.event.type, { ...projected, seq: entry.seq }).then(() => {
         lastDeliveredSeq = entry.seq
         resetIdleTimer()
       })
@@ -511,6 +542,120 @@ export function createAgentEventHandlers(state: GatewayState) {
     }
   }
 
+  /** GET /api/v1/runs/:runId/events — one run's bounded root stream. */
+  async function streamRunEvents(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const snapshot = runStore?.get(params['runId']!) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    })) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+    const rawSince = url.searchParams.get('since')
+    if (rawSince !== null && !/^\d+$/.test(rawSince)) {
+      sendError(res, 400, 'Run cursor must be a non-negative integer', 'cursor_invalid', 'invalid_request')
+      return
+    }
+    const since = rawSince === null ? snapshot.startSeq : Number.parseInt(rawSince, 10)
+    if (!Number.isSafeInteger(since)) {
+      sendError(res, 400, 'Run cursor is outside the supported integer range', 'cursor_invalid', 'invalid_request')
+      return
+    }
+    if (since < snapshot.startSeq) {
+      sendError(res, 409, 'Cursor belongs to an earlier run on this thread', 'cursor_mismatch', 'invalid_request', {
+        runStartSeq: snapshot.startSeq,
+      })
+      return
+    }
+
+    const currentEnd = snapshot.endSeq ?? state.getAgentEventMaxSeq(snapshot.threadId, ROOT_AGENT_ID)
+    if (since > currentEnd) {
+      sendError(res, 409, 'Cursor is ahead of this run', 'cursor_ahead', 'invalid_request', {
+        runEndSeq: currentEnd,
+      })
+      return
+    }
+    const firstRetained = state.getAgentEventMinSeq(
+      snapshot.threadId,
+      ROOT_AGENT_ID,
+      snapshot.startSeq,
+      snapshot.endSeq ?? undefined,
+    )
+    const earliestCursor = firstRetained === null
+      ? (currentEnd === snapshot.startSeq ? snapshot.startSeq : null)
+      : firstRetained - 1
+    if (earliestCursor === null || since < earliestCursor) {
+      sendError(res, 410, 'Requested run cursor is no longer retained', 'cursor_expired', 'not_found', {
+        earliestRetainedCursor: earliestCursor,
+      })
+      return
+    }
+
+    if (!snapshot.terminal) {
+      const originalUrl = req.url
+      req.url = `/api/v1/threads/${encodeURIComponent(snapshot.threadId)}/agents/root/events?since=${since}`
+      try {
+        await streamAgentEvents(req, res, {
+          threadId: snapshot.threadId,
+          agentId: ROOT_AGENT_ID,
+        }, { publicRun: true })
+      } finally {
+        req.url = originalUrl
+      }
+      return
+    }
+
+    startSSE(res)
+    await writeSSE(res, 'stream.start', {
+      type: 'stream.start',
+      runId: snapshot.runId,
+      threadId: snapshot.threadId,
+      agentId: ROOT_AGENT_ID,
+      since,
+      maxSeqAtStart: currentEnd,
+    })
+    let cursor = since
+    while (cursor < currentEnd) {
+      const rows = state.listAgentEvents({
+        threadId: snapshot.threadId,
+        agentId: ROOT_AGENT_ID,
+        since: cursor,
+        limit: 500,
+      }).filter((row) => row.seq <= currentEnd)
+      if (rows.length === 0) break
+      for (const row of rows) {
+        const payload = projectPublicRunEvent(row.payload as Record<string, unknown>)
+        await writeSSE(res, row.type, {
+          ...payload,
+          seq: row.seq,
+        })
+      }
+      cursor = rows[rows.length - 1]!.seq
+    }
+    await writeSSE(res, 'stream.replay.complete', {
+      type: 'stream.replay.complete',
+      runId: snapshot.runId,
+      threadId: snapshot.threadId,
+      agentId: ROOT_AGENT_ID,
+      since,
+      replayedThroughSeq: cursor,
+      maxSeqAtStart: currentEnd,
+      liveTail: false,
+    })
+    res.end()
+  }
+
   /**
    * GET /api/v1/threads/:threadId/agents/:agentId/events/history
    *
@@ -587,6 +732,7 @@ export function createAgentEventHandlers(state: GatewayState) {
 
   return {
     streamAgentEvents,
+    streamRunEvents,
     getAgentEventHistory,
     listThreadAgents,
   }

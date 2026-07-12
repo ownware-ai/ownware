@@ -1,7 +1,7 @@
 # The Ownware gateway wire contract — REST surface, v1.
 #
 # This file is the versioned PROMISE @ownware/client is built against.
-# Scope is deliberate: the seven "talk to your agent" calls. The
+# Scope is deliberate: only the versioned public operations below. The
 # gateway exposes many more routes (profiles CRUD, connectors,
 # schedules, …) — those are the management surface, INTERNAL and
 # unstable until they appear here.
@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.1.0
+  version: 0.17.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -44,10 +44,601 @@ paths:
                   version: { type: string }
                   uptime: { type: number }
 
+  /api/v1/capabilities:
+    get:
+      operationId: capabilities
+      summary: Discover the deliberately published Gateway contract.
+      responses:
+        '200':
+          description: Public contract version and supported capabilities.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contract, capabilities, limits]
+                properties:
+                  contract:
+                    type: object
+                    required: [name, major, revision]
+                    properties:
+                      name: { type: string, const: ownware.gateway }
+                      major: { type: integer, const: 1 }
+                      revision: { type: string }
+                  capabilities:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, version]
+                      properties:
+                        id: { type: string }
+                        version: { type: integer, minimum: 1 }
+                  limits: { $ref: '#/components/schemas/PublicGatewayLimits' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/sources:
+    post:
+      operationId: registerSource
+      summary: Register one logical source using safe control metadata only.
+      description: >
+        Requires a delegated principal; workspace and profile scope come only
+        from the verified bearer. The request cannot carry paths, URLs, bytes,
+        storage locators, or workspace/profile authority. Equal metadata under
+        distinct idempotency keys remains distinct logical sources.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceRegistrationInput' }
+      responses:
+        '202':
+          description: Pending safe manifest. No content or storage detail is returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceManifest' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
+    get:
+      operationId: listSources
+      summary: List one bounded page of safe manifests in the verified scope.
+      description: Requires a delegated principal. An empty scope returns an empty page.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Bounded source page without raw content or storage detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceList' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/sources/{sourceId}:
+    get:
+      operationId: getSource
+      summary: Read one safe source manifest in the verified scope.
+      description: Cross-workspace/profile identities are indistinguishable from absence.
+      parameters:
+        - in: path
+          name: sourceId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Safe source control manifest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceManifest' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/sources/{sourceId}/upload-sessions:
+    post:
+      operationId: createSourceUploadSession
+      summary: Create a short-lived source-bound direct upload session.
+      parameters:
+        - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSourceUploadSessionInput' }
+      responses:
+        '201':
+          description: Bounded session metadata; no placement path or token is returned.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceUploadSession' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-uploads/{uploadId}:
+    patch:
+      operationId: writeSourceUploadChunk
+      summary: Stream one exact-offset verified chunk to runtime-private staging.
+      parameters:
+        - { in: path, name: uploadId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Upload-Offset, required: true, schema: { type: integer, minimum: 0 } }
+        - { in: header, name: Upload-Chunk-Checksum, required: true, schema: { type: string, pattern: '^sha256:[0-9a-f]{64}$' } }
+      requestBody:
+        required: true
+        content:
+          application/offset+octet-stream:
+            schema: { type: string, contentMediaType: application/octet-stream, maxLength: 1048576 }
+      responses:
+        '200':
+          description: Actual durable checkpoint; identical prior chunks replay without append.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceUploadChunkResult' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-uploads/{uploadId}/complete:
+    post:
+      operationId: completeSourceUpload
+      summary: Verify and atomically accept one immutable source version.
+      parameters:
+        - { in: path, name: uploadId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Idempotent replay of an already completed version.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceUploadCompletionResult' } } }
+        '201':
+          description: Newly accepted immutable version.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceUploadCompletionResult' } } }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/sources/{sourceId}/versions/{sourceVersionId}:
+    get:
+      operationId: getSourceVersion
+      summary: Read one immutable safe version manifest.
+      parameters:
+        - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: sourceVersionId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Version metadata without raw bytes or a storage locator.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceVersionManifest' } } }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/candidates/validate:
+    post:
+      operationId: validateCandidate
+      summary: Validate bounded portable Agent Kit bytes without installing or activating them.
+      description: >
+        Accepts only direct base64 file bytes with portable relative names. Host paths,
+        URLs and ambient filesystem references are not accepted. Validation occurs in
+        an isolated temporary directory that is removed before a successful response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required: [path, contentBase64]
+                    properties:
+                      path:
+                        type: string
+                        minLength: 1
+                        maxLength: 256
+                        description: Unique portable relative path; traversal, absolute paths and backslashes are rejected.
+                      contentBase64:
+                        type: string
+                        contentEncoding: base64
+                    additionalProperties: false
+              additionalProperties: false
+      responses:
+        '200':
+          description: Safe validation result. Invalid candidates return valid=false rather than being installed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateValidationResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/candidates/stage:
+    post:
+      operationId: stageCandidate
+      summary: Privately stage exact validated candidate bytes without activation.
+      description: >
+        Revalidates direct portable bytes, verifies the caller-supplied opaque
+        identity after private placement, and records an explicit ready or
+        failure state. It never changes the active profile. Repeating the same
+        ready identity is idempotent after stored-byte verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidateId, files]
+              properties:
+                candidateId:
+                  type: string
+                  pattern: '^sha256:[0-9a-f]{64}$'
+                files:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required: [path, contentBase64]
+                    properties:
+                      path: { type: string, minLength: 1, maxLength: 256 }
+                      contentBase64: { type: string, contentEncoding: base64 }
+                    additionalProperties: false
+              additionalProperties: false
+      responses:
+        '200':
+          description: Exact durable stage state; ready=false is never activation success.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateStageResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/candidates/activate:
+    post:
+      operationId: activateCandidate
+      summary: Atomically activate a ready candidate when the expected active identity matches.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profileId, candidateId, expectedActiveCandidateId]
+              properties:
+                profileId: { type: string, minLength: 1, maxLength: 128 }
+                candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                expectedActiveCandidateId:
+                  type: [string, 'null']
+                  pattern: '^sha256:[0-9a-f]{64}$'
+                  description: Null only when replacing the legacy/unversioned active profile.
+              additionalProperties: false
+      responses:
+        '200':
+          description: Actual active identity after the compare-and-set attempt.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateActivationResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/candidates/rollback:
+    post:
+      operationId: rollbackCandidate
+      summary: Roll back to a named ready candidate under an exact compare-and-set fence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profileId, candidateId, expectedActiveCandidateId]
+              properties:
+                profileId: { type: string, minLength: 1, maxLength: 128 }
+                candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                expectedActiveCandidateId:
+                  type: [string, 'null']
+                  pattern: '^sha256:[0-9a-f]{64}$'
+              additionalProperties: false
+      responses:
+        '200':
+          description: Actual active identity after rollback, including named post-switch failure.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateRollbackResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles/{profileId}/pause:
+    post:
+      operationId: pauseProfile
+      summary: Atomically block new runs while reporting existing pinned runs truthfully.
+      parameters:
+        - in: path
+          name: profileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedDeploymentRevision]
+              properties:
+                expectedDeploymentRevision: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: Durable paused routing state and actual draining run count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileDeploymentResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles/{profileId}/resume:
+    post:
+      operationId: resumeProfile
+      summary: Reverify the active candidate before accepting new work again.
+      parameters:
+        - in: path
+          name: profileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedDeploymentRevision]
+              properties:
+                expectedDeploymentRevision: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: Durable active routing state after exact-byte runtime verification.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileDeploymentResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles:
+    get:
+      operationId: listProfiles
+      summary: List the caller's bounded public profile catalog.
+      responses:
+        '200':
+          description: Delegated callers receive only their scoped profile and safe deployment summary.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PublicProfileSummary' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profile-candidates/{candidateId}:
+    parameters:
+      - in: path
+        name: candidateId
+        required: true
+        schema: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+    get:
+      operationId: getCandidate
+      summary: Read bounded candidate lifecycle and deletion eligibility.
+      responses:
+        '200':
+          description: Safe candidate status without host paths or candidate bytes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateStatus' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      operationId: deleteCandidate
+      summary: Delete only a verified eligible candidate using its natural idempotent identity.
+      responses:
+        '200':
+          description: Actual verified deletion or explicit partial failure state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateDeletionResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles/{profileId}/candidates:
+    get:
+      operationId: listCandidates
+      summary: List bounded candidate status for one profile scope.
+      parameters:
+        - in: path
+          name: profileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Candidate status records in deterministic creation order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profileId, items]
+                properties:
+                  profileId: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CandidateStatus' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles/{profileId}/deployment:
+    get:
+      operationId: getProfileDeployment
+      summary: Read durable routing revision, actual active candidate and observed health.
+      parameters:
+        - in: path
+          name: profileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Safe current deployment status and active-run drain count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileDeploymentStatus' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/auth/delegations:
+    post:
+      operationId: issueDelegation
+      summary: Owner-only issuance of a short-lived scoped runtime principal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delegateId, workspaceId, profileId, purpose, operations]
+              properties:
+                delegateId: { type: string, minLength: 1, maxLength: 128 }
+                workspaceId: { type: string, minLength: 1, maxLength: 128 }
+                profileId: { type: string, minLength: 1, maxLength: 128 }
+                purpose: { type: string, minLength: 1, maxLength: 64 }
+                channel: { type: string, minLength: 1, maxLength: 64 }
+                operations:
+                  type: array
+                  minItems: 1
+                  maxItems: 32
+                  items: { type: string }
+                ttlSeconds: { type: integer, minimum: 1, maximum: 3600, default: 900 }
+              additionalProperties: false
+      responses:
+        '201':
+          description: Delegation issued. The token is a bearer secret and is never persisted by the Gateway.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, principal]
+                properties:
+                  token: { type: string, writeOnly: true }
+                  principal: { $ref: '#/components/schemas/DelegatedPrincipal' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/auth/delegations/{tokenId}/revoke:
+    post:
+      operationId: revokeDelegation
+      summary: Owner-only immediate revocation of a delegated runtime principal.
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 64 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: Delegation revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokenId, revoked]
+                properties:
+                  tokenId: { type: string, format: uuid }
+                  revoked: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
   /api/v1/run:
     post:
       operationId: run
       summary: Start a run. Returns immediately; stream the reply over SSE.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: >
+            UUID identifying this exact logical run start. Reuse only for a
+            retry of the same validated input. Required for delegated principals.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -72,6 +663,14 @@ paths:
                     default's provider has no credentials, the gateway falls
                     back to a model that can answer (vault/env provider,
                     else a reachable local Ollama).
+                attachments:
+                  type: array
+                  maxItems: 8
+                  description: >
+                    Bounded one-turn untrusted data. This does not register a
+                    reusable source or grant future access.
+                  items:
+                    $ref: '#/components/schemas/RunAttachmentInput'
       responses:
         '200':
           description: Run started in the background.
@@ -79,17 +678,77 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [threadId]
+                required: [runId, threadId]
                 properties:
+                  runId: { type: string, format: uuid }
                   threadId: { type: string }
                   agentId: { type: string, description: "'root' for a plain run" }
                   profileId: { type: string }
+                  candidateId:
+                    type: [string, 'null']
+                    pattern: '^sha256:[0-9a-f]{64}$'
+                    description: Immutable candidate pinned before execution; null for a legacy profile.
                   model:
                     type: string
                     description: The model ACTUALLY dispatched (incl. keyless fallback).
                   status: { type: string }
-        '404': { description: Unknown profileId or threadId. }
-        '401': { description: Missing/invalid bearer token (auth enabled). }
+                  timeoutMs:
+                    type: integer
+                    minimum: 1
+                    description: Enforced wall-clock run timeout selected from the resolved profile.
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}:
+    get:
+      operationId: runSnapshot
+      summary: Read one immutable run's bounded durable lifecycle snapshot.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Safe execution snapshot; thread status and socket state are not substitutes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunSnapshot' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/events:
+    get:
+      operationId: runEvents
+      summary: Replay and tail only one immutable run's root-agent event interval.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: since
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0 }
+          description: Exclusive cursor; defaults to the run's persisted startSeq.
+      responses:
+        '200':
+          description: Bounded text/event-stream. Terminal snapshots close after replay.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '410': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/threads/{threadId}/agents/root/events:
     get:
@@ -114,8 +773,9 @@ paths:
           content:
             text/event-stream:
               schema: { type: string }
-        '404': { description: Unknown thread. }
-        '401': { description: Missing/invalid bearer token (auth enabled). }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/threads/{threadId}/resume:
     post:
@@ -148,22 +808,97 @@ paths:
                   description: Absolute path granted when action is `allow_folder_session`.
       responses:
         '200': { description: Decision delivered. }
-        '404': { description: Unknown thread / nothing pending. }
-        '401': { description: Missing/invalid bearer token (auth enabled). }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/permissions/{requestId}/decision:
+    post:
+      operationId: decidePermission
+      summary: Decide one exact permission request for one immutable run.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, operationHash]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [approve, deny] }
+                operationHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '200':
+          description: Exact decision durably recorded and delivered to the live request.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runId, requestId, decision, operationHash]
+                properties:
+                  runId: { type: string, format: uuid }
+                  requestId: { type: string }
+                  decision: { type: string, enum: [approve, deny] }
+                  operationHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/cancel:
+    post:
+      operationId: cancelRun
+      summary: Durably request cancellation of one immutable run.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '202':
+          description: Cancellation was durably requested; final outcome is not yet confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunCancellationResult' }
+        '200':
+          description: The run was already terminal; no state was reopened.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunCancellationResult' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/threads/{threadId}/abort:
     post:
-      operationId: abort
-      summary: Stop a running agent.
+      operationId: abortLegacy
+      deprecated: true
+      summary: Owner-only legacy thread abort; delegated clients use exact run cancellation.
       parameters:
         - name: threadId
           in: path
           required: true
           schema: { type: string }
       responses:
-        '200': { description: Abort delivered (idempotent). }
-        '404': { description: Unknown thread. }
-        '401': { description: Missing/invalid bearer token (auth enabled). }
+        '200': { description: Legacy cancellation signal accepted; this is not proof of final cancellation. }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/models:
     get:
@@ -191,9 +926,435 @@ paths:
                     default:
                       type: boolean
                       description: At most one per provider — the recommended pick.
-        '401': { description: Missing/invalid bearer token (auth enabled). }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
 
 components:
+  responses:
+    ErrorResponse:
+      description: Safe typed error. Raw internal/provider detail is not returned.
+      headers:
+        X-Ownware-Correlation-Id:
+          schema: { type: string, format: uuid }
+          description: Opaque server-generated support correlation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+  schemas:
+    RunSnapshot:
+      type: object
+      required: [runId, threadId, workspaceId, profileId, candidateId, model, timeoutMs, status, terminal, outcomeKnown, acceptedAt, startedAt, updatedAt, terminalAt, cancelRequestedAt, startSeq, endSeq, earliestRetainedCursor, code]
+      properties:
+        runId: { type: string, format: uuid }
+        threadId: { type: string }
+        workspaceId: { type: [string, 'null'] }
+        profileId: { type: string }
+        candidateId: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        model: { type: string }
+        timeoutMs: { type: integer, minimum: 1 }
+        status:
+          type: string
+          enum: [accepted, running, waiting, cancel_requested, succeeded, failed, cancelled, timed_out, indeterminate]
+        terminal: { type: boolean }
+        outcomeKnown: { type: boolean }
+        acceptedAt: { type: integer }
+        startedAt: { type: [integer, 'null'] }
+        updatedAt: { type: integer }
+        terminalAt: { type: [integer, 'null'] }
+        cancelRequestedAt: { type: [integer, 'null'] }
+        startSeq: { type: integer, minimum: 0 }
+        endSeq: { type: [integer, 'null'], minimum: 0 }
+        earliestRetainedCursor:
+          type: [integer, 'null']
+          minimum: 0
+          description: Earliest exclusive cursor that can replay this run without a retained-history gap.
+        code: { type: [string, 'null'] }
+    RunCancellationResult:
+      type: object
+      required: [runId, status, terminal, outcomeKnown, cancellation]
+      properties:
+        runId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [accepted, running, waiting, cancel_requested, succeeded, failed, cancelled, timed_out, indeterminate]
+        terminal: { type: boolean }
+        outcomeKnown: { type: boolean }
+        cancellation:
+          type: string
+          enum: [requested, already_requested, already_terminal]
+    RunAttachmentInput:
+      type: object
+      required: [filename, data, mimeType]
+      properties:
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Safe display basename; path separators and control characters reject.
+        data:
+          type: string
+          minLength: 4
+          maxLength: 5592408
+          contentEncoding: base64
+          description: Strict canonical base64; decoded bytes are bounded independently.
+        mimeType:
+          type: string
+          minLength: 3
+          maxLength: 127
+          description: Declared type; the runtime verifies it against bytes and filename category.
+      additionalProperties: false
+    PublicGatewayLimits:
+      type: object
+      required: [jsonBodyBytes, candidateUpload, runAttachments, sourceList, sourceUpload, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
+      properties:
+        jsonBodyBytes:
+          type: integer
+          const: 10485760
+          description: Maximum body size for public operations that parse JSON.
+        candidateUpload:
+          type: object
+          required: [maxFiles, maxDecodedBytes, maxPathCharacters]
+          properties:
+            maxFiles: { type: integer, const: 1000 }
+            maxDecodedBytes: { type: integer, const: 6291456 }
+            maxPathCharacters: { type: integer, const: 256 }
+          additionalProperties: false
+        runAttachments:
+          type: object
+          required: [maxCount, maxItemDecodedBytes, maxTotalDecodedBytes, maxFilenameCharacters]
+          properties:
+            maxCount: { type: integer, const: 8 }
+            maxItemDecodedBytes: { type: integer, const: 4194304 }
+            maxTotalDecodedBytes: { type: integer, const: 6291456 }
+            maxFilenameCharacters: { type: integer, const: 255 }
+          additionalProperties: false
+        sourceList:
+          type: object
+          required: [maxPageSize]
+          properties:
+            maxPageSize: { type: integer, const: 100 }
+          additionalProperties: false
+        sourceUpload:
+          type: object
+          required: [maxDecodedBytes, maxChunkBytes, maxChunks, sessionTtlSeconds, supportedMediaTypes]
+          properties:
+            maxDecodedBytes: { type: integer, const: 16777216 }
+            maxChunkBytes: { type: integer, const: 1048576 }
+            maxChunks: { type: integer, const: 64 }
+            sessionTtlSeconds: { type: integer, const: 900 }
+            supportedMediaTypes:
+              type: array
+              prefixItems:
+                - { const: text/plain }
+                - { const: application/pdf }
+              minItems: 2
+              maxItems: 2
+          additionalProperties: false
+        delegationDefaultTtlSeconds: { type: integer, const: 900 }
+        delegationMaxTtlSeconds: { type: integer, const: 3600 }
+        idempotencyRetentionSeconds: { type: integer, const: 604800 }
+        rateLimit:
+          type: object
+          required: [enabled, windowSeconds, generalRequests, runStarts]
+          properties:
+            enabled: { type: boolean }
+            windowSeconds: { type: integer, const: 60 }
+            generalRequests: { type: integer, minimum: 0 }
+            runStarts: { type: integer, minimum: 0 }
+    SourceRegistrationInput:
+      type: object
+      required: [kind, label, classification, authority, audiencePolicyRef, sensitivityPolicyRef, purposePolicyRef, retentionPolicyRef, freshnessPolicyRef]
+      properties:
+        kind:
+          type: string
+          enum: [file, text, visual, structured_export, cloud_document, connected_snapshot, supported_other]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: Safe single-line display label; control characters reject.
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example, excluded] }
+        audiencePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        sensitivityPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        purposePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        retentionPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        freshnessPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+      additionalProperties: false
+    SourceHealth:
+      type: object
+      required: [registration, inspection, preparation, access, freshness, conflict, deletion]
+      properties:
+        registration: { type: string, enum: [pending, registered, rejected] }
+        inspection: { type: string, enum: [not_started, queued, inspecting, complete, partial, failed] }
+        preparation: { type: string, enum: [not_requested, queued, preparing, ready, partial, failed] }
+        access: { type: string, enum: [available, denied, expired, disconnected, wrong_identity] }
+        freshness: { type: string, enum: [fresh, aging, stale, unknown] }
+        conflict: { type: string, enum: [none, suspected, confirmed, resolved] }
+        deletion: { type: string, enum: [active, frozen, deleting, partially_deleted, deleted] }
+      additionalProperties: false
+    SourceManifest:
+      type: object
+      required: [sourceId, kind, label, classification, authority, audiencePolicyRef, sensitivityPolicyRef, purposePolicyRef, retentionPolicyRef, freshnessPolicyRef, revision, currentVersionId, health, createdAt, updatedAt]
+      properties:
+        sourceId: { type: string, format: uuid }
+        kind:
+          type: string
+          enum: [file, text, visual, structured_export, cloud_document, connected_snapshot, supported_other]
+        label: { type: string, minLength: 1, maxLength: 160 }
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example, excluded] }
+        audiencePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        sensitivityPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        purposePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        retentionPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        freshnessPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        revision: { type: integer, minimum: 1 }
+        currentVersionId: { type: [string, 'null'], format: uuid }
+        health: { $ref: '#/components/schemas/SourceHealth' }
+        createdAt: { type: integer, minimum: 0 }
+        updatedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    SourceList:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/SourceManifest' }
+        nextCursor: { type: [string, 'null'], format: uuid }
+      additionalProperties: false
+    CreateSourceUploadSessionInput:
+      type: object
+      required: [expectedBytes, expectedChecksum, declaredMediaType, filename]
+      properties:
+        expectedBytes: { type: integer, minimum: 1, maximum: 16777216 }
+        expectedChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        declaredMediaType: { type: string, enum: [text/plain, application/pdf] }
+        filename: { type: string, minLength: 1, maxLength: 255, description: Untrusted basename label only. }
+      additionalProperties: false
+    SourceUploadSession:
+      type: object
+      required: [uploadId, sourceId, state, offset, expectedBytes, expectedChecksum, declaredMediaType, maxChunkBytes, maxChunks, expiresAt, createdAt]
+      properties:
+        uploadId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        state: { const: open }
+        offset: { type: integer, const: 0 }
+        expectedBytes: { type: integer, minimum: 1, maximum: 16777216 }
+        expectedChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        declaredMediaType: { type: string, enum: [text/plain, application/pdf] }
+        maxChunkBytes: { type: integer, const: 1048576 }
+        maxChunks: { type: integer, const: 64 }
+        expiresAt: { type: integer, minimum: 0 }
+        createdAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    SourceUploadChunkResult:
+      type: object
+      required: [uploadId, state, offset, chunkCount, replayed]
+      properties:
+        uploadId: { type: string, format: uuid }
+        state: { const: open }
+        offset: { type: integer, minimum: 0 }
+        chunkCount: { type: integer, minimum: 1, maximum: 64 }
+        replayed: { type: boolean }
+      additionalProperties: false
+    SourceVersionManifest:
+      type: object
+      required: [sourceVersionId, sourceId, checksum, verifiedMediaType, byteCount, inspection, createdAt]
+      properties:
+        sourceVersionId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        checksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        verifiedMediaType: { type: string, enum: [text/plain, application/pdf] }
+        byteCount: { type: integer, minimum: 1, maximum: 16777216 }
+        inspection: { const: not_started }
+        createdAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    SourceUploadCompletionResult:
+      type: object
+      required: [sourceVersionId, sourceId, checksum, verifiedMediaType, byteCount, inspection, createdAt, replayed]
+      properties:
+        sourceVersionId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        checksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        verifiedMediaType: { type: string, enum: [text/plain, application/pdf] }
+        byteCount: { type: integer, minimum: 1, maximum: 16777216 }
+        inspection: { const: not_started }
+        createdAt: { type: integer, minimum: 0 }
+        replayed: { type: boolean }
+      additionalProperties: false
+    CandidateFinding:
+      type: object
+      required: [code, severity, message]
+      properties:
+        code: { type: string }
+        severity: { type: string, enum: [error, warning] }
+        message: { type: string }
+        subjects:
+          type: array
+          items: { type: string }
+      additionalProperties: false
+    CandidateValidationResult:
+      type: object
+      required: [valid, candidateId, profileName, fileCount, totalBytes, findings]
+      properties:
+        valid: { type: boolean }
+        candidateId:
+          type: [string, 'null']
+          pattern: '^sha256:[0-9a-f]{64}$'
+          description: Opaque deterministic identity, present only for a valid candidate.
+        profileName: { type: [string, 'null'] }
+        fileCount: { type: [integer, 'null'], minimum: 0 }
+        totalBytes: { type: [integer, 'null'], minimum: 0 }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/CandidateFinding' }
+      additionalProperties: false
+    CandidateStageResult:
+      type: object
+      required: [candidateId, profileName, state, ready, idempotent, code, fileCount, totalBytes]
+      properties:
+        candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        profileName: { type: string }
+        state: { type: string, enum: [ready, placement_failed, cleanup_failed] }
+        ready: { type: boolean }
+        idempotent: { type: boolean }
+        code: { type: [string, 'null'] }
+        fileCount: { type: integer, minimum: 0 }
+        totalBytes: { type: integer, minimum: 0 }
+      additionalProperties: false
+    CandidateActivationResult:
+      type: object
+      required: [state, changed, candidateId, previousCandidateId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, code]
+      properties:
+        state: { type: string, enum: [active, activation_failed] }
+        changed: { type: boolean }
+        candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        previousCandidateId: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        activeCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        deploymentRevision: { type: integer, minimum: 1 }
+        routingState: { type: string, enum: [active, paused] }
+        health: { type: string, enum: [unknown, starting, healthy, degraded, unhealthy] }
+        healthObservedAt: { type: [integer, 'null'], minimum: 0 }
+        code: { type: [string, 'null'] }
+      additionalProperties: false
+    CandidateRollbackResult:
+      type: object
+      required: [state, changed, candidateId, previousCandidateId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, code]
+      properties:
+        state: { type: string, enum: [rolled_back, rollback_failed] }
+        changed: { type: boolean }
+        candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        previousCandidateId: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        activeCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        deploymentRevision: { type: integer, minimum: 1 }
+        routingState: { type: string, enum: [active, paused] }
+        health: { type: string, enum: [unknown, starting, healthy, degraded, unhealthy] }
+        healthObservedAt: { type: [integer, 'null'], minimum: 0 }
+        code: { type: [string, 'null'] }
+      additionalProperties: false
+    ProfileDeploymentResult:
+      type: object
+      required: [state, changed, profileId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, activeRunCount]
+      properties:
+        state: { type: string, enum: [active, paused] }
+        changed: { type: boolean }
+        profileId: { type: string }
+        activeCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        deploymentRevision: { type: integer, minimum: 1 }
+        routingState: { type: string, enum: [active, paused] }
+        health: { type: string, enum: [unknown, starting, healthy, degraded, unhealthy] }
+        healthObservedAt: { type: [integer, 'null'], minimum: 0 }
+        activeRunCount: { type: integer, minimum: 0 }
+      additionalProperties: false
+    CandidateStatus:
+      type: object
+      required: [candidateId, profileId, state, ready, fileCount, totalBytes, code, createdAt, updatedAt, deletedAt, deletionEligible, deletionBlockedBy]
+      properties:
+        candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        profileId: { type: string }
+        state:
+          type: string
+          enum: [placing, ready, placement_failed, cleanup_failed, deleting, delete_failed, deleted]
+        ready: { type: boolean }
+        fileCount: { type: integer, minimum: 0 }
+        totalBytes: { type: integer, minimum: 0 }
+        code: { type: [string, 'null'] }
+        createdAt: { type: integer, minimum: 0 }
+        updatedAt: { type: integer, minimum: 0 }
+        deletedAt: { type: [integer, 'null'], minimum: 0 }
+        deletionEligible: { type: boolean }
+        deletionBlockedBy:
+          type: [string, 'null']
+          enum: [not_found, scope_mismatch, not_ready, active, in_use, rollback_retained, in_progress, null]
+      additionalProperties: false
+    CandidateDeletionResult:
+      type: object
+      required: [candidateId, profileId, state, deleted, idempotent, code]
+      properties:
+        candidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        profileId: { type: string }
+        state: { type: string, enum: [deleted, delete_failed] }
+        deleted: { type: boolean }
+        idempotent: { type: boolean }
+        code: { type: [string, 'null'] }
+      additionalProperties: false
+    ProfileDeploymentStatus:
+      type: object
+      required: [profileId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, activeRunCount, updatedAt]
+      properties:
+        profileId: { type: string }
+        activeCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        deploymentRevision: { type: integer, minimum: 1 }
+        routingState: { type: string, enum: [active, paused] }
+        health: { type: string, enum: [unknown, starting, healthy, degraded, unhealthy] }
+        healthObservedAt: { type: [integer, 'null'], minimum: 0 }
+        activeRunCount: { type: integer, minimum: 0 }
+        updatedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    PublicProfileSummary:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        displayName: { type: [string, 'null'] }
+        description: { type: string }
+        availability: { type: string, enum: [available, paused, invalid, unavailable] }
+        activeCandidateId: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        deploymentRevision: { type: [integer, 'null'], minimum: 1 }
+        health: { type: string, enum: [unknown, starting, healthy, degraded, unhealthy] }
+        healthObservedAt: { type: [integer, 'null'], minimum: 0 }
+        requiredCapabilities: { type: array, items: { type: string } }
+        findings: { type: array, items: { $ref: '#/components/schemas/CandidateFinding' } }
+      description: Owner responses may contain additional internal-management fields; delegated responses contain only this safe projection.
+    DelegatedPrincipal:
+      type: object
+      required: [kind, tokenId, delegateId, workspaceId, profileId, purpose, operations, issuedAt, expiresAt]
+      properties:
+        kind: { type: string, const: delegated }
+        tokenId: { type: string, format: uuid }
+        delegateId: { type: string }
+        workspaceId: { type: string }
+        profileId: { type: string }
+        purpose: { type: string }
+        channel: { type: string }
+        operations: { type: array, items: { type: string } }
+        issuedAt: { type: integer, description: Unix seconds. }
+        expiresAt: { type: integer, description: Unix seconds. }
+    ErrorResponse:
+      type: object
+      required: [error, message, category, correlationId]
+      properties:
+        error: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+        message: { type: string, maxLength: 500 }
+        category: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+        correlationId: { type: string, format: uuid }
+        retryAfter:
+          type: number
+          minimum: 0
+          description: Optional retry delay in seconds.
   securitySchemes:
     bearer:
       type: http

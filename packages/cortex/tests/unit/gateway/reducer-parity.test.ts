@@ -25,6 +25,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { GatewayState } from '../../../src/gateway/state.js'
 import { SessionRunner } from '../../../src/gateway/session-runner.js'
+import { GatewayRunStore } from '../../../src/gateway/run-store.js'
 import type { LoomEvent } from '@ownware/loom'
 import { HumanInTheLoop } from '@ownware/loom'
 
@@ -234,6 +235,88 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       outputTokens: 20,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+    })
+  })
+
+  it('binds a streamed permission request to its run and persists the operation hash', async () => {
+    const thread = state.createThread('test')
+    const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
+    runner = new SessionRunner(state, runStore)
+    const run = runStore.create({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      timeoutMs: 60_000,
+      startSeq: 0,
+    })
+    const events: LoomEvent[] = [
+      { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
+      { type: 'permission.request', turnIndex: 0, requestId: 'req_exact', toolName: 'send_email', input: { body: 'synthetic private body' }, reason: 'send needs approval' },
+      { type: 'permission.response', turnIndex: 0, requestId: 'req_exact', granted: true },
+      { type: 'turn.end', turnIndex: 0, stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, model: 'test', costUsd: 0 }, timestamp: Date.now() },
+    ]
+    installFakeSession(state, thread.id, events)
+
+    const handle = runner.start({
+      runId: run.runId,
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      prompt: 'go',
+    })
+    await handle.done
+
+    const permission = runStore.getPermissionRequest(run.runId, 'req_exact')
+    expect(permission).toMatchObject({
+      runId: run.runId,
+      requestId: 'req_exact',
+      toolName: 'send_email',
+      status: 'approved',
+    })
+    expect(permission!.operationHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const persistedRequest = state.listAgentEvents({
+      threadId: thread.id,
+      agentId: 'root',
+    }).find(event => event.type === 'permission.request')
+    expect(persistedRequest?.payload).toMatchObject({
+      requestId: 'req_exact',
+      operationHash: permission!.operationHash,
+    })
+  })
+
+  it('marks a wall-clock timeout only after the runner finalizer observes it', async () => {
+    const thread = state.createThread('test')
+    const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
+    runner = new SessionRunner(state, runStore)
+    const run = runStore.create({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      timeoutMs: 20,
+      startSeq: 0,
+    })
+    installFakeSession(
+      state,
+      thread.id,
+      [{ type: 'turn.start', turnIndex: 0, timestamp: Date.now() }],
+      { hangAtEnd: true },
+    )
+
+    const handle = runner.start({
+      runId: run.runId,
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      prompt: 'wait',
+      timeoutMs: 20,
+    })
+    await expect(handle.done).resolves.toMatchObject({ status: 'aborted' })
+    expect(runStore.get(run.runId)).toMatchObject({
+      status: 'timed_out',
+      terminal: true,
+      outcomeKnown: true,
+      code: 'run_timeout',
     })
   })
 

@@ -14,12 +14,13 @@
  */
 
 import { readFile, readdir, stat } from 'fs/promises'
-import { join, resolve } from 'path'
+import { join, relative, resolve } from 'path'
 import YAML from 'yaml'
 import { ProfileSchema } from './schema.js'
 import type { ProfileConfig } from './schema.js'
 import { parseTimeout } from './timeout.js'
 import type { SkillDefinition } from '@ownware/loom'
+import { resolveContainedProfilePath } from './path-containment.js'
 
 // ---------------------------------------------------------------------------
 // LoadedProfile — the fully resolved profile, ready for assembly
@@ -70,10 +71,10 @@ export async function loadProfile(dirPath: string): Promise<LoadedProfile> {
   const config = validateConfig(rawConfig, basePath)
 
   // 3. Load SOUL.md
-  const soulMd = await tryRead(join(basePath, 'SOUL.md'))
+  const soulMd = await tryRead(await resolveContainedProfilePath(basePath, 'SOUL.md', 'SOUL.md'))
 
   // 4. Load AGENTS.md
-  const agentsMd = await tryRead(join(basePath, 'AGENTS.md'))
+  const agentsMd = await tryRead(await resolveContainedProfilePath(basePath, 'AGENTS.md', 'AGENTS.md'))
 
   // 5. Discover and load skills
   const skills = await loadSkills(basePath, config.skills.dirs)
@@ -102,9 +103,9 @@ export async function loadProfile(dirPath: string): Promise<LoadedProfile> {
 
 async function readConfigFile(basePath: string): Promise<unknown> {
   // JSON takes priority
-  const jsonPath = join(basePath, 'agent.json')
-  const yamlPath = join(basePath, 'agent.yaml')
-  const ymlPath = join(basePath, 'agent.yml')
+  const jsonPath = await resolveContainedProfilePath(basePath, 'agent.json', 'Profile config')
+  const yamlPath = await resolveContainedProfilePath(basePath, 'agent.yaml', 'Profile config')
+  const ymlPath = await resolveContainedProfilePath(basePath, 'agent.yml', 'Profile config')
 
   const jsonContent = await tryRead(jsonPath)
   if (jsonContent !== null) {
@@ -162,7 +163,11 @@ async function validateCustomToolPaths(
   basePath: string,
 ): Promise<void> {
   for (const entry of custom) {
-    const absolutePath = resolve(basePath, entry.path)
+    const absolutePath = await resolveContainedProfilePath(
+      basePath,
+      entry.path,
+      'Custom tool path',
+    )
     try {
       const fileStat = await stat(absolutePath)
       if (!fileStat.isFile()) {
@@ -194,11 +199,15 @@ async function loadSkills(
   const skills: SkillDefinition[] = []
 
   for (const dir of skillDirs) {
-    const skillPath = resolve(basePath, dir)
+    const skillPath = await resolveContainedProfilePath(basePath, dir, 'Skill directory')
     const entries = await safeReaddir(skillPath)
 
     for (const entry of entries) {
-      const fullPath = join(skillPath, entry)
+      const fullPath = await resolveContainedProfilePath(
+        basePath,
+        relative(basePath, join(skillPath, entry)),
+        'Skill path',
+      )
 
       // Layout 1 (legacy / flat): <dir>/<name>.md
       if (entry.endsWith('.md')) {
@@ -216,7 +225,12 @@ async function loadSkills(
       if (!dirStat?.isDirectory()) continue
       const skillFile = await findSkillFile(fullPath)
       if (skillFile === null) continue
-      const content = await tryRead(skillFile.path)
+      const containedSkillFile = await resolveContainedProfilePath(
+        basePath,
+        relative(basePath, skillFile.path),
+        'Skill file',
+      )
+      const content = await tryRead(containedSkillFile)
       if (content === null) continue
       // Use the slug (folder name) as the filename hint so default name
       // becomes the slug, not the file's literal name.

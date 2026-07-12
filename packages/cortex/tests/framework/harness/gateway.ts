@@ -106,6 +106,8 @@ export interface TestGatewayOptions {
    * exists and migrations have run.
    */
   readonly dbPath?: string
+  /** Explicit Gateway auth posture. Use false for principal/token contracts. */
+  readonly disableAuth?: boolean
 }
 
 export interface TestGateway {
@@ -134,7 +136,7 @@ export interface TestGateway {
    */
   readonly gateway: OwnwareGateway
   /** Stop the gateway and clean up */
-  stop(): Promise<void>
+  stop(options?: { readonly cleanup?: boolean }): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +193,7 @@ export async function createTestGateway(opts: TestGatewayOptions = {}): Promise<
     // per-boot cert. The HTTP/2-over-TLS path (desktop default) is verified
     // separately (gateway-perf-2026-06-13 probes + the Electron run).
     tls: false,
+    ...(opts.disableAuth !== undefined ? { disableAuth: opts.disableAuth } : {}),
   })
   await gw.start()
 
@@ -217,10 +220,10 @@ export async function createTestGateway(opts: TestGatewayOptions = {}): Promise<
     tmpDir,
     recorder,
     gateway: gw,
-    async stop() {
+    async stop(options = {}) {
       await recorder.flush()
       await gw.stop()
-      await rm(tmpDir, { recursive: true, force: true })
+      if (options.cleanup !== false) await rm(tmpDir, { recursive: true, force: true })
     },
   }
 }

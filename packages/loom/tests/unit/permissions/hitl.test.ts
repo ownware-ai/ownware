@@ -43,6 +43,25 @@ describe('HumanInTheLoop', () => {
       expect(approved).toBe(false)
     })
 
+    it('reports exact pending state and accepts a response only once', async () => {
+      hitl = new HumanInTheLoop()
+      let pendingDuringRequest = false
+      let firstDelivery = false
+      let duplicateDelivery = true
+
+      hitl.onApprovalNeeded((request: ApprovalRequest) => {
+        pendingDuringRequest = hitl.hasPending(request.requestId)
+        firstDelivery = hitl.respond(request.requestId, true)
+        duplicateDelivery = hitl.respond(request.requestId, false)
+      })
+
+      await expect(hitl.requestApproval(makeToolCall())).resolves.toBe(true)
+      expect(pendingDuringRequest).toBe(true)
+      expect(firstDelivery).toBe(true)
+      expect(duplicateDelivery).toBe(false)
+      expect(hitl.hasPending('call_1')).toBe(false)
+    })
+
     it('passes correct request info to handler', async () => {
       hitl = new HumanInTheLoop()
       let receivedRequest: ApprovalRequest | null = null
@@ -163,10 +182,9 @@ describe('HumanInTheLoop', () => {
   })
 
   describe('respond to unknown requestId', () => {
-    it('is a no-op', () => {
+    it('reports that nothing was delivered', () => {
       hitl = new HumanInTheLoop()
-      // Should not throw
-      hitl.respond('nonexistent', true)
+      expect(hitl.respond('nonexistent', true)).toBe(false)
     })
   })
 })

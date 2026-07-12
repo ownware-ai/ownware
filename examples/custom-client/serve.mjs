@@ -8,7 +8,7 @@
 // your own app. One process; you host it; your keys never leave.
 
 import { OwnwareGateway } from 'ownware'
-import { writeFileSync } from 'node:fs'
+import { chmodSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -26,14 +26,17 @@ await ownware.start()
 
 // Hand the connection details to chat.mjs (and to you).
 const conn = { url: `http://localhost:${ownware.port}`, token: ownware.token }
-writeFileSync(join(here, '.ownware-connection.json'), JSON.stringify(conn, null, 2))
+const connectionPath = join(here, '.ownware-connection.json')
+writeFileSync(connectionPath, JSON.stringify(conn, null, 2), { mode: 0o600 })
+chmodSync(connectionPath, 0o600)
 
 console.log()
 console.log(`  Your agent is live: ${conn.url}`)
 console.log()
 console.log('  Talk to it:   node chat.mjs')
+console.log('  Raw HTTP token: read .ownware-connection.json (0600); never paste it into shared logs.')
 console.log(`  Or raw HTTP:  curl -X POST ${conn.url}/api/v1/run \\`)
-console.log(`                  -H "Authorization: Bearer ${conn.token}" \\`)
+console.log('                  -H "Authorization: Bearer <token>" \\')
 console.log('                  -H "Content-Type: application/json" \\')
 console.log(`                  -d '{"profileId":"assistant","prompt":"hello"}'`)
 console.log()

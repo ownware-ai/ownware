@@ -17,6 +17,8 @@ import { z } from 'zod'
 import { ProfileSchema } from '../../profile/schema.js'
 import { countResolvedTools } from '../../profile/tool-policy.js'
 import { deepMergePartial } from '../../profile/merge.js'
+import { getRequestPrincipal } from '../auth/scoped-principal.js'
+import type { CandidateStore } from '../candidate-store.js'
 
 /**
  * Resolve a parent profile's `subagents` list into the wire shape the
@@ -105,6 +107,7 @@ export function createProfileHandlers(
   userProfilesDir: string,
   state?: GatewayState,
   pendingReconciles?: PendingReconciles,
+  candidateStore?: CandidateStore,
 ) {
   /**
    * Mark every thread on this profile as needing a reconcile on its
@@ -138,6 +141,51 @@ export function createProfileHandlers(
     // Pick up any profile written after boot (e.g. the agent builder's
     // create_profile) so "Your agents" shows it with no gateway restart.
     await registry.refreshUser()
+    const principal = getRequestPrincipal(req)
+    if (principal?.kind === 'delegated') {
+      const profileId = principal.profileId
+      const deployment = candidateStore?.getActive(profileId) ?? null
+      const known = registry.has(profileId)
+      if (!known && !deployment) {
+        sendJSON(res, 200, [])
+        return
+      }
+      let name = profileId
+      let displayName: string | null = null
+      let description = ''
+      let invalid = false
+      if (known) {
+        try {
+          const loaded = await registry.get(profileId)
+          name = loaded.config.name
+          displayName = loaded.config.displayName ?? null
+          description = loaded.config.description ?? ''
+        } catch {
+          invalid = true
+        }
+      }
+      const availability = invalid && !deployment ? 'invalid'
+        : deployment?.routingState === 'paused' ? 'paused'
+          : deployment?.health === 'unhealthy' ? 'unavailable' : 'available'
+      sendJSON(res, 200, [{
+        id: profileId,
+        name,
+        displayName,
+        description,
+        availability,
+        activeCandidateId: deployment?.candidateId ?? null,
+        deploymentRevision: deployment?.deploymentRevision ?? null,
+        health: deployment?.health ?? 'unknown',
+        healthObservedAt: deployment?.healthObservedAt ?? null,
+        requiredCapabilities: [],
+        findings: invalid ? [{
+          code: 'profile_invalid',
+          severity: 'error',
+          message: 'Profile could not be loaded by this runtime.',
+        }] : [],
+      }])
+      return
+    }
     const profiles = registry.list()
     const summaries: ProfileSummary[] = []
 

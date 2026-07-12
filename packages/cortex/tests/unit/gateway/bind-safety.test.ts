@@ -11,7 +11,7 @@
  * wildcard bind includes 127.0.0.1) so CI needs no real network.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtemp, rm, mkdir, writeFile, readFile, stat } from 'fs/promises'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
@@ -117,6 +117,21 @@ describe('loopback bind (the local-first default, unchanged)', () => {
 })
 
 describe('token persistence (<dataDir>/gateway-token)', () => {
+  it('never prints the full token or a token prefix during auth-enabled boot', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      gateway = new OwnwareGateway({ port: 0, profilesDir, dataDir, disableAuth: false, tls: false })
+      await gateway.start()
+      const output = warn.mock.calls.flat().join('\n')
+
+      expect(output).toContain(gatewayTokenPath(dataDir))
+      expect(output).not.toContain(gateway.token)
+      expect(output).not.toContain(gateway.token.slice(0, 8))
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('auth-enabled boot writes the token file with 0600 and gateway.token matches', async () => {
     gateway = new OwnwareGateway({ port: 0, profilesDir, dataDir, disableAuth: false, tls: false })
     await gateway.start()
@@ -188,7 +203,7 @@ describe('host-header guard (DNS-rebinding)', () => {
     await gateway.start()
     const token = gateway.token
 
-    const tlsGet = (host: string): Promise<number> =>
+    const tlsGet = (host: string): Promise<{ status: number; body: Record<string, unknown> }> =>
       new Promise((resolvePromise, reject) => {
         const req = httpsRequest(
           {
@@ -203,16 +218,30 @@ describe('host-header guard (DNS-rebinding)', () => {
             headers: { host, authorization: `Bearer ${token}` },
           },
           (res) => {
-            res.resume()
-            res.on('end', () => resolvePromise(res.statusCode ?? 0))
+            const chunks: Buffer[] = []
+            res.on('data', (chunk: Buffer) => chunks.push(chunk))
+            res.on('end', () => {
+              const raw = Buffer.concat(chunks).toString('utf8')
+              resolvePromise({
+                status: res.statusCode ?? 0,
+                body: raw.length > 0 ? JSON.parse(raw) as Record<string, unknown> : {},
+              })
+            })
           },
         )
         req.on('error', reject)
         req.end()
       })
 
-    expect(await tlsGet('attacker.com')).toBe(403)
-    expect(await tlsGet('192.168.1.5:3011')).toBe(200)
-    expect(await tlsGet('localhost')).toBe(200)
+    const denied = await tlsGet('attacker.com')
+    expect(denied.status).toBe(403)
+    expect(denied.body).toEqual({
+      error: 'forbidden_host',
+      message: 'Host "attacker.com" not allowed — pass allowedHosts to GatewayOptions to serve a DNS name',
+      category: 'auth',
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    expect((await tlsGet('192.168.1.5:3011')).status).toBe(200)
+    expect((await tlsGet('localhost')).status).toBe(200)
   })
 })

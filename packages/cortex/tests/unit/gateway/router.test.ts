@@ -131,7 +131,8 @@ describe('Router', () => {
     await withServer(router, async (url) => {
       const { status, body } = await fetchJSON(`${url}/boom`)
       expect(status).toBe(500)
-      expect((body as any).message).toContain('test explosion')
+      expect((body as any).message).toBe('Internal server error')
+      expect(JSON.stringify(body)).not.toContain('test explosion')
     })
   })
 

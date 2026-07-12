@@ -366,6 +366,33 @@ describe('GET /api/v1/marketplace/repos/:repoId/update', () => {
 })
 
 describe('DELETE /api/v1/marketplace/repos/:repoId', () => {
+  it('refuses uninstall while any profile in the install group is active', async () => {
+    if (!gitOk) return
+    const bare = await makeBareRepo()
+    await bare.pushFiles({
+      'cortex.profile.json': MANIFEST,
+      'profiles/finance/agent.json': JSON.stringify({ name: 'finance' }),
+    })
+    const dataDir = await makeTempDir('cortex-data-')
+    const wrapper = await makeGitWrapper(bare)
+    const registry = new ProfileRegistry()
+    const handlers = createMarketplaceHandlers({
+      dataDir,
+      registry,
+      gitBinary: wrapper,
+      canUninstallProfile: (profileId) => profileId !== 'acme__finance__finance',
+    })
+    await dispatchAndCapture(handlers.install, { body: { url: bare.githubUrl } })
+
+    const r = await dispatchAndCapture(handlers.uninstall, {
+      params: { repoId: 'acme__finance' },
+    })
+    expect(r.status).toBe(409)
+    expect(r.body.error).toBe('profile_in_use')
+    expect(await readFile(join(dataDir, 'profiles', 'acme__finance__finance', 'agent.json'), 'utf-8'))
+      .toContain('finance')
+  })
+
   it('removes every installed profile for the repo and returns 200', async () => {
     if (!gitOk) return
     const bare = await makeBareRepo()
@@ -394,6 +421,30 @@ describe('DELETE /api/v1/marketplace/repos/:repoId', () => {
       params: { repoId: 'no__one' },
     })
     expect(r.status).toBe(404)
+  })
+})
+
+describe('DELETE /api/v1/marketplace/ownware/:name', () => {
+  it('refuses uninstall while the bundled profile is active', async () => {
+    const dataDir = await makeTempDir('cortex-data-')
+    const bundleDir = await makeTempDir('cortex-bundle-')
+    await mkdir(join(bundleDir, 'x'), { recursive: true })
+    await writeFile(join(bundleDir, 'BUILTINS.json'), JSON.stringify({ core: [], marketplace: ['x'] }))
+    await writeFile(join(bundleDir, 'x', 'agent.json'), JSON.stringify({ name: 'x' }))
+    await mkdir(join(dataDir, 'profiles', 'x'), { recursive: true })
+    await writeFile(join(dataDir, 'profiles', 'x', 'agent.json'), JSON.stringify({ name: 'x' }))
+    const registry = new ProfileRegistry()
+    const handlers = createMarketplaceHandlers({
+      dataDir,
+      registry,
+      ownwareBundleDir: bundleDir,
+      canUninstallProfile: () => false,
+    })
+
+    const r = await dispatchAndCapture(handlers.ownwareUninstall, { params: { name: 'x' } })
+    expect(r.status).toBe(409)
+    expect(r.body.error).toBe('profile_in_use')
+    expect(await readFile(join(dataDir, 'profiles', 'x', 'agent.json'), 'utf-8')).toContain('x')
   })
 })
 

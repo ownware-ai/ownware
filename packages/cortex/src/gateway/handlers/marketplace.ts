@@ -162,6 +162,8 @@ export interface MarketplaceHandlerDeps {
    * release ships a new bundle. Defaults to 'dev' for local builds.
    */
   readonly ownwareBundleVersion?: string
+  /** Runtime-owned guard. False means profile bytes are still active or pinned. */
+  readonly canUninstallProfile?: (profileId: string) => boolean | Promise<boolean>
 }
 
 export function createMarketplaceHandlers(deps: MarketplaceHandlerDeps): {
@@ -372,7 +374,19 @@ export function createMarketplaceHandlers(deps: MarketplaceHandlerDeps): {
       return
     }
     try {
-      const removed = await uninstallProfilesForRepo(userProfilesDir, repoId)
+      const group = await findProfilesForRepo(userProfilesDir, repoId)
+      for (const { dir } of group) {
+        const profileId = dir.split('/').pop() ?? ''
+        if (deps.canUninstallProfile && !(await deps.canUninstallProfile(profileId))) {
+          sendError(res, 409, 'Profile is active or has in-flight runs and cannot be uninstalled', 'profile_in_use')
+          return
+        }
+      }
+      const removed = await uninstallProfilesForRepo(
+        userProfilesDir,
+        repoId,
+        deps.canUninstallProfile ?? (() => true),
+      )
       if (removed.length === 0) {
         sendError(res, 404, `no installed profiles for repoId '${repoId}'`)
         return
@@ -559,6 +573,10 @@ export function createMarketplaceHandlers(deps: MarketplaceHandlerDeps): {
       return
     }
     try {
+      if (deps.canUninstallProfile && !(await deps.canUninstallProfile(name!))) {
+        sendError(res, 409, 'Profile is active or has in-flight runs and cannot be uninstalled', 'profile_in_use')
+        return
+      }
       const result = await ownwareBundle.uninstall(name!)
       if (!result.removed) {
         sendError(res, 404, `'${name}' is not installed`)
@@ -686,6 +704,7 @@ function installErrorStatus(err: InstallError): number {
     case 'auth_required':
       return 401
     case 'name_collision':
+    case 'profile_in_use':
       return 409
     case 'network':
     case 'clone_failed':
@@ -693,6 +712,8 @@ function installErrorStatus(err: InstallError): number {
     case 'profile_load_failed':
     case 'unsupported_helper':
       return 422
+    case 'rollback_failed':
+      return 500
     default: {
       const exhaustive: never = err.code
       void exhaustive

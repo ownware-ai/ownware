@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import { executeTool } from '../executor.js'
+import { ToolResultCache } from '../result-cache.js'
 import { ToolHookRegistry } from '../hooks.js'
 import { ToolPolicy } from '../policy.js'
 import { executeOrchestrated } from '../orchestrator.js'
@@ -219,6 +220,68 @@ describe('formatter + builtins', () => {
 // ---------------------------------------------------------------------------
 
 describe('end-to-end file workflow', () => {
+  it('identical grep after an out-of-band change cannot return a removed cached match', async () => {
+    const cache = new ToolResultCache()
+    const target = path.join(tmpDir, 'changing.txt')
+    await fs.writeFile(target, 'old-value\n', 'utf-8')
+    const call = { id: 'grep-1', name: 'grep', input: { pattern: 'old-value', path: target } }
+    const first = await executeTool({ tool: grep, toolCall: call, context, cache })
+    expect(first.result.content).toContain('old-value')
+    expect(first.cacheHit).toBe(false)
+
+    await fs.writeFile(target, 'new-value\n', 'utf-8')
+    const second = await executeTool({
+      tool: grep,
+      toolCall: { ...call, id: 'grep-2' },
+      context,
+      cache,
+    })
+    expect(second.cacheHit).toBe(false)
+    expect(second.result.content).toBe('No matches found.')
+    expect(second.result.content).not.toContain('old-value')
+  })
+
+  it('directory grep re-runs after an out-of-band change', async () => {
+    const cache = new ToolResultCache()
+    await fs.writeFile(path.join(tmpDir, 'tree.txt'), 'tree-old\n', 'utf-8')
+    const input = { pattern: 'tree-old', path: '.' }
+    const first = await executeTool({
+      tool: grep, toolCall: { id: 'tree-1', name: 'grep', input }, context, cache,
+    })
+    expect(first.result.content).toContain('tree-old')
+    await fs.writeFile(path.join(tmpDir, 'tree.txt'), 'tree-new\n', 'utf-8')
+    const second = await executeTool({
+      tool: grep, toolCall: { id: 'tree-2', name: 'grep', input }, context, cache,
+    })
+    expect(second.cacheHit).toBe(false)
+    expect(second.result.content).toBe('No matches found.')
+  })
+
+  it('identical grep after editFile observes the new bytes', async () => {
+    const cache = new ToolResultCache()
+    await fs.writeFile(path.join(tmpDir, 'edited.txt'), 'before-edit\n', 'utf-8')
+    const grepCall = { id: 'grep-before', name: 'grep', input: { pattern: 'before-edit', path: 'edited.txt' } }
+    expect((await executeTool({ tool: grep, toolCall: grepCall, context, cache })).result.content)
+      .toContain('before-edit')
+    await executeTool({
+      tool: editFile,
+      toolCall: {
+        id: 'edit', name: 'editFile',
+        input: { file_path: 'edited.txt', old_string: 'before-edit', new_string: 'after-edit' },
+      },
+      context,
+      cache,
+    })
+    const after = await executeTool({
+      tool: grep,
+      toolCall: { ...grepCall, id: 'grep-after' },
+      context,
+      cache,
+    })
+    expect(after.cacheHit).toBe(false)
+    expect(after.result.content).toBe('No matches found.')
+  })
+
   it('write → edit → read → grep lifecycle', async () => {
     // 1. Write a file
     const writeResult = await writeFile.execute(

@@ -2501,4 +2501,361 @@ export const MIGRATIONS: Migration[] = [
       DROP TABLE IF EXISTS workspace_panes;
     `,
   },
+  {
+    version: 51,
+    name: '051_delegated_principals',
+    sql: `
+      CREATE TABLE delegated_principals (
+        token_id         TEXT    PRIMARY KEY,
+        delegate_id      TEXT    NOT NULL,
+        workspace_id     TEXT    NOT NULL,
+        profile_id       TEXT    NOT NULL,
+        purpose          TEXT    NOT NULL,
+        channel          TEXT,
+        operations_json  TEXT    NOT NULL CHECK (json_valid(operations_json)),
+        issued_at        INTEGER NOT NULL,
+        expires_at       INTEGER NOT NULL,
+        revoked_at       INTEGER,
+        revoke_reason    TEXT,
+        CHECK (expires_at > issued_at),
+        CHECK ((revoked_at IS NULL AND revoke_reason IS NULL) OR revoked_at IS NOT NULL)
+      );
+
+      CREATE INDEX idx_delegated_principals_expiry
+        ON delegated_principals(expires_at);
+      CREATE INDEX idx_delegated_principals_scope
+        ON delegated_principals(workspace_id, profile_id, revoked_at);
+    `,
+  },
+  {
+    version: 52,
+    name: '052_run_idempotency',
+    sql: `
+      CREATE TABLE run_idempotency (
+        id                TEXT    PRIMARY KEY,
+        principal_key     TEXT    NOT NULL,
+        operation         TEXT    NOT NULL,
+        idempotency_key   TEXT    NOT NULL,
+        request_salt      TEXT    NOT NULL,
+        request_digest    TEXT    NOT NULL,
+        state             TEXT    NOT NULL CHECK (state IN ('in_progress', 'completed', 'indeterminate')),
+        lease_owner       TEXT    NOT NULL,
+        status_code       INTEGER,
+        result_json       TEXT    CHECK (result_json IS NULL OR json_valid(result_json)),
+        created_at        INTEGER NOT NULL,
+        updated_at        INTEGER NOT NULL,
+        expires_at        INTEGER NOT NULL,
+        UNIQUE (principal_key, operation, idempotency_key),
+        CHECK ((state = 'completed' AND status_code IS NOT NULL AND result_json IS NOT NULL)
+          OR (state != 'completed' AND status_code IS NULL AND result_json IS NULL))
+      );
+
+      CREATE INDEX idx_run_idempotency_expiry
+        ON run_idempotency(state, expires_at);
+    `,
+  },
+  {
+    version: 53,
+    name: '053_gateway_runs',
+    sql: `
+      CREATE TABLE gateway_runs (
+        id                  TEXT    PRIMARY KEY,
+        thread_id           TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        workspace_id        TEXT,
+        profile_id          TEXT    NOT NULL,
+        model               TEXT    NOT NULL,
+        timeout_ms          INTEGER NOT NULL CHECK (timeout_ms > 0),
+        status              TEXT    NOT NULL CHECK (status IN (
+          'accepted', 'running', 'waiting', 'cancel_requested',
+          'succeeded', 'failed', 'cancelled', 'timed_out', 'indeterminate'
+        )),
+        start_seq           INTEGER NOT NULL CHECK (start_seq >= 0),
+        end_seq             INTEGER CHECK (end_seq IS NULL OR end_seq >= start_seq),
+        code                TEXT,
+        accepted_at         INTEGER NOT NULL,
+        started_at          INTEGER,
+        updated_at          INTEGER NOT NULL,
+        terminal_at         INTEGER,
+        cancel_requested_at INTEGER,
+        CHECK ((status IN ('succeeded', 'failed', 'cancelled', 'timed_out', 'indeterminate')
+          AND terminal_at IS NOT NULL) OR
+          (status NOT IN ('succeeded', 'failed', 'cancelled', 'timed_out', 'indeterminate')
+          AND terminal_at IS NULL))
+      );
+
+      CREATE INDEX idx_gateway_runs_thread
+        ON gateway_runs(thread_id, accepted_at DESC);
+      CREATE INDEX idx_gateway_runs_status
+        ON gateway_runs(status, updated_at);
+
+      ALTER TABLE run_idempotency
+        ADD COLUMN run_id TEXT REFERENCES gateway_runs(id) ON DELETE SET NULL;
+      CREATE UNIQUE INDEX idx_run_idempotency_run
+        ON run_idempotency(run_id) WHERE run_id IS NOT NULL;
+    `,
+  },
+  {
+    version: 54,
+    name: '054_run_permission_requests',
+    sql: `
+      CREATE TABLE run_permission_requests (
+        run_id          TEXT    NOT NULL REFERENCES gateway_runs(id) ON DELETE CASCADE,
+        request_id      TEXT    NOT NULL,
+        operation_hash  TEXT    NOT NULL,
+        tool_name       TEXT    NOT NULL,
+        status          TEXT    NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'expired')),
+        requested_at    INTEGER NOT NULL,
+        decided_at      INTEGER,
+        PRIMARY KEY (run_id, request_id),
+        CHECK ((status = 'pending' AND decided_at IS NULL) OR
+          (status != 'pending' AND decided_at IS NOT NULL))
+      );
+
+      CREATE INDEX idx_run_permission_pending
+        ON run_permission_requests(run_id, status, requested_at);
+    `,
+  },
+  {
+    version: 55,
+    name: '055_profile_candidates',
+    sql: `
+      CREATE TABLE profile_candidates (
+        candidate_id  TEXT    PRIMARY KEY,
+        profile_id    TEXT    NOT NULL,
+        state         TEXT    NOT NULL CHECK (state IN (
+          'placing', 'ready', 'placement_failed', 'cleanup_failed'
+        )),
+        attempt_id    TEXT,
+        file_count    INTEGER NOT NULL CHECK (file_count >= 0),
+        total_bytes   INTEGER NOT NULL CHECK (total_bytes >= 0),
+        code          TEXT,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        CHECK (candidate_id GLOB 'sha256:[0-9a-f]*' AND length(candidate_id) = 71),
+        CHECK ((state = 'ready' AND attempt_id IS NULL AND code IS NULL)
+          OR (state != 'ready' AND attempt_id IS NOT NULL))
+      );
+
+      CREATE INDEX idx_profile_candidates_profile
+        ON profile_candidates(profile_id, state, updated_at DESC);
+      CREATE INDEX idx_profile_candidates_state
+        ON profile_candidates(state, updated_at);
+    `,
+  },
+  {
+    version: 56,
+    name: '056_profile_candidate_activations',
+    sql: `
+      CREATE TABLE profile_candidate_activations (
+        profile_id    TEXT    PRIMARY KEY,
+        candidate_id  TEXT    NOT NULL REFERENCES profile_candidates(candidate_id),
+        updated_at    INTEGER NOT NULL
+      );
+
+      CREATE INDEX idx_profile_candidate_activations_candidate
+        ON profile_candidate_activations(candidate_id);
+
+      ALTER TABLE gateway_runs
+        ADD COLUMN candidate_id TEXT REFERENCES profile_candidates(candidate_id);
+      CREATE INDEX idx_gateway_runs_candidate
+        ON gateway_runs(candidate_id, status, updated_at);
+    `,
+  },
+  {
+    version: 57,
+    name: '057_profile_deployment_state',
+    sql: `
+      ALTER TABLE profile_candidate_activations
+        ADD COLUMN deployment_revision INTEGER NOT NULL DEFAULT 1
+          CHECK (deployment_revision > 0);
+      ALTER TABLE profile_candidate_activations
+        ADD COLUMN routing_state TEXT NOT NULL DEFAULT 'active'
+          CHECK (routing_state IN ('active', 'paused'));
+      ALTER TABLE profile_candidate_activations
+        ADD COLUMN health TEXT NOT NULL DEFAULT 'unknown'
+          CHECK (health IN ('unknown', 'starting', 'healthy', 'degraded', 'unhealthy'));
+      ALTER TABLE profile_candidate_activations
+        ADD COLUMN health_observed_at INTEGER;
+    `,
+  },
+  {
+    version: 58,
+    name: '058_candidate_retention_evidence',
+    sql: `
+      CREATE TABLE profile_candidate_activation_history (
+        profile_id          TEXT    NOT NULL,
+        deployment_revision INTEGER NOT NULL CHECK (deployment_revision > 0),
+        candidate_id        TEXT    NOT NULL REFERENCES profile_candidates(candidate_id),
+        activated_at        INTEGER NOT NULL,
+        PRIMARY KEY (profile_id, deployment_revision)
+      );
+
+      INSERT INTO profile_candidate_activation_history (
+        profile_id, deployment_revision, candidate_id, activated_at
+      )
+      SELECT profile_id, deployment_revision, candidate_id, updated_at
+      FROM profile_candidate_activations;
+
+      CREATE INDEX idx_candidate_activation_history_candidate
+        ON profile_candidate_activation_history(candidate_id, activated_at DESC);
+
+      CREATE TABLE profile_candidate_deletions (
+        candidate_id TEXT PRIMARY KEY REFERENCES profile_candidates(candidate_id),
+        state        TEXT    NOT NULL CHECK (state IN ('deleting', 'delete_failed', 'deleted')),
+        code         TEXT,
+        started_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL,
+        deleted_at   INTEGER,
+        CHECK ((state = 'deleting' AND code IS NULL AND deleted_at IS NULL)
+          OR (state = 'delete_failed' AND code IS NOT NULL AND deleted_at IS NULL)
+          OR (state = 'deleted' AND code IS NULL AND deleted_at IS NOT NULL))
+      );
+    `,
+  },
+  {
+    version: 59,
+    name: '059_runtime_sources',
+    sql: `
+      CREATE TABLE runtime_sources (
+        source_id               TEXT    PRIMARY KEY,
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        kind                    TEXT    NOT NULL CHECK (kind IN (
+          'file', 'text', 'visual', 'structured_export',
+          'cloud_document', 'connected_snapshot', 'supported_other'
+        )),
+        label                   TEXT    NOT NULL CHECK (length(label) BETWEEN 1 AND 160),
+        classification          TEXT    NOT NULL CHECK (classification IN (
+          'public', 'internal', 'confidential', 'restricted'
+        )),
+        authority               TEXT    NOT NULL CHECK (authority IN (
+          'source_of_record', 'supporting_reference', 'example', 'excluded'
+        )),
+        audience_policy_ref     TEXT    NOT NULL,
+        sensitivity_policy_ref  TEXT    NOT NULL,
+        purpose_policy_ref      TEXT    NOT NULL,
+        retention_policy_ref    TEXT    NOT NULL,
+        freshness_policy_ref    TEXT    NOT NULL,
+        revision                INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+        current_version_id      TEXT,
+        registration_state      TEXT    NOT NULL CHECK (registration_state IN (
+          'pending', 'registered', 'rejected'
+        )),
+        inspection_state        TEXT    NOT NULL CHECK (inspection_state IN (
+          'not_started', 'queued', 'inspecting', 'complete', 'partial', 'failed'
+        )),
+        preparation_state       TEXT    NOT NULL CHECK (preparation_state IN (
+          'not_requested', 'queued', 'preparing', 'ready', 'partial', 'failed'
+        )),
+        access_state            TEXT    NOT NULL CHECK (access_state IN (
+          'available', 'denied', 'expired', 'disconnected', 'wrong_identity'
+        )),
+        freshness_state         TEXT    NOT NULL CHECK (freshness_state IN (
+          'fresh', 'aging', 'stale', 'unknown'
+        )),
+        conflict_state          TEXT    NOT NULL CHECK (conflict_state IN (
+          'none', 'suspected', 'confirmed', 'resolved'
+        )),
+        deletion_state          TEXT    NOT NULL CHECK (deletion_state IN (
+          'active', 'frozen', 'deleting', 'partially_deleted', 'deleted'
+        )),
+        created_at              INTEGER NOT NULL,
+        updated_at              INTEGER NOT NULL,
+        CHECK (length(source_id) = 36),
+        CHECK (updated_at >= created_at)
+      );
+
+      CREATE INDEX idx_runtime_sources_scope
+        ON runtime_sources(workspace_id, profile_id, created_at DESC, source_id DESC);
+    `,
+  },
+  {
+    version: 60,
+    name: '060_source_upload_sessions',
+    sql: `
+      CREATE TABLE source_upload_sessions (
+        upload_id             TEXT    PRIMARY KEY,
+        source_id             TEXT    NOT NULL REFERENCES runtime_sources(source_id),
+        workspace_id          TEXT    NOT NULL,
+        profile_id            TEXT    NOT NULL,
+        principal_key         TEXT    NOT NULL,
+        state                 TEXT    NOT NULL CHECK (state IN (
+          'open', 'completing', 'completed', 'expired', 'failed'
+        )),
+        expected_bytes        INTEGER NOT NULL CHECK (expected_bytes BETWEEN 1 AND 16777216),
+        expected_checksum     TEXT    NOT NULL CHECK (
+          expected_checksum GLOB 'sha256:[0-9a-f]*' AND length(expected_checksum) = 71
+        ),
+        declared_media_type   TEXT    NOT NULL CHECK (declared_media_type IN (
+          'text/plain', 'application/pdf'
+        )),
+        filename              TEXT    NOT NULL CHECK (length(filename) BETWEEN 1 AND 255),
+        durable_offset        INTEGER NOT NULL DEFAULT 0 CHECK (durable_offset >= 0),
+        chunk_count           INTEGER NOT NULL DEFAULT 0 CHECK (chunk_count BETWEEN 0 AND 64),
+        max_chunk_bytes       INTEGER NOT NULL DEFAULT 1048576 CHECK (max_chunk_bytes = 1048576),
+        max_chunks            INTEGER NOT NULL DEFAULT 64 CHECK (max_chunks = 64),
+        pending_version_id    TEXT,
+        completed_version_id  TEXT,
+        code                  TEXT,
+        expires_at            INTEGER NOT NULL,
+        created_at            INTEGER NOT NULL,
+        updated_at            INTEGER NOT NULL,
+        CHECK (length(upload_id) = 36),
+        CHECK (durable_offset <= expected_bytes),
+        CHECK (expires_at > created_at),
+        CHECK (updated_at >= created_at),
+        CHECK ((state = 'open' AND pending_version_id IS NULL AND completed_version_id IS NULL AND code IS NULL)
+          OR state != 'open')
+      );
+
+      CREATE INDEX idx_source_upload_sessions_scope
+        ON source_upload_sessions(workspace_id, profile_id, source_id, created_at DESC);
+      CREATE INDEX idx_source_upload_sessions_recovery
+        ON source_upload_sessions(state, expires_at, updated_at);
+    `,
+  },
+  {
+    version: 61,
+    name: '061_source_upload_chunks',
+    sql: `
+      CREATE TABLE source_upload_chunks (
+        upload_id     TEXT    NOT NULL REFERENCES source_upload_sessions(upload_id) ON DELETE CASCADE,
+        chunk_index   INTEGER NOT NULL CHECK (chunk_index BETWEEN 0 AND 63),
+        start_offset  INTEGER NOT NULL CHECK (start_offset >= 0),
+        byte_count    INTEGER NOT NULL CHECK (byte_count BETWEEN 1 AND 1048576),
+        checksum      TEXT    NOT NULL CHECK (
+          checksum GLOB 'sha256:[0-9a-f]*' AND length(checksum) = 71
+        ),
+        accepted_at   INTEGER NOT NULL,
+        PRIMARY KEY (upload_id, start_offset),
+        UNIQUE (upload_id, chunk_index)
+      );
+    `,
+  },
+  {
+    version: 62,
+    name: '062_source_versions',
+    sql: `
+      CREATE TABLE source_versions (
+        source_version_id   TEXT    PRIMARY KEY,
+        source_id           TEXT    NOT NULL REFERENCES runtime_sources(source_id),
+        checksum            TEXT    NOT NULL CHECK (
+          checksum GLOB 'sha256:[0-9a-f]*' AND length(checksum) = 71
+        ),
+        verified_media_type TEXT    NOT NULL CHECK (verified_media_type IN (
+          'text/plain', 'application/pdf'
+        )),
+        byte_count          INTEGER NOT NULL CHECK (byte_count BETWEEN 1 AND 16777216),
+        object_key          TEXT    NOT NULL UNIQUE,
+        inspection_state    TEXT    NOT NULL DEFAULT 'not_started' CHECK (
+          inspection_state IN ('not_started', 'queued', 'inspecting', 'complete', 'partial', 'failed')
+        ),
+        created_at          INTEGER NOT NULL,
+        CHECK (length(source_version_id) = 36)
+      );
+
+      CREATE INDEX idx_source_versions_source
+        ON source_versions(source_id, created_at DESC, source_version_id DESC);
+    `,
+  },
 ]

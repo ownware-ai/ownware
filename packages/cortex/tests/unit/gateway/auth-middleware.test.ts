@@ -12,6 +12,7 @@ interface FakeRes {
   statusCode: number
   headers: Record<string, string | number>
   body: string
+  setHeader(name: string, value: string | number): void
   writeHead(status: number, headers?: Record<string, string | number>): void
   end(body?: string): void
 }
@@ -34,6 +35,9 @@ function makeRes(): FakeRes {
     statusCode: 200,
     headers: {},
     body: '',
+    setHeader(name, value) {
+      this.headers[name] = value
+    },
     writeHead(status, headers) {
       this.statusCode = status
       if (headers) Object.assign(this.headers, headers)

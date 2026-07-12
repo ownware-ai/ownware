@@ -1178,22 +1178,8 @@ describe('cacheKey — listFiles', () => {
 })
 
 describe('cacheKey — grep', () => {
-  it('produces stable JSON-based keys regardless of input order', () => {
-    const k1 = grep.cacheKey!(
-      { pattern: 'foo', glob: '*.ts', case_sensitive: true } as Record<string, unknown>,
-      context,
-    )
-    const k2 = grep.cacheKey!(
-      { case_sensitive: true, pattern: 'foo', glob: '*.ts' } as Record<string, unknown>,
-      context,
-    )
-    expect(k1).toBe(k2) // key sort makes input order irrelevant
-  })
-
-  it('different patterns produce different keys', () => {
-    const k1 = grep.cacheKey!({ pattern: 'a' } as Record<string, unknown>, context)
-    const k2 = grep.cacheKey!({ pattern: 'b' } as Record<string, unknown>, context)
-    expect(k1).not.toBe(k2)
+  it('is disabled because a search-tree content version is not cheaply provable', () => {
+    expect(grep.cacheKey).toBeUndefined()
   })
 })
 

@@ -31,7 +31,15 @@ import type {
   ToolContext, ToolCall, ToolResult,
 } from '@ownware/loom'
 import { processAttachments, categorizeFile } from '@ownware/loom'
-import { sendError, sendJSON, readJSON } from '../router.js'
+import {
+  validateAttachments,
+  AttachmentValidationError,
+  ATTACHMENT_MAX_COUNT,
+  ATTACHMENT_MAX_ITEM_BYTES,
+  ATTACHMENT_MAX_TOTAL_BYTES,
+  ATTACHMENT_MAX_FILENAME_CHARS,
+} from '@ownware/loom'
+import { RequestError, sendError, sendJSON, readJSON } from '../router.js'
 import type { GatewayState } from '../state.js'
 import type { ProfileRegistry } from '../../profile/registry.js'
 import { assembleAgent, buildSubagentSystemPrompt } from '../../profile/assembler.js'
@@ -67,9 +75,9 @@ import type { ConnectorStatusBus } from '../../connector/status-bus.js'
 import { createWorkspaceAgentShellRunner } from '../../terminal/scoped-shell-runner.js'
 
 const FileAttachmentInputSchema = z.object({
-  filename: z.string().min(1),
-  data: z.string().min(1),
-  mimeType: z.string().min(1),
+  filename: z.string().min(1).max(ATTACHMENT_MAX_FILENAME_CHARS),
+  data: z.string().min(1).max(Math.ceil(ATTACHMENT_MAX_ITEM_BYTES / 3) * 4),
+  mimeType: z.string().min(1).max(127),
 }).strict()
 
 const ActiveSkillRefSchema = z.object({
@@ -106,7 +114,7 @@ const RunRequestSchema = z.object({
   threadId: z.string().min(1).optional(),
   workspaceId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
-  attachments: z.array(FileAttachmentInputSchema).optional(),
+  attachments: z.array(FileAttachmentInputSchema).max(ATTACHMENT_MAX_COUNT).optional(),
   activeContext: ActiveContextInputSchema.optional(),
   /**
    * Per-turn vertical-owned system-prompt extension. Cortex is a
@@ -122,16 +130,30 @@ const RunRequestSchema = z.object({
   systemPromptAppend: z.string().max(SYSTEM_PROMPT_APPEND_MAX_BYTES).optional(),
 }).strict()
 
+const ExactPermissionDecisionSchema = z.object({
+  decision: z.enum(['approve', 'deny']),
+  operationHash: z.string().regex(/^[0-9a-f]{64}$/),
+}).strict()
+
 /** What startProfileRun returns once the background run is dispatched. */
 interface RunStartResult {
+  readonly runId: string
   readonly threadId: string
   readonly agentId: 'root'
   readonly profileId: string
+  readonly candidateId: string | null
   readonly model: string
   readonly status: 'running'
+  /** Enforced wall-clock limit selected from the resolved profile. */
+  readonly timeoutMs?: number
   readonly attachments: AttachmentMeta[] | undefined
   /** Resolves when the background run finishes (scheduler may await it). */
   readonly done: Promise<unknown>
+}
+
+interface PreparedAttachmentBatch {
+  readonly results: Awaited<ReturnType<typeof processAttachments>>
+  readonly metadata: AttachmentMeta[]
 }
 
 /**
@@ -140,15 +162,40 @@ interface RunStartResult {
  * HTTP code; the scheduler maps it to a failed run record.
  */
 class RunStartError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly code?: string,
+    readonly details?: Readonly<Record<string, unknown>>,
+  ) {
     super(message)
     this.name = 'RunStartError'
   }
 }
 
 import { normalizeModelId, pickRunnableDefaultModel } from '../catalog/models/index.js'
+import { authorizePrincipalScope, getRequestPrincipal } from '../auth/scoped-principal.js'
+import {
+  isValidIdempotencyKey,
+  principalContinuityKey,
+  type RunIdempotencyStore,
+  type RunStartSnapshot,
+} from '../idempotency.js'
+import { ProfileRunNotAcceptingError, type GatewayRunStore } from '../run-store.js'
+import type { CandidateStore } from '../candidate-store.js'
+import type { CandidateProfileResolver } from '../../profile/candidate-activation.js'
 
 export interface RunHandlerDeps {
+  /** Attachment processor override for failure-injection tests. */
+  readonly processAttachmentsFn?: typeof processAttachments
+  /** Durable execution snapshots and lifecycle transitions. */
+  readonly runStore?: GatewayRunStore
+  /** Durable public retry fence. Scheduler calls do not pass through it. */
+  readonly idempotencyStore?: RunIdempotencyStore
+  /** Resolve and verify the currently active immutable candidate, when one exists. */
+  readonly candidateResolver?: CandidateProfileResolver
+  /** Durable candidate deployment state used by the early pause fence. */
+  readonly candidateStore?: CandidateStore
   /**
    * Connector services threaded into `assembleAgent` so sessions pick
    * up the user's live provider choice. Optional — omitting them
@@ -274,7 +321,11 @@ export function createRunHandlers(
     try {
       rawBody = await readJSON(req)
     } catch (e) {
-      sendError(res, 400, `Invalid JSON body: ${e instanceof Error ? e.message : String(e)}`)
+      if (e instanceof RequestError) {
+        sendError(res, e.status, e.message, undefined, e.category, e.details)
+      } else {
+        sendError(res, 400, 'Invalid JSON body')
+      }
       return
     }
     if (rawBody === null) {
@@ -283,31 +334,149 @@ export function createRunHandlers(
     }
     const parsed = RunRequestSchema.safeParse(rawBody)
     if (!parsed.success) {
+      if (parsed.error.issues.some((issue) => issue.path[0] === 'attachments')) {
+        sendError(
+          res,
+          400,
+          'Attachment input is invalid.',
+          'attachment_invalid',
+          'invalid_request',
+          { limits: attachmentLimits() },
+        )
+        return
+      }
       sendError(res, 400, `Invalid body: ${parsed.error.message}`)
       return
     }
     const body: RunRequest = parsed.data
 
+    let preparedAttachments: PreparedAttachmentBatch | undefined
+    try {
+      preparedAttachments = await prepareAttachmentBatch(body.attachments)
+    } catch (err) {
+      if (err instanceof RunStartError) {
+        sendError(res, err.status, err.message, err.code, undefined, err.details)
+      } else {
+        sendError(res, 422, 'Attachment processing failed safely.', 'attachment_processing_failed')
+      }
+      return
+    }
+
+    if (!authorizePrincipalScope(req, {
+      workspaceId: body.workspaceId,
+      profileId: body.profileId,
+    })) {
+      sendError(
+        res,
+        403,
+        'Delegated principal does not allow this workspace or profile',
+        'principal_scope_denied',
+        'auth',
+      )
+      return
+    }
+
+    const principal = getRequestPrincipal(req)
+    if (
+      body.attachments && body.attachments.length > 0 &&
+      principal?.kind === 'delegated' &&
+      !principal.operations.includes('runs.attachments')
+    ) {
+      sendError(
+        res,
+        403,
+        'Delegated principal does not allow ephemeral run attachments',
+        'principal_operation_denied',
+        'auth',
+      )
+      return
+    }
+    const header = req.headers['idempotency-key']
+    const idempotencyKey = Array.isArray(header) ? undefined : header
+    if (header !== undefined && (idempotencyKey === undefined || !isValidIdempotencyKey(idempotencyKey))) {
+      sendError(res, 400, 'Idempotency-Key must be a UUID', 'idempotency_key_invalid', 'invalid_request')
+      return
+    }
+    if (principal?.kind === 'delegated' && idempotencyKey === undefined) {
+      sendError(res, 400, 'Delegated run start requires Idempotency-Key', 'idempotency_key_required', 'invalid_request')
+      return
+    }
+
+    const fence = idempotencyKey !== undefined && principal !== undefined && deps.idempotencyStore
+      ? {
+          principalKey: principalContinuityKey(principal),
+          operation: 'runs.start' as const,
+          key: idempotencyKey,
+        }
+      : undefined
+    let idempotencyRecordId: string | undefined
+    if (fence) {
+      const claim = deps.idempotencyStore!.claim({ ...fence, input: body })
+      if (claim.kind === 'replay') {
+        res.setHeader('Idempotency-Replayed', 'true')
+        sendJSON(res, claim.statusCode, claim.result)
+        return
+      }
+      if (claim.kind !== 'claimed') {
+        const code = `idempotency_${claim.kind}`
+        if (claim.kind === 'in_progress') res.setHeader('Retry-After', '1')
+        sendError(
+          res,
+          409,
+          claim.kind === 'conflict'
+            ? 'Idempotency key was already used with different input'
+            : claim.kind === 'expired'
+              ? 'Idempotency replay window expired; inspect the original run before acting'
+              : claim.kind === 'in_progress'
+                ? 'The original request is still in progress'
+                : 'The original request outcome is indeterminate; inspect before acting',
+          code,
+          'invalid_request',
+        )
+        return
+      }
+      idempotencyRecordId = claim.recordId
+    }
+
     // Guard: reject if this thread already has an active run.
     if (body.threadId && runner.isRunning(body.threadId)) {
+      if (fence) deps.idempotencyStore!.markIndeterminate(fence)
       sendError(res, 409, 'Thread already has an active run. Abort it first.')
       return
     }
 
     try {
-      const result = await startProfileRun(body)
-      // Return thread ID — client connects to the SSE endpoint to watch.
-      sendJSON(res, 200, {
+      const result = await startProfileRun(body, preparedAttachments)
+      const snapshot: RunStartSnapshot = {
+        runId: result.runId,
         threadId: result.threadId,
         agentId: result.agentId,
         profileId: result.profileId,
+        candidateId: result.candidateId,
         model: result.model,
         status: result.status,
+        ...(result.timeoutMs !== undefined ? { timeoutMs: result.timeoutMs } : {}),
+      }
+      if (idempotencyRecordId) {
+        deps.idempotencyStore!.linkRun(idempotencyRecordId, result.runId)
+      }
+      if (fence) deps.idempotencyStore!.complete({ ...fence, statusCode: 200, result: snapshot })
+      // Return thread ID — client connects to the SSE endpoint to watch.
+      sendJSON(res, 200, fence ? snapshot : {
+        runId: result.runId,
+        threadId: result.threadId,
+        agentId: result.agentId,
+        profileId: result.profileId,
+        candidateId: result.candidateId,
+        model: result.model,
+        status: result.status,
+        timeoutMs: result.timeoutMs,
         attachments: result.attachments,
       })
     } catch (err) {
+      if (fence) deps.idempotencyStore!.markIndeterminate(fence)
       if (err instanceof RunStartError) {
-        sendError(res, err.status, err.message)
+        sendError(res, err.status, err.message, err.code, undefined, err.details)
       } else {
         sendError(res, 500, err instanceof Error ? err.message : 'Run failed')
       }
@@ -320,13 +489,30 @@ export function createRunHandlers(
    * credentials, memory, tools, permission boundary); returns immediately
    * with { threadId, done }. Preflight failures throw RunStartError.
    */
-  async function startProfileRun(params: RunRequest): Promise<RunStartResult> {
+  async function startProfileRun(
+    params: RunRequest,
+    preflightAttachments?: PreparedAttachmentBatch,
+  ): Promise<RunStartResult> {
     const body = params
     const profileId = body.profileId ?? 'example'
     let threadId = body.threadId
     const workspaceId = body.workspaceId
+    // Scheduler/channel callers share the same pre-mutation attachment gate.
+    const preparedAttachments = preflightAttachments ?? await prepareAttachmentBatch(body.attachments)
 
     {
+      const deployment = deps.candidateStore?.getActive(profileId)
+      if (deployment?.routingState === 'paused') {
+        throw new RunStartError(
+          409,
+          'Profile is paused and is not accepting new runs.',
+          'profile_paused',
+          {
+            deploymentRevision: deployment.deploymentRevision,
+            activeCandidateId: deployment.candidateId,
+          },
+        )
+      }
       // 0. Resolve workspace path (if provided)
       let workspacePath: string | undefined
       if (workspaceId) {
@@ -376,15 +562,21 @@ export function createRunHandlers(
       // the real model string, and (b) we have a `profile` reference
       // we can use to read execution.timeoutMs below regardless of
       // whether the session is cached.
-      if (!registry.has(profileId)) {
-        // A just-built agent (builder's create_profile) may not be registered
-        // yet — re-scan user dirs once so "Open chat" works with no restart.
+      const resolvedCandidate = await deps.candidateResolver?.resolve(profileId) ?? null
+      const candidateId = resolvedCandidate?.candidateId ?? null
+      if (!resolvedCandidate && !registry.has(profileId)) {
+        // A just-built legacy agent may not be registered yet — re-scan user
+        // dirs once. Immutable candidates resolve independently of registry.
         await registry.refreshUser()
         if (!registry.has(profileId)) {
           throw new RunStartError(404, `Profile "${profileId}" not found`)
         }
       }
-      const profile = await registry.get(profileId)
+      const profile = resolvedCandidate?.profile ?? await registry.get(profileId)
+      if (session && state.getSessionCandidateId(threadId!) !== candidateId) {
+        await state.resetSession(threadId!)
+        session = undefined
+      }
       const requestModel = body.model
       // Three-level precedence: request → thread → profile.
       //
@@ -527,23 +719,54 @@ export function createRunHandlers(
                 }
               }
               const requestId = `hookapproval_${randomUUID().replace(/-/g, '').slice(0, 12)}`
+              const activeRun = runner.get(hookApprovalThreadId)
+              if (!activeRun || !deps.runStore) {
+                return {
+                  approved: false,
+                  reason: 'Durable approval identity unavailable — denied (fail-closed).',
+                }
+              }
+              let operationHash: string
               try {
+                const permission = deps.runStore.recordPermissionRequest({
+                  runId: activeRun.runId,
+                  requestId,
+                  toolName: req.toolName,
+                  toolInput: req.toolInput,
+                })
+                operationHash = permission.operationHash
+                deps.runStore.markWaiting(activeRun.runId)
                 state.eventIngestor.ingestParentEvent(hookApprovalThreadId, {
                   type: 'permission.request',
                   requestId,
+                  operationHash,
                   toolName: req.toolName,
                   input: req.toolInput,
                   reason: req.reason,
                   turnIndex: req.turnIndex,
                 } as unknown as LoomEvent)
               } catch {
-                // Non-fatal: the HITL prompt still works via approve-all /
-                // requestId-less resume; only the SSE card is missing.
+                return {
+                  approved: false,
+                  reason: 'Approval request could not be recorded — denied (fail-closed).',
+                }
               }
               const approved = await hitlRef.requestApproval(
                 { id: requestId, name: req.toolName, input: req.toolInput },
                 req.reason,
               )
+              const currentPermission = deps.runStore.getPermissionRequest(activeRun.runId, requestId)
+              if (currentPermission?.status === 'pending') {
+                deps.runStore.decidePermission(
+                  activeRun.runId,
+                  requestId,
+                  operationHash,
+                  approved ? 'approve' : 'deny',
+                )
+              }
+              if (hitlRef.pendingCount === 0) {
+                deps.runStore.markRunningAfterDecision(activeRun.runId)
+              }
               try {
                 state.eventIngestor.ingestParentEvent(hookApprovalThreadId, {
                   type: 'permission.response',
@@ -1147,6 +1370,7 @@ export function createRunHandlers(
         })
 
         state.setSession(threadId, session)
+        state.setSessionCandidateId(threadId, candidateId)
         // Stash hitl + zoneManager + lastZoneDecision accessor next to
         // the session. These are captured by closures inside the Session
         // (requestApproval, checkPermission) and reused for every turn.
@@ -1222,37 +1446,41 @@ export function createRunHandlers(
       let promptContent: string | ContentBlock[] = body.prompt
       let attachmentMeta: AttachmentMeta[] | undefined
 
-      if (body.attachments && body.attachments.length > 0) {
-        try {
-          const results = await processAttachments(body.attachments)
+      if (preparedAttachments !== undefined) {
           const contentBlocks: ContentBlock[] = [
             { type: 'text', text: body.prompt },
           ]
 
-          attachmentMeta = body.attachments.map(a => ({
-            filename: a.filename,
-            mimeType: a.mimeType,
-            sizeBytes: Math.ceil(a.data.length * 3 / 4),
-            category: categorizeFile(a.filename, a.mimeType),
-          }))
+          attachmentMeta = preparedAttachments.metadata
 
-          for (const result of results) {
+          for (const result of preparedAttachments.results) {
             contentBlocks.push(...result.blocks)
           }
 
           promptContent = contentBlocks
-        } catch (attachErr) {
-          console.error('Attachment processing failed:', attachErr)
-          const names = body.attachments.map(a => a.filename).join(', ')
-          promptContent = `${body.prompt}\n\n[Attachment processing failed for: ${names}. Error: ${attachErr instanceof Error ? attachErr.message : String(attachErr)}]`
+      }
 
-          attachmentMeta = body.attachments.map(a => ({
-            filename: a.filename,
-            mimeType: a.mimeType,
-            sizeBytes: Math.ceil(a.data.length * 3 / 4),
-            category: categorizeFile(a.filename, a.mimeType),
-          }))
-        }
+      const timeoutMs = profile.timeoutMs
+      let runId: string
+      try {
+        runId = deps.runStore?.create({
+          threadId: threadId!,
+          ...(workspaceId !== undefined ? { workspaceId } : {}),
+          profileId,
+          ...(candidateId !== null ? { candidateId } : {}),
+          model: modelString,
+          timeoutMs,
+          startSeq: state.getAgentEventMaxSeq(threadId!, 'root'),
+        }).runId ?? randomUUID()
+      } catch (error) {
+        if (!(error instanceof ProfileRunNotAcceptingError)) throw error
+        state.deleteRuntime(threadId!)
+        throw new RunStartError(
+          409,
+          'Profile is paused and is not accepting new runs.',
+          'profile_paused',
+          { deploymentRevision: error.deploymentRevision },
+        )
       }
 
       // 4. Save user message
@@ -1282,24 +1510,9 @@ export function createRunHandlers(
         // Non-fatal — messages table already has the user message
       }
 
-      // 6. Start background run — returns immediately.
-      //
-      // Resolve the wall-clock timeout (F-09) from the profile. The
-      // loader already parsed `execution.timeout` into `timeoutMs` at
-      // load time (see loader.ts step 8), so we just read that field —
-      // no re-parse needed. A malformed timeout string fails at load
-      // time via the standard loader error path, long before we reach
-      // this handler.
-      //
-      // Reused-session corner case: if the profile is no longer in the
-      // registry (deleted mid-run) we skip enforcement rather than
-      // erroring. The session is already live; aborting it for a
-      // config lookup miss would be worse than no timeout.
-      let timeoutMs: number | undefined
-      if (registry.has(profileId)) {
-        const profileForTimeout = await registry.get(profileId)
-        timeoutMs = profileForTimeout.timeoutMs
-      }
+      // 6. Start background run — returns immediately. The resolved
+      // profile's timeout and immutable run record were fixed before the
+      // first user-message mutation above.
 
       // Flip thread.status → 'active' so SSE handlers + hydrate read the
       // authoritative "this thread can receive future events right now"
@@ -1319,6 +1532,7 @@ export function createRunHandlers(
       state.updateThread(threadId!, { status: 'active' })
 
       const handle = runner.start({
+        runId,
         threadId: threadId!,
         profileId,
         model: modelString,
@@ -1329,20 +1543,95 @@ export function createRunHandlers(
 
       // 7. Return — caller (HTTP handler / scheduler) connects/awaits.
       return {
+        runId: handle.runId,
         threadId: handle.threadId,
         agentId: 'root',
         profileId,
+        candidateId,
         model: modelString,
         status: 'running',
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
         attachments: attachmentMeta,
         done: handle.done,
       }
     }
   }
 
+  async function prepareAttachmentBatch(
+    attachments: RunRequest['attachments'],
+  ): Promise<PreparedAttachmentBatch | undefined> {
+    if (!attachments || attachments.length === 0) return undefined
+    let validation: ReturnType<typeof validateAttachments>
+    try {
+      validation = validateAttachments(attachments)
+    } catch (err) {
+      if (err instanceof AttachmentValidationError) {
+        throw new RunStartError(
+          400,
+          'Attachment input is invalid.',
+          'attachment_invalid',
+          {
+            reason: err.code,
+            index: err.index,
+            limits: attachmentLimits(),
+          },
+        )
+      }
+      throw err
+    }
+    try {
+      const results = await (deps.processAttachmentsFn ?? processAttachments)(validation.attachments)
+      return {
+        results,
+        metadata: validation.attachments.map((attachment, index) => ({
+          filename: attachment.filename,
+          mimeType: attachment.mimeType,
+          sizeBytes: validation.itemBytes[index]!,
+          category: categorizeFile(attachment.filename, attachment.mimeType),
+        })),
+      }
+    } catch (err) {
+      console.error('[run] attachment processing failed', {
+        errorType: err instanceof Error ? err.name : 'unknown',
+      })
+      throw new RunStartError(
+        422,
+        'Attachment processing failed safely.',
+        'attachment_processing_failed',
+      )
+    }
+  }
+
+  function attachmentLimits(): Readonly<Record<string, number>> {
+    return {
+      maxCount: ATTACHMENT_MAX_COUNT,
+      maxItemDecodedBytes: ATTACHMENT_MAX_ITEM_BYTES,
+      maxTotalDecodedBytes: ATTACHMENT_MAX_TOTAL_BYTES,
+      maxFilenameCharacters: ATTACHMENT_MAX_FILENAME_CHARS,
+    }
+  }
+
   // POST /api/v1/threads/:threadId/resume — respond to permission prompt
   async function resume(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
+    if (getRequestPrincipal(_req)?.kind === 'delegated') {
+      sendError(
+        res,
+        403,
+        'Delegated principals must use the exact run permission decision route',
+        'exact_permission_route_required',
+        'auth',
+      )
+      return
+    }
     const threadId = params['threadId']!
+    const thread = state.getThread(threadId)
+    if (!authorizePrincipalScope(_req, {
+      workspaceId: thread?.workspaceId ?? undefined,
+      profileId: thread?.profileId,
+    })) {
+      sendError(res, 403, 'Delegated principal does not allow this thread', 'principal_scope_denied', 'auth')
+      return
+    }
     const body = await readJSON<ResumeRequest>(_req)
     if (!body?.action) {
       sendError(res, 400, 'Missing required field: action')
@@ -1481,94 +1770,251 @@ export function createRunHandlers(
     }))
   }
 
-  // POST /api/v1/threads/:threadId/abort
-  //
-  // Terminating a run has three layered concerns, each of which has bitten
-  // us in production at least once:
-  //
-  //   1. Flip the AbortController so the loop's top-of-turn + provider
-  //      stream checks see the signal and exit normally.
-  //
-  //   2. Unblock any HITL the loop is currently awaiting. `session.abort`
-  //      alone cannot do this: HITL requests sit on Promises that only
-  //      resolve through respond / deny / their 5-minute timeout. If the
-  //      user aborts while a permission or credential (or any future
-  //      HITL) prompt is open, the AbortSignal flips but the `await`
-  //      never wakes — the runner's finally never runs,
-  //      `runner.isRunning` stays true, hydrate reports
-  //      `status: 'active'`, the client shows "agent is working…" forever.
-  //      Calling `denyAll()` on every HITL resolves those Promises with
-  //      deny semantics. The awaiting tool receives `false` / `null`,
-  //      yields its response event, returns a denied result, and the
-  //      next iteration of the main loop hits the AbortSignal check and
-  //      exits normally. Runner catches, finally runs, state cleans up.
-  //
-  //      HITLs live in `SessionCompanions.hitls` (HITL registry, see
-  //      `hitl-registry.ts`).
-  //      Iterating the registry — instead of hard-coding each HITL by
-  //      name here — means adding a third HITL cannot regress this path:
-  //      the new HITL plugs into the array at construction and the abort
-  //      handler cancels it for free.
-  //
-  //   3. Defense in depth. If some future await isn't abort-aware AND
-  //      isn't one of the HITLs, the runner's finally still won't fire.
-  //      We arm a 2s watchdog: if the run is still "running" by the
-  //      runner's books after that, we force the thread row + runtime
-  //      slot to terminal so the client's hydrate tells the truth. The
-  //      orphaned background work (if any) still completes or is cleaned
-  //      up on gateway shutdown — this just prevents the UI from lying.
-  async function abort(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
-    const threadId = params['threadId']!
-    const session = state.getSession(threadId)
-    if (!session) {
-      sendError(res, 404, `No active session for thread "${threadId}"`)
+  async function decidePermission(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const requestId = params['requestId']!
+    const snapshot = deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
       return
     }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    })) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+    const parsed = ExactPermissionDecisionSchema.safeParse(await readJSON(req))
+    if (!parsed.success) {
+      sendError(res, 400, 'Exact permission decision is invalid', 'invalid_request', 'invalid_request')
+      return
+    }
+    const permission = deps.runStore?.getPermissionRequest(runId, requestId) ?? null
+    if (!permission) {
+      sendError(res, 404, 'Permission request was not found for this run', 'permission_request_not_found', 'not_found')
+      return
+    }
+    if (permission.operationHash !== parsed.data.operationHash) {
+      sendError(res, 409, 'Permission operation hash does not match', 'permission_operation_mismatch', 'invalid_request')
+      return
+    }
+    if (permission.status !== 'pending') {
+      sendError(res, 409, 'Permission request was already decided', 'permission_already_decided', 'invalid_request')
+      return
+    }
+    const active = runner.get(snapshot.threadId)
+    const runtime = state.getRuntime(snapshot.threadId)
+    if ((active && active.runId !== runId) || !runtime || !runtime.hitl.hasPending(requestId)) {
+      sendError(res, 409, 'Permission request is no longer live', 'permission_request_stale', 'invalid_request')
+      return
+    }
+    const outcome = deps.runStore!.decidePermission(
+      runId,
+      requestId,
+      parsed.data.operationHash,
+      parsed.data.decision,
+    )
+    if (outcome !== 'decided') {
+      sendError(res, 409, 'Permission decision conflicted with current state', 'permission_decision_conflict', 'invalid_request')
+      return
+    }
+    const delivered = runtime.hitl.respond(requestId, parsed.data.decision === 'approve')
+    if (!delivered) {
+      sendError(res, 409, 'Permission request became stale', 'permission_request_stale', 'invalid_request')
+      return
+    }
+    if (runtime.hitl.pendingCount === 0) {
+      deps.runStore!.markRunningAfterDecision(runId)
+    }
+    sendJSON(res, 200, {
+      runId,
+      requestId,
+      operationHash: parsed.data.operationHash,
+      decision: parsed.data.decision,
+    })
+  }
 
-    // (1) Flip the AbortController.
-    session.abort('user')
+  function signalCancellation(
+    threadId: string,
+    session: Session,
+    armWatchdog: boolean,
+  ): void {
+    try {
+      session.abort('user')
+    } catch (err) {
+      console.error(
+        `[cancel] abort signal failed for thread ${threadId}; durable request remains pending:`,
+        err instanceof Error ? err.message : 'unknown error',
+      )
+    }
 
-    // (2) Unblock every HITL currently parked on a Promise. The
-    // registry is the one source of truth for "what HITLs does this
-    // session have" — adding a HITL means pushing into
-    // `SessionCompanions.hitls` at construction; this loop picks it
-    // up automatically. `denyAllHitls` never throws; individual HITL
-    // failures log and continue so one bad HITL cannot block the
-    // rest of the abort sequence (or defeat the 2s watchdog below).
+    // An abort signal alone cannot wake an HITL Promise. Deny every
+    // registered HITL so the loop can observe the signal and finalize.
     const companions = state.getSessionCompanions(threadId)
     if (companions) {
       const snapshot = denyAllHitls(companions.hitls)
       const blocking = snapshot.filter(s => s.pendingBefore > 0)
       if (blocking.length > 0) {
         console.info(
-          `[abort] thread=${threadId} denied pending HITL(s): ` +
+          `[cancel] thread=${threadId} denied pending HITL(s): ` +
           blocking.map(s => `${s.name}=${s.pendingBefore}`).join(', '),
         )
       }
     }
 
-    // (3) Belt + suspenders. 2s is long enough for the loop to wake,
-    // yield credential.response/permission.response, drain the in-flight
-    // tool, hit the top-of-turn abort check, emit session.end, and let
-    // the runner's finally cleanup. If we're still "running" after that,
-    // a non-abort-aware await is stuck somewhere — force the thread
-    // state so the client reflects reality.
+    // Evidence-only watchdog. A stuck, non-abort-aware await remains
+    // cancel_requested with its runtime sentinel intact. Only the runner
+    // finalizer may confirm cancelled/timed_out/succeeded/failed.
+    if (!armWatchdog) return
     const watchdog = setTimeout(() => {
       if (!runner.isRunning(threadId)) return
       console.warn(
-        `[abort] runner finally did not fire within 2s for thread ${threadId} — ` +
-        `forcing thread to completed (a tool is likely stuck on a non-abort-aware await)`,
+        `[cancel] run for thread ${threadId} did not finalize within 2s; ` +
+        'leaving outcome pending because work may still be active',
       )
-      try { state.updateThread(threadId, { status: 'completed' }) }
-      catch (err) { console.error(`[abort] watchdog updateThread failed for ${threadId}:`, err) }
-      try { state.deleteRuntime(threadId) }
-      catch (err) { console.error(`[abort] watchdog deleteRuntime failed for ${threadId}:`, err) }
     }, 2000)
-    // Don't let the watchdog keep the event loop alive on shutdown.
     watchdog.unref?.()
+  }
+
+  // POST /api/v1/runs/:runId/cancel — exact public cancellation request.
+  async function cancelRun(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const snapshot = deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    })) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+    if (snapshot.terminal) {
+      sendJSON(res, 200, {
+        runId,
+        status: snapshot.status,
+        terminal: true,
+        outcomeKnown: snapshot.outcomeKnown,
+        cancellation: 'already_terminal',
+      })
+      return
+    }
+
+    const active = runner.get(snapshot.threadId)
+    if (!active || active.runId !== runId) {
+      sendError(res, 409, 'Run is not active on this Gateway', 'run_not_active', 'invalid_request')
+      return
+    }
+    const session = state.getSession(snapshot.threadId)
+    if (!session) {
+      sendError(res, 409, 'Run runtime is unavailable', 'run_runtime_unavailable', 'invalid_request')
+      return
+    }
+
+    // Persist before signalling. A crash after this point recovers to
+    // indeterminate, never to invented cancelled/succeeded.
+    const outcome = deps.runStore!.requestCancel(runId)
+    if (outcome === 'missing') {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (outcome === 'terminal') {
+      const terminal = deps.runStore!.get(runId)!
+      sendJSON(res, 200, {
+        runId,
+        status: terminal.status,
+        terminal: true,
+        outcomeKnown: terminal.outcomeKnown,
+        cancellation: 'already_terminal',
+      })
+      return
+    }
+    const persisted = deps.runStore!.get(runId)!
+    signalCancellation(snapshot.threadId, session, outcome === 'requested')
+    sendJSON(res, 202, {
+      runId,
+      status: persisted.status,
+      terminal: false,
+      outcomeKnown: persisted.outcomeKnown,
+      cancellation: outcome,
+    })
+  }
+
+  // POST /api/v1/threads/:threadId/abort — owner-only legacy compatibility.
+  async function abort(req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
+    if (getRequestPrincipal(req)?.kind === 'delegated') {
+      sendError(
+        res,
+        403,
+        'Delegated principals must use the exact run cancellation route',
+        'exact_cancellation_route_required',
+        'auth',
+      )
+      return
+    }
+    const threadId = params['threadId']!
+    const thread = state.getThread(threadId)
+    if (!authorizePrincipalScope(req, {
+      workspaceId: thread?.workspaceId ?? undefined,
+      profileId: thread?.profileId,
+    })) {
+      sendError(res, 403, 'Delegated principal does not allow this thread', 'principal_scope_denied', 'auth')
+      return
+    }
+    const session = state.getSession(threadId)
+    if (!session) {
+      sendError(res, 404, `No active session for thread "${threadId}"`)
+      return
+    }
+
+    const active = runner.get(threadId)
+    if (active) deps.runStore?.requestCancel(active.runId)
+    signalCancellation(threadId, session, true)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ aborted: true, threadId }))
+    res.end(JSON.stringify({ aborted: true, cancelRequested: active !== undefined, threadId }))
+  }
+
+  // GET /api/v1/runs/:runId — bounded durable execution snapshot.
+  async function getRun(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const snapshot = deps.runStore?.get(params['runId']!) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    })) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+    const currentEnd = snapshot.endSeq ?? state.getAgentEventMaxSeq(snapshot.threadId, 'root')
+    const firstRetained = state.getAgentEventMinSeq(
+      snapshot.threadId,
+      'root',
+      snapshot.startSeq,
+      snapshot.endSeq ?? undefined,
+    )
+    const earliestRetainedCursor = firstRetained === null
+      ? (currentEnd === snapshot.startSeq ? snapshot.startSeq : null)
+      : firstRetained - 1
+    sendJSON(res, 200, { ...snapshot, earliestRetainedCursor })
   }
 
   // GET /api/v1/runs/active
@@ -1776,7 +2222,7 @@ export function createRunHandlers(
   }
 
   return {
-    run, startProfileRun, resume, abort, listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
+    run, startProfileRun, resume, decidePermission, cancelRun, abort, getRun, listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
     executeHeldTool,
   }
 }

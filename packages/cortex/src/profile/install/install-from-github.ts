@@ -150,9 +150,14 @@ export async function installProfileFromGithub(
     // Best-effort atomic: rename when source/target on same FS, fall
     // back to cp + rm. Roll back already-placed dirs on any failure.
     placed = []
+    const touchedTargets: string[] = []
     let lastSidecar: OriginSidecar | null = null
     try {
       for (const p of pending) {
+        // Record intent before the first target mutation. A failure during
+        // place/hash/sidecar creation must still remove this target even
+        // though it never became a completed `InstalledProfile`.
+        touchedTargets.push(p.targetDir)
         await placeDir(p.sourceDir, p.targetDir)
         // Hash AFTER placement so we hash exactly the bytes that landed.
         // Sidecar is excluded by hashProfileDir.
@@ -176,9 +181,23 @@ export async function installProfileFromGithub(
         })
       }
     } catch (err) {
-      // Roll back any dirs that landed before the failure.
-      for (const done of placed) {
-        try { await rm(done.dirPath, { recursive: true, force: true }) } catch { /* */ }
+      const rollbackFailures: string[] = []
+      for (const target of touchedTargets.slice().reverse()) {
+        try {
+          await rm(target, { recursive: true, force: true })
+          try {
+            await stat(target)
+            rollbackFailures.push(target.split('/').pop() ?? 'profile')
+          } catch { /* absence is the success condition */ }
+        } catch {
+          rollbackFailures.push(target.split('/').pop() ?? 'profile')
+        }
+      }
+      if (rollbackFailures.length > 0) {
+        throw new InstallError('rollback_failed', {
+          phase: 'install',
+          profiles: rollbackFailures,
+        })
       }
       throw err
     }
@@ -200,7 +219,14 @@ export async function installProfileFromGithub(
     }
   } finally {
     // Always clean up the clone temp dir, success or failure.
-    try { await rm(clone.tempDir, { recursive: true, force: true }) } catch { /* */ }
+    try {
+      await rm(clone.tempDir, { recursive: true, force: true })
+    } catch {
+      throw new InstallError('rollback_failed', {
+        phase: 'cleanup',
+        profiles: ['temporary clone'],
+      })
+    }
   }
 }
 

@@ -82,4 +82,11 @@ export {
   processAttachment,
   processAttachments,
   categorizeFile,
+  validateAttachments,
+  AttachmentValidationError,
+  ATTACHMENT_MAX_COUNT,
+  ATTACHMENT_MAX_ITEM_BYTES,
+  ATTACHMENT_MAX_TOTAL_BYTES,
+  ATTACHMENT_MAX_FILENAME_CHARS,
 } from './attachments.js'
+export type { AttachmentValidationCode, ValidatedAttachments } from './attachments.js'

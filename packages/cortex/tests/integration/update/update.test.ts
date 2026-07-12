@@ -19,6 +19,8 @@ import {
   checkProfileUpdate,
   applyProfileUpdate,
   findProfilesForRepo,
+  uninstallProfilesForRepo,
+  recoverInterruptedProfileUpdates,
   detectLocalEdits,
 } from '../../../src/profile/update/index.js'
 
@@ -372,6 +374,49 @@ describe('applyProfileUpdate: keep', () => {
 })
 
 describe('applyProfileUpdate: overwrite', () => {
+  it('reports rollback_failed when restart recovery cannot restore the backup', async () => {
+    if (!gitOk) return
+    const bare = await makeBareRepo()
+    await bare.pushFiles({
+      'cortex.profile.json': MANIFEST(),
+      'profiles/finance/agent.json': JSON.stringify({ name: 'finance' }),
+    })
+    const dataDir = await makeTempDir('cortex-data-')
+    await installFromBare(bare, dataDir)
+    const target = join(dataDir, 'profiles', 'acme__finance__finance')
+    const transaction = join(dataDir, '.staging', 'update-crash')
+    await mkdir(transaction, { recursive: true })
+    await (await import('node:fs/promises')).rename(target, join(transaction, 'acme__finance__finance'))
+
+    let caught: unknown
+    try {
+      await recoverInterruptedProfileUpdates(dataDir, {
+        rename: async () => { throw new Error('injected restore failure') },
+      })
+    } catch (err) { caught = err }
+    expect(caught).toMatchObject({ code: 'rollback_failed', detail: { phase: 'update' } })
+  })
+
+  it('restores a preserved backup after a simulated process restart', async () => {
+    if (!gitOk) return
+    const bare = await makeBareRepo()
+    await bare.pushFiles({
+      'cortex.profile.json': MANIFEST(),
+      'profiles/finance/agent.json': JSON.stringify({ name: 'finance' }),
+      'profiles/finance/SOUL.md': '# v1',
+    })
+    const dataDir = await makeTempDir('cortex-data-')
+    await installFromBare(bare, dataDir)
+    const target = join(dataDir, 'profiles', 'acme__finance__finance')
+    const transaction = join(dataDir, '.staging', 'update-crash')
+    await mkdir(transaction, { recursive: true })
+    await (await import('node:fs/promises')).rename(target, join(transaction, 'acme__finance__finance'))
+
+    expect(await recoverInterruptedProfileUpdates(dataDir)).toEqual({ restored: 1, finalized: 0 })
+    expect(await readFile(join(target, 'SOUL.md'), 'utf-8')).toBe('# v1')
+    expect(await fileExists(transaction)).toBe(false)
+  })
+
   it('replaces local files with the new remote contents', async () => {
     if (!gitOk) return
     const bare = await makeBareRepo()
@@ -476,5 +521,39 @@ describe('applyProfileUpdate: fork', () => {
     const forked = result.forkedDirs[0]!
     expect(await fileExists(forked)).toBe(true)
     expect(await readFile(join(forked, 'AGENTS.md'), 'utf-8')).toBe('# my notes')
+  })
+
+  it('gives the preserved fork independent identity across later update and uninstall', async () => {
+    if (!gitOk) return
+    const bare = await makeBareRepo()
+    await bare.pushFiles({
+      'cortex.profile.json': MANIFEST(),
+      'profiles/finance/agent.json': JSON.stringify({ name: 'finance' }),
+      'profiles/finance/SOUL.md': '# v1',
+    })
+    const dataDir = await makeTempDir('cortex-data-')
+    await installFromBare(bare, dataDir)
+    const canonical = join(dataDir, 'profiles', 'acme__finance__finance')
+    await writeFile(join(canonical, 'AGENTS.md'), '# preserved local work')
+    await bare.pushFiles({ 'profiles/finance/SOUL.md': '# v2' })
+
+    const wrapper = await gitWrapper(bare)
+    const fork = await applyProfileUpdate({
+      repoId: 'acme/finance', strategy: 'fork', dataDir, gitBinary: wrapper,
+    })
+    const forked = fork.forkedDirs[0]!
+    const forkSidecar = JSON.parse(await readFile(join(forked, '.ownware-origin.json'), 'utf-8'))
+    expect(forkSidecar.kind).toBe('fork')
+    expect((await findProfilesForRepo(dataDir, 'acme/finance')).map((p) => p.dir)).toEqual([canonical])
+
+    await bare.pushFiles({ 'profiles/finance/SOUL.md': '# v3' })
+    await applyProfileUpdate({
+      repoId: 'acme/finance', strategy: 'overwrite', dataDir, gitBinary: wrapper,
+    })
+    expect(await readFile(join(forked, 'AGENTS.md'), 'utf-8')).toBe('# preserved local work')
+
+    await uninstallProfilesForRepo(dataDir, 'acme/finance')
+    expect(await fileExists(canonical)).toBe(false)
+    expect(await fileExists(forked)).toBe(true)
   })
 })

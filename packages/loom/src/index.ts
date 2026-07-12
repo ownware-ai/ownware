@@ -667,6 +667,12 @@ export {
   processAttachment,
   processAttachments,
   categorizeFile,
+  validateAttachments,
+  AttachmentValidationError,
+  ATTACHMENT_MAX_COUNT,
+  ATTACHMENT_MAX_ITEM_BYTES,
+  ATTACHMENT_MAX_TOTAL_BYTES,
+  ATTACHMENT_MAX_FILENAME_CHARS,
   hasBinaryExtension,
   hasImageExtension,
   isPDFExtension,
@@ -684,6 +690,8 @@ export type {
   ProcessedOutput,
   RawAttachment,
   AttachmentCategory,
+  AttachmentValidationCode,
+  ValidatedAttachments,
 } from './media/index.js'
 
 // ---------------------------------------------------------------------------

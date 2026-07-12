@@ -12,6 +12,7 @@ import {
   readBuiltinsManifest,
   readMarketplaceSkipSet,
 } from '../../../src/profile/ownware-bundle.js'
+import { recoverInterruptedProfileUpdates } from '../../../src/profile/update/index.js'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
@@ -164,6 +165,21 @@ describe('OwnwareBundle.list', () => {
 // ---------------------------------------------------------------------------
 
 describe('OwnwareBundle.install', () => {
+  it('removes a placed target when sidecar creation fails', async () => {
+    const { bundleDir, userDir } = await makeBundle({
+      core: [],
+      marketplace: ['x'],
+      profiles: { 'x': {
+        'agent.json': JSON.stringify({ name: 'x' }),
+        '.ownware-origin.json/blocker': 'reserved',
+      } },
+    })
+    const bundle = new OwnwareBundle({ bundleDir, userDir })
+
+    await expect(bundle.install('x')).rejects.toBeDefined()
+    expect(await fileExists(join(userDir, 'x'))).toBe(false)
+  })
+
   it('copies the profile to user dir + writes a ownware-marketplace sidecar', async () => {
     const { bundleDir, userDir } = await makeBundle({
       core: [],
@@ -218,6 +234,27 @@ describe('OwnwareBundle.install', () => {
 })
 
 describe('OwnwareBundle.update', () => {
+  it('restores a bundle backup after a simulated process restart', async () => {
+    const { bundleDir } = await makeBundle({
+      core: [], marketplace: ['x'],
+      profiles: { 'x': {
+        'agent.json': JSON.stringify({ name: 'x' }),
+        'SOUL.md': '# v1',
+      } },
+    })
+    const dataDir = await makeTempDir('cortex-data-')
+    const userDir = join(dataDir, 'profiles')
+    await mkdir(userDir, { recursive: true })
+    const bundle = new OwnwareBundle({ bundleDir, userDir, bundleVersion: 'v1' })
+    await bundle.install('x')
+    await (await import('node:fs/promises')).rename(join(userDir, 'x'), join(userDir, 'x.bak-123'))
+
+    expect(await recoverInterruptedProfileUpdates(dataDir))
+      .toEqual({ restored: 1, finalized: 0 })
+    expect(await readFile(join(userDir, 'x', 'SOUL.md'), 'utf-8')).toBe('# v1')
+    expect(await fileExists(join(userDir, 'x.bak-123'))).toBe(false)
+  })
+
   it('replaces the installed dir with a fresh bundle copy', async () => {
     const { bundleDir, userDir } = await makeBundle({
       core: [], marketplace: ['x'],

@@ -180,6 +180,20 @@ describe('validateTree: path escape', () => {
     await symlink('../../../etc/passwd', join(dir, 'evil'))
     await expectInstallError(validateTree({ profileDir: dir }), 'path_escape')
   })
+
+  it('rejects a chained symlink whose lexical target is inside but real target escapes', async () => {
+    const outside = await makeTempDir()
+    await writeFile(join(outside, 'secret'), 'sensitive')
+    const dir = await makeTempDir()
+    await writeFileTree(dir, { 'agent.json': '{"name":"x"}' })
+    await symlink(join(outside, 'secret'), join(dir, 'second'))
+    await symlink(join(dir, 'second'), join(dir, 'first'))
+
+    const err = await expectInstallError(validateTree({ profileDir: dir }), 'path_escape')
+    expect((err.detail as { files: string[] }).files).toEqual(
+      expect.arrayContaining(['first', 'second']),
+    )
+  })
 })
 
 describe('validateTree: file count + size caps', () => {

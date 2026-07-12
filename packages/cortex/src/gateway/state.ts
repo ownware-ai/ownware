@@ -120,6 +120,7 @@ export interface SessionCompanions {
 export class GatewayState {
   private readonly db: CortexDatabase
   private readonly sessions = new Map<string, Session>()
+  private readonly sessionCandidateIds = new Map<string, string | null>()
   private readonly runtimes = new Map<string, ThreadRuntime>()
   /**
    * Companion resources keyed by thread. Lifetime tied to the cached
@@ -222,6 +223,15 @@ export class GatewayState {
     return this.db.getAgentEventMaxSeq(threadId, agentId)
   }
 
+  getAgentEventMinSeq(
+    threadId: string,
+    agentId: string,
+    afterSeq: number,
+    throughSeq?: number,
+  ): number | null {
+    return this.db.getAgentEventMinSeq(threadId, agentId, afterSeq, throughSeq)
+  }
+
   /**
    * Highest seq of `turn.end` on this agent's stream (0 if none).
    * The client uses this as the SSE `?since` cursor on hydrate so an
@@ -303,6 +313,7 @@ export class GatewayState {
 
     // Clean up in-memory state for this thread
     this.sessions.delete(id)
+    this.sessionCandidateIds.delete(id)
     this.sessionCompanions.delete(id)
     this.eventLogs.delete(id)
     // Tear down any MCP child processes attached to this thread.
@@ -454,6 +465,31 @@ export class GatewayState {
 
   getSession(threadId: string): Session | undefined {
     return this.sessions.get(threadId)
+  }
+
+  setSessionCandidateId(threadId: string, candidateId: string | null): void {
+    this.sessionCandidateIds.set(threadId, candidateId)
+  }
+
+  getSessionCandidateId(threadId: string): string | null | undefined {
+    return this.sessionCandidateIds.get(threadId)
+  }
+
+  /** Drop cached assembly resources between runs without deleting thread history. */
+  async resetSession(threadId: string): Promise<void> {
+    const companions = this.sessionCompanions.get(threadId)
+    if (companions) {
+      try { companions.credentialHITL.dispose() } catch { /* best-effort */ }
+      try { await companions.credentialRuntime.cleanup() } catch { /* best-effort */ }
+    }
+    this.sessions.delete(threadId)
+    this.sessionCandidateIds.delete(threadId)
+    this.sessionCompanions.delete(threadId)
+    await Promise.allSettled([
+      this.shutdownMCPManagerForThread(threadId),
+      this.shutdownChromeLaunchForThread(threadId),
+      this.shutdownChromeLauncherForThread(threadId),
+    ])
   }
 
   // ── Session companions (long-lived per-thread resources) ─────────────
@@ -861,6 +897,7 @@ export class GatewayState {
    */
   clear(): void {
     this.sessions.clear()
+    this.sessionCandidateIds.clear()
     this.runtimes.clear()
     this.eventLogs.clear()
   }

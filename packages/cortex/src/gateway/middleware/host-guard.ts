@@ -48,7 +48,7 @@ export function createHostGuard(options: HostGuardOptions = {}) {
     // compat. A request with NEITHER is malformed enough to reject.
     const raw = req.headers.host ?? (req.headers[':authority'] as string | undefined)
     if (!raw) {
-      sendError(res, 403, 'FORBIDDEN_HOST', 'Missing Host header')
+      sendError(res, 403, 'Missing Host header', 'forbidden_host')
       return false
     }
     const name = hostHeaderName(raw)
@@ -63,8 +63,8 @@ export function createHostGuard(options: HostGuardOptions = {}) {
     sendError(
       res,
       403,
-      'FORBIDDEN_HOST',
       `Host "${name}" not allowed — pass allowedHosts to GatewayOptions to serve a DNS name`,
+      'forbidden_host',
     )
     return false
   }

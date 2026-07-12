@@ -39,6 +39,7 @@ import type { PendingReconciles } from './pending-reconcile.js'
 import type { ProfileRegistry } from '../profile/registry.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { reconcileSessionTools } from '../profile/reconcile.js'
+import type { GatewayRunStore } from './run-store.js'
 
 /**
  * Dependencies needed to perform turn-boundary reconcile. Optional on
@@ -56,6 +57,8 @@ export interface ReconcileDeps {
 // ---------------------------------------------------------------------------
 
 export interface RunParams {
+  /** Immutable durable run identity. */
+  readonly runId?: string
   /** Thread ID (already created by the run handler). */
   readonly threadId: string
   /** Profile ID for usage tracking. */
@@ -81,6 +84,7 @@ export interface RunParams {
 export type RunStatus = 'running' | 'completed' | 'error' | 'aborted'
 
 export interface ActiveRun {
+  readonly runId: string
   readonly threadId: string
   readonly profileId: string
   readonly model: string
@@ -96,6 +100,7 @@ export interface ActiveRun {
 
 /** Resolved when the run finishes (any reason). Exposes final stats. */
 export interface RunHandle {
+  readonly runId: string
   readonly threadId: string
   /** Promise that resolves when the background loop terminates. */
   readonly done: Promise<RunResult>
@@ -194,6 +199,7 @@ export class SessionRunner {
 
   constructor(
     private readonly state: GatewayState,
+    private readonly runStore?: GatewayRunStore,
   ) {}
 
   /** Install the reconcile dependencies. Called once during boot. */
@@ -242,7 +248,9 @@ export class SessionRunner {
       throw new Error(`Thread "${params.threadId}" already has an active run`)
     }
 
+    const runId = params.runId ?? crypto.randomUUID()
     const run: MutableRun = {
+      runId,
       threadId: params.threadId,
       profileId: params.profileId,
       model: params.model,
@@ -256,6 +264,7 @@ export class SessionRunner {
     }
 
     this.runs.set(params.threadId, run)
+    this.runStore?.markRunning(runId)
 
     // Fire-and-forget — the promise is exposed via the handle but never
     // awaited inside the HTTP handler. Errors are caught internally.
@@ -264,7 +273,7 @@ export class SessionRunner {
         this.runs.delete(params.threadId)
       })
 
-    return { threadId: params.threadId, done }
+    return { runId, threadId: params.threadId, done }
   }
 
   /** Get an active run's live stats. */
@@ -450,7 +459,33 @@ export class SessionRunner {
         trace('runner-recv', threadId, 'root', event.type)
 
         // ── Enrich permission events with zone metadata ──────────
-        const enriched = enrichEvent(event, getLastZoneDecision)
+        let enriched = enrichEvent(event, getLastZoneDecision)
+        if (event.type === 'permission.request' && this.runStore) {
+          const permission = this.runStore.recordPermissionRequest({
+            runId: run.runId,
+            requestId: event.requestId,
+            toolName: event.toolName,
+            toolInput: event.input,
+          })
+          enriched = {
+            ...enriched,
+            operationHash: permission.operationHash,
+          } as unknown as LoomEvent
+          this.runStore.markWaiting(run.runId)
+        } else if (event.type === 'permission.response' && this.runStore) {
+          const permission = this.runStore.getPermissionRequest(run.runId, event.requestId)
+          if (permission?.status === 'pending') {
+            this.runStore.decidePermission(
+              run.runId,
+              event.requestId,
+              permission.operationHash,
+              event.granted ? 'approve' : 'deny',
+            )
+          }
+          if (runtime.hitl.pendingCount === 0) {
+            this.runStore.markRunningAfterDecision(run.runId)
+          }
+        }
 
         // ── Persist to SQLite + fan out to EventBus ──────────────
         // Skip transient recoverable errors — they're retry noise.
@@ -686,6 +721,19 @@ export class SessionRunner {
         costUsd: run.costUsd,
         error: run.status === 'error' ? 'Run failed' : undefined,
         ...(run.errorEventMessage != null ? { errorEvent: run.errorEventMessage } : {}),
+      }
+
+      if (this.runStore) {
+        const endSeq = this.state.getAgentEventMaxSeq(threadId, 'root')
+        if (run.status === 'completed' && run.errorEventMessage == null) {
+          this.runStore.markTerminal(run.runId, 'succeeded', { endSeq })
+        } else if (run.status === 'aborted' && interruptReason === 'timeout') {
+          this.runStore.markTerminal(run.runId, 'timed_out', { endSeq, code: 'run_timeout' })
+        } else if (run.status === 'aborted') {
+          this.runStore.markTerminal(run.runId, 'cancelled', { endSeq, code: 'run_cancelled' })
+        } else {
+          this.runStore.markTerminal(run.runId, 'failed', { endSeq, code: 'run_failed' })
+        }
       }
 
       resolveDone(finalResult)

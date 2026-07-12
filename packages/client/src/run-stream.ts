@@ -1,11 +1,11 @@
 /**
  * Interpreting a root-agent SSE stream as ONE run's reply.
  *
- * The root-agent SSE stays open forever (a new POST /run can arrive at
- * any time), so the gateway never sends a `done` frame for it. A single
- * run therefore completes at a terminal `turn.end` (stopReason not in
- * {tool_use, pause_turn}), or on turn.interrupted / error /
- * stream.shutdown. `interpretSseEvent` encodes exactly that.
+ * The legacy thread SSE stays open for future turns; the bounded run SSE
+ * closes after its terminal event. Neither sends a synthetic `done` frame,
+ * so a single reply completes at terminal `turn.end` (stopReason not in
+ * {tool_use, pause_turn}), or on turn.interrupted / error / stream.shutdown.
+ * `interpretSseEvent` encodes exactly that.
  */
 
 /** One event from a single run's reply, carrying the gateway seq (resume cursor). */
@@ -16,8 +16,8 @@ export type RunStreamEvent =
   /**
    * The run PAUSED on a human decision (a zone 'ask' or a profile
    * `approve` hook). The run is still live — nothing streams until
-   * someone answers via `resume(threadId, { action: 'approve'|'deny',
-   * requestId })` or the gateway's HITL timeout denies it. Consumers
+   * someone answers via `decidePermission(runId, requestId, {
+   * decision: 'approve'|'deny', operationHash })` or the gateway's HITL timeout denies it. Consumers
    * that ignore this member keep the old behaviour (silent wait).
    */
   | {
@@ -25,6 +25,7 @@ export type RunStreamEvent =
       readonly requestId: string
       readonly toolName: string
       readonly reason: string
+      readonly operationHash?: string
       readonly seq: number
     }
 
@@ -53,15 +54,29 @@ export function interpretSseEvent(
       // Surface the pause instead of silently waiting: without this, a
       // channel-bound run that hits an approval hangs invisibly until
       // the HITL timeout denies it. The run continues (stop: false) —
-      // the answer arrives out-of-band via POST /threads/:id/resume.
+      // the answer arrives out-of-band via the exact run permission route.
       const requestId = typeof data['requestId'] === 'string' ? (data['requestId'] as string) : ''
       const toolName = typeof data['toolName'] === 'string' ? (data['toolName'] as string) : 'unknown'
       const reason =
         typeof data['reason'] === 'string' && (data['reason'] as string).length > 0
           ? (data['reason'] as string)
           : 'Tool requires explicit approval'
+      const operationHash = typeof data['operationHash'] === 'string'
+        ? (data['operationHash'] as string)
+        : undefined
       if (requestId === '') return { stop: false, seq }
-      return { event: { type: 'permission', requestId, toolName, reason, seq }, stop: false, seq }
+      return {
+        event: {
+          type: 'permission',
+          requestId,
+          toolName,
+          reason,
+          ...(operationHash !== undefined ? { operationHash } : {}),
+          seq,
+        },
+        stop: false,
+        seq,
+      }
     }
     case 'turn.end': {
       const reason = typeof data['stopReason'] === 'string' ? (data['stopReason'] as string) : 'end_turn'

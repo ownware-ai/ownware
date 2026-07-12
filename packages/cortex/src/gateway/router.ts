@@ -4,18 +4,20 @@
  * Supports path params (:id), async handlers, and JSON helpers.
  */
 
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { handleCORS } from './cors.js'
 import { validateParams } from './middleware/param-guard.js'
 import type { ErrorCategory } from '../errors/categories.js'
 import { classifyError } from '../errors/classify.js'
+import { getRequestPrincipal } from './auth/scoped-principal.js'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 /** Maximum request body size: 10 MB */
-const MAX_BODY_SIZE = 10 * 1024 * 1024
+export const MAX_BODY_SIZE = 10 * 1024 * 1024
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,13 +34,21 @@ interface Route {
   readonly pattern: RegExp
   readonly paramNames: string[]
   readonly handler: Handler
+  readonly operation?: string
 }
 
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
-export type Middleware = (req: IncomingMessage, res: ServerResponse) => boolean
+export type Middleware = (
+  req: IncomingMessage,
+  res: ServerResponse,
+) => boolean | Promise<boolean>
+
+export interface RoutePolicy {
+  readonly operation: string
+}
 
 export class Router {
   private readonly routes: Route[] = []
@@ -54,24 +64,24 @@ export class Router {
     this.middlewares.push(middleware)
   }
 
-  get(path: string, handler: Handler): void {
-    this.addRoute('GET', path, handler)
+  get(path: string, handler: Handler, policy?: RoutePolicy): void {
+    this.addRoute('GET', path, handler, policy)
   }
 
-  post(path: string, handler: Handler): void {
-    this.addRoute('POST', path, handler)
+  post(path: string, handler: Handler, policy?: RoutePolicy): void {
+    this.addRoute('POST', path, handler, policy)
   }
 
-  put(path: string, handler: Handler): void {
-    this.addRoute('PUT', path, handler)
+  put(path: string, handler: Handler, policy?: RoutePolicy): void {
+    this.addRoute('PUT', path, handler, policy)
   }
 
-  patch(path: string, handler: Handler): void {
-    this.addRoute('PATCH', path, handler)
+  patch(path: string, handler: Handler, policy?: RoutePolicy): void {
+    this.addRoute('PATCH', path, handler, policy)
   }
 
-  delete(path: string, handler: Handler): void {
-    this.addRoute('DELETE', path, handler)
+  delete(path: string, handler: Handler, policy?: RoutePolicy): void {
+    this.addRoute('DELETE', path, handler, policy)
   }
 
   /**
@@ -83,7 +93,7 @@ export class Router {
 
     // Run middleware chain
     for (const mw of this.middlewares) {
-      if (!mw(req, res)) return // Middleware rejected — response already sent
+      if (!(await mw(req, res))) return // Middleware rejected — response already sent
     }
 
     const method = req.method ?? 'GET'
@@ -110,7 +120,7 @@ export class Router {
         validateParams(params)
       } catch (err) {
         if (err instanceof RequestError) {
-          sendError(res, err.status, err.message, undefined, err.category)
+          sendError(res, err.status, err.message, undefined, err.category, err.details)
         } else {
           sendError(res, 400, 'Invalid path parameters', undefined, 'invalid_request')
         }
@@ -118,11 +128,23 @@ export class Router {
       }
 
       try {
+        const principal = getRequestPrincipal(req)
+        if (principal?.kind === 'delegated' &&
+            (route.operation === undefined || !principal.operations.includes(route.operation))) {
+          sendError(
+            res,
+            403,
+            'Delegated principal does not allow this operation',
+            'principal_operation_denied',
+            'auth',
+          )
+          return
+        }
         await route.handler(req, res, params)
       } catch (err) {
         if (!res.headersSent) {
           if (err instanceof RequestError) {
-            sendError(res, err.status, err.message, undefined, err.category)
+            sendError(res, err.status, err.message, undefined, err.category, err.details)
           } else {
             // Catch-all: classify the raw thrown value via the cause-graph
             // walker. Every handler that throws an unclassified error gets
@@ -130,7 +152,7 @@ export class Router {
             // — this is the single point that closes the "the client sees
             // category=unknown for everything" gap.
             const classified = classifyError(err)
-            sendError(res, 500, classified.message, undefined, classified.category)
+            sendError(res, 500, 'Internal server error', undefined, classified.category)
           }
         }
       }
@@ -143,9 +165,9 @@ export class Router {
 
   // ── Internal ─────────────────────────────────────────────────────────
 
-  private addRoute(method: string, path: string, handler: Handler): void {
+  private addRoute(method: string, path: string, handler: Handler, policy?: RoutePolicy): void {
     const { pattern, paramNames } = compilePath(path)
-    this.routes.push({ method, pattern, paramNames, handler })
+    this.routes.push({ method, pattern, paramNames, handler, ...policy })
   }
 }
 
@@ -199,18 +221,30 @@ export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let totalSize = 0
+    let tooLarge = false
 
     req.on('data', (chunk: Buffer) => {
+      if (tooLarge) return
       totalSize += chunk.length
       if (totalSize > MAX_BODY_SIZE) {
-        req.destroy()
-        reject(new RequestError(413, `Request body exceeds maximum size of ${MAX_BODY_SIZE} bytes`))
+        tooLarge = true
+        chunks.length = 0
+        reject(new RequestError(
+          413,
+          `Request body exceeds maximum size of ${MAX_BODY_SIZE} bytes`,
+          'invalid_request',
+          { limitBytes: MAX_BODY_SIZE },
+        ))
         return
       }
       chunks.push(chunk)
     })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')))
-    req.on('error', reject)
+    req.on('end', () => {
+      if (!tooLarge) resolve(Buffer.concat(chunks).toString('utf-8'))
+    })
+    req.on('error', (error) => {
+      if (!tooLarge) reject(error)
+    })
   })
 }
 
@@ -232,11 +266,17 @@ export async function readJSON<T = unknown>(req: IncomingMessage): Promise<T | n
 /**
  * Send a JSON response.
  */
-export function sendJSON(res: ServerResponse, status: number, data: unknown): void {
+export function sendJSON(
+  res: ServerResponse,
+  status: number,
+  data: unknown,
+  headers: OutgoingHttpHeaders = {},
+): void {
   const json = JSON.stringify(data)
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(json),
+    ...headers,
   })
   res.end(json)
 }
@@ -256,12 +296,27 @@ export function sendError(
   message: string,
   error?: string,
   category?: ErrorCategory,
+  details?: Readonly<Record<string, unknown>>,
 ): void {
-  sendJSON(res, status, {
-    error: error ?? statusToCode(status),
-    message,
-    category: category ?? statusToCategory(status),
-  })
+  const correlationId = randomUUID()
+  const correlationHeaders: OutgoingHttpHeaders = {}
+  if (typeof res.setHeader === 'function') {
+    res.setHeader('X-Ownware-Correlation-Id', correlationId)
+  } else {
+    correlationHeaders['X-Ownware-Correlation-Id'] = correlationId
+  }
+  sendJSON(
+    res,
+    status,
+    {
+      ...details,
+      error: error ?? statusToCode(status),
+      message,
+      category: category ?? statusToCategory(status),
+      correlationId,
+    },
+    correlationHeaders,
+  )
 }
 
 /**
@@ -274,6 +329,7 @@ export class RequestError extends Error {
     public readonly status: number,
     message: string,
     public readonly category?: ErrorCategory,
+    public readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(message)
     this.name = 'RequestError'
@@ -283,10 +339,17 @@ export class RequestError extends Error {
 function statusToCode(status: number): string {
   switch (status) {
     case 400: return 'invalid_request'
+    case 401: return 'unauthorized'
+    case 403: return 'forbidden'
     case 404: return 'not_found'
     case 409: return 'conflict'
+    case 413: return 'payload_too_large'
     case 422: return 'validation_error'
+    case 429: return 'rate_limited'
     case 500: return 'internal_error'
+    case 502: return 'bad_gateway'
+    case 503: return 'service_unavailable'
+    case 504: return 'gateway_timeout'
     default: return 'error'
   }
 }
@@ -300,7 +363,7 @@ function statusToCode(status: number): string {
 function statusToCategory(status: number): ErrorCategory {
   if (status === 401 || status === 403) return 'auth'
   if (status === 404) return 'not_found'
-  if (status === 422 || status === 400 || status === 409) return 'invalid_request'
+  if (status === 422 || status === 400 || status === 409 || status === 413) return 'invalid_request'
   if (status === 429) return 'rate_limit'
   if (status >= 500) return 'overload'
   return 'unknown'

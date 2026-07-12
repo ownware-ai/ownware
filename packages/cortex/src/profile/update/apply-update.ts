@@ -34,7 +34,13 @@
 
 import { mkdir, readdir, rename, rm, readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { ORIGIN_SIDECAR_FILE, parseOriginSidecar, type OriginSidecar } from '../registry.js'
+import {
+  ORIGIN_SIDECAR_FILE,
+  parseOriginSidecar,
+  type OriginSidecar,
+  type OriginSidecarFork,
+} from '../registry.js'
+import { hashProfileDir } from '../dir-hash.js'
 import { atomicWriteJson } from '../install/atomic-write.js'
 import { installProfileFromGithub } from '../install/install-from-github.js'
 import { InstallError } from '../install/errors.js'
@@ -140,17 +146,15 @@ async function applyFork(
       await rename(dir, to)
       renamed.push({ from: dir, to })
       forkedDirs.push(to)
-      // Mark the fork's sidecar so it shows up correctly in the UI as
-      // "your local copy of <repoId>". We rewrite the sidecar to keep
-      // `kind: 'github'` (so update detection still applies if the user
-      // wants it) but stamp a `forkOfRepoId` discriminator. Simpler:
-      // leave the sidecar as-is — the dir name carries the local marker.
+      const forkSidecar: OriginSidecarFork = {
+        kind: 'fork',
+        forkedFrom: dir.split('/').pop() ?? opts.repoId,
+        forkedAtHash: await hashProfileDir(to),
+      }
+      await atomicWriteJson(join(to, ORIGIN_SIDECAR_FILE), forkSidecar)
     }
   } catch (err) {
-    // Rollback the renames we managed to do.
-    for (const r of renamed.slice().reverse()) {
-      try { await rename(r.to, r.from) } catch { /* */ }
-    }
+    await restoreForksOrThrow(renamed, group)
     throw err
   }
 
@@ -174,9 +178,7 @@ async function applyFork(
   } catch (err) {
     // Restore the original dir names. The fork attempt failed; the user
     // is back to their pre-update state.
-    for (const r of renamed.slice().reverse()) {
-      try { await rename(r.to, r.from) } catch { /* */ }
-    }
+    await restoreForksOrThrow(renamed, group)
     throw err
   }
 }
@@ -202,10 +204,7 @@ async function applyOverwrite(
     }
   } catch (err) {
     // Restore anything we already moved.
-    for (const b of backups.slice().reverse()) {
-      try { await rename(b.to, b.from) } catch { /* */ }
-    }
-    try { await rm(stagingRoot, { recursive: true, force: true }) } catch { /* */ }
+    await restoreBackupsOrThrow(backups, stagingRoot)
     throw err
   }
 
@@ -220,19 +219,73 @@ async function applyOverwrite(
       ...(opts.gitBinary !== undefined ? { gitBinary: opts.gitBinary } : {}),
     })
     // Success — drop the backups.
-    try { await rm(stagingRoot, { recursive: true, force: true }) } catch { /* */ }
+    try {
+      await rm(stagingRoot, { recursive: true, force: true })
+      try {
+        await stat(stagingRoot)
+        throw new Error('staging remains')
+      } catch (cleanupCheck) {
+        if (cleanupCheck instanceof Error && cleanupCheck.message === 'staging remains') throw cleanupCheck
+      }
+    } catch {
+      throw new InstallError('rollback_failed', {
+        phase: 'cleanup',
+        profiles: group.map(({ dir }) => dir.split('/').pop() ?? 'profile'),
+      })
+    }
     return {
       strategy: 'overwrite',
       affectedDirs: group.map((g) => g.dir),
       forkedDirs: [],
     }
   } catch (err) {
-    // Roll back: move everything from staging back where it was.
-    for (const b of backups.slice().reverse()) {
-      try { await rename(b.to, b.from) } catch { /* */ }
+    // The fresh install is valid and live; only stale backup cleanup failed.
+    // Restoring here would overwrite the new version and misreport reality.
+    if (err instanceof InstallError && err.code === 'rollback_failed' && err.detail.phase === 'cleanup') {
+      throw err
     }
-    try { await rm(stagingRoot, { recursive: true, force: true }) } catch { /* */ }
+    // Roll back: move everything from staging back where it was.
+    await restoreBackupsOrThrow(backups, stagingRoot)
     throw err
+  }
+}
+
+async function restoreForksOrThrow(
+  renamed: Array<{ from: string; to: string }>,
+  group: Array<{ dir: string; sidecar: OriginSidecar }>,
+): Promise<void> {
+  const failures: string[] = []
+  const originals = new Map(group.map((item) => [item.dir, item.sidecar]))
+  for (const item of renamed.slice().reverse()) {
+    try {
+      const original = originals.get(item.from)
+      if (original === undefined) throw new Error('missing original sidecar')
+      await atomicWriteJson(join(item.to, ORIGIN_SIDECAR_FILE), original)
+      await rename(item.to, item.from)
+    } catch {
+      failures.push(item.from.split('/').pop() ?? 'profile')
+    }
+  }
+  if (failures.length > 0) {
+    throw new InstallError('rollback_failed', { phase: 'fork', profiles: failures })
+  }
+}
+
+async function restoreBackupsOrThrow(
+  backups: Array<{ from: string; to: string }>,
+  stagingRoot: string,
+): Promise<void> {
+  const failures: string[] = []
+  for (const backup of backups.slice().reverse()) {
+    try { await rename(backup.to, backup.from) } catch {
+      failures.push(backup.from.split('/').pop() ?? 'profile')
+    }
+  }
+  try { await rm(stagingRoot, { recursive: true, force: true }) } catch {
+    failures.push('staging cleanup')
+  }
+  if (failures.length > 0) {
+    throw new InstallError('rollback_failed', { phase: 'update', profiles: failures })
   }
 }
 
@@ -260,8 +313,15 @@ export type { OriginSidecar }
 export async function uninstallProfilesForRepo(
   dataDir: string,
   repoId: string,
+  canUninstallProfile: (profileId: string) => boolean | Promise<boolean> = () => true,
 ): Promise<readonly string[]> {
   const group = await findProfilesForRepo(dataDir, repoId)
+  for (const { dir } of group) {
+    const profileId = dir.split('/').pop() ?? ''
+    if (!(await canUninstallProfile(profileId))) {
+      throw new InstallError('profile_in_use', { profile: profileId })
+    }
+  }
   const removed: string[] = []
   for (const { dir, sidecar } of group) {
     // Refuse to uninstall builtins via this path (defense in depth — the
@@ -272,4 +332,92 @@ export async function uninstallProfilesForRepo(
     removed.push(dir)
   }
   return removed
+}
+
+/**
+ * Recover legacy marketplace replacement transactions after an unclean exit.
+ * A complete replacement is identified only by a parseable origin sidecar
+ * whose recorded content hash matches the bytes on disk. Anything else is a
+ * partial target and the preserved backup is restored.
+ */
+export async function recoverInterruptedProfileUpdates(dataDir: string): Promise<{
+  readonly restored: number
+  readonly finalized: number
+}>
+export async function recoverInterruptedProfileUpdates(
+  dataDir: string,
+  deps?: { readonly rename?: typeof rename },
+): Promise<{ readonly restored: number; readonly finalized: number }>
+export async function recoverInterruptedProfileUpdates(
+  dataDir: string,
+  deps: { readonly rename?: typeof rename } = {},
+): Promise<{ readonly restored: number; readonly finalized: number }> {
+  const recoverRename = deps.rename ?? rename
+  const root = resolve(dataDir)
+  const profilesRoot = join(root, 'profiles')
+  let restored = 0
+  let finalized = 0
+
+  const stagingRoot = join(root, '.staging')
+  let transactions: string[] = []
+  try { transactions = await readdir(stagingRoot) } catch { /* no staging */ }
+  for (const transaction of transactions.filter((name) => name.startsWith('update-')).sort()) {
+    const transactionDir = join(stagingRoot, transaction)
+    let backups: string[]
+    try { backups = await readdir(transactionDir) } catch { continue }
+    for (const profileId of backups.sort()) {
+      const backup = join(transactionDir, profileId)
+      const target = join(profilesRoot, profileId)
+      if (await isCompleteInstalledTarget(target)) {
+        await rm(backup, { recursive: true, force: true })
+        finalized += 1
+      } else {
+        await rm(target, { recursive: true, force: true })
+        try {
+          await recoverRename(backup, target)
+          restored += 1
+        } catch {
+          throw new InstallError('rollback_failed', { phase: 'update', profiles: [profileId] })
+        }
+      }
+    }
+    try { await rm(transactionDir, { recursive: true, force: true }) } catch {
+      throw new InstallError('rollback_failed', { phase: 'cleanup', profiles: ['staging transaction'] })
+    }
+  }
+
+  // Ownware bundle updates keep their backup beside the target.
+  let profileEntries: string[] = []
+  try { profileEntries = await readdir(profilesRoot) } catch { /* no profiles */ }
+  for (const entry of profileEntries.sort()) {
+    const match = /^(.*)\.bak-\d+$/.exec(entry)
+    if (match === null) continue
+    const profileId = match[1]!
+    const backup = join(profilesRoot, entry)
+    const backupSidecar = await readSidecar(backup)
+    if (backupSidecar?.kind !== 'ownware-marketplace') continue
+    const target = join(profilesRoot, profileId)
+    if (await isCompleteInstalledTarget(target)) {
+      await rm(backup, { recursive: true, force: true })
+      finalized += 1
+    } else {
+      await rm(target, { recursive: true, force: true })
+      try {
+        await recoverRename(backup, target)
+        restored += 1
+      } catch {
+        throw new InstallError('rollback_failed', { phase: 'update', profiles: [profileId] })
+      }
+    }
+  }
+
+  return { restored, finalized }
+}
+
+async function isCompleteInstalledTarget(target: string): Promise<boolean> {
+  const sidecar = await readSidecar(target)
+  if (sidecar === null) return false
+  if (sidecar.kind !== 'github' && sidecar.kind !== 'ownware-marketplace') return false
+  if (sidecar.installedHash === undefined) return false
+  try { return await hashProfileDir(target) === sidecar.installedHash } catch { return false }
 }
