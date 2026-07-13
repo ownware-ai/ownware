@@ -1,10 +1,13 @@
 # Changelog
 
+## 0.2.0
+
 All notable changes to Loom will be documented in this file.
 
 ## Unreleased
 
 ### Added
+
 - Core agent loop with while(true) pattern for streaming tool execution
 - Multi-provider support: Anthropic, OpenAI, Google
 - 24 streaming event types (discriminated union)

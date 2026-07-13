@@ -8,7 +8,13 @@ import { pipeline } from 'node:stream/promises'
 import type { SourceUploadCheckpoint } from './source-upload-store.js'
 
 export class SourceByteStoreError extends Error {
-  constructor(public readonly code: 'chunk_too_large' | 'storage_inconsistent' | 'format_invalid') {
+  constructor(public readonly code:
+    | 'chunk_too_large'
+    | 'storage_inconsistent'
+    | 'format_invalid'
+    | 'object_missing'
+    | 'inspection_too_large'
+    | 'inspection_timeout') {
     super(code)
     this.name = 'SourceByteStoreError'
   }
@@ -24,6 +30,11 @@ export interface InspectedSourceBytes {
   readonly byteCount: number
   readonly checksum: string
   readonly verifiedMediaType: 'text/plain' | 'application/pdf'
+}
+
+export interface SourceInspectionLimits {
+  readonly maxBytes: number
+  readonly timeoutMs: number
 }
 
 export class SourceByteStore {
@@ -141,35 +152,60 @@ export class SourceByteStore {
   async inspectPlaced(
     objectKey: string,
     declaredMediaType: InspectedSourceBytes['verifiedMediaType'],
+    limits?: SourceInspectionLimits,
   ): Promise<InspectedSourceBytes> {
-    return this.inspect(join(this.root, objectKey), declaredMediaType)
+    if (!/^sources\/[0-9a-f-]{36}\/versions\/[0-9a-f-]{36}\/original$/.test(
+      objectKey,
+    )) {
+      throw new SourceByteStoreError('storage_inconsistent')
+    }
+    return this.inspect(join(this.root, objectKey), declaredMediaType, limits)
   }
 
   private async inspect(
     privatePath: string,
     declaredMediaType: InspectedSourceBytes['verifiedMediaType'],
+    limits?: SourceInspectionLimits,
   ): Promise<InspectedSourceBytes> {
+    const abort = limits ? new AbortController() : null
+    const timer = abort ? setTimeout(() => abort.abort(), limits!.timeoutMs) : null
+    timer?.unref()
     const hash = createHash('sha256')
     const decoder = declaredMediaType === 'text/plain'
       ? new TextDecoder('utf-8', { fatal: true }) : null
     let byteCount = 0
     let prefix = Buffer.alloc(0)
     let suffix = Buffer.alloc(0)
-    for await (const raw of createReadStream(privatePath)) {
-      const chunk = Buffer.from(raw)
-      byteCount += chunk.length
-      hash.update(chunk)
-      if (prefix.length < 5) prefix = Buffer.concat([prefix, chunk]).subarray(0, 5)
-      suffix = Buffer.concat([suffix, chunk]).subarray(-1024)
-      if (decoder) {
-        let text: string
-        try {
-          text = decoder.decode(chunk, { stream: true })
-        } catch {
-          throw new SourceByteStoreError('format_invalid')
+    try {
+      for await (const raw of createReadStream(privatePath, {
+        signal: abort?.signal,
+      })) {
+        const chunk = Buffer.from(raw)
+        byteCount += chunk.length
+        if (limits && byteCount > limits.maxBytes) {
+          throw new SourceByteStoreError('inspection_too_large')
         }
-        if (text.includes('\0')) throw new SourceByteStoreError('storage_inconsistent')
+        hash.update(chunk)
+        if (prefix.length < 5) prefix = Buffer.concat([prefix, chunk]).subarray(0, 5)
+        suffix = Buffer.concat([suffix, chunk]).subarray(-1024)
+        if (decoder) {
+          let text: string
+          try {
+            text = decoder.decode(chunk, { stream: true })
+          } catch {
+            throw new SourceByteStoreError('format_invalid')
+          }
+          if (text.includes('\0')) throw new SourceByteStoreError('storage_inconsistent')
+        }
       }
+    } catch (error) {
+      if (abort?.signal.aborted) throw new SourceByteStoreError('inspection_timeout')
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new SourceByteStoreError('object_missing')
+      }
+      throw error
+    } finally {
+      if (timer) clearTimeout(timer)
     }
     if (decoder) {
       try {

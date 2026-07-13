@@ -1,6 +1,6 @@
 {
   "name": "@ownware/cortex",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The Ownware kernel & gateway — profiles, threads, HTTP+SSE gateway, credential vault, and the `ownware` CLI.",
   "type": "module",
   "main": "./dist/index.js",

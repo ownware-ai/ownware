@@ -2858,4 +2858,80 @@ export const MIGRATIONS: Migration[] = [
         ON source_versions(source_id, created_at DESC, source_version_id DESC);
     `,
   },
+  {
+    version: 63,
+    name: '063_durable_source_jobs',
+    sql: `
+      CREATE UNIQUE INDEX idx_source_versions_identity_source
+        ON source_versions(source_version_id, source_id);
+      CREATE UNIQUE INDEX idx_runtime_sources_identity_scope
+        ON runtime_sources(source_id, workspace_id, profile_id);
+
+      CREATE TABLE source_jobs (
+        job_id                TEXT    PRIMARY KEY,
+        workspace_id          TEXT    NOT NULL,
+        profile_id            TEXT    NOT NULL,
+        source_id             TEXT    NOT NULL,
+        source_version_id     TEXT    NOT NULL,
+        operation             TEXT    NOT NULL CHECK (operation IN ('inspect_format')),
+        state                 TEXT    NOT NULL CHECK (state IN (
+          'queued', 'running', 'waiting_for_resource', 'cancel_requested',
+          'succeeded', 'partial', 'failed', 'cancelled'
+        )),
+        attempt               INTEGER NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND 3),
+        max_attempts          INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts = 3),
+        checkpoint            INTEGER NOT NULL DEFAULT 0 CHECK (checkpoint BETWEEN 0 AND 4),
+        claim_token           TEXT,
+        claimed_by            TEXT,
+        lease_expires_at      INTEGER,
+        retry_after           INTEGER,
+        cancel_requested_at   INTEGER,
+        outcome_code          TEXT,
+        created_at            INTEGER NOT NULL,
+        updated_at            INTEGER NOT NULL,
+        terminal_at           INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (source_version_id, operation),
+        CHECK (length(job_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (length(source_version_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK (claim_token IS NULL OR length(claim_token) = 36),
+        CHECK (claimed_by IS NULL OR (
+          length(claimed_by) BETWEEN 1 AND 64
+          AND claimed_by NOT GLOB '*[^a-z0-9._-]*'
+        )),
+        CHECK (outcome_code IS NULL OR (
+          length(outcome_code) BETWEEN 1 AND 64
+          AND outcome_code NOT GLOB '*[^a-z0-9_]*'
+        )),
+        CHECK (
+          (claim_token IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL)
+          OR
+          (claim_token IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL)
+        ),
+        CHECK (state != 'running' OR claim_token IS NOT NULL),
+        CHECK (state NOT IN (
+          'queued', 'waiting_for_resource', 'succeeded', 'partial', 'failed', 'cancelled'
+        ) OR claim_token IS NULL),
+        CHECK ((state = 'waiting_for_resource') = (retry_after IS NOT NULL)),
+        CHECK (state != 'cancel_requested' OR cancel_requested_at IS NOT NULL),
+        CHECK (state != 'cancelled' OR cancel_requested_at IS NOT NULL),
+        CHECK ((state IN ('succeeded', 'partial', 'failed', 'cancelled')) =
+          (terminal_at IS NOT NULL)),
+        CHECK ((state IN ('succeeded', 'partial', 'failed', 'cancelled')) =
+          (outcome_code IS NOT NULL))
+      );
+
+      CREATE INDEX idx_source_jobs_scope
+        ON source_jobs(workspace_id, profile_id, source_id, created_at DESC, job_id DESC);
+      CREATE INDEX idx_source_jobs_claimable
+        ON source_jobs(state, retry_after, created_at, job_id);
+      CREATE INDEX idx_source_jobs_leases
+        ON source_jobs(state, lease_expires_at);
+    `,
+  },
 ]

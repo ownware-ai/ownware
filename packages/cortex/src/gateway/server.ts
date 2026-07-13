@@ -151,6 +151,8 @@ import {
 } from './handlers/sources.js'
 import { SourceStore } from './source-store.js'
 import { SourceUploadStore } from './source-upload-store.js'
+import { SourceJobStore } from './source-job-store.js'
+import { SourceInspectionWorker } from './source-inspection-worker.js'
 import {
   createCompleteSourceUploadHandler,
   createGetSourceVersionHandler,
@@ -200,6 +202,8 @@ export interface GatewayOptions {
   disableRateLimit?: boolean
   /** Disable access logging (for testing). Default: false */
   disableAccessLog?: boolean
+  /** Disable the durable source worker for state-machine isolation tests. */
+  disableSourceWorker?: boolean
   /**
    * Disable the session-token auth middleware entirely.
    *
@@ -274,6 +278,7 @@ export class OwnwareGateway {
     dataDir: string
     corsOrigins: readonly string[]
     tls: boolean
+    sourceWorkerEnabled: boolean
   }
   private readonly _token: string
   /**
@@ -487,6 +492,7 @@ export class OwnwareGateway {
    * booted in start() after profile discovery, shut down in stop().
    */
   private teamModule: TeamModule | null = null
+  private sourceInspectionWorker: SourceInspectionWorker | null = null
 
   constructor(opts: GatewayOptions) {
     const dataDir = opts.dataDir ?? process.env.OWNWARE_DATA_DIR ?? join(homedir(), DEFAULT_DATA_DIR_NAME)
@@ -515,6 +521,7 @@ export class OwnwareGateway {
       // TLS on by default (desktop). Env escape hatch mirrors the other
       // OWNWARE_* toggles; the harness sets opts.tls=false directly.
       tls: opts.tls ?? process.env.OWNWARE_GATEWAY_TLS !== '0',
+      sourceWorkerEnabled: opts.disableSourceWorker !== true,
     }
 
     // ── Bind-safety invariant (S9) ────────────────────────────────────
@@ -1377,6 +1384,28 @@ export class OwnwareGateway {
     }
     bootLap('source upload recovery')
 
+    const sourceJobRecovery = new SourceJobStore(
+      this.state.rawDbHandle,
+    ).recoverExpiredClaims()
+    if (sourceJobRecovery.requeued > 0 || sourceJobRecovery.failed > 0 ||
+        sourceJobRecovery.cancelled > 0) {
+      console.log(
+        `  source jobs: recovered ${sourceJobRecovery.requeued} queued, ` +
+        `${sourceJobRecovery.failed} failed, ${sourceJobRecovery.cancelled} cancelled`,
+      )
+    }
+    bootLap('source job recovery')
+
+    if (this.opts.sourceWorkerEnabled) {
+      this.sourceInspectionWorker = new SourceInspectionWorker(
+        new SourceJobStore(this.state.rawDbHandle),
+        sourceRecoveryBytes,
+        { workerId: `gateway-${process.pid}` },
+      )
+      this.sourceInspectionWorker.start()
+    }
+    bootLap('source inspection worker')
+
     // 3. Register routes
     this.registerRoutes()
     bootLap('registerRoutes')
@@ -1554,6 +1583,11 @@ export class OwnwareGateway {
   async stop(): Promise<void> {
     if (this.shuttingDown) return
     this.shuttingDown = true
+
+    if (this.sourceInspectionWorker) {
+      await this.sourceInspectionWorker.stop()
+      this.sourceInspectionWorker = null
+    }
 
     // Close the bridge-catalog fs watcher (Phase 9). `persistent: false`
     // already keeps it from blocking exit; this just releases the handle

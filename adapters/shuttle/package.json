@@ -1,7 +1,7 @@
 {
   "name": "@ownware/shuttle",
-  "version": "0.1.0",
-  "description": "Ownware Shuttle \u2014 messaging channel adapters. Each channel (Telegram, Slack, WhatsApp, SMS\u2026) is a thin client of the ownware gateway wire contract: receive \u2192 drive the agent \u2192 deliver the reply back. One agent, many identities, one thread per person.",
+  "version": "0.2.0",
+  "description": "Ownware Shuttle — messaging channel adapters. Each channel (Telegram, Slack, WhatsApp, SMS…) is a thin client of the ownware gateway wire contract: receive → drive the agent → deliver the reply back. One agent, many identities, one thread per person.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

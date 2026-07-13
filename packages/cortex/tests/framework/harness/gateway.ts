@@ -108,6 +108,8 @@ export interface TestGatewayOptions {
   readonly dbPath?: string
   /** Explicit Gateway auth posture. Use false for principal/token contracts. */
   readonly disableAuth?: boolean
+  /** Keep durable source jobs idle for direct state-machine tests. */
+  readonly disableSourceWorker?: boolean
 }
 
 export interface TestGateway {
@@ -194,6 +196,8 @@ export async function createTestGateway(opts: TestGatewayOptions = {}): Promise<
     // separately (gateway-perf-2026-06-13 probes + the Electron run).
     tls: false,
     ...(opts.disableAuth !== undefined ? { disableAuth: opts.disableAuth } : {}),
+    ...(opts.disableSourceWorker !== undefined
+      ? { disableSourceWorker: opts.disableSourceWorker } : {}),
   })
   await gw.start()
 

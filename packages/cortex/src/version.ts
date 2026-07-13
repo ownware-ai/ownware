@@ -14,4 +14,4 @@
  * bundle file location lands on a readable `package.json`. A
  * constant survives bundling.
  */
-export const CORTEX_VERSION = '0.1.0'
+export const CORTEX_VERSION = '0.2.0'
