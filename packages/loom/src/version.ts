@@ -13,4 +13,4 @@
  * runtime, so an fs lookup would silently fail in packaged Electron
  * builds. A constant survives bundling.
  */
-export const VERSION = '0.2.0'
+export const VERSION = '0.3.0'
