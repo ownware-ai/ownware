@@ -148,6 +148,11 @@ export async function serveCommand(argv: string[]): Promise<void> {
   if (channels != null && channels.started.length > 0) {
     console.log(`  Channels: ${channels.started.join(', ')}  (in-process — answering + schedule delivery)`)
   }
+  if (channels?.webhooks != null) {
+    const bind = process.env.OWNWARE_WEBHOOK_HOST ?? '127.0.0.1'
+    console.log(`  Webhooks: ${bind}:${channels.webhooks.port} — put a public HTTPS tunnel or reverse proxy in front`)
+    for (const p of channels.webhooks.paths) console.log(`    ${p}`)
+  }
   if (!loopback) {
     const tokenFile = gatewayTokenPath(gateway.dataDir)
     console.log()

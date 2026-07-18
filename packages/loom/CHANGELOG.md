@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.3.0
+
 ## 0.2.0
 
 All notable changes to Loom will be documented in this file.

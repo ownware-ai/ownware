@@ -35,8 +35,17 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `source(id)` | `GET /api/v1/sources/:id` | Read one safe manifest; cross-scope identities are indistinguishable from absence. |
 | `createSourceUploadSession(sourceId, input, idempotencyKey)` | `POST /api/v1/sources/:id/upload-sessions` | Open one bounded source-scoped upload with declared total bytes, checksum and media type. |
 | `writeSourceUploadChunk(uploadId, input)` | `PATCH /api/v1/source-uploads/:id` | Stream one exact-offset, checksum-bound chunk; identical retries replay without a second append. |
-| `completeSourceUpload(uploadId)` | `POST /api/v1/source-uploads/:id/complete` | Verify the whole object and atomically create or replay one immutable source version. |
+| `completeSourceUpload(uploadId)` | `POST /api/v1/source-uploads/:id/complete` | Verify the whole object and compare-and-set one immutable source version against its server-captured base. |
 | `sourceVersion(sourceId, versionId)` | `GET /api/v1/sources/:sourceId/versions/:versionId` | Read the safe immutable version manifest without placement or source content. |
+| `createSourceJob(sourceId, versionId, input)` | `POST /api/v1/sources/:sourceId/versions/:versionId/jobs` | With a UUID idempotency key, enqueue the allowlisted format inspection for one exact immutable version. |
+| `createSourcePreparation(sourceId, versionId, input)` | `POST /api/v1/sources/:sourceId/versions/:versionId/preparations` | With a UUID idempotency key, enqueue exactly `extract_text` for an inspected current text version. |
+| `sourceJob(jobId)` | `GET /api/v1/source-jobs/:jobId` | Poll safe durable inspection or preparation progress, including implementation and published resource identity, without worker, storage, content, or raw diagnostic detail. |
+| `sourceResource(resourceId)` | `GET /api/v1/source-resources/:resourceId` | Read the closed content-free lineage, policy, coverage and freshness manifest for one derived resource. |
+| `cancelSourceJob(jobId)` | `POST /api/v1/source-jobs/:jobId/cancel` | Request cancellation; poll until `cancelled` or another terminal state because a request is not confirmation. |
+| `createSourceDeletion(sourceId, input)` | `POST /api/v1/sources/:sourceId/deletions` | With an exact expected revision and UUID idempotency key, freeze the source and enqueue verified deletion. |
+| `sourceDeletion(jobId)` | `GET /api/v1/source-deletions/:jobId` | Poll closed affected/remaining counts and safe lifecycle timestamps, or read the minimal verified tombstone. |
+| `cancelSourceDeletion(jobId)` | `POST /api/v1/source-deletions/:jobId/cancel` | Request cancellation only before destructive work starts; poll for the terminal result. |
+| `retrySourceDeletion(jobId)` | `POST /api/v1/source-deletions/:jobId/retry` | Requeue only the remaining inventory of a `partially_deleted` job. |
 | `validateCandidate(input)` | `POST /api/v1/candidates/validate` | Validate bounded base64 Agent Kit bytes and receive only an opaque identity and safe findings; never installs or activates. |
 | `stageCandidate(input)` | `POST /api/v1/candidates/stage` | Revalidate and privately stage exact candidate bytes with explicit ready/failure state; never activates. |
 | `activateCandidate(input)` | `POST /api/v1/candidates/activate` | Compare-and-set one ready candidate against the expected active identity; returns the actual active state. |
@@ -83,8 +92,73 @@ idempotency keys stays separate, while retrying one exact key replays the same
 `sourceId`. `currentVersionId` remains `null` until an accepted immutable
 version exists. Upload sessions accept only declared bytes through bounded
 chunks—never paths or URLs—and completion verifies whole-object checksum and
-text/PDF shape before advancing the logical manifest. Missing inspection or
-freshness evidence stays explicit rather than being projected as ready.
+text/PDF shape before advancing the logical manifest. Concurrent refreshes are
+fenced by the server-captured revision/current version; a stale completion
+throws `OwnwareError` with `code: 'source_upload_refresh_conflict'` and validated
+`actualRevision`/`actualCurrentVersionId`, while the winning version remains
+current. The runtime removes the rejected private placement before confirming
+that conflict; an unverified removal remains the explicit
+`source_upload_cleanup_failed` state rather than hidden success. Accepting a
+refresh resets current inspection and preparation truth so the new bytes cannot
+inherit readiness from their predecessor. Missing inspection or freshness
+evidence stays explicit rather than being projected as ready. Source job creation
+accepts only `inspect_format` for one exact version and replays an exact
+idempotency key across restart. Cancellation remains `cancel_requested` until
+in-flight work yields; terminal jobs reject stale cancellation.
+
+Preparation has separate authority from inspection: delegated callers need
+`source_preparations.create` to enqueue exactly `extract_text`, `source_jobs.read`
+to poll it, and `source_resources.read` to read the resulting manifest. Granting
+`source_jobs.create` implies none of these. The flow is prepare, poll the returned
+job until `succeeded`, then read its non-null `resourceId`. That final endpoint is
+a closed metadata manifest only. Reading bytes is a separate protected flow: the
+install owner creates a short-lived grant for one subject/resource/purpose/channel,
+and a delegated client carrying `source_content.read` requests only the UTF-8 byte
+range it needs. Discovery is separately fenced: the owner creates a
+`source_content.search` grant and a delegated client carrying that operation can
+run a bounded literal `searchSourceContent` scan. Search returns byte-addressed
+passages and stable evidence IDs; it does not invoke a model or durable index.
+An owner token cannot use either content route, and route authority
+without a matching live grant is denied. Revocation takes effect on the next read.
+A refresh marks manifests from the prior current
+version `stale` with `staleAt` but keeps their immutable lineage readable. Work
+already in flight may finish as stale, and neither case labels the replacement
+version prepared; inspect and prepare that new current version separately.
+
+A connection or source registration is not permission. Registration does not
+grant inspection, preparation, retrieval, deletion, Data View, search, or any
+connected-system operation. Source deletion has four separate delegated
+authorities for create, read, cancel, and retry; granting any one implies none of
+the others and no source-use authority. Creation fences the caller's exact
+`expectedRevision` and requires a UUID idempotency key whose exact retry replays
+the original job. Cross-workspace/profile deletion identities remain
+indistinguishable from absence.
+
+Deletion progress exposes only its source/job identities, state, timestamps,
+and closed affected/remaining counts. `cancel_requested` is not cancellation;
+destruction can be cancelled only before it begins. `partially_deleted` remains
+frozen and can retry only that job's remaining inventory. `deleted` means every
+declared store was verified absent and the runtime retained only a minimal opaque
+tombstone. No artifact identity, path, object key, worker claim, or raw failure is
+published, and deletion grants no retrieval, Data View, or search authority.
+
+Source growth is bounded by the effective workspace and profile ceilings in
+`limits.sourceQuota`. The runtime reserves capacity atomically when it accepts
+growth: an upload session reserves its declared `expectedBytes` before any chunk
+is written, and a preparation reserves both a nonterminal job and its derived-
+resource slot. Retained bytes and outstanding reservations count together;
+reservations convert to retained resources or are released only by the runtime's
+safe terminal accounting, so concurrent requests cannot oversubscribe a ceiling.
+Quota checks gate only growth. Reads and non-growing recovery, including writing
+or completing an accepted upload and reading or cancelling accepted work, remain
+available when an installation is already over its effective limit.
+
+The four affected creation calls return HTTP 409 with
+`code: 'source_quota_exceeded'` and a typed `resourceClass` when either scope
+would exceed a ceiling. The response does not reveal usage, which scope failed,
+resource identities, or paths. It has no `Retry-After` header or body hint because
+time alone does not guarantee capacity; clients should not retry until capacity
+or the effective negotiated limit changes.
 
 For a write-safe retry, generate one UUID per logical turn and pass it as
 `idempotencyKey`. Matching retries within seven days replay the accepted
@@ -93,11 +167,23 @@ throws a typed `OwnwareError` instead of starting another run.
 
 An available capability result also includes the limits enforced by that
 Gateway instance: the 10 MiB parsed-JSON ceiling, candidate file/decoded-byte/name
-limits, run-attachment limits, the source page ceiling, delegation lifetimes,
+limits, run-attachment limits, the source page ceiling, source inspection byte/
+time/attempt limits, source preparation byte/time/attempt and one-resource limits,
+effective workspace/profile source quota ceilings, delegation lifetimes,
 seven-day idempotency replay window, and its enabled/disabled rate-limit
 values. A successful `run()` result carries `timeoutMs`, the wall-clock limit
 selected from the resolved profile. Older v1 Gateways may omit `limits` and
 `timeoutMs`; the SDK keeps both optional for additive compatibility.
+
+The owner-side grant methods are `createAccessGrant`, `accessGrant`,
+`accessGrants`, and `revokeAccessGrant`; protected delegated retrieval is
+`readSourceContent` and `searchSourceContent`. Grant mutations use caller-generated UUID idempotency keys
+and return only immutable mutation receipts. Negotiate the four
+`access_grants.*`, `source_content.read`, and `source_content.search` before depending on
+this flow. `limits.accessGrants` advertises TTL, active-count, and pagination
+bounds; `limits.sourceContent.maxRangeBytes` advertises the maximum range.
+`limits.sourceSearch` advertises the scan, query, match, context, timeout, and
+match-mode bounds.
 
 ## What it handles for you
 
@@ -111,7 +197,10 @@ selected from the resolved profile. Older v1 Gateways may omit `limits` and
   a dropped connection without replaying history.
 - **Typed safe failures** — HTTP failures throw `OwnwareError` with
   `status`, stable `code`/`category`, an opaque `correlationId`, and optional
-  `retryAfterSeconds`. Unknown legacy bodies are not copied into the message.
+  `retryAfterSeconds`. A stale source refresh also carries validated safe actual
+  identity fields; a source quota conflict carries only its validated
+  `resourceClass` and no retry delay. Unknown legacy bodies are not copied into
+  the message.
 
 ## The wire contract
 

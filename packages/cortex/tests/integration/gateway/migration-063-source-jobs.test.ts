@@ -27,7 +27,8 @@ describe('migration 063 durable source jobs', () => {
       .all() as Array<{ name: string }>
     expect(columns.map((column) => column.name)).toEqual([
       'job_id', 'workspace_id', 'profile_id', 'source_id', 'source_version_id',
-      'operation', 'state', 'attempt', 'max_attempts', 'checkpoint',
+      'operation', 'implementation_version', 'source_revision', 'resource_id',
+      'state', 'attempt', 'max_attempts', 'checkpoint',
       'claim_token', 'claimed_by', 'lease_expires_at', 'retry_after',
       'cancel_requested_at', 'outcome_code', 'created_at', 'updated_at',
       'terminal_at',
@@ -56,7 +57,7 @@ describe('migration 063 durable source jobs', () => {
         table: 'source_versions', from: 'source_id', to: 'source_id',
       }),
     ]))
-    expect(upgraded.rawMainHandle.pragma('user_version', { simple: true })).toBe(63)
+    expect(upgraded.rawMainHandle.pragma('user_version', { simple: true })).toBe(MIGRATIONS.at(-1)!.version)
     upgraded.close()
   })
 })

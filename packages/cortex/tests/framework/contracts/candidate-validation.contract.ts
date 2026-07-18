@@ -318,6 +318,7 @@ describe('Contract: side-effect-free candidate validation', () => {
         'profiles.list',
         'runs.start',
         'runs.snapshot',
+        'runs.abort',
       ],
     })
     const token = (issued.body as { token: string }).token
@@ -375,6 +376,11 @@ describe('Contract: side-effect-free candidate validation', () => {
     })
     expect(pinned.status).toBe(200)
     await expect(pinned.json()).resolves.toMatchObject({ candidateId: firstCandidate })
+    const firstCancellation = await fetch(
+      `${gateway.baseUrl}/api/v1/runs/${first.runId}/cancel`,
+      { method: 'POST', headers, body: '{}' },
+    )
+    expect(firstCancellation.status).toBe(202)
 
     const deadline = Date.now() + 5_000
     while (gateway.gateway.runner.isRunning(first.threadId) && Date.now() < deadline) {
@@ -581,6 +587,11 @@ describe('Contract: side-effect-free candidate validation', () => {
     await expect(inUseDelete.json()).resolves.toMatchObject({
       error: 'candidate_delete_in_use',
     })
+    const secondCancellation = await fetch(
+      `${gateway.baseUrl}/api/v1/runs/${second.runId}/cancel`,
+      { method: 'POST', headers, body: '{}' },
+    )
+    expect(secondCancellation.status).toBe(202)
     const secondDeadline = Date.now() + 5_000
     while (gateway.gateway.runner.isRunning(second.threadId) && Date.now() < secondDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 20))

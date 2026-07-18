@@ -144,6 +144,15 @@ import { createPermissionHandlers } from './handlers/permissions.js'
 import { createMarketplaceHandlers } from './handlers/marketplace.js'
 import { recoverInterruptedProfileUpdates } from '../profile/update/index.js'
 import { createPrincipalHandlers } from './handlers/principals.js'
+import { createAccessGrantHandlers } from './handlers/access-grants.js'
+import {
+  createReadSourceContentHandler,
+  createSearchSourceContentHandler,
+} from './handlers/source-content.js'
+import { AccessGrantStore } from './access-grant-store.js'
+import { AccessGrantEvaluator } from './access-grant-evaluator.js'
+import { ProtectedSourceReadService } from './protected-source-read.js'
+import { ProtectedSourceSearchService } from './protected-source-search.js'
 import {
   createGetSourceHandler,
   createListSourcesHandler,
@@ -152,7 +161,33 @@ import {
 import { SourceStore } from './source-store.js'
 import { SourceUploadStore } from './source-upload-store.js'
 import { SourceJobStore } from './source-job-store.js'
-import { SourceInspectionWorker } from './source-inspection-worker.js'
+import { SourceJobWorker } from './source-job-worker.js'
+import { ChannelJobStore } from './channel-job-store.js'
+import { ChannelJobWorker } from './channel-job-worker.js'
+import { ChannelProcedureRegistry } from './channel-procedures.js'
+import { ChannelConnectToolProvider } from './channel-connect-tool.js'
+import { createWhatsAppConnectProcedure } from './whatsapp-connect.js'
+import type { ChannelCredentialResolver } from './channel-credentials.js'
+import { SourceDeletionStore } from './source-deletion-store.js'
+import { SourceDeletionWorker } from './source-deletion-worker.js'
+import {
+  createCancelSourceDeletionHandler,
+  createGetSourceDeletionHandler,
+  createRetrySourceDeletionHandler,
+  createSourceDeletionHandler,
+} from './handlers/source-deletions.js'
+import {
+  DEFAULT_SOURCE_QUOTA_LIMITS,
+  SourceQuotaPolicy,
+  type SourceQuotaLimits,
+} from './source-quota-policy.js'
+import {
+  createCancelSourceJobHandler,
+  createGetSourceJobHandler,
+  createGetSourceResourceHandler,
+  createSourceJobHandler,
+  createSourcePreparationHandler,
+} from './handlers/source-jobs.js'
 import {
   createCompleteSourceUploadHandler,
   createGetSourceVersionHandler,
@@ -204,6 +239,8 @@ export interface GatewayOptions {
   disableAccessLog?: boolean
   /** Disable the durable source worker for state-machine isolation tests. */
   disableSourceWorker?: boolean
+  /** Effective runtime-owned source quotas. Defaults are advertised by capabilities. */
+  sourceQuotaLimits?: SourceQuotaLimits
   /**
    * Disable the session-token auth middleware entirely.
    *
@@ -279,6 +316,7 @@ export class OwnwareGateway {
     corsOrigins: readonly string[]
     tls: boolean
     sourceWorkerEnabled: boolean
+    sourceQuotaLimits: SourceQuotaLimits
   }
   private readonly _token: string
   /**
@@ -492,7 +530,18 @@ export class OwnwareGateway {
    * booted in start() after profile discovery, shut down in stop().
    */
   private teamModule: TeamModule | null = null
-  private sourceInspectionWorker: SourceInspectionWorker | null = null
+  private sourceJobWorker: SourceJobWorker | null = null
+  private sourceDeletionWorker: SourceDeletionWorker | null = null
+  /**
+   * Channel procedures (CC1/CC3): store + registry exist from start();
+   * the worker runs only after `enableChannelProcedures()` registers the
+   * per-channel plugins (wired by `ownware serve` when the shuttle
+   * channel store is available).
+   */
+  private channelJobStore: ChannelJobStore | null = null
+  private channelProcedures: ChannelProcedureRegistry | null = null
+  private channelJobWorker: ChannelJobWorker | null = null
+  private readonly sourceQuota: SourceQuotaPolicy
 
   constructor(opts: GatewayOptions) {
     const dataDir = opts.dataDir ?? process.env.OWNWARE_DATA_DIR ?? join(homedir(), DEFAULT_DATA_DIR_NAME)
@@ -522,6 +571,7 @@ export class OwnwareGateway {
       // OWNWARE_* toggles; the harness sets opts.tls=false directly.
       tls: opts.tls ?? process.env.OWNWARE_GATEWAY_TLS !== '0',
       sourceWorkerEnabled: opts.disableSourceWorker !== true,
+      sourceQuotaLimits: opts.sourceQuotaLimits ?? DEFAULT_SOURCE_QUOTA_LIMITS,
     }
 
     // ── Bind-safety invariant (S9) ────────────────────────────────────
@@ -567,6 +617,10 @@ export class OwnwareGateway {
     this._token = authDisabled ? generateSessionToken() : loadOrCreateGatewayToken(dataDir)
     this.router = new Router()
     this.state = new GatewayState(effectiveDbPath)
+    this.sourceQuota = new SourceQuotaPolicy(
+      this.state.rawDbHandle,
+      this.opts.sourceQuotaLimits,
+    )
     this.principalService = new ScopedPrincipalService({
       ownerToken: this._token,
       store: new DelegatedPrincipalStore(this.state.rawDbHandle),
@@ -1370,7 +1424,7 @@ export class OwnwareGateway {
     // beyond a durable SQLite checkpoint are crash residue and are truncated;
     // a shorter file remains untouched so the next scoped write reports the
     // explicit storage-inconsistent state rather than inventing progress.
-    const sourceRecoveryStore = new SourceUploadStore(this.state.rawDbHandle)
+    const sourceRecoveryStore = new SourceUploadStore(this.state.rawDbHandle, this.sourceQuota)
     const sourceRecoveryBytes = new SourceByteStore(
       join(this.opts.dataDir, 'source-storage'),
     )
@@ -1386,6 +1440,7 @@ export class OwnwareGateway {
 
     const sourceJobRecovery = new SourceJobStore(
       this.state.rawDbHandle,
+      this.sourceQuota,
     ).recoverExpiredClaims()
     if (sourceJobRecovery.requeued > 0 || sourceJobRecovery.failed > 0 ||
         sourceJobRecovery.cancelled > 0) {
@@ -1396,15 +1451,52 @@ export class OwnwareGateway {
     }
     bootLap('source job recovery')
 
+    const sourceDeletionStore = new SourceDeletionStore(this.state.rawDbHandle)
+    const sourceDeletionRecovery = sourceDeletionStore.recoverExpiredClaims()
+    if (sourceDeletionRecovery.requeued > 0 || sourceDeletionRecovery.partial > 0) {
+      console.log(
+        `  source deletion: recovered ${sourceDeletionRecovery.requeued} queued, ` +
+        `${sourceDeletionRecovery.partial} partial`,
+      )
+    }
+    bootLap('source deletion recovery')
+
+    // Channel procedures (CC1): reclaim leases a crashed run left behind.
+    // Parked consent gates (`waiting_for_input`) survive untouched — an
+    // unanswered gate waits for its person, never times out into approval.
+    // The worker itself starts with the channel procedures (CC3).
+    this.channelJobStore = new ChannelJobStore(this.state.rawDbHandle)
+    const channelJobRecovery = this.channelJobStore.recoverExpiredClaims()
+    if (channelJobRecovery.requeued > 0 || channelJobRecovery.failed > 0 ||
+        channelJobRecovery.cancelled > 0) {
+      console.log(
+        `  channel jobs: recovered ${channelJobRecovery.requeued} queued, ` +
+        `${channelJobRecovery.failed} failed, ${channelJobRecovery.cancelled} cancelled`,
+      )
+    }
+    this.channelProcedures = new ChannelProcedureRegistry()
+    this.channelJobWorker = new ChannelJobWorker(
+      this.channelJobStore,
+      this.channelProcedures,
+      { workerId: `gateway-channels-${process.pid}` },
+    )
+    bootLap('channel job recovery')
+
     if (this.opts.sourceWorkerEnabled) {
-      this.sourceInspectionWorker = new SourceInspectionWorker(
-        new SourceJobStore(this.state.rawDbHandle),
+      this.sourceJobWorker = new SourceJobWorker(
+        new SourceJobStore(this.state.rawDbHandle, this.sourceQuota),
         sourceRecoveryBytes,
         { workerId: `gateway-${process.pid}` },
       )
-      this.sourceInspectionWorker.start()
+      this.sourceJobWorker.start()
+      this.sourceDeletionWorker = new SourceDeletionWorker(
+        sourceDeletionStore,
+        sourceRecoveryBytes,
+        { workerId: `gateway-deletion-${process.pid}` },
+      )
+      this.sourceDeletionWorker.start()
     }
-    bootLap('source inspection worker')
+    bootLap('source job worker')
 
     // 3. Register routes
     this.registerRoutes()
@@ -1566,6 +1658,29 @@ export class OwnwareGateway {
     return this.scheduleStore
   }
 
+  /**
+   * Enable channel connect procedures (CC3). Registers the per-channel
+   * plugins against the given credential resolver and starts the channel
+   * job worker. Called by `ownware serve` once the shuttle channel store
+   * is available; idempotent. The resolver seam keeps the credential-
+   * location decision (board §9.2) out of the procedures themselves.
+   */
+  enableChannelProcedures(
+    resolver: ChannelCredentialResolver,
+    opts: { readonly publicBaseUrl?: string } = {},
+  ): void {
+    if (!this.channelProcedures || !this.channelJobWorker) {
+      throw new Error('Gateway not started: channel procedures unavailable')
+    }
+    if (this.channelProcedures.size > 0) return
+    const publicBaseUrl = opts.publicBaseUrl ?? process.env.OWNWARE_WEBHOOK_PUBLIC_URL
+    this.channelProcedures.register(createWhatsAppConnectProcedure({
+      credentials: resolver,
+      ...(publicBaseUrl ? { publicBaseUrl } : {}),
+    }))
+    this.channelJobWorker.start()
+  }
+
   /** Run one schedule sweep now (manual trigger / tests). */
   async tickSchedulesOnce(): Promise<void> {
     await this.scheduleRunner?.tickOnce()
@@ -1584,9 +1699,17 @@ export class OwnwareGateway {
     if (this.shuttingDown) return
     this.shuttingDown = true
 
-    if (this.sourceInspectionWorker) {
-      await this.sourceInspectionWorker.stop()
-      this.sourceInspectionWorker = null
+    if (this.sourceJobWorker) {
+      await this.sourceJobWorker.stop()
+      this.sourceJobWorker = null
+    }
+    if (this.channelJobWorker) {
+      await this.channelJobWorker.stop()
+      this.channelJobWorker = null
+    }
+    if (this.sourceDeletionWorker) {
+      await this.sourceDeletionWorker.stop()
+      this.sourceDeletionWorker = null
     }
 
     // Close the bridge-catalog fs watcher (Phase 9). `persistent: false`
@@ -1804,9 +1927,31 @@ export class OwnwareGateway {
     // `opts.profilesDir` is read-only and must never be mutated at runtime.
     const userProfilesDir = join(this.opts.dataDir, 'profiles')
     const candidateStore = new CandidateStore(this.state.rawDbHandle)
-    const sourceStore = new SourceStore(this.state.rawDbHandle)
-    const sourceUploadStore = new SourceUploadStore(this.state.rawDbHandle)
+    const sourceStore = new SourceStore(this.state.rawDbHandle, this.sourceQuota)
+    const sourceUploadStore = new SourceUploadStore(this.state.rawDbHandle, this.sourceQuota)
+    const sourceJobStore = new SourceJobStore(this.state.rawDbHandle, this.sourceQuota)
     const sourceByteStore = new SourceByteStore(join(this.opts.dataDir, 'source-storage'))
+    const accessGrantStore = new AccessGrantStore(this.state.rawDbHandle)
+    const accessGrantHandlers = createAccessGrantHandlers({
+      grants: accessGrantStore,
+      idempotency: this.runIdempotency,
+      authEnabled: !this.authDisabled,
+    })
+    const protectedSourceReads = new ProtectedSourceReadService(
+      accessGrantStore,
+      new AccessGrantEvaluator(accessGrantStore),
+      sourceByteStore,
+      // The exact current lineage/availability/deletion join is the first
+      // source-read hard floor. Policy-reference labels are metadata, not
+      // authority; future enforced policy may replace this producer.
+      () => ({ decision: 'allow' }),
+    )
+    const protectedSourceSearches = new ProtectedSourceSearchService(
+      accessGrantStore,
+      new AccessGrantEvaluator(accessGrantStore),
+      sourceByteStore,
+      () => ({ decision: 'allow' }),
+    )
     candidateStore.recoverInterrupted()
     const candidateResolver = new CandidateProfileResolver({
       candidatesRoot: join(this.opts.dataDir, 'profile-candidates'),
@@ -1898,6 +2043,14 @@ export class OwnwareGateway {
       this.composioToolProviderProxy,
       new ConnectorsToolProvider({
         registry: connectorHandlers.registry,
+      }),
+      // connect_channel (CC3): contributes the channel-connect tool once
+      // enableChannelProcedures() has registered plugins (registry read
+      // lazily per assembly, so late enabling still takes effect).
+      new ChannelConnectToolProvider({
+        jobs: this.channelJobStore!,
+        procedures: this.channelProcedures!,
+        wake: () => this.channelJobWorker?.wake(),
       }),
     ]
     const run = createRunHandlers(this.state, this.registry, this.runner, {
@@ -2040,7 +2193,7 @@ export class OwnwareGateway {
         windowSeconds: 60,
         generalRequests: 0,
         runStarts: 0,
-      }),
+      }, this.sourceQuota.limits),
       { operation: 'gateway.capabilities' },
     )
     this.router.post('/api/v1/auth/delegations', principals.issue)
@@ -2059,6 +2212,37 @@ export class OwnwareGateway {
       '/api/v1/sources/:sourceId',
       createGetSourceHandler(sourceStore),
       { operation: 'sources.read' },
+    )
+    const sourceDeletionStore = new SourceDeletionStore(this.state.rawDbHandle)
+    this.router.post(
+      '/api/v1/sources/:sourceId/deletions',
+      createSourceDeletionHandler(
+        sourceDeletionStore,
+        this.runIdempotency,
+        () => this.sourceDeletionWorker?.wake(),
+      ),
+      { operation: 'source_deletions.create' },
+    )
+    this.router.get(
+      '/api/v1/source-deletions/:jobId',
+      createGetSourceDeletionHandler(sourceDeletionStore),
+      { operation: 'source_deletions.read' },
+    )
+    this.router.post(
+      '/api/v1/source-deletions/:jobId/cancel',
+      createCancelSourceDeletionHandler(
+        sourceDeletionStore,
+        () => this.sourceDeletionWorker?.wake(),
+      ),
+      { operation: 'source_deletions.cancel' },
+    )
+    this.router.post(
+      '/api/v1/source-deletions/:jobId/retry',
+      createRetrySourceDeletionHandler(
+        sourceDeletionStore,
+        () => this.sourceDeletionWorker?.wake(),
+      ),
+      { operation: 'source_deletions.retry' },
     )
     this.router.post(
       '/api/v1/sources/:sourceId/upload-sessions',
@@ -2081,6 +2265,72 @@ export class OwnwareGateway {
       '/api/v1/sources/:sourceId/versions/:sourceVersionId',
       createGetSourceVersionHandler(sourceUploadStore),
       { operation: 'source_versions.read' },
+    )
+    this.router.post(
+      '/api/v1/sources/:sourceId/versions/:sourceVersionId/jobs',
+      createSourceJobHandler(
+        sourceJobStore,
+        this.runIdempotency,
+        () => this.sourceJobWorker?.wake(),
+      ),
+      { operation: 'source_jobs.create' },
+    )
+    this.router.post(
+      '/api/v1/sources/:sourceId/versions/:sourceVersionId/preparations',
+      createSourcePreparationHandler(
+        sourceJobStore,
+        this.runIdempotency,
+        () => this.sourceJobWorker?.wake(),
+      ),
+      { operation: 'source_preparations.create' },
+    )
+    this.router.get(
+      '/api/v1/source-resources/:resourceId',
+      createGetSourceResourceHandler(sourceJobStore),
+      { operation: 'source_resources.read' },
+    )
+    this.router.post(
+      '/api/v1/source-resources/:resourceId/access-grants',
+      accessGrantHandlers.create,
+      { operation: 'access_grants.create' },
+    )
+    this.router.get(
+      '/api/v1/access-grants',
+      accessGrantHandlers.list,
+      { operation: 'access_grants.list' },
+    )
+    this.router.get(
+      '/api/v1/access-grants/:grantId',
+      accessGrantHandlers.read,
+      { operation: 'access_grants.read' },
+    )
+    this.router.post(
+      '/api/v1/access-grants/:grantId/revoke',
+      accessGrantHandlers.revoke,
+      { operation: 'access_grants.revoke' },
+    )
+    this.router.post(
+      '/api/v1/source-resources/:resourceId/content',
+      createReadSourceContentHandler(protectedSourceReads),
+      { operation: 'source_content.read' },
+    )
+    this.router.post(
+      '/api/v1/source-resources/:resourceId/content/search',
+      createSearchSourceContentHandler(protectedSourceSearches),
+      { operation: 'source_content.search' },
+    )
+    this.router.get(
+      '/api/v1/source-jobs/:jobId',
+      createGetSourceJobHandler(sourceJobStore),
+      { operation: 'source_jobs.read' },
+    )
+    this.router.post(
+      '/api/v1/source-jobs/:jobId/cancel',
+      createCancelSourceJobHandler(
+        sourceJobStore,
+        () => this.sourceJobWorker?.wake(),
+      ),
+      { operation: 'source_jobs.cancel' },
     )
     this.router.post('/api/v1/candidates/validate', validateCandidate, { operation: 'candidates.validate' })
     this.router.post(

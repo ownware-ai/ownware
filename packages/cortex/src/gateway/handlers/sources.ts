@@ -7,6 +7,7 @@ import {
   type RunIdempotencyStore,
 } from '../idempotency.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
+import { SourceQuotaExceededError } from '../source-quota-policy.js'
 import {
   SOURCE_AUTHORITIES,
   SOURCE_CLASSIFICATIONS,
@@ -97,6 +98,14 @@ export function createRegisterSourceHandler(
       idempotency.complete({ ...key, statusCode: 202, result })
       sendJSON(res, 202, result)
     } catch (error) {
+      if (error instanceof SourceQuotaExceededError) {
+        idempotency.abandon(key)
+        sendError(res, 409, 'Source quota does not allow this operation.',
+          'source_quota_exceeded', 'invalid_request', {
+            resourceClass: error.resourceClass,
+          })
+        return
+      }
       idempotency.markIndeterminate(key)
       throw error
     }

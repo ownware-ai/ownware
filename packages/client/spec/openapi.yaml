@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.17.0
+  version: 0.24.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -103,7 +103,7 @@ paths:
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
-        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceCreationConflictResponse' }
         '413': { $ref: '#/components/responses/ErrorResponse' }
         '500': { $ref: '#/components/responses/ErrorResponse' }
     get:
@@ -147,6 +147,109 @@ paths:
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
+  /api/v1/sources/{sourceId}/deletions:
+    post:
+      operationId: createSourceDeletion
+      summary: Freeze one exact source revision and enqueue verified deletion.
+      description: >
+        Requires the separate source_deletions.create authority and a UUID
+        idempotency key. Workspace and profile scope come only from the delegated
+        bearer. The response projects only safe progress counts and timestamps.
+      parameters:
+        - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                expectedRevision: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        '202':
+          description: Deletion durably accepted or exactly replayed; poll for verified terminal truth.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceDeletion' } } }
+        '400': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '401': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '403': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '404': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '413': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '429': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '500': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+
+  /api/v1/source-deletions/{jobId}:
+    get:
+      operationId: getSourceDeletion
+      summary: Read one scoped source-deletion projection or tombstone.
+      description: >
+        Requires source_deletions.read. Cross-workspace/profile identities are
+        indistinguishable from absence. Artifact identities, paths, object keys,
+        claims and raw failures are never returned.
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Current safe deletion progress or verified minimal tombstone.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceDeletion' } } }
+        '400': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '401': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '403': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '404': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '429': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '500': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+
+  /api/v1/source-deletions/{jobId}/cancel:
+    post:
+      operationId: cancelSourceDeletion
+      summary: Request source-deletion cancellation before destruction begins.
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '202':
+          description: Cancellation requested or already requested; poll for terminal truth.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceDeletionCancellationResult' } } }
+        '400': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '401': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '403': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '404': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '413': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '429': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '500': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+
+  /api/v1/source-deletions/{jobId}/retry:
+    post:
+      operationId: retrySourceDeletion
+      summary: Requeue only the remaining inventory of a partial deletion.
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '202':
+          description: The same partial deletion inventory is queued for another verified pass.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceDeletionRetryResult' } } }
+        '400': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '401': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '403': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '404': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '413': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '429': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+        '500': { $ref: '#/components/responses/SourceDeletionErrorResponse' }
+
   /api/v1/sources/{sourceId}/upload-sessions:
     post:
       operationId: createSourceUploadSession
@@ -167,7 +270,7 @@ paths:
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
-        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceCreationConflictResponse' }
 
   /api/v1/source-uploads/{uploadId}:
     patch:
@@ -197,6 +300,12 @@ paths:
     post:
       operationId: completeSourceUpload
       summary: Verify and atomically accept one immutable source version.
+      description: >
+        The upload session privately captures the source revision and current
+        version at creation. Completion advances that exact identity once and
+        resets current inspection and preparation state. A stale completion
+        returns `source_upload_refresh_conflict` with the safe actual revision
+        and current version identity; request bodies cannot override the fence.
       parameters:
         - { in: path, name: uploadId, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -211,6 +320,7 @@ paths:
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '422': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/sources/{sourceId}/versions/{sourceVersionId}:
     get:
@@ -226,6 +336,269 @@ paths:
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/sources/{sourceId}/versions/{sourceVersionId}/preparations:
+    post:
+      operationId: createSourcePreparation
+      summary: Enqueue exact text extraction for one inspected current source version.
+      description: >
+        Requires the separate source_preparations.create authority and a UUID
+        idempotency key. Only the fixed extract_text operation is accepted;
+        workspace and profile scope come only from the delegated bearer.
+      parameters:
+        - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: sourceVersionId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation]
+              properties:
+                operation: { type: string, const: extract_text }
+              additionalProperties: false
+      responses:
+        '202':
+          description: Durable preparation job accepted; poll it before reading its resource manifest.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceJob' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceCreationConflictResponse' }
+        '422': { $ref: '#/components/responses/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/sources/{sourceId}/versions/{sourceVersionId}/jobs:
+    post:
+      operationId: createSourceJob
+      summary: Enqueue one allowlisted operation for an exact immutable source version.
+      description: >
+        Workspace and profile scope come only from the delegated bearer. Creation
+        requires a UUID idempotency key; an exact completed retry replays the
+        original safe job projection across Gateway restarts.
+      parameters:
+        - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: sourceVersionId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation]
+              properties:
+                operation: { type: string, const: inspect_format }
+              additionalProperties: false
+      responses:
+        '202':
+          description: Durable job accepted. The response contains no worker or storage detail.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceJob' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/SourceCreationConflictResponse' }
+
+  /api/v1/source-resources/{resourceId}:
+    get:
+      operationId: getSourceResource
+      summary: Read one scoped content-free derived-resource manifest.
+      description: >
+        Requires the separate source_resources.read authority. Cross-workspace/profile
+        identities are indistinguishable from absence. The response is lineage,
+        policy, coverage and freshness metadata only; content requires a separate
+        live grant and separately authorized operation.
+      parameters:
+        - { in: path, name: resourceId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Closed safe resource manifest without content, paths, placement or diagnostics.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceResourceManifest' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-resources/{resourceId}/access-grants:
+    post:
+      operationId: createAccessGrant
+      summary: Owner-only creation of one bounded protected-source read or search grant.
+      description: >
+        Authentication must be enabled and the bearer must be the install owner.
+        Workspace/profile scope and immutable source lineage are derived by the
+        Gateway. An exact UUID idempotency retry returns only the same minimal receipt.
+      parameters:
+        - { in: path, name: resourceId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAccessGrantInput' }
+      responses:
+        '201':
+          description: Minimal immutable mutation receipt; no subject, consent, policy, or storage detail.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccessGrantMutationReceipt' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-resources/{resourceId}/content:
+    post:
+      operationId: readSourceContent
+      summary: Read one bounded UTF-8 range after live grant and source-state evaluation.
+      description: >
+        Requires a delegated principal with source_content.read. Workspace, profile,
+        purpose and channel come only from that principal. Owner tokens cannot bypass
+        the route or grant. Grant, lineage, availability, freshness and deletion truth
+        are checked before and after the private byte read; denial is indistinguishable
+        from absence.
+      parameters:
+        - { in: path, name: resourceId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReadSourceContentInput' }
+      responses:
+        '200':
+          description: Verified current source bytes and safe immutable lineage.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProtectedSourceContent' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-resources/{resourceId}/content/search:
+    post:
+      operationId: searchSourceContent
+      summary: Search one current prepared UTF-8 resource after live grant evaluation.
+      description: >
+        Requires a delegated principal with source_content.search, which is a
+        separate grant from source_content.read. The Gateway performs a bounded
+        literal scan without a model, network access, SQL, shell, or durable index.
+        Grant and exact current lineage are checked before and after the scan;
+        timeout returns no partial matches and denial is indistinguishable from absence.
+      parameters:
+        - { in: path, name: resourceId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchSourceContentInput' }
+      responses:
+        '200':
+          description: Byte-ordered bounded passages with stable evidence identities.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProtectedSourceSearchResult' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '504': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/access-grants:
+    get:
+      operationId: listAccessGrants
+      summary: Owner-only bounded list of current grant revisions and lifecycle truth.
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { in: query, name: cursor, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Current grant heads ordered by opaque identity.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccessGrantList' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/access-grants/{grantId}:
+    get:
+      operationId: getAccessGrant
+      summary: Owner-only read of one current immutable grant revision.
+      parameters:
+        - { in: path, name: grantId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Current immutable grant revision.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccessGrant' } } }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/access-grants/{grantId}/revoke:
+    post:
+      operationId: revokeAccessGrant
+      summary: Owner-only revocation fenced by the exact current revision.
+      parameters:
+        - { in: path, name: grantId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                expectedRevision: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: Minimal immutable revocation receipt.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccessGrantMutationReceipt' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-jobs/{jobId}:
+    get:
+      operationId: getSourceJob
+      summary: Read one scoped safe source-job projection.
+      description: Cross-workspace/profile identities are indistinguishable from absence.
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Current durable state without claims, leases, retry times, paths, content, or raw diagnostics.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceJob' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-jobs/{jobId}/cancel:
+    post:
+      operationId: cancelSourceJob
+      summary: Request cancellation without claiming that in-flight inspection stopped.
+      parameters:
+        - { in: path, name: jobId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '202':
+          description: Cancellation requested or already requested; poll the job for terminal truth.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceJobCancellationResult' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/candidates/validate:
     post:
@@ -939,6 +1312,39 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
+    SourceCreationConflictResponse:
+      description: >
+        Safe typed creation conflict. `source_quota_exceeded` reports only the
+        blocked resource class plus standard safe error metadata; it never
+        reports usage, failed workspace/profile scope, resource identities,
+        paths, or a retry delay.
+      headers:
+        X-Ownware-Correlation-Id:
+          schema: { type: string, format: uuid }
+          description: Opaque server-generated support correlation.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - allOf:
+                  - { $ref: '#/components/schemas/ErrorResponse' }
+                  - not:
+                      required: [error]
+                      properties:
+                        error: { const: source_quota_exceeded }
+              - { $ref: '#/components/schemas/SourceQuotaExceededError' }
+    SourceDeletionErrorResponse:
+      description: Safe typed deletion error without artifact or storage detail.
+      headers:
+        X-Ownware-Correlation-Id:
+          schema: { type: string, format: uuid }
+          description: Opaque server-generated support correlation.
+        Retry-After:
+          schema: { type: integer, minimum: 0 }
+          description: Present for rate limits and an in-progress idempotent request only.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SourceDeletionError' }
   schemas:
     RunSnapshot:
       type: object
@@ -1004,7 +1410,7 @@ components:
       additionalProperties: false
     PublicGatewayLimits:
       type: object
-      required: [jsonBodyBytes, candidateUpload, runAttachments, sourceList, sourceUpload, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
+      required: [jsonBodyBytes, candidateUpload, runAttachments, sourceList, sourceUpload, sourceInspection, sourcePreparation, accessGrants, sourceContent, sourceSearch, sourceQuota, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
       properties:
         jsonBodyBytes:
           type: integer
@@ -1049,6 +1455,65 @@ components:
               minItems: 2
               maxItems: 2
           additionalProperties: false
+        sourceInspection:
+          type: object
+          required: [maxBytes, perAttemptTimeoutMs, maxAttempts]
+          properties:
+            maxBytes: { type: integer, const: 16777216 }
+            perAttemptTimeoutMs: { type: integer, const: 5000 }
+            maxAttempts: { type: integer, const: 3 }
+          additionalProperties: false
+        sourcePreparation:
+          type: object
+          required: [maxBytes, perAttemptTimeoutMs, maxAttempts, maxResourcesPerJob]
+          properties:
+            maxBytes: { type: integer, const: 16777216 }
+            perAttemptTimeoutMs: { type: integer, const: 5000 }
+            maxAttempts: { type: integer, const: 3 }
+            maxResourcesPerJob: { type: integer, const: 1 }
+          additionalProperties: false
+        accessGrants:
+          type: object
+          required: [minTtlSeconds, maxTtlSeconds, maxActivePerWorkspaceProfile, maxPageSize]
+          properties:
+            minTtlSeconds: { type: integer, const: 60 }
+            maxTtlSeconds: { type: integer, const: 2592000 }
+            maxActivePerWorkspaceProfile: { type: integer, const: 1024 }
+            maxPageSize: { type: integer, const: 100 }
+          additionalProperties: false
+        sourceContent:
+          type: object
+          required: [maxRangeBytes]
+          properties:
+            maxRangeBytes: { type: integer, const: 65536 }
+          additionalProperties: false
+        sourceSearch:
+          type: object
+          required: [maxScanBytes, maxQueryBytes, maxMatches, maxContextBytes, perRequestTimeoutMs, matchModes]
+          properties:
+            maxScanBytes: { type: integer, const: 16777216 }
+            maxQueryBytes: { type: integer, const: 128 }
+            maxMatches: { type: integer, const: 20 }
+            maxContextBytes: { type: integer, const: 1024 }
+            perRequestTimeoutMs: { type: integer, const: 5000 }
+            matchModes:
+              type: array
+              prefixItems:
+                - { const: exact_utf8 }
+                - { const: ascii_case_insensitive }
+              minItems: 2
+              maxItems: 2
+          additionalProperties: false
+        sourceQuota:
+          type: object
+          required: [workspace, profile]
+          description: >
+            Effective source ceilings negotiated for this Gateway instance.
+            These values are instance limits, not schema-defined defaults.
+          properties:
+            workspace: { $ref: '#/components/schemas/SourceQuotaCeilings' }
+            profile: { $ref: '#/components/schemas/SourceQuotaCeilings' }
+          additionalProperties: false
         delegationDefaultTtlSeconds: { type: integer, const: 900 }
         delegationMaxTtlSeconds: { type: integer, const: 3600 }
         idempotencyRetentionSeconds: { type: integer, const: 604800 }
@@ -1060,6 +1525,17 @@ components:
             windowSeconds: { type: integer, const: 60 }
             generalRequests: { type: integer, minimum: 0 }
             runStarts: { type: integer, minimum: 0 }
+    SourceQuotaCeilings:
+      type: object
+      required: [maxSourceRegistrations, maxRetainedAndReservedBytes, maxActiveUploadSessions, maxNonterminalJobs, maxDerivedResources]
+      description: Positive effective ceilings for one workspace or profile scope.
+      properties:
+        maxSourceRegistrations: { type: integer, minimum: 1 }
+        maxRetainedAndReservedBytes: { type: integer, minimum: 1 }
+        maxActiveUploadSessions: { type: integer, minimum: 1 }
+        maxNonterminalJobs: { type: integer, minimum: 1 }
+        maxDerivedResources: { type: integer, minimum: 1 }
+      additionalProperties: false
     SourceRegistrationInput:
       type: object
       required: [kind, label, classification, authority, audiencePolicyRef, sensitivityPolicyRef, purposePolicyRef, retentionPolicyRef, freshnessPolicyRef]
@@ -1168,7 +1644,7 @@ components:
         checksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
         verifiedMediaType: { type: string, enum: [text/plain, application/pdf] }
         byteCount: { type: integer, minimum: 1, maximum: 16777216 }
-        inspection: { const: not_started }
+        inspection: { type: string, enum: [not_started, queued, inspecting, complete, partial, failed] }
         createdAt: { type: integer, minimum: 0 }
       additionalProperties: false
     SourceUploadCompletionResult:
@@ -1184,6 +1660,278 @@ components:
         createdAt: { type: integer, minimum: 0 }
         replayed: { type: boolean }
       additionalProperties: false
+    SourceJob:
+      type: object
+      required: [jobId, sourceId, sourceVersionId, operation, implementationVersion, resourceId, state, attempt, maxAttempts, checkpoint, cancelRequestedAt, outcomeCode, createdAt, updatedAt, terminalAt]
+      properties:
+        jobId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        sourceVersionId: { type: string, format: uuid }
+        operation: { type: string, enum: [inspect_format, extract_text] }
+        implementationVersion: { type: string, enum: [inspect_format.v1, text_extraction.v1] }
+        resourceId:
+          type: [string, 'null']
+          format: uuid
+          description: Published only after successful preparation creates its safe resource manifest.
+        state:
+          type: string
+          enum: [queued, running, waiting_for_resource, cancel_requested, succeeded, partial, failed, cancelled]
+        attempt: { type: integer, minimum: 0, maximum: 3 }
+        maxAttempts: { type: integer, const: 3 }
+        checkpoint: { type: integer, minimum: 0, maximum: 4 }
+        cancelRequestedAt: { type: [integer, 'null'], minimum: 0 }
+        outcomeCode:
+          type: [string, 'null']
+          enum: [attempts_exhausted, cancelled, inspection_complete, inspection_timeout, inspection_unavailable, source_format_invalid, source_object_mismatch, source_object_missing, source_object_oversized, source_storage_inconsistent, preparation_complete, preparation_timeout, preparation_unavailable, null]
+        createdAt: { type: integer, minimum: 0 }
+        updatedAt: { type: integer, minimum: 0 }
+        terminalAt: { type: [integer, 'null'], minimum: 0 }
+        cancellation: { type: string, enum: [requested, already_requested] }
+      additionalProperties: false
+    SourceResourceManifest:
+      type: object
+      required: [resourceId, jobId, sourceId, sourceVersionId, kind, operation, implementationVersion, sourceRevision, sourceChecksum, resourceChecksum, byteStart, byteEnd, byteCount, classification, authority, audiencePolicyRef, sensitivityPolicyRef, purposePolicyRef, retentionPolicyRef, freshnessPolicyRef, coverage, freshness, createdAt, staleAt]
+      properties:
+        resourceId: { type: string, format: uuid }
+        jobId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        sourceVersionId: { type: string, format: uuid }
+        kind: { type: string, const: text_extraction }
+        operation: { type: string, const: extract_text }
+        implementationVersion: { type: string, const: text_extraction.v1 }
+        sourceRevision: { type: integer, minimum: 1 }
+        sourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        resourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        byteStart: { type: integer, const: 0 }
+        byteEnd: { type: integer, minimum: 1, maximum: 16777216 }
+        byteCount: { type: integer, minimum: 1, maximum: 16777216 }
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example] }
+        audiencePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        sensitivityPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        purposePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        retentionPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        freshnessPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        coverage: { type: string, const: complete }
+        freshness: { type: string, enum: [current, stale] }
+        createdAt: { type: integer, minimum: 0 }
+        staleAt: { type: [integer, 'null'], minimum: 0 }
+      additionalProperties: false
+    AccessConsent:
+      oneOf:
+        - type: object
+          required: [state]
+          properties:
+            state: { type: string, const: not_required }
+          additionalProperties: false
+        - type: object
+          required: [state, evidenceId]
+          properties:
+            state: { type: string, const: recorded }
+            evidenceId: { type: string, minLength: 1, maxLength: 128 }
+          additionalProperties: false
+    CreateAccessGrantInput:
+      type: object
+      required: [subjectId, purpose, channel, consent, ttlSeconds]
+      properties:
+        operation: { type: string, enum: [source_content.read, source_content.search] }
+        subjectId: { type: string, minLength: 1, maxLength: 128 }
+        purpose: { type: string, minLength: 1, maxLength: 128 }
+        channel: { type: [string, 'null'], minLength: 1, maxLength: 128 }
+        consent: { $ref: '#/components/schemas/AccessConsent' }
+        ttlSeconds: { type: integer, minimum: 60, maximum: 2592000 }
+      additionalProperties: false
+    AccessGrantMutationReceipt:
+      type: object
+      required: [grantId, revision, mutation, acceptedAt]
+      properties:
+        grantId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        mutation: { type: string, enum: [created, revoked] }
+        acceptedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    AccessGrantProjection:
+      type: object
+      required: [grantId, revision, state, workspaceId, profileId, subjectId, purpose, channel, resourceKind, resourceId, operation, fieldScope, rowScope, consent, autonomyCeiling, effectiveAt, expiresAt, issuedBy, revisionCreatedAt, revokedAt]
+      properties:
+        grantId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        state: { type: string, enum: [active, revoked] }
+        workspaceId: { type: string }
+        profileId: { type: string }
+        subjectId: { type: string }
+        purpose: { type: string }
+        channel: { type: [string, 'null'] }
+        resourceKind: { type: string, const: source_resource }
+        resourceId: { type: string, format: uuid }
+        operation: { type: string, enum: [source_content.read, source_content.search] }
+        fieldScope: { $ref: '#/components/schemas/AllAccessScope' }
+        rowScope: { $ref: '#/components/schemas/AllAccessScope' }
+        consent: { $ref: '#/components/schemas/AccessConsent' }
+        autonomyCeiling: { type: string, const: observe }
+        effectiveAt: { type: integer }
+        expiresAt: { type: integer }
+        issuedBy: { type: string, const: install_owner }
+        revisionCreatedAt: { type: integer }
+        revokedAt: { type: [integer, 'null'] }
+    AccessGrant:
+      allOf:
+        - { $ref: '#/components/schemas/AccessGrantProjection' }
+      unevaluatedProperties: false
+    AllAccessScope:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, const: all }
+      additionalProperties: false
+    CurrentAccessGrant:
+      allOf:
+        - { $ref: '#/components/schemas/AccessGrantProjection' }
+        - type: object
+          required: [lifecycle]
+          properties:
+            lifecycle: { type: string, enum: [scheduled, effective, expired, revoked] }
+      unevaluatedProperties: false
+    AccessGrantList:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CurrentAccessGrant' }
+        nextCursor: { type: [string, 'null'], format: uuid }
+      additionalProperties: false
+    ReadSourceContentInput:
+      type: object
+      required: [subjectId, consent, byteStart, byteEnd]
+      properties:
+        subjectId: { type: string, minLength: 1, maxLength: 128 }
+        consent: { $ref: '#/components/schemas/AccessConsent' }
+        byteStart: { type: integer, minimum: 0 }
+        byteEnd: { type: integer, minimum: 1 }
+      additionalProperties: false
+    ProtectedSourceContent:
+      type: object
+      required: [resourceId, sourceId, sourceVersionId, sourceRevision, sourceChecksum, resourceChecksum, freshness, classification, authority, text, byteStart, byteEnd, byteCount, totalByteCount, observedAt]
+      properties:
+        resourceId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        sourceVersionId: { type: string, format: uuid }
+        sourceRevision: { type: integer, minimum: 1 }
+        sourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        resourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        freshness: { type: string, const: current }
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example] }
+        text: { type: string }
+        byteStart: { type: integer, minimum: 0 }
+        byteEnd: { type: integer, minimum: 1 }
+        byteCount: { type: integer, minimum: 1, maximum: 65536 }
+        totalByteCount: { type: integer, minimum: 1 }
+        observedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    SearchSourceContentInput:
+      type: object
+      required: [subjectId, consent, query, matchMode, maxMatches, contextBytes]
+      properties:
+        subjectId: { type: string, minLength: 1, maxLength: 128 }
+        consent: { $ref: '#/components/schemas/AccessConsent' }
+        query: { type: string, minLength: 1, maxLength: 128 }
+        matchMode: { type: string, enum: [exact_utf8, ascii_case_insensitive] }
+        maxMatches: { type: integer, minimum: 1, maximum: 20 }
+        contextBytes: { type: integer, minimum: 0, maximum: 1024 }
+      additionalProperties: false
+    ProtectedSourceSearchMatch:
+      type: object
+      required: [evidenceId, text, byteStart, byteEnd, matchByteStart, matchByteEnd]
+      properties:
+        evidenceId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        text: { type: string }
+        byteStart: { type: integer, minimum: 0 }
+        byteEnd: { type: integer, minimum: 1 }
+        matchByteStart: { type: integer, minimum: 0 }
+        matchByteEnd: { type: integer, minimum: 1 }
+      additionalProperties: false
+    ProtectedSourceSearchResult:
+      type: object
+      required: [resourceId, sourceId, sourceVersionId, sourceRevision, sourceChecksum, resourceChecksum, freshness, classification, authority, status, matchMode, matches, truncated, totalByteCount, observedAt]
+      properties:
+        resourceId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        sourceVersionId: { type: string, format: uuid }
+        sourceRevision: { type: integer, minimum: 1 }
+        sourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        resourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        freshness: { type: string, const: current }
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example] }
+        status: { type: string, enum: [complete, no_matches] }
+        matchMode: { type: string, enum: [exact_utf8, ascii_case_insensitive] }
+        matches:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ProtectedSourceSearchMatch' }
+        truncated: { type: boolean }
+        totalByteCount: { type: integer, minimum: 1 }
+        observedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    SourceJobCancellationResult:
+      allOf:
+        - { $ref: '#/components/schemas/SourceJob' }
+        - type: object
+          required: [cancellation]
+          properties:
+            cancellation: { type: string, enum: [requested, already_requested] }
+    SourceDeletionCounts:
+      type: object
+      required: [immutableOriginals, uploadStaging, placedCandidates, derivedResources, dataViews, searchIndexes, sourceJobs, idempotencyReplays, retrievalCacheEntries]
+      properties:
+        immutableOriginals: { type: integer, minimum: 0 }
+        uploadStaging: { type: integer, minimum: 0 }
+        placedCandidates: { type: integer, minimum: 0 }
+        derivedResources: { type: integer, minimum: 0 }
+        dataViews: { type: integer, minimum: 0 }
+        searchIndexes: { type: integer, minimum: 0 }
+        sourceJobs: { type: integer, minimum: 0 }
+        idempotencyReplays: { type: integer, minimum: 0 }
+        retrievalCacheEntries: { type: integer, minimum: 0 }
+      additionalProperties: false
+    SourceDeletionProjection:
+      type: object
+      required: [jobId, sourceId, operation, state, sourceRevision, affected, remaining, createdAt, updatedAt, terminalAt]
+      properties:
+        jobId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        operation: { type: string, const: delete_source }
+        state:
+          type: string
+          enum: [queued, deleting, cancel_requested, cancelled, partially_deleted, deleted]
+        sourceRevision: { type: integer, minimum: 1 }
+        affected: { $ref: '#/components/schemas/SourceDeletionCounts' }
+        remaining: { $ref: '#/components/schemas/SourceDeletionCounts' }
+        createdAt: { type: integer }
+        updatedAt: { type: integer }
+        terminalAt: { type: [integer, 'null'] }
+    SourceDeletion:
+      allOf:
+        - { $ref: '#/components/schemas/SourceDeletionProjection' }
+      unevaluatedProperties: false
+    SourceDeletionCancellationResult:
+      allOf:
+        - { $ref: '#/components/schemas/SourceDeletionProjection' }
+        - type: object
+          required: [cancellation]
+          properties:
+            cancellation: { type: string, enum: [requested, already_requested] }
+      unevaluatedProperties: false
+    SourceDeletionRetryResult:
+      allOf:
+        - { $ref: '#/components/schemas/SourceDeletionProjection' }
+        - type: object
+          required: [retry]
+          properties:
+            retry: { type: string, const: queued }
+      unevaluatedProperties: false
     CandidateFinding:
       type: object
       required: [code, severity, message]
@@ -1355,6 +2103,43 @@ components:
           type: number
           minimum: 0
           description: Optional retry delay in seconds.
+        actualRevision:
+          type: integer
+          minimum: 1
+          description: Safe actual source revision, present only for `source_upload_refresh_conflict`.
+        actualCurrentVersionId:
+          type: [string, 'null']
+          format: uuid
+          description: Safe actual current source version, present only for `source_upload_refresh_conflict`.
+    SourceDeletionError:
+      type: object
+      required: [error, message, category, correlationId]
+      properties:
+        error: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+        message: { type: string, maxLength: 500 }
+        category: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+        correlationId: { type: string, format: uuid }
+        retryAfter: { type: number, minimum: 0 }
+        limitBytes:
+          type: integer
+          minimum: 1
+          description: Public JSON body ceiling, present only when the request is too large.
+      additionalProperties: false
+    SourceQuotaExceededError:
+      type: object
+      required: [error, message, category, correlationId, resourceClass]
+      description: >
+        Quota denial without usage, failed scope, source/upload/job/resource
+        identities, paths, or retry timing.
+      properties:
+        error: { type: string, const: source_quota_exceeded }
+        message: { type: string, const: Source quota does not allow this operation. }
+        category: { type: string, const: invalid_request }
+        correlationId: { type: string, format: uuid }
+        resourceClass:
+          type: string
+          enum: [source_registrations, source_storage_bytes, source_upload_sessions, source_jobs, source_derived_resources]
+      additionalProperties: false
   securitySchemes:
     bearer:
       type: http

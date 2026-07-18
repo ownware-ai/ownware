@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { OwnwareGateway } from '../../../src/gateway/server.js'
+import { CORTEX_VERSION } from '../../../src/version.js'
 import { join } from 'node:path'
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -297,7 +298,7 @@ describe('GET /api/v1/app/version', () => {
   it('returns version info', async () => {
     const { status, body } = await json('/api/v1/app/version')
     expect(status).toBe(200)
-    expect(body.version).toBe('0.1.0')
+    expect(body.version).toBe(CORTEX_VERSION)
     expect(body.platform).toBeTruthy()
     expect(body.runtime).toBeTruthy()
   })

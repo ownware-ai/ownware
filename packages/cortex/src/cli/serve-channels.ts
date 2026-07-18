@@ -19,11 +19,14 @@ import type { OwnwareGateway } from '../gateway/server.js'
 import {
   loadShuttleChannels,
   buildChannelStores,
+  webhookEnvOptions,
   type ShuttleChannelsModule,
 } from './channel.js'
 
 export interface InProcessChannels {
   readonly started: string[]
+  /** Webhook host mount info — null when no webhook channel exists (or old shuttle). */
+  readonly webhooks: { readonly port: number; readonly paths: string[] } | null
   stop(): void
 }
 
@@ -55,6 +58,46 @@ export async function bootChannels(opts: BootChannelsOptions): Promise<InProcess
   })
   const started = await runner.start()
 
+  // Webhook channels (whatsapp/sms) mount on the webhook host (CC0). The
+  // host reads the same store and listens only when at least one enabled
+  // webhook channel exists — no webhook channels, no extra port. Loopback
+  // bind by default: a tunnel/reverse proxy provides the public HTTPS side.
+  let webhookHost: { stop(): Promise<void> } | null = null
+  let webhooks: InProcessChannels['webhooks'] = null
+  if (mod.ChannelWebhookHost) {
+    const { port, host, publicBaseUrl } = webhookEnvOptions()
+    const instance = new mod.ChannelWebhookHost(store, {
+      gatewayUrl: opts.gatewayUrl,
+      gatewayToken: opts.gateway.token,
+      pairing,
+      ...(publicBaseUrl ? { publicBaseUrl } : {}),
+    })
+    const mounted = await instance.start({
+      ...(port !== undefined ? { port } : {}),
+      ...(host !== undefined ? { host } : {}),
+    })
+    webhookHost = instance
+    if (mounted.port != null) webhooks = { port: mounted.port, paths: mounted.paths }
+  }
+
+  // Channel connect procedures (CC3): the BYO credential resolver reads
+  // the SAME shuttle channel store the runner uses — the seam that keeps
+  // the credential-location decision (board §9.2) reversible. Resolved
+  // values are secrets and stay inside procedure step code.
+  const channelStore = store as {
+    get(id: string): Promise<{ credentials?: Record<string, string> } | undefined>
+  }
+  try {
+    opts.gateway.enableChannelProcedures({
+      resolve: async (channelId) => (await channelStore.get(channelId))?.credentials ?? null,
+    })
+  } catch (err) {
+    // Older gateway builds without channel procedures: channels still run.
+    console.error(
+      `  channel procedures: not enabled — ${err instanceof Error ? err.message : err}`,
+    )
+  }
+
   // Slice 8: schedule results push out through the running channels. A
   // requested delivery with no matching channel is an ERROR (the runner
   // records it honestly as failed-to-deliver), never a silent drop.
@@ -69,9 +112,11 @@ export async function bootChannels(opts: BootChannelsOptions): Promise<InProcess
 
   return {
     started,
+    webhooks,
     stop: (): void => {
       opts.gateway.setScheduleDeliverySink(null)
       runner.stop()
+      if (webhookHost) void webhookHost.stop()
     },
   }
 }

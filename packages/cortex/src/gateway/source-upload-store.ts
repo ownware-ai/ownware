@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
+import { SourceQuotaPolicy } from './source-quota-policy.js'
 
 export const SOURCE_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
 export const SOURCE_UPLOAD_MAX_CHUNK_BYTES = 1048576 as const
@@ -31,6 +32,23 @@ export interface CreateSourceUploadInput {
   readonly filename: string
 }
 
+export class SourceUploadTargetNotFoundError extends Error {
+  constructor() {
+    super('Source upload target not found')
+    this.name = 'SourceUploadTargetNotFoundError'
+  }
+}
+
+export class SourceUploadRefreshConflictError extends Error {
+  constructor(
+    readonly actualRevision: number,
+    readonly actualCurrentVersionId: string | null,
+  ) {
+    super('Source changed after the upload session was created')
+    this.name = 'SourceUploadRefreshConflictError'
+  }
+}
+
 interface SourceUploadRow {
   readonly upload_id: string
   readonly source_id: string
@@ -49,6 +67,9 @@ interface SourceUploadRow {
   readonly created_at: number
   readonly pending_version_id: string | null
   readonly completed_version_id: string | null
+  readonly code: string | null
+  readonly base_source_revision: number
+  readonly base_current_version_id: string | null
 }
 
 export interface ScopedSourceUpload {
@@ -63,6 +84,14 @@ export interface ScopedSourceUpload {
   readonly expiresAt: number
   readonly pendingVersionId: string | null
   readonly completedVersionId: string | null
+  readonly baseSourceRevision: number
+  readonly baseCurrentVersionId: string | null
+  readonly code: string | null
+}
+
+export interface CurrentSourceIdentity {
+  readonly revision: number
+  readonly currentVersionId: string | null
 }
 
 export interface SourceUploadChunkRecord {
@@ -82,53 +111,78 @@ export interface SourceVersionManifest {
   readonly checksum: string
   readonly verifiedMediaType: 'text/plain' | 'application/pdf'
   readonly byteCount: number
-  readonly inspection: 'not_started'
+  readonly inspection: 'not_started' | 'queued' | 'inspecting' | 'complete' |
+    'partial' | 'failed'
   readonly createdAt: number
 }
 
 export class SourceUploadStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
+  ) {}
 
   create(input: CreateSourceUploadInput, now: number = Date.now()): SourceUploadSession {
-    const uploadId = randomUUID()
-    const expiresAt = now + SOURCE_UPLOAD_TTL_MS
-    this.db.prepare(`
-      INSERT INTO source_upload_sessions (
-        upload_id, source_id, workspace_id, profile_id, principal_key, state,
-        expected_bytes, expected_checksum, declared_media_type, filename,
-        durable_offset, chunk_count, max_chunk_bytes, max_chunks,
-        pending_version_id, completed_version_id, code,
-        expires_at, created_at, updated_at
-      ) VALUES (
-        ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, 0, 0, ?, ?, NULL, NULL, NULL, ?, ?, ?
+    return this.db.transaction((): SourceUploadSession => {
+      const source = this.db.prepare(`
+        SELECT revision, current_version_id FROM runtime_sources
+        WHERE source_id = ? AND workspace_id = ? AND profile_id = ?
+          AND deletion_state = 'active'
+      `).get(input.sourceId, input.workspaceId, input.profileId) as {
+        revision: number
+        current_version_id: string | null
+      } | undefined
+      if (!source) throw new SourceUploadTargetNotFoundError()
+      this.quota.assertCanGrow(input, {
+        retainedAndReservedBytes: input.expectedBytes,
+        activeUploadSessions: 1,
+      })
+
+      const uploadId = randomUUID()
+      const expiresAt = now + SOURCE_UPLOAD_TTL_MS
+      this.db.prepare(`
+        INSERT INTO source_upload_sessions (
+          upload_id, source_id, workspace_id, profile_id, principal_key, state,
+          expected_bytes, expected_checksum, declared_media_type, filename,
+          durable_offset, chunk_count, max_chunk_bytes, max_chunks,
+          pending_version_id, completed_version_id, code,
+          expires_at, created_at, updated_at,
+          base_source_revision, base_current_version_id
+        ) VALUES (
+          ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, 0, 0, ?, ?, NULL, NULL, NULL,
+          ?, ?, ?, ?, ?
+        )
+      `).run(
+        uploadId, input.sourceId, input.workspaceId, input.profileId,
+        input.principalKey, input.expectedBytes, input.expectedChecksum,
+        input.declaredMediaType, input.filename, SOURCE_UPLOAD_MAX_CHUNK_BYTES,
+        SOURCE_UPLOAD_MAX_CHUNKS, expiresAt, now, now,
+        source.revision, source.current_version_id,
       )
-    `).run(
-      uploadId, input.sourceId, input.workspaceId, input.profileId,
-      input.principalKey, input.expectedBytes, input.expectedChecksum,
-      input.declaredMediaType, input.filename, SOURCE_UPLOAD_MAX_CHUNK_BYTES,
-      SOURCE_UPLOAD_MAX_CHUNKS, expiresAt, now, now,
-    )
-    const row = this.db.prepare(`
-      SELECT * FROM source_upload_sessions WHERE upload_id = ?
-    `).get(uploadId) as SourceUploadRow
-    if (row.state !== 'open' || row.durable_offset !== 0 ||
-        row.max_chunk_bytes !== SOURCE_UPLOAD_MAX_CHUNK_BYTES ||
-        row.max_chunks !== SOURCE_UPLOAD_MAX_CHUNKS) {
-      throw new Error('New upload session did not retain its initial limits')
-    }
-    return {
-      uploadId: row.upload_id,
-      sourceId: row.source_id,
-      state: 'open',
-      offset: 0,
-      expectedBytes: row.expected_bytes,
-      expectedChecksum: row.expected_checksum,
-      declaredMediaType: row.declared_media_type,
-      maxChunkBytes: SOURCE_UPLOAD_MAX_CHUNK_BYTES,
-      maxChunks: SOURCE_UPLOAD_MAX_CHUNKS,
-      expiresAt: row.expires_at,
-      createdAt: row.created_at,
-    }
+      const row = this.db.prepare(`
+        SELECT * FROM source_upload_sessions WHERE upload_id = ?
+      `).get(uploadId) as SourceUploadRow
+      if (row.state !== 'open' || row.durable_offset !== 0 ||
+          row.max_chunk_bytes !== SOURCE_UPLOAD_MAX_CHUNK_BYTES ||
+          row.max_chunks !== SOURCE_UPLOAD_MAX_CHUNKS ||
+          row.base_source_revision !== source.revision ||
+          row.base_current_version_id !== source.current_version_id) {
+        throw new Error('New upload session did not retain its initial limits and source fence')
+      }
+      return {
+        uploadId: row.upload_id,
+        sourceId: row.source_id,
+        state: 'open',
+        offset: 0,
+        expectedBytes: row.expected_bytes,
+        expectedChecksum: row.expected_checksum,
+        declaredMediaType: row.declared_media_type,
+        maxChunkBytes: SOURCE_UPLOAD_MAX_CHUNK_BYTES,
+        maxChunks: SOURCE_UPLOAD_MAX_CHUNKS,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at,
+      }
+    }).immediate()
   }
 
   listOpenCheckpoints(): readonly SourceUploadCheckpoint[] {
@@ -175,7 +229,23 @@ export class SourceUploadStore {
       expiresAt: row.expires_at,
       pendingVersionId: row.pending_version_id,
       completedVersionId: row.completed_version_id,
+      baseSourceRevision: row.base_source_revision,
+      baseCurrentVersionId: row.base_current_version_id,
+      code: row.code,
     }
+  }
+
+  getCurrentSourceIdentity(sourceId: string): CurrentSourceIdentity | null {
+    const row = this.db.prepare(`
+      SELECT revision, current_version_id FROM runtime_sources WHERE source_id = ?
+    `).get(sourceId) as {
+      revision: number
+      current_version_id: string | null
+    } | undefined
+    return row ? {
+      revision: row.revision,
+      currentVersionId: row.current_version_id,
+    } : null
   }
 
   findChunk(uploadId: string, startOffset: number): SourceUploadChunkRecord | null {
@@ -246,9 +316,16 @@ export class SourceUploadStore {
   ): SourceVersionManifest {
     return this.db.transaction((): SourceVersionManifest => {
       const session = this.db.prepare(`
-        SELECT source_id, pending_version_id FROM source_upload_sessions
+        SELECT source_id, pending_version_id, base_source_revision,
+          base_current_version_id
+        FROM source_upload_sessions
         WHERE upload_id = ? AND state = 'completing'
-      `).get(uploadId) as { source_id: string; pending_version_id: string | null } | undefined
+      `).get(uploadId) as {
+        source_id: string
+        pending_version_id: string | null
+        base_source_revision: number
+        base_current_version_id: string | null
+      } | undefined
       if (!session || session.pending_version_id !== input.versionId) {
         throw new Error('Upload completion checkpoint conflict')
       }
@@ -264,15 +341,45 @@ export class SourceUploadStore {
       const sourceUpdated = this.db.prepare(`
         UPDATE runtime_sources
         SET revision = revision + 1, current_version_id = ?,
-          registration_state = 'registered', freshness_state = 'fresh', updated_at = ?
-        WHERE source_id = ? AND deletion_state = 'active'
-      `).run(input.versionId, now, session.source_id)
-      if (sourceUpdated.changes !== 1) throw new Error('Source is not active for completion')
+          registration_state = 'registered', inspection_state = 'not_started',
+          preparation_state = 'not_requested', freshness_state = 'fresh', updated_at = ?
+        WHERE source_id = ? AND deletion_state = 'active' AND revision = ?
+          AND current_version_id IS ?
+      `).run(
+        input.versionId,
+        now,
+        session.source_id,
+        session.base_source_revision,
+        session.base_current_version_id,
+      )
+      if (sourceUpdated.changes !== 1) {
+        const actual = this.db.prepare(`
+          SELECT revision, current_version_id, deletion_state
+          FROM runtime_sources WHERE source_id = ?
+        `).get(session.source_id) as {
+          revision: number
+          current_version_id: string | null
+          deletion_state: string
+        } | undefined
+        if (actual?.deletion_state === 'active') {
+          throw new SourceUploadRefreshConflictError(
+            actual.revision,
+            actual.current_version_id,
+          )
+        }
+        throw new Error('Source is not active for completion')
+      }
+      this.db.prepare(`
+        UPDATE source_derived_resources
+        SET freshness = 'stale', stale_at = ?
+        WHERE source_id = ? AND source_version_id != ? AND freshness = 'current'
+      `).run(now, session.source_id, input.versionId)
       const sessionUpdated = this.db.prepare(`
         UPDATE source_upload_sessions
-        SET state = 'completed', completed_version_id = ?, code = NULL, updated_at = ?
+        SET state = 'completed', completed_version_id = ?, code = NULL,
+          byte_reservation_released_at = ?, updated_at = ?
         WHERE upload_id = ? AND state = 'completing'
-      `).run(input.versionId, now, uploadId)
+      `).run(input.versionId, now, now, uploadId)
       if (sessionUpdated.changes !== 1) throw new Error('Upload completion state changed')
       return {
         sourceVersionId: input.versionId,
@@ -321,7 +428,10 @@ export class SourceUploadStore {
     `).get(versionId, sourceId, workspaceId, profileId) as {
       source_version_id: string; source_id: string; checksum: string
       verified_media_type: 'text/plain' | 'application/pdf'
-      byte_count: number; inspection_state: 'not_started'; created_at: number
+      byte_count: number
+      inspection_state: 'not_started' | 'queued' | 'inspecting' | 'complete' |
+        'partial' | 'failed'
+      created_at: number
     } | undefined
     return row ? {
       sourceVersionId: row.source_version_id,
@@ -339,5 +449,17 @@ export class SourceUploadStore {
       UPDATE source_upload_sessions SET state = 'failed', code = ?, updated_at = ?
       WHERE upload_id = ? AND state IN ('open', 'completing')
     `).run(code, now, uploadId)
+  }
+
+  markFailedAfterVerifiedCleanup(
+    uploadId: string,
+    code: string,
+    now: number = Date.now(),
+  ): void {
+    this.db.prepare(`
+      UPDATE source_upload_sessions
+      SET state = 'failed', code = ?, byte_reservation_released_at = ?, updated_at = ?
+      WHERE upload_id = ? AND state IN ('open', 'completing')
+    `).run(code, now, now, uploadId)
   }
 }

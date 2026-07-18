@@ -8,6 +8,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { OwnwareGateway } from '../../../src/gateway/server.js'
+import { CORTEX_VERSION } from '../../../src/version.js'
 import { resolve, join } from 'path'
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -120,7 +121,7 @@ describe('GET /api/v1/health', () => {
     const { status, body } = await get('/api/v1/health')
     expect(status).toBe(200)
     expect(body.status).toBe('ok')
-    expect(body.version).toBe('0.1.0')
+    expect(body.version).toBe(CORTEX_VERSION)
     expect(typeof body.uptime).toBe('number')
   })
 })

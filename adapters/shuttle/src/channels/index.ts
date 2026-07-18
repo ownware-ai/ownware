@@ -20,6 +20,16 @@ export { InMemoryChannelStore, FileChannelStore } from './store.js'
 export type { RunnableShuttle, ShuttleFactory, ShuttleFactoryDeps, ChannelRunnerOptions } from './runner.js'
 export { ChannelRunner, defaultShuttleFactory } from './runner.js'
 
+export type {
+  WebhookInstance,
+  WebhookShuttleFactory,
+  WebhookHostOptions,
+  WebhookHostStartOptions,
+  WebhookHostStatus,
+  WhatsAppFilterResult,
+} from './webhook-host.js'
+export { ChannelWebhookHost, defaultWebhookFactory, filterWhatsAppInbound } from './webhook-host.js'
+
 export type { AddChannelArgs, ChannelCliDeps } from './cli.js'
 export { channelAdd, channelList, channelRemove, runChannelCli } from './cli.js'
 

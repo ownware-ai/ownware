@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import { FileChannelStore } from './store.js'
 import { runChannelCli } from './cli.js'
 import { ChannelRunner } from './runner.js'
+import { ChannelWebhookHost } from './webhook-host.js'
 import { FilePairingStore } from '../pairing.js'
 
 /** The gateway's persisted bearer token (`<dataDir>/gateway-token`, slice 4)
@@ -48,11 +49,34 @@ async function main(): Promise<void> {
       pairing,
     })
     const started = await runner.start()
+
+    // Webhook channels (whatsapp/sms): mount them on the webhook host. The
+    // host listens only when at least one enabled webhook channel exists.
+    const publicBaseUrl = process.env['OWNWARE_WEBHOOK_PUBLIC_URL']
+    const webhooks = new ChannelWebhookHost(store, {
+      ...(gatewayUrl ? { gatewayUrl } : {}),
+      ...(gatewayToken ? { gatewayToken } : {}),
+      pairing,
+      ...(publicBaseUrl ? { publicBaseUrl } : {}),
+    })
+    const webhookPort = process.env['OWNWARE_WEBHOOK_PORT']
+    const webhookHost = process.env['OWNWARE_WEBHOOK_HOST']
+    const mounted = await webhooks.start({
+      ...(webhookPort ? { port: Number(webhookPort) } : {}),
+      ...(webhookHost ? { host: webhookHost } : {}),
+    })
+
     // eslint-disable-next-line no-console
-    console.log(`[ownware] channels started: ${started.length ? started.join(', ') : '(none self-driving; webhook channels mount separately)'}`)
+    console.log(`[ownware] channels started: ${started.length ? started.join(', ') : '(none self-driving)'}`)
+    if (mounted.port != null) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ownware] webhooks listening on ${webhookHost ?? '127.0.0.1'}:${mounted.port} — put a public HTTPS tunnel or reverse proxy in front:\n${mounted.paths.map((p) => `  ${p}`).join('\n')}`,
+      )
+    }
     process.on('SIGINT', () => {
       runner.stop()
-      process.exit(0)
+      void webhooks.stop().finally(() => process.exit(0))
     })
     return
   }

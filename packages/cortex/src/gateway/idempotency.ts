@@ -71,9 +71,62 @@ export interface SourceUploadSessionSnapshot {
   readonly createdAt: number
 }
 
+export interface SourceJobSnapshot {
+  readonly jobId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly operation: 'inspect_format' | 'extract_text'
+  readonly implementationVersion: 'inspect_format.v1' | 'text_extraction.v1'
+  readonly resourceId: string | null
+  readonly state: 'queued' | 'running' | 'waiting_for_resource' |
+    'cancel_requested' | 'succeeded' | 'partial' | 'failed' | 'cancelled'
+  readonly attempt: number
+  readonly maxAttempts: 3
+  readonly checkpoint: number
+  readonly cancelRequestedAt: number | null
+  readonly outcomeCode: string | null
+  readonly createdAt: number
+  readonly updatedAt: number
+  readonly terminalAt: number | null
+}
+
+export interface SourceDeletionCountsSnapshot {
+  readonly immutableOriginals: number
+  readonly uploadStaging: number
+  readonly placedCandidates: number
+  readonly derivedResources: number
+  readonly dataViews: number
+  readonly searchIndexes: number
+  readonly sourceJobs: number
+  readonly idempotencyReplays: number
+  readonly retrievalCacheEntries: number
+}
+
+export interface SourceDeletionSnapshot {
+  readonly jobId: string
+  readonly sourceId: string
+  readonly operation: 'delete_source'
+  readonly state: 'queued' | 'deleting' | 'cancel_requested' | 'cancelled' |
+    'partially_deleted' | 'deleted'
+  readonly sourceRevision: number
+  readonly affected: SourceDeletionCountsSnapshot
+  readonly remaining: SourceDeletionCountsSnapshot
+  readonly createdAt: number
+  readonly updatedAt: number
+  readonly terminalAt: number | null
+}
+
+export interface AccessGrantMutationReceipt {
+  readonly grantId: string
+  readonly revision: number
+  readonly mutation: 'created' | 'revoked'
+  readonly acceptedAt: number
+}
+
 export type IdempotencySnapshot =
   RunStartSnapshot | DeploymentMutationSnapshot | SourceRegistrationSnapshot |
-  SourceUploadSessionSnapshot
+  SourceUploadSessionSnapshot | SourceJobSnapshot | SourceDeletionSnapshot |
+  AccessGrantMutationReceipt
 
 export type IdempotencyClaim =
   | { readonly kind: 'claimed'; readonly recordId: string }
@@ -109,6 +162,7 @@ interface IdempotencyRow {
   readonly status_code: number | null
   readonly result_json: string | null
   readonly expires_at: number
+  readonly source_id: string | null
 }
 
 export function principalContinuityKey(principal: RuntimePrincipal): string {
@@ -158,6 +212,9 @@ export class RunIdempotencyStore {
       }
       if (row.state === 'completed') {
         if (now > row.expires_at) return { kind: 'expired' }
+        if (row.source_id !== null && !this.sourceIsActive(row.source_id)) {
+          return { kind: 'indeterminate' }
+        }
         const result = parseSnapshot(row.result_json)
         if (row.status_code === null || result === null) {
           this.markRowIndeterminate(input, now)
@@ -175,19 +232,28 @@ export class RunIdempotencyStore {
 
   complete(input: CompleteInput, now: number = Date.now()): void {
     const result = validateSnapshot(input.result)
+    const sourceId = sourceIdForOperation(input.operation, result)
     const updated = this.db.prepare(`
       UPDATE run_idempotency
-      SET state = 'completed', status_code = ?, result_json = ?, updated_at = ?
+      SET state = 'completed', status_code = ?, result_json = ?,
+        source_id = COALESCE(?, source_id), updated_at = ?
       WHERE principal_key = ? AND operation = ? AND idempotency_key = ?
         AND state = 'in_progress' AND lease_owner = ?
+        AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM runtime_sources
+          WHERE source_id = ? AND deletion_state = 'active'
+        ))
     `).run(
       input.statusCode,
       JSON.stringify(result),
+      sourceId,
       now,
       input.principalKey,
       input.operation,
       input.key,
       this.leaseOwner,
+      sourceId,
+      sourceId,
     )
     if (updated.changes !== 1) throw new Error('Idempotency claim is not completable')
   }
@@ -196,10 +262,41 @@ export class RunIdempotencyStore {
     this.markRowIndeterminate(input, now)
   }
 
+  abandon(input: Pick<CompleteInput, 'principalKey' | 'operation' | 'key'>): void {
+    this.db.prepare(`
+      DELETE FROM run_idempotency
+      WHERE principal_key = ? AND operation = ? AND idempotency_key = ?
+        AND state = 'in_progress' AND lease_owner = ?
+    `).run(input.principalKey, input.operation, input.key, this.leaseOwner)
+  }
+
   linkRun(recordId: string, runId: string): void {
     this.db.prepare(
       'UPDATE run_idempotency SET run_id = ? WHERE id = ? AND run_id IS NULL',
     ).run(runId, recordId)
+  }
+
+  linkSourceMutation(
+    recordId: string,
+    sourceId: string,
+    kind: 'access_grant',
+    now: number = Date.now(),
+  ): void {
+    if (!IDEMPOTENCY_KEY.test(recordId) || !IDEMPOTENCY_KEY.test(sourceId) ||
+        !Number.isSafeInteger(now) || now < 0) {
+      throw new Error('Invalid source mutation link')
+    }
+    const linked = this.db.prepare(`
+      UPDATE run_idempotency
+      SET source_id = ?, source_mutation_kind = ?, updated_at = ?
+      WHERE id = ? AND state = 'in_progress' AND lease_owner = ?
+        AND source_id IS NULL AND source_mutation_kind IS NULL
+        AND EXISTS (
+          SELECT 1 FROM runtime_sources
+          WHERE source_id = ? AND deletion_state = 'active'
+        )
+    `).run(sourceId, kind, now, recordId, this.leaseOwner, sourceId)
+    if (linked.changes !== 1) throw new Error('Source mutation link is not available')
   }
 
   private find(input: Pick<ClaimInput, 'principalKey' | 'operation' | 'key'>): IdempotencyRow | null {
@@ -220,10 +317,27 @@ export class RunIdempotencyStore {
         AND state = 'in_progress'
     `).run(now, input.principalKey, input.operation, input.key)
   }
+
+  private sourceIsActive(sourceId: string): boolean {
+    return this.db.prepare(`
+      SELECT 1 FROM runtime_sources WHERE source_id = ? AND deletion_state = 'active'
+    `).get(sourceId) !== undefined
+  }
 }
 
 function digestInput(salt: string, input: unknown): string {
   return createHash('sha256').update(salt).update('\0').update(canonicalJson(input)).digest('hex')
+}
+
+function sourceIdForOperation(
+  operation: string,
+  result: IdempotencySnapshot,
+): string | null {
+  if (![
+    'sources.register', 'source_uploads.create',
+    'source_jobs.create', 'source_preparations.create',
+  ].includes(operation)) return null
+  return 'sourceId' in result ? result.sourceId : null
 }
 
 function canonicalJson(value: unknown): string {
@@ -256,6 +370,11 @@ function parseSnapshot(json: string | null): IdempotencySnapshot | null {
 function validateSnapshot(value: unknown): IdempotencySnapshot {
   if (!value || typeof value !== 'object') throw new Error('Invalid run snapshot')
   const row = value as Record<string, unknown>
+  if (typeof row['grantId'] === 'string') return validateAccessGrantReceipt(row)
+  if (typeof row['jobId'] === 'string' && row['operation'] === 'delete_source') {
+    return validateSourceDeletionSnapshot(row)
+  }
+  if (typeof row['jobId'] === 'string') return validateSourceJobSnapshot(row)
   if (typeof row['uploadId'] === 'string') return validateSourceUploadSessionSnapshot(row)
   if (typeof row['sourceId'] === 'string') return validateSourceRegistrationSnapshot(row)
   if (row['state'] === 'active' || row['state'] === 'paused') {
@@ -284,6 +403,140 @@ function validateSnapshot(value: unknown): IdempotencySnapshot {
     status: 'running',
     ...(typeof row['timeoutMs'] === 'number' ? { timeoutMs: row['timeoutMs'] } : {}),
   }
+}
+
+function validateAccessGrantReceipt(
+  row: Record<string, unknown>,
+): AccessGrantMutationReceipt {
+  if (!IDEMPOTENCY_KEY.test(String(row['grantId'])) ||
+      !Number.isSafeInteger(row['revision']) || (row['revision'] as number) < 1 ||
+      !['created', 'revoked'].includes(String(row['mutation'])) ||
+      !Number.isSafeInteger(row['acceptedAt']) || (row['acceptedAt'] as number) < 0 ||
+      Object.keys(row).some((key) => ![
+        'grantId', 'revision', 'mutation', 'acceptedAt',
+      ].includes(key))) {
+    throw new Error('Invalid access grant mutation receipt')
+  }
+  return {
+    grantId: row['grantId'] as string,
+    revision: row['revision'] as number,
+    mutation: row['mutation'] as AccessGrantMutationReceipt['mutation'],
+    acceptedAt: row['acceptedAt'] as number,
+  }
+}
+
+function validateSourceJobSnapshot(row: Record<string, unknown>): SourceJobSnapshot {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const states: readonly SourceJobSnapshot['state'][] = [
+    'queued', 'running', 'waiting_for_resource', 'cancel_requested',
+    'succeeded', 'partial', 'failed', 'cancelled',
+  ]
+  const outcomeCodes = new Set([
+    'attempts_exhausted', 'cancelled', 'source_format_invalid',
+    'source_object_mismatch', 'source_object_missing', 'source_object_oversized',
+    'source_storage_inconsistent',
+    ...(row['operation'] === 'inspect_format'
+      ? ['inspection_complete', 'inspection_timeout', 'inspection_unavailable']
+      : ['preparation_complete', 'preparation_timeout', 'preparation_unavailable']),
+  ])
+  const state = row['state'] as SourceJobSnapshot['state']
+  const operation = row['operation']
+  const expectedImplementation = operation === 'inspect_format'
+    ? 'inspect_format.v1' : operation === 'extract_text' ? 'text_extraction.v1' : null
+  const implementationVersion = row['implementationVersion'] ??
+    (operation === 'inspect_format' ? 'inspect_format.v1' : undefined)
+  const resourceId = row['resourceId'] ?? null
+  const resourceIdentityValid = operation === 'inspect_format'
+    ? resourceId === null
+    : state === 'succeeded' ? uuid.test(String(resourceId)) : resourceId === null
+  const cancelRequestedAt = row['cancelRequestedAt']
+  const terminalAt = row['terminalAt']
+  const outcomeCode = row['outcomeCode']
+  if (!uuid.test(String(row['jobId'])) || !uuid.test(String(row['sourceId'])) ||
+      !uuid.test(String(row['sourceVersionId'])) || expectedImplementation === null ||
+      implementationVersion !== expectedImplementation ||
+      !resourceIdentityValid ||
+      !states.includes(state) || !Number.isInteger(row['attempt']) ||
+      (row['attempt'] as number) < 0 || (row['attempt'] as number) > 3 ||
+      row['maxAttempts'] !== 3 || !Number.isInteger(row['checkpoint']) ||
+      (row['checkpoint'] as number) < 0 || (row['checkpoint'] as number) > 4 ||
+      !(cancelRequestedAt === null || Number.isSafeInteger(cancelRequestedAt)) ||
+      !(terminalAt === null || Number.isSafeInteger(terminalAt)) ||
+      !(outcomeCode === null || (typeof outcomeCode === 'string' && outcomeCodes.has(outcomeCode))) ||
+      !Number.isSafeInteger(row['createdAt']) || !Number.isSafeInteger(row['updatedAt']) ||
+      (row['updatedAt'] as number) < (row['createdAt'] as number)) {
+    throw new Error('Invalid source job snapshot')
+  }
+  return {
+    jobId: row['jobId'] as string,
+    sourceId: row['sourceId'] as string,
+    sourceVersionId: row['sourceVersionId'] as string,
+    operation: operation as SourceJobSnapshot['operation'],
+    implementationVersion: expectedImplementation,
+    resourceId: resourceId as string | null,
+    state,
+    attempt: row['attempt'] as number,
+    maxAttempts: 3,
+    checkpoint: row['checkpoint'] as number,
+    cancelRequestedAt: cancelRequestedAt as number | null,
+    outcomeCode: outcomeCode as string | null,
+    createdAt: row['createdAt'] as number,
+    updatedAt: row['updatedAt'] as number,
+    terminalAt: terminalAt as number | null,
+  }
+}
+
+function validateSourceDeletionSnapshot(row: Record<string, unknown>): SourceDeletionSnapshot {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const states: readonly SourceDeletionSnapshot['state'][] = [
+    'queued', 'deleting', 'cancel_requested', 'cancelled',
+    'partially_deleted', 'deleted',
+  ]
+  const state = row['state'] as SourceDeletionSnapshot['state']
+  const affected = validateSourceDeletionCounts(row['affected'])
+  const remaining = validateSourceDeletionCounts(row['remaining'])
+  const terminalAt = row['terminalAt']
+  if (!uuid.test(String(row['jobId'])) || !uuid.test(String(row['sourceId'])) ||
+      row['operation'] !== 'delete_source' || !states.includes(state) ||
+      !Number.isSafeInteger(row['sourceRevision']) || (row['sourceRevision'] as number) < 2 ||
+      !Number.isSafeInteger(row['createdAt']) || !Number.isSafeInteger(row['updatedAt']) ||
+      (row['updatedAt'] as number) < (row['createdAt'] as number) ||
+      !(terminalAt === null || Number.isSafeInteger(terminalAt)) ||
+      (state === 'deleted' && terminalAt === null) ||
+      (state !== 'deleted' && state !== 'cancelled' && state !== 'partially_deleted' &&
+        terminalAt !== null)) {
+    throw new Error('Invalid source deletion snapshot')
+  }
+  return {
+    jobId: row['jobId'] as string,
+    sourceId: row['sourceId'] as string,
+    operation: 'delete_source',
+    state,
+    sourceRevision: row['sourceRevision'] as number,
+    affected,
+    remaining,
+    createdAt: row['createdAt'] as number,
+    updatedAt: row['updatedAt'] as number,
+    terminalAt: terminalAt as number | null,
+  }
+}
+
+function validateSourceDeletionCounts(value: unknown): SourceDeletionCountsSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid source deletion counts')
+  }
+  const row = value as Record<string, unknown>
+  const keys: readonly (keyof SourceDeletionCountsSnapshot)[] = [
+    'immutableOriginals', 'uploadStaging', 'placedCandidates', 'derivedResources',
+    'dataViews', 'searchIndexes', 'sourceJobs', 'idempotencyReplays',
+    'retrievalCacheEntries',
+  ]
+  if (Object.keys(row).length !== keys.length || keys.some((key) =>
+    !Number.isSafeInteger(row[key]) || (row[key] as number) < 0)) {
+    throw new Error('Invalid source deletion counts')
+  }
+  return Object.fromEntries(keys.map((key) => [key, row[key]])) as unknown as
+    SourceDeletionCountsSnapshot
 }
 
 function validateSourceUploadSessionSnapshot(

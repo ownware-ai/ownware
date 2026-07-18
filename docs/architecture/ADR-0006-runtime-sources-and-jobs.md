@@ -107,6 +107,15 @@ source cache and must not return a cached result after underlying bytes change.
 
 ### Data Views and search
 
+The first structured format is strict UTF-8 CSV. Its schema preparation rejects
+empty or duplicate normalized headers, malformed quoting, ragged rows, invalid
+UTF-8 and inputs outside the advertised byte/row/field/cell/time limits. Values
+remain strings in the first release; there is no inferred type coercion, formula
+execution or macro handling. Immutable field IDs and row IDs are derived from
+their zero-based ordinal within one exact source version, while original labels
+remain untrusted display metadata. A later source version always produces new
+identities even when labels or values match.
+
 Data Views accept a typed allowlisted query AST over stable field IDs. They do
 not accept SQL, table names, database paths, arbitrary expressions or writes.
 Field and row authority is enforced before fetching values. Results are
@@ -118,6 +127,32 @@ returns bounded passages with exact source/version/location/authority and
 freshness evidence. Empty, partial, stale, denied, timed-out and failed remain
 distinct. Relevance is not truth confidence.
 
+Content reads, Data View queries and search require both a separately advertised
+operation and a live versioned grant evaluated against the verified workspace,
+profile, subject, purpose, channel, source/resource identity, field/row scope and
+operation. Source registration, policy-reference metadata and delegated bearer
+scope are necessary fences but are not a substitute for that grant. Therefore
+these retrieval surfaces remain absent until the common grant evaluator exists.
+
+The first keyword-search implementation performs bounded scans of current
+immutable text resources after grant filtering and may use only a bounded
+in-memory cache keyed by the verified grant identity, operation, canonical
+parameters and exact source/resource versions. It adds no durable text index or
+SQLite content table. Every cache hit rechecks live grant and freshness state;
+refresh, revoke, expiry, policy change and deletion make the entry unusable.
+
+### Quotas
+
+Growth is reserved and enforced transactionally before mutation. Effective
+workspace and profile limits cover source registrations, retained original
+bytes plus active upload reservations, open upload sessions, non-terminal jobs,
+derived resources and bounded retrieval-cache entries/bytes. Concurrent writers
+cannot each spend the same remaining capacity. Failed, cancelled or expired work
+releases only reservations whose absence is verified; existing over-limit data
+remains readable and deletable while new growth is denied. Public capability
+negotiation reports the effective values and typed quota failures identify the
+resource class without exposing another scope's usage.
+
 ### Deletion
 
 Deletion is planned, fenced and asynchronous. It first blocks refresh,
@@ -126,6 +161,20 @@ jobs; removes originals, derived bytes, indexes, scoped caches and temporary
 state; verifies absence; and retains only a minimal tombstone. It returns
 `deleted` only after declared stores are verified absent. Otherwise it remains
 `partially_deleted` with safe affected counts and a retry path.
+
+The deletion inventory includes every immutable original, upload staging object,
+derived resource, future Data View/index artifact, idempotency replay that could
+return source metadata, applicable access-grant revocation proof, linked grant
+mutation replay, and in-memory retrieval cache entry. A source revision compare-
+and-set freezes the source before inventory processing. The same transaction
+revokes current grants over the source's prepared resources and makes linked
+grant mutation replay indeterminate; cancellation never reactivates either.
+Every upload, refresh, preparation and retrieval mutation checks the active
+fence. Deletion uses the common durable job machine, verifies current grant heads
+are revoked without deleting immutable grant history, and retains only an opaque
+minimal tombstone after verified absence. Adding a new source artifact or replay
+is incomplete until it is registered in this inventory and covered by the
+deletion fixture.
 
 ## Consequences
 

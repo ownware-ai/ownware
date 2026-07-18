@@ -1,6 +1,6 @@
 {
   "name": "@ownware/loom",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Loom — the model-agnostic agent runtime inside Ownware. A production-grade agent engine (streaming, tools, zones, multi-agent) with no framework dependencies.",
   "type": "module",
   "main": "./dist/index.js",

@@ -30,7 +30,8 @@ describe('migrations 060-062 source upload and immutable versions', () => {
       'state', 'expected_bytes', 'expected_checksum', 'declared_media_type',
       'filename', 'durable_offset', 'chunk_count', 'max_chunk_bytes',
       'max_chunks', 'pending_version_id', 'completed_version_id', 'code',
-      'expires_at', 'created_at', 'updated_at',
+      'expires_at', 'created_at', 'updated_at', 'base_source_revision',
+      'base_current_version_id', 'byte_reservation_released_at',
     ])
     expect(columns.map((column) => column.name)).not.toEqual(
       expect.arrayContaining(['path', 'url', 'content', 'bytes', 'token', 'storage_locator']),
@@ -45,6 +46,7 @@ describe('migrations 060-062 source upload and immutable versions', () => {
     expect(versionColumns.map((column) => column.name)).toEqual([
       'source_version_id', 'source_id', 'checksum', 'verified_media_type',
       'byte_count', 'object_key', 'inspection_state', 'created_at',
+      'preparation_state',
     ])
     expect(upgraded.rawMainHandle.pragma('user_version', { simple: true }))
       .toBe(MIGRATIONS.at(-1)!.version)

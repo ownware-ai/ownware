@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
+import { SourceQuotaPolicy } from './source-quota-policy.js'
 
 export const SOURCE_KINDS = [
   'file', 'text', 'visual', 'structured_export',
@@ -94,11 +95,16 @@ interface SourceRow {
 }
 
 export class SourceStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
+  ) {}
 
   create(input: SourceRegistrationInput, now: number = Date.now()): PendingSourceManifest {
-    const sourceId = randomUUID()
-    this.db.prepare(`
+    return this.db.transaction((): PendingSourceManifest => {
+      this.quota.assertCanGrow(input, { sourceRegistrations: 1 })
+      const sourceId = randomUUID()
+      this.db.prepare(`
       INSERT INTO runtime_sources (
         source_id, workspace_id, profile_id, kind, label, classification,
         authority, audience_policy_ref, sensitivity_policy_ref,
@@ -111,31 +117,32 @@ export class SourceStore {
         'pending', 'not_started', 'not_requested', 'available', 'unknown',
         'none', 'active', ?, ?
       )
-    `).run(
-      sourceId, input.workspaceId, input.profileId, input.kind, input.label,
-      input.classification, input.authority, input.audiencePolicyRef,
-      input.sensitivityPolicyRef, input.purposePolicyRef,
-      input.retentionPolicyRef, input.freshnessPolicyRef, now, now,
-    )
-    const row = this.getRow(sourceId)!
-    if (row.registration_state !== 'pending' || row.inspection_state !== 'not_started' ||
-        row.preparation_state !== 'not_requested' || row.access_state !== 'available' ||
-        row.freshness_state !== 'unknown' || row.conflict_state !== 'none' ||
-        row.deletion_state !== 'active') {
-      throw new Error('New source did not retain its initial lifecycle state')
-    }
-    return {
-      ...this.project(row),
-      health: {
-        registration: 'pending',
-        inspection: 'not_started',
-        preparation: 'not_requested',
-        access: 'available',
-        freshness: 'unknown',
-        conflict: 'none',
-        deletion: 'active',
-      },
-    }
+      `).run(
+        sourceId, input.workspaceId, input.profileId, input.kind, input.label,
+        input.classification, input.authority, input.audiencePolicyRef,
+        input.sensitivityPolicyRef, input.purposePolicyRef,
+        input.retentionPolicyRef, input.freshnessPolicyRef, now, now,
+      )
+      const row = this.getRow(sourceId)!
+      if (row.registration_state !== 'pending' || row.inspection_state !== 'not_started' ||
+          row.preparation_state !== 'not_requested' || row.access_state !== 'available' ||
+          row.freshness_state !== 'unknown' || row.conflict_state !== 'none' ||
+          row.deletion_state !== 'active') {
+        throw new Error('New source did not retain its initial lifecycle state')
+      }
+      return {
+        ...this.project(row),
+        health: {
+          registration: 'pending',
+          inspection: 'not_started',
+          preparation: 'not_requested',
+          access: 'available',
+          freshness: 'unknown',
+          conflict: 'none',
+          deletion: 'active',
+        },
+      }
+    }).immediate()
   }
 
   getScoped(sourceId: string, workspaceId: string, profileId: string): SourceManifest | null {

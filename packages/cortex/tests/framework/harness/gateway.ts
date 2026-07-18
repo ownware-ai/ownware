@@ -13,6 +13,7 @@
 import { OwnwareGateway } from '../../../src/gateway/server.js'
 import { GatewayState } from '../../../src/gateway/state.js'
 import type { SessionRunner } from '../../../src/gateway/session-runner.js'
+import type { SourceQuotaLimits } from '../../../src/gateway/source-quota-policy.js'
 import { join } from 'node:path'
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -110,6 +111,8 @@ export interface TestGatewayOptions {
   readonly disableAuth?: boolean
   /** Keep durable source jobs idle for direct state-machine tests. */
   readonly disableSourceWorker?: boolean
+  /** Tiny effective source quotas for capacity-contract tests. */
+  readonly sourceQuotaLimits?: SourceQuotaLimits
 }
 
 export interface TestGateway {
@@ -198,6 +201,8 @@ export async function createTestGateway(opts: TestGatewayOptions = {}): Promise<
     ...(opts.disableAuth !== undefined ? { disableAuth: opts.disableAuth } : {}),
     ...(opts.disableSourceWorker !== undefined
       ? { disableSourceWorker: opts.disableSourceWorker } : {}),
+    ...(opts.sourceQuotaLimits !== undefined
+      ? { sourceQuotaLimits: opts.sourceQuotaLimits } : {}),
   })
   await gw.start()
 

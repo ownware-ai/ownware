@@ -1,5 +1,11 @@
 # ownware-custom-client
 
+## 0.1.2
+
+### Patch Changes
+
+- ownware@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

@@ -66,6 +66,40 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
         maxPathCharacters: 256,
       },
       sourceList: { maxPageSize: 100 },
+      sourceInspection: {
+        maxBytes: 16 * 1024 * 1024,
+        perAttemptTimeoutMs: 5_000,
+        maxAttempts: 3,
+      },
+      sourcePreparation: {
+        maxBytes: 16 * 1024 * 1024,
+        perAttemptTimeoutMs: 5_000,
+        maxAttempts: 3,
+        maxResourcesPerJob: 1,
+      },
+      accessGrants: {
+        minTtlSeconds: 60,
+        maxTtlSeconds: 30 * 24 * 60 * 60,
+        maxActivePerWorkspaceProfile: 1_024,
+        maxPageSize: 100,
+      },
+      sourceContent: { maxRangeBytes: 64 * 1024 },
+      sourceQuota: {
+        workspace: {
+          maxSourceRegistrations: 1_000,
+          maxRetainedAndReservedBytes: 1024 * 1024 * 1024,
+          maxActiveUploadSessions: 256,
+          maxNonterminalJobs: 64,
+          maxDerivedResources: 1_000,
+        },
+        profile: {
+          maxSourceRegistrations: 250,
+          maxRetainedAndReservedBytes: 256 * 1024 * 1024,
+          maxActiveUploadSessions: 64,
+          maxNonterminalJobs: 16,
+          maxDerivedResources: 250,
+        },
+      },
       idempotencyRetentionSeconds: 7 * 24 * 60 * 60,
       rateLimit: { enabled: true, runStarts: 10 },
     })
@@ -228,6 +262,11 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
         'sources.register', 'sources.list', 'sources.read',
         'source_uploads.create', 'source_uploads.write', 'source_uploads.complete',
         'source_versions.read',
+        'source_jobs.create', 'source_jobs.read', 'source_jobs.cancel',
+        'source_preparations.create', 'source_resources.read',
+        'source_content.read', 'source_content.search',
+        'source_deletions.create', 'source_deletions.read',
+        'source_deletions.cancel', 'source_deletions.retry',
       ],
     })
     const delegated = new OwnwareClient({
@@ -283,6 +322,218 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
     await expect(delegated.sourceVersion(
       source.sourceId, completed.sourceVersionId,
     )).resolves.toMatchObject({ sourceVersionId: completed.sourceVersionId, checksum })
+
+    const createRefresh = async (content: string, idempotencyKey: string) => {
+      const refreshBytes = Buffer.from(content)
+      const refreshChecksum = `sha256:${createHash('sha256').update(refreshBytes).digest('hex')}`
+      const refresh = await delegated.createSourceUploadSession(source.sourceId, {
+        expectedBytes: refreshBytes.length,
+        expectedChecksum: refreshChecksum,
+        declaredMediaType: 'text/plain',
+        filename: 'sdk-refresh.txt',
+        idempotencyKey,
+      })
+      await delegated.writeSourceUploadChunk(refresh.uploadId, {
+        offset: 0,
+        checksum: refreshChecksum,
+        bytes: refreshBytes,
+      })
+      return refresh.uploadId
+    }
+    const staleRefresh = await createRefresh(
+      'sdk stale refresh', '58585858-abab-4585-8585-585858585858',
+    )
+    const newerRefresh = await createRefresh(
+      'sdk newer refresh', '59595959-abab-4595-8595-595959595959',
+    )
+    const newerVersion = await delegated.completeSourceUpload(newerRefresh)
+    const staleConflict = await delegated.completeSourceUpload(staleRefresh)
+      .catch((error: unknown) => error)
+    expect(staleConflict).toBeInstanceOf(OwnwareError)
+    expect(staleConflict).toMatchObject({
+      status: 409,
+      code: 'source_upload_refresh_conflict',
+      actualRevision: 3,
+      actualCurrentVersionId: newerVersion.sourceVersionId,
+    })
+
+    const job = await delegated.createSourceJob(
+      source.sourceId,
+      newerVersion.sourceVersionId,
+      {
+        operation: 'inspect_format',
+        idempotencyKey: '57575757-abab-4575-8575-575757575757',
+      },
+    )
+    const deadline = Date.now() + 2_000
+    let observed = await delegated.sourceJob(job.jobId)
+    while (!['succeeded', 'partial', 'failed', 'cancelled'].includes(observed.state) &&
+           Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      observed = await delegated.sourceJob(job.jobId)
+    }
+    expect(observed).toMatchObject({
+      jobId: job.jobId,
+      sourceId: source.sourceId,
+      sourceVersionId: newerVersion.sourceVersionId,
+      state: 'succeeded',
+      outcomeCode: 'inspection_complete',
+      implementationVersion: 'inspect_format.v1',
+      resourceId: null,
+    })
+
+    const preparation = await delegated.createSourcePreparation(
+      source.sourceId,
+      newerVersion.sourceVersionId,
+      {
+        operation: 'extract_text',
+        idempotencyKey: '72727272-abab-4727-8727-727272727272',
+      },
+    )
+    let prepared = await delegated.sourceJob(preparation.jobId)
+    const preparationDeadline = Date.now() + 2_000
+    while (!['succeeded', 'partial', 'failed', 'cancelled'].includes(prepared.state) &&
+           Date.now() < preparationDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      prepared = await delegated.sourceJob(preparation.jobId)
+    }
+    expect(prepared).toMatchObject({
+      state: 'succeeded', operation: 'extract_text',
+      implementationVersion: 'text_extraction.v1',
+      outcomeCode: 'preparation_complete', resourceId: expect.any(String),
+    })
+    const resource = await delegated.sourceResource(prepared.resourceId!)
+    expect(resource).toMatchObject({
+      resourceId: prepared.resourceId,
+      sourceVersionId: newerVersion.sourceVersionId,
+      freshness: 'current',
+      coverage: 'complete',
+    })
+
+    const grantInput = {
+      subjectId: 'person.sdk-synthetic',
+      purpose: 'customer-support',
+      channel: null,
+      consent: { state: 'not_required' as const },
+      ttlSeconds: 60,
+      idempotencyKey: '74747474-cdcd-4747-8747-747474747474',
+    }
+    const grant = await ownware.createAccessGrant(resource.resourceId, grantInput)
+    expect(grant).toMatchObject({ revision: 1, mutation: 'created' })
+    await expect(ownware.createAccessGrant(resource.resourceId, grantInput))
+      .resolves.toEqual(grant)
+    await expect(ownware.accessGrant(grant.grantId)).resolves.toMatchObject({
+      grantId: grant.grantId,
+      workspaceId: workspace.id,
+      profileId: 'test-agent',
+      subjectId: 'person.sdk-synthetic',
+      operation: 'source_content.read',
+    })
+    await expect(ownware.accessGrants({ limit: 100 })).resolves.toMatchObject({
+      items: [expect.objectContaining({
+        grantId: grant.grantId, lifecycle: 'effective', state: 'active',
+      })],
+      nextCursor: null,
+    })
+    await expect(delegated.readSourceContent(resource.resourceId, {
+      subjectId: 'person.sdk-synthetic',
+      consent: { state: 'not_required' },
+      byteStart: 0,
+      byteEnd: 3,
+    })).resolves.toMatchObject({
+      resourceId: resource.resourceId,
+      sourceVersionId: newerVersion.sourceVersionId,
+      text: 'sdk',
+      byteStart: 0,
+      byteEnd: 3,
+    })
+    const searchGrant = await ownware.createAccessGrant(resource.resourceId, {
+      ...grantInput,
+      operation: 'source_content.search',
+      idempotencyKey: '76767676-cdcd-4767-8767-767676767676',
+    })
+    await expect(delegated.searchSourceContent(resource.resourceId, {
+      subjectId: 'person.sdk-synthetic',
+      consent: { state: 'not_required' },
+      query: 'SDK', matchMode: 'ascii_case_insensitive',
+      maxMatches: 20, contextBytes: 1,
+    })).resolves.toMatchObject({
+      status: 'complete',
+      matches: [expect.objectContaining({ matchByteStart: 0, matchByteEnd: 3 })],
+    })
+    await ownware.revokeAccessGrant(searchGrant.grantId, {
+      expectedRevision: 1,
+      idempotencyKey: '77777777-cdcd-4777-8777-777777777777',
+    })
+    await expect(delegated.searchSourceContent(resource.resourceId, {
+      subjectId: 'person.sdk-synthetic',
+      consent: { state: 'not_required' },
+      query: 'sdk', matchMode: 'exact_utf8', maxMatches: 20, contextBytes: 0,
+    })).rejects.toMatchObject({ status: 404, code: 'source_content_unavailable' })
+    await expect(delegated.readSourceContent(resource.resourceId, {
+      subjectId: 'person.sdk-synthetic', consent: { state: 'not_required' },
+      byteStart: 0, byteEnd: 3,
+    })).resolves.toMatchObject({ text: 'sdk' })
+    const revokeInput = {
+      expectedRevision: 1,
+      idempotencyKey: '75757575-cdcd-4757-8757-757575757575',
+    }
+    const revoked = await ownware.revokeAccessGrant(grant.grantId, revokeInput)
+    expect(revoked).toMatchObject({ revision: 2, mutation: 'revoked' })
+    await expect(ownware.revokeAccessGrant(grant.grantId, revokeInput))
+      .resolves.toEqual(revoked)
+    await expect(delegated.readSourceContent(resource.resourceId, {
+      subjectId: 'person.sdk-synthetic',
+      consent: { state: 'not_required' },
+      byteStart: 0,
+      byteEnd: 3,
+    })).rejects.toMatchObject({ status: 404, code: 'source_content_unavailable' })
+
+    const postPreparationRefresh = await createRefresh(
+      'sdk post preparation refresh', '73737373-abab-4737-8737-737373737373',
+    )
+    await delegated.completeSourceUpload(postPreparationRefresh)
+    await expect(delegated.sourceResource(prepared.resourceId!)).resolves.toMatchObject({
+      resourceId: prepared.resourceId, freshness: 'stale', staleAt: expect.any(Number),
+    })
+
+    const current = await delegated.source(source.sourceId)
+    const deletion = await delegated.createSourceDeletion(source.sourceId, {
+      expectedRevision: current.revision,
+      idempotencyKey: '74747474-abab-4747-8747-747474747474',
+    })
+    expect(deletion).toMatchObject({
+      sourceId: source.sourceId,
+      operation: 'delete_source',
+      sourceRevision: current.revision + 1,
+    })
+    let deleted = await delegated.sourceDeletion(deletion.jobId)
+    const deletionDeadline = Date.now() + 2_000
+    while (!['cancelled', 'partially_deleted', 'deleted'].includes(deleted.state) &&
+           Date.now() < deletionDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      deleted = await delegated.sourceDeletion(deletion.jobId)
+    }
+    expect(deleted).toMatchObject({
+      jobId: deletion.jobId,
+      state: 'deleted',
+      remaining: {
+        immutableOriginals: 0,
+        uploadStaging: 0,
+        placedCandidates: 0,
+        derivedResources: 0,
+        dataViews: 0,
+        searchIndexes: 0,
+        sourceJobs: 0,
+        idempotencyReplays: 0,
+        retrievalCacheEntries: 0,
+      },
+      terminalAt: expect.any(Number),
+    })
+    await expect(delegated.source(source.sourceId)).rejects.toMatchObject({
+      status: 404,
+      code: 'source_not_found',
+    })
   })
 
   it('run() starts a run and streamReply() reaches a terminal event', async () => {

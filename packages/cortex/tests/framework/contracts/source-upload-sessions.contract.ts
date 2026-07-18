@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
-import { truncate } from 'node:fs/promises'
+import { stat, truncate } from 'node:fs/promises'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { SourceByteStore } from '../../../src/gateway/source-byte-store.js'
 import { createTestGateway, type TestGateway } from '../harness/index.js'
 
 const UploadSessionSchema = z.object({
@@ -156,6 +157,10 @@ describe('Contract: source upload sessions', () => {
       { ...base, url: 'https://example.invalid/private' },
       { ...base, bytes: 'private-byte-canary' },
       { ...base, workspaceId: 'browser-authority' },
+      { ...base, expectedRevision: 1 },
+      { ...base, currentVersionId: '11111111-1111-4111-8111-111111111111' },
+      { ...base, baseSourceRevision: 1 },
+      { ...base, baseCurrentVersionId: null },
     ]
     for (const [index, input] of invalid.entries()) {
       const response = await fetch(`${gw.baseUrl}/api/v1/sources/${sourceId}/upload-sessions`, {
@@ -469,6 +474,182 @@ describe('Contract: source upload sessions', () => {
       inspection: 'not_started',
       createdAt: version.createdAt,
     })
+  })
+
+  it('rejects a stale refresh without replacing newer evidence or inheriting old readiness', async () => {
+    const registered = await fetch(`${gw.baseUrl}/api/v1/sources`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'idempotency-key': '90909090-abab-4909-8909-909090909090',
+      },
+      body: JSON.stringify({
+        kind: 'text',
+        label: 'Refresh race target',
+        classification: 'internal',
+        authority: 'supporting_reference',
+        audiencePolicyRef: 'audience.support-team',
+        sensitivityPolicyRef: 'sensitivity.internal',
+        purposePolicyRef: 'purpose.customer-support',
+        retentionPolicyRef: 'retention.standard',
+        freshnessPolicyRef: 'freshness.monthly',
+      }),
+    })
+    const refreshSourceId = (await registered.json() as { sourceId: string }).sourceId
+    const createCompletedCandidate = async (key: string, bytes: Buffer) => {
+      const checksum = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+      const sessionResponse = await fetch(
+        `${gw.baseUrl}/api/v1/sources/${refreshSourceId}/upload-sessions`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+            'idempotency-key': key,
+          },
+          body: JSON.stringify({
+            expectedBytes: bytes.length,
+            expectedChecksum: checksum,
+            declaredMediaType: 'text/plain',
+            filename: 'refresh.txt',
+          }),
+        },
+      )
+      const session = UploadSessionSchema.parse(await sessionResponse.json())
+      const write = await fetch(`${gw.baseUrl}/api/v1/source-uploads/${session.uploadId}`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/offset+octet-stream',
+          'upload-offset': '0',
+          'upload-chunk-checksum': checksum,
+        },
+        body: bytes,
+      })
+      expect(write.status).toBe(200)
+      return session.uploadId
+    }
+    const initialUpload = await createCompletedCandidate(
+      '91919191-abab-4919-8919-919191919191', Buffer.from('version one'),
+    )
+    const initialComplete = await fetch(
+      `${gw.baseUrl}/api/v1/source-uploads/${initialUpload}/complete`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    )
+    const initialVersion = await initialComplete.json() as { sourceVersionId: string }
+    gw.state.rawDbHandle.prepare(`
+      UPDATE source_versions SET inspection_state = 'complete'
+      WHERE source_version_id = ?
+    `).run(initialVersion.sourceVersionId)
+    gw.state.rawDbHandle.prepare(`
+      UPDATE runtime_sources SET inspection_state = 'complete',
+        preparation_state = 'ready', updated_at = updated_at + 1
+      WHERE source_id = ?
+    `).run(refreshSourceId)
+
+    const staleUpload = await createCompletedCandidate(
+      '92929292-abab-4929-8929-929292929292', Buffer.from('stale candidate'),
+    )
+    const newerUpload = await createCompletedCandidate(
+      '93939393-abab-4939-8939-939393939393', Buffer.from('newer candidate'),
+    )
+    const newer = await fetch(
+      `${gw.baseUrl}/api/v1/source-uploads/${newerUpload}/complete`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    )
+    expect(newer.status).toBe(201)
+    const newerVersion = await newer.json() as { sourceVersionId: string }
+
+    const stale = await fetch(
+      `${gw.baseUrl}/api/v1/source-uploads/${staleUpload}/complete`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    )
+    expect(stale.status).toBe(409)
+    await expect(stale.json()).resolves.toMatchObject({
+      error: 'source_upload_refresh_conflict',
+      actualRevision: 3,
+      actualCurrentVersionId: newerVersion.sourceVersionId,
+    })
+    const stalePlacement = gw.state.rawDbHandle.prepare(`
+      SELECT pending_version_id FROM source_upload_sessions WHERE upload_id = ?
+    `).get(staleUpload) as { pending_version_id: string }
+    await expect(stat(join(
+      gw.tmpDir,
+      'data',
+      'source-storage',
+      'sources',
+      refreshSourceId,
+      'versions',
+      stalePlacement.pending_version_id,
+      'original',
+    ))).rejects.toMatchObject({ code: 'ENOENT' })
+    const staleRetry = await fetch(
+      `${gw.baseUrl}/api/v1/source-uploads/${staleUpload}/complete`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    )
+    expect(staleRetry.status).toBe(409)
+    await expect(staleRetry.json()).resolves.toMatchObject({
+      error: 'source_upload_refresh_conflict',
+      actualRevision: 3,
+      actualCurrentVersionId: newerVersion.sourceVersionId,
+    })
+    expect(gw.state.rawDbHandle.prepare(`
+      SELECT state, code FROM source_upload_sessions WHERE upload_id = ?
+    `).get(staleUpload)).toEqual({
+      state: 'failed',
+      code: 'source_upload_refresh_conflict',
+    })
+    const manifest = await fetch(`${gw.baseUrl}/api/v1/sources/${refreshSourceId}`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    await expect(manifest.json()).resolves.toMatchObject({
+      revision: 3,
+      currentVersionId: newerVersion.sourceVersionId,
+      health: { inspection: 'not_started', preparation: 'not_requested' },
+    })
+
+    const cleanupStaleUpload = await createCompletedCandidate(
+      '94949494-abab-4949-8949-949494949494', Buffer.from('cleanup stale candidate'),
+    )
+    const cleanupWinnerUpload = await createCompletedCandidate(
+      '95959595-abab-4959-8959-959595959595', Buffer.from('cleanup winning candidate'),
+    )
+    const cleanupWinner = await fetch(
+      `${gw.baseUrl}/api/v1/source-uploads/${cleanupWinnerUpload}/complete`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+    )
+    expect(cleanupWinner.status).toBe(201)
+    const cleanupSpy = vi.spyOn(SourceByteStore.prototype, 'discardPlaced')
+      .mockRejectedValueOnce(new Error('private cleanup failure /do/not/expose'))
+    try {
+      const cleanupFailed = await fetch(
+        `${gw.baseUrl}/api/v1/source-uploads/${cleanupStaleUpload}/complete`,
+        { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+      )
+      const rawCleanupFailure = await cleanupFailed.text()
+      expect(cleanupFailed.status).toBe(500)
+      expect(JSON.parse(rawCleanupFailure)).toMatchObject({
+        error: 'source_upload_cleanup_failed',
+      })
+      expect(rawCleanupFailure).not.toContain('/do/not/expose')
+      expect(gw.state.rawDbHandle.prepare(`
+        SELECT state, code FROM source_upload_sessions WHERE upload_id = ?
+      `).get(cleanupStaleUpload)).toEqual({
+        state: 'failed',
+        code: 'source_upload_cleanup_failed',
+      })
+      const cleanupRetry = await fetch(
+        `${gw.baseUrl}/api/v1/source-uploads/${cleanupStaleUpload}/complete`,
+        { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+      )
+      expect(cleanupRetry.status).toBe(500)
+      await expect(cleanupRetry.json()).resolves.toMatchObject({
+        error: 'source_upload_cleanup_failed',
+      })
+    } finally {
+      cleanupSpy.mockRestore()
+    }
   })
 
   it('fails closed for offsets, conflicting retries, incomplete data, and spoofed format', async () => {

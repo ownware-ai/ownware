@@ -5,8 +5,15 @@ import { join } from 'node:path'
 import { CortexDatabase } from '../../../src/gateway/db/database.js'
 import { SourceStore } from '../../../src/gateway/source-store.js'
 import {
+  SourceQuotaExceededError,
+  SourceQuotaPolicy,
+  type SourceQuotaLimits,
+} from '../../../src/gateway/source-quota-policy.js'
+import {
+  SOURCE_TEXT_PREPARATION_IMPLEMENTATION,
   SourceJobStore,
   SourceJobTargetNotFoundError,
+  SourcePreparationNotReadyError,
 } from '../../../src/gateway/source-job-store.js'
 
 const WORKSPACE_ID = 'workspace-a'
@@ -46,6 +53,8 @@ describe('SourceJobStore', () => {
       sourceId,
       sourceVersionId: VERSION_ID,
       operation: 'inspect_format',
+      implementationVersion: 'inspect_format.v1',
+      resourceId: null,
       state: 'queued',
       attempt: 0,
       maxAttempts: 3,
@@ -94,6 +103,8 @@ describe('SourceJobStore', () => {
       attempt: 1,
       maxAttempts: 3,
       checkpoint: 0,
+      implementationVersion: 'inspect_format.v1',
+      resourceId: null,
       claimToken: expect.stringMatching(/^[0-9a-f-]{36}$/),
       leaseExpiresAt: 30_200,
     })
@@ -227,6 +238,24 @@ describe('SourceJobStore', () => {
       .toBe('cancelled')
   })
 
+  it('lets the worker confirm one queued cancellation without a private claim', () => {
+    const job = store.enqueue({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+      sourceVersionId: VERSION_ID,
+      operation: 'inspect_format',
+    }, 100)
+    expect(store.requestCancel(job.jobId, WORKSPACE_ID, PROFILE_ID, 110))
+      .toBe('requested')
+
+    expect(store.confirmNextUnclaimedCancellation(120)).toBe(true)
+    expect(store.confirmNextUnclaimedCancellation(121)).toBe(false)
+    expect(store.getScoped(job.jobId, WORKSPACE_ID, PROFILE_ID)).toMatchObject({
+      state: 'cancelled', cancelRequestedAt: 110, terminalAt: 120,
+    })
+  })
+
   it('releases a waiting job until its explicit retry time', () => {
     const job = store.enqueue({
       workspaceId: WORKSPACE_ID,
@@ -317,7 +346,174 @@ describe('SourceJobStore', () => {
       job.jobId, claim.claimToken, 0, 1, claim.leaseExpiresAt + 2,
     )).toBe('stale_claim')
   })
+
+  it('prepares one inspected current text version into immutable safe lineage', () => {
+    database.rawMainHandle.prepare(`
+      UPDATE source_versions SET inspection_state = 'complete'
+      WHERE source_version_id = ?
+    `).run(VERSION_ID)
+    database.rawMainHandle.prepare(`
+      UPDATE runtime_sources SET inspection_state = 'complete'
+      WHERE source_id = ?
+    `).run(sourceId)
+    const job = store.enqueuePreparation({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+      sourceVersionId: VERSION_ID,
+    }, 100)
+    expect(job).toMatchObject({
+      operation: 'extract_text', state: 'queued', checkpoint: 0,
+    })
+    expect(database.rawMainHandle.prepare(`
+      SELECT preparation_state FROM source_versions WHERE source_version_id = ?
+    `).get(VERSION_ID)).toEqual({ preparation_state: 'queued' })
+
+    const claim = store.claimNext('preparation-worker', 200)!
+    expect(claim).toMatchObject({
+      operation: 'extract_text',
+      implementationVersion: SOURCE_TEXT_PREPARATION_IMPLEMENTATION,
+      resourceId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    for (const checkpoint of [1, 2, 3]) {
+      expect(store.advanceCheckpoint(
+        job.jobId, claim.claimToken, checkpoint - 1, checkpoint, 200 + checkpoint,
+      )).toBe('advanced')
+    }
+    expect(store.finishPreparation(
+      job.jobId, claim.claimToken, 'succeeded', 'preparation_complete', 210,
+    )).toBe('finished')
+    expect(store.getScoped(job.jobId, WORKSPACE_ID, PROFILE_ID)).toMatchObject({
+      state: 'succeeded', checkpoint: 4, outcomeCode: 'preparation_complete',
+    })
+    expect(store.getResourceScoped(
+      claim.resourceId!, WORKSPACE_ID, PROFILE_ID,
+    )).toMatchObject({
+      resourceId: claim.resourceId,
+      jobId: job.jobId,
+      sourceId,
+      sourceVersionId: VERSION_ID,
+      kind: 'text_extraction',
+      operation: 'extract_text',
+      implementationVersion: SOURCE_TEXT_PREPARATION_IMPLEMENTATION,
+      sourceRevision: 1,
+      sourceChecksum: `sha256:${'a'.repeat(64)}`,
+      resourceChecksum: `sha256:${'a'.repeat(64)}`,
+      byteStart: 0,
+      byteEnd: 4,
+      byteCount: 4,
+      authority: 'supporting_reference',
+      coverage: 'complete',
+      freshness: 'current',
+      staleAt: null,
+    })
+    expect(store.getResourceScoped(
+      claim.resourceId!, 'workspace-b', PROFILE_ID,
+    )).toBeNull()
+    expect(database.rawMainHandle.prepare(`
+      SELECT preparation_state FROM runtime_sources WHERE source_id = ?
+    `).get(sourceId)).toEqual({ preparation_state: 'ready' })
+  })
+
+  it('rejects preparation before inspection and after the version becomes historical', () => {
+    const input = {
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+      sourceVersionId: VERSION_ID,
+    }
+    expect(() => store.enqueuePreparation(input)).toThrow(SourcePreparationNotReadyError)
+    database.rawMainHandle.prepare(`
+      UPDATE source_versions SET inspection_state = 'complete'
+      WHERE source_version_id = ?
+    `).run(VERSION_ID)
+    database.rawMainHandle.prepare(`
+      UPDATE runtime_sources SET current_version_id = NULL WHERE source_id = ?
+    `).run(sourceId)
+    expect(() => store.enqueuePreparation(input)).toThrow('source_version_not_current')
+  })
+
+  it('rejects unsupported media and excluded authority before preparation mutation', () => {
+    const input = {
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+      sourceVersionId: VERSION_ID,
+    }
+    database.rawMainHandle.prepare(`
+      UPDATE source_versions SET inspection_state = 'complete',
+        verified_media_type = 'application/pdf' WHERE source_version_id = ?
+    `).run(VERSION_ID)
+    expect(() => store.enqueuePreparation(input)).toThrow('source_media_unsupported')
+    database.rawMainHandle.prepare(`
+      UPDATE source_versions SET verified_media_type = 'text/plain'
+      WHERE source_version_id = ?
+    `).run(VERSION_ID)
+    database.rawMainHandle.prepare(`
+      UPDATE runtime_sources SET authority = 'excluded' WHERE source_id = ?
+    `).run(sourceId)
+    expect(() => store.enqueuePreparation(input)).toThrow('source_authority_excluded')
+    expect(database.rawMainHandle.prepare(`
+      SELECT COUNT(*) AS count FROM source_jobs WHERE operation = 'extract_text'
+    `).get()).toEqual({ count: 0 })
+  })
+
+  it('reserves nonterminal job capacity and releases it only at terminal state', () => {
+    const otherSourceId = seedVersion(database, OTHER_VERSION_ID)
+    const bounded = new SourceJobStore(
+      database.rawMainHandle,
+      new SourceQuotaPolicy(database.rawMainHandle, quotaLimits({ maxNonterminalJobs: 1 })),
+    )
+    const first = bounded.enqueue({
+      workspaceId: WORKSPACE_ID, profileId: PROFILE_ID, sourceId,
+      sourceVersionId: VERSION_ID, operation: 'inspect_format',
+    })
+    expect(() => bounded.enqueue({
+      workspaceId: WORKSPACE_ID, profileId: PROFILE_ID, sourceId: otherSourceId,
+      sourceVersionId: OTHER_VERSION_ID, operation: 'inspect_format',
+    })).toThrow(expect.objectContaining<Partial<SourceQuotaExceededError>>({
+      resourceClass: 'source_jobs',
+    }))
+    expect(bounded.requestCancel(first.jobId, WORKSPACE_ID, PROFILE_ID)).toBe('requested')
+    expect(bounded.confirmNextUnclaimedCancellation()).toBe(true)
+    expect(() => bounded.enqueue({
+      workspaceId: WORKSPACE_ID, profileId: PROFILE_ID, sourceId: otherSourceId,
+      sourceVersionId: OTHER_VERSION_ID, operation: 'inspect_format',
+    })).not.toThrow()
+  })
+
+  it('reserves one derived-resource slot when preparation is enqueued', () => {
+    database.rawMainHandle.prepare(`
+      UPDATE source_versions SET inspection_state = 'complete' WHERE source_version_id = ?
+    `).run(VERSION_ID)
+    const bounded = new SourceJobStore(
+      database.rawMainHandle,
+      new SourceQuotaPolicy(database.rawMainHandle, quotaLimits({ maxDerivedResources: 0 })),
+    )
+    expect(() => bounded.enqueuePreparation({
+      workspaceId: WORKSPACE_ID, profileId: PROFILE_ID, sourceId,
+      sourceVersionId: VERSION_ID,
+    })).toThrow(expect.objectContaining<Partial<SourceQuotaExceededError>>({
+      resourceClass: 'source_derived_resources',
+    }))
+    expect(database.rawMainHandle.prepare(`
+      SELECT COUNT(*) AS count FROM source_jobs WHERE operation = 'extract_text'
+    `).get()).toEqual({ count: 0 })
+  })
 })
+
+function quotaLimits(
+  profileOverrides: Partial<SourceQuotaLimits['profile']>,
+): SourceQuotaLimits {
+  const high = {
+    maxSourceRegistrations: 100,
+    maxRetainedAndReservedBytes: 1024,
+    maxActiveUploadSessions: 100,
+    maxNonterminalJobs: 100,
+    maxDerivedResources: 100,
+  }
+  return { workspace: high, profile: { ...high, ...profileOverrides } }
+}
 
 function seedVersion(database: CortexDatabase, versionId: string): string {
   const source = new SourceStore(database.rawMainHandle).create({

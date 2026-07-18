@@ -30,7 +30,36 @@ export interface ShuttleChannelsModule {
     stop(): void
     deliver(kind: string, target: string, text: string): Promise<boolean>
   }
+  /** Webhook channel host (whatsapp/sms) — absent on older shuttle versions. */
+  ChannelWebhookHost?: new (
+    store: unknown,
+    opts: {
+      gatewayUrl?: string
+      gatewayToken?: string
+      pairing?: unknown
+      publicBaseUrl?: string
+    },
+  ) => {
+    start(opts?: { port?: number; host?: string }): Promise<{ port: number | null; paths: string[] }>
+    stop(): Promise<void>
+  }
   runChannelCli(argv: string[], store: unknown, deps?: { pairing?: unknown }): Promise<string>
+}
+
+/** Webhook-host listen/exposure settings from the environment. */
+export function webhookEnvOptions(): {
+  port?: number
+  host?: string
+  publicBaseUrl?: string
+} {
+  const port = process.env.OWNWARE_WEBHOOK_PORT
+  const host = process.env.OWNWARE_WEBHOOK_HOST
+  const publicBaseUrl = process.env.OWNWARE_WEBHOOK_PUBLIC_URL
+  return {
+    ...(port ? { port: Number(port) } : {}),
+    ...(host ? { host } : {}),
+    ...(publicBaseUrl ? { publicBaseUrl } : {}),
+  }
 }
 
 export async function loadShuttleChannels(): Promise<ShuttleChannelsModule | null> {
@@ -97,12 +126,37 @@ export async function channelCommand(argv: string[]): Promise<void> {
       pairing,
     })
     const started = await runner.start()
+
+    // Webhook channels (whatsapp/sms) mount on the webhook host — listens
+    // only when at least one enabled webhook channel exists.
+    let webhooks: { stop(): Promise<void> } | null = null
+    if (mod.ChannelWebhookHost) {
+      const { port, host, publicBaseUrl } = webhookEnvOptions()
+      const hostInstance = new mod.ChannelWebhookHost(store, {
+        ...(gatewayUrl ? { gatewayUrl } : {}),
+        ...(gatewayToken ? { gatewayToken } : {}),
+        pairing,
+        ...(publicBaseUrl ? { publicBaseUrl } : {}),
+      })
+      const mounted = await hostInstance.start({
+        ...(port !== undefined ? { port } : {}),
+        ...(host !== undefined ? { host } : {}),
+      })
+      webhooks = hostInstance
+      if (mounted.port != null) {
+        console.log(
+          `[ownware] webhooks listening on ${host ?? '127.0.0.1'}:${mounted.port} — put a public HTTPS tunnel or reverse proxy in front:\n${mounted.paths.map((p) => `  ${p}`).join('\n')}`,
+        )
+      }
+    }
+
     console.log(
-      `[ownware] channels started: ${started.length ? started.join(', ') : '(none self-driving; webhook channels mount separately)'}`,
+      `[ownware] channels started: ${started.length ? started.join(', ') : '(none self-driving)'}`,
     )
     process.on('SIGINT', () => {
       runner.stop()
-      process.exit(0)
+      if (webhooks) void webhooks.stop().finally(() => process.exit(0))
+      else process.exit(0)
     })
     return
   }

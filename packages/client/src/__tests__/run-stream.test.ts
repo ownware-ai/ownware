@@ -54,6 +54,37 @@ describe('interpretSseEvent — permission.request (H6)', () => {
     expect(stop).toBe(false)
   })
 
+  it('maps tool.call.progress to a progress event (work lines) and keeps the run open', () => {
+    const { event, stop, seq } = interpretSseEvent(
+      'tool.call.progress',
+      {
+        type: 'tool.call.progress',
+        toolCallId: 'call_1',
+        progress: 'Checked the number · it can link without moving anything',
+        seq: 5,
+      },
+      3,
+    )
+    expect(stop).toBe(false)
+    expect(seq).toBe(5)
+    expect(event).toEqual({
+      type: 'progress',
+      toolCallId: 'call_1',
+      message: 'Checked the number · it can link without moving anything',
+      seq: 5,
+    })
+  })
+
+  it('drops an empty progress message (nothing to render)', () => {
+    const { event, stop } = interpretSseEvent(
+      'tool.call.progress',
+      { type: 'tool.call.progress', toolCallId: 'call_1', seq: 5 },
+      0,
+    )
+    expect(event).toBeUndefined()
+    expect(stop).toBe(false)
+  })
+
   it('regression: deltas and terminal events are unchanged', () => {
     expect(
       interpretSseEvent('text.delta', { type: 'text.delta', text: 'hi', seq: 1 }, 0).event,

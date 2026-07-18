@@ -28,6 +28,19 @@ export type RunStreamEvent =
       readonly operationHash?: string
       readonly seq: number
     }
+  /**
+   * A running tool reported incremental progress (a "work line", e.g.
+   * `Checked the number · it can link without moving anything`). Additive:
+   * consumers that ignore this member keep the old behaviour (only the
+   * final text). Long procedures (channel connects, self-tests) narrate
+   * through these instead of going silent.
+   */
+  | {
+      readonly type: 'progress'
+      readonly toolCallId: string
+      readonly message: string
+      readonly seq: number
+    }
 
 /** Stop reasons on a `turn.end` that mean the loop CONTINUES (not the run's end). */
 const CONTINUE_STOP_REASONS = new Set(['tool_use', 'pause_turn'])
@@ -77,6 +90,12 @@ export function interpretSseEvent(
         stop: false,
         seq,
       }
+    }
+    case 'tool.call.progress': {
+      const message = typeof data['progress'] === 'string' ? (data['progress'] as string) : ''
+      const toolCallId = typeof data['toolCallId'] === 'string' ? (data['toolCallId'] as string) : ''
+      if (message === '') return { stop: false, seq }
+      return { event: { type: 'progress', toolCallId, message, seq }, stop: false, seq }
     }
     case 'turn.end': {
       const reason = typeof data['stopReason'] === 'string' ? (data['stopReason'] as string) : 'end_turn'

@@ -2934,4 +2934,863 @@ export const MIGRATIONS: Migration[] = [
         ON source_jobs(state, lease_expires_at);
     `,
   },
+  {
+    version: 64,
+    name: '064_source_refresh_fence',
+    sql: `
+      ALTER TABLE source_upload_sessions
+        ADD COLUMN base_source_revision INTEGER NOT NULL DEFAULT 1
+        CHECK (base_source_revision > 0);
+      ALTER TABLE source_upload_sessions
+        ADD COLUMN base_current_version_id TEXT
+        CHECK (base_current_version_id IS NULL OR length(base_current_version_id) = 36);
+
+      UPDATE source_upload_sessions
+      SET base_source_revision = (
+            SELECT revision FROM runtime_sources
+            WHERE source_id = source_upload_sessions.source_id
+          ),
+          base_current_version_id = (
+            SELECT current_version_id FROM runtime_sources
+            WHERE source_id = source_upload_sessions.source_id
+          );
+
+      UPDATE source_upload_sessions
+      SET state = 'failed', code = 'source_refresh_fence_unavailable',
+          updated_at = MAX(updated_at, (
+            SELECT updated_at FROM runtime_sources
+            WHERE source_id = source_upload_sessions.source_id
+          ))
+      WHERE state IN ('open', 'completing')
+        AND created_at < (
+          SELECT updated_at FROM runtime_sources
+          WHERE source_id = source_upload_sessions.source_id
+        );
+    `,
+  },
+  {
+    version: 65,
+    name: '065_source_preparation_lineage',
+    destructive: {
+      reason:
+        'SQLite cannot widen the source_jobs operation CHECK or uniqueness key in place. ' +
+        'The migration creates the replacement table with stricter lineage columns, copies ' +
+        'every existing inspection job with an implementation version and source revision, ' +
+        'then drops the old table in the same checked transaction. Migration tests prove ' +
+        'existing terminal job state survives; no job row is intentionally discarded.',
+    },
+    sql: `
+      ALTER TABLE source_versions
+        ADD COLUMN preparation_state TEXT NOT NULL DEFAULT 'not_requested'
+        CHECK (preparation_state IN (
+          'not_requested', 'queued', 'preparing', 'ready', 'partial', 'failed'
+        ));
+
+      DROP INDEX idx_source_jobs_scope;
+      DROP INDEX idx_source_jobs_claimable;
+      DROP INDEX idx_source_jobs_leases;
+      ALTER TABLE source_jobs RENAME TO source_jobs_v63;
+
+      CREATE TABLE source_jobs (
+        job_id                  TEXT    PRIMARY KEY,
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL,
+        source_version_id       TEXT    NOT NULL,
+        operation               TEXT    NOT NULL CHECK (operation IN (
+          'inspect_format', 'extract_text'
+        )),
+        implementation_version  TEXT    NOT NULL,
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        resource_id             TEXT,
+        state                   TEXT    NOT NULL CHECK (state IN (
+          'queued', 'running', 'waiting_for_resource', 'cancel_requested',
+          'succeeded', 'partial', 'failed', 'cancelled'
+        )),
+        attempt                 INTEGER NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND 3),
+        max_attempts            INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts = 3),
+        checkpoint              INTEGER NOT NULL DEFAULT 0 CHECK (checkpoint BETWEEN 0 AND 4),
+        claim_token             TEXT,
+        claimed_by              TEXT,
+        lease_expires_at        INTEGER,
+        retry_after             INTEGER,
+        cancel_requested_at     INTEGER,
+        outcome_code            TEXT,
+        created_at              INTEGER NOT NULL,
+        updated_at              INTEGER NOT NULL,
+        terminal_at             INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (source_version_id, operation, implementation_version),
+        UNIQUE (resource_id),
+        CHECK (length(job_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (length(source_version_id) = 36),
+        CHECK (length(implementation_version) BETWEEN 1 AND 64
+          AND implementation_version NOT GLOB '*[^a-z0-9._-]*'),
+        CHECK ((operation = 'extract_text') = (resource_id IS NOT NULL)),
+        CHECK (resource_id IS NULL OR length(resource_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK (claim_token IS NULL OR length(claim_token) = 36),
+        CHECK (claimed_by IS NULL OR (
+          length(claimed_by) BETWEEN 1 AND 64
+          AND claimed_by NOT GLOB '*[^a-z0-9._-]*'
+        )),
+        CHECK (outcome_code IS NULL OR (
+          length(outcome_code) BETWEEN 1 AND 64
+          AND outcome_code NOT GLOB '*[^a-z0-9_]*'
+        )),
+        CHECK (
+          (claim_token IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL)
+          OR
+          (claim_token IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL)
+        ),
+        CHECK (state != 'running' OR claim_token IS NOT NULL),
+        CHECK (state NOT IN (
+          'queued', 'waiting_for_resource', 'succeeded', 'partial', 'failed', 'cancelled'
+        ) OR claim_token IS NULL),
+        CHECK ((state = 'waiting_for_resource') = (retry_after IS NOT NULL)),
+        CHECK (state != 'cancel_requested' OR cancel_requested_at IS NOT NULL),
+        CHECK (state != 'cancelled' OR cancel_requested_at IS NOT NULL),
+        CHECK ((state IN ('succeeded', 'partial', 'failed', 'cancelled')) =
+          (terminal_at IS NOT NULL)),
+        CHECK ((state IN ('succeeded', 'partial', 'failed', 'cancelled')) =
+          (outcome_code IS NOT NULL))
+      );
+
+      INSERT INTO source_jobs (
+        job_id, workspace_id, profile_id, source_id, source_version_id,
+        operation, implementation_version, source_revision, resource_id,
+        state, attempt, max_attempts, checkpoint, claim_token, claimed_by,
+        lease_expires_at, retry_after, cancel_requested_at, outcome_code,
+        created_at, updated_at, terminal_at
+      )
+      SELECT j.job_id, j.workspace_id, j.profile_id, j.source_id,
+        j.source_version_id, j.operation, 'inspect_format.v1', s.revision, NULL,
+        j.state, j.attempt, j.max_attempts, j.checkpoint, j.claim_token,
+        j.claimed_by, j.lease_expires_at, j.retry_after,
+        j.cancel_requested_at, j.outcome_code, j.created_at, j.updated_at,
+        j.terminal_at
+      FROM source_jobs_v63 j
+      JOIN runtime_sources s ON s.source_id = j.source_id;
+
+      DROP TABLE source_jobs_v63;
+
+      CREATE INDEX idx_source_jobs_scope
+        ON source_jobs(workspace_id, profile_id, source_id, created_at DESC, job_id DESC);
+      CREATE INDEX idx_source_jobs_claimable
+        ON source_jobs(state, retry_after, created_at, job_id);
+      CREATE INDEX idx_source_jobs_leases
+        ON source_jobs(state, lease_expires_at);
+
+      CREATE TABLE source_derived_resources (
+        resource_id             TEXT    PRIMARY KEY,
+        job_id                  TEXT    NOT NULL UNIQUE REFERENCES source_jobs(job_id),
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL,
+        source_version_id       TEXT    NOT NULL,
+        kind                    TEXT    NOT NULL CHECK (kind IN ('text_extraction')),
+        operation               TEXT    NOT NULL CHECK (operation IN ('extract_text')),
+        implementation_version  TEXT    NOT NULL,
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        source_checksum         TEXT    NOT NULL CHECK (
+          source_checksum GLOB 'sha256:[0-9a-f]*' AND length(source_checksum) = 71
+        ),
+        resource_checksum       TEXT    NOT NULL CHECK (
+          resource_checksum GLOB 'sha256:[0-9a-f]*' AND length(resource_checksum) = 71
+        ),
+        byte_start              INTEGER NOT NULL CHECK (byte_start = 0),
+        byte_end                INTEGER NOT NULL CHECK (byte_end > 0),
+        byte_count              INTEGER NOT NULL CHECK (byte_count BETWEEN 1 AND 16777216),
+        classification          TEXT    NOT NULL CHECK (classification IN (
+          'public', 'internal', 'confidential', 'restricted'
+        )),
+        authority               TEXT    NOT NULL CHECK (authority IN (
+          'source_of_record', 'supporting_reference', 'example'
+        )),
+        audience_policy_ref     TEXT    NOT NULL,
+        sensitivity_policy_ref  TEXT    NOT NULL,
+        purpose_policy_ref      TEXT    NOT NULL,
+        retention_policy_ref    TEXT    NOT NULL,
+        freshness_policy_ref    TEXT    NOT NULL,
+        coverage                TEXT    NOT NULL CHECK (coverage = 'complete'),
+        freshness               TEXT    NOT NULL CHECK (freshness IN ('current', 'stale')),
+        created_at              INTEGER NOT NULL,
+        stale_at                INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (source_version_id, kind, implementation_version),
+        CHECK (length(resource_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (length(source_version_id) = 36),
+        CHECK (byte_end = byte_count),
+        CHECK ((freshness = 'current' AND stale_at IS NULL)
+          OR (freshness = 'stale' AND stale_at IS NOT NULL))
+      );
+
+      CREATE INDEX idx_source_derived_resources_scope
+        ON source_derived_resources(
+          workspace_id, profile_id, source_id, created_at DESC, resource_id DESC
+        );
+      CREATE INDEX idx_source_derived_resources_freshness
+        ON source_derived_resources(source_id, source_version_id, freshness);
+    `,
+  },
+  {
+    version: 66,
+    name: '066_source_quota_reservations',
+    sql: `
+      ALTER TABLE source_upload_sessions
+        ADD COLUMN byte_reservation_released_at INTEGER
+        CHECK (
+          byte_reservation_released_at IS NULL
+          OR byte_reservation_released_at >= created_at
+        );
+
+      UPDATE source_upload_sessions
+      SET byte_reservation_released_at = updated_at
+      WHERE state = 'completed'
+        AND completed_version_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM source_versions v
+          WHERE v.source_version_id = source_upload_sessions.completed_version_id
+            AND v.source_id = source_upload_sessions.source_id
+            AND v.byte_count = source_upload_sessions.expected_bytes
+            AND v.checksum = source_upload_sessions.expected_checksum
+        );
+    `,
+  },
+  {
+    version: 67,
+    name: '067_source_deletion_plans',
+    destructive: {
+      reason:
+        'SQLite cannot widen the source_jobs operation and nullable-version checks in place. ' +
+        'The migration rebuilds source_jobs and its source_derived_resources child together ' +
+        'under foreign-key enforcement, copies every row before dropping the old tables, and ' +
+        'migration tests prove preserved lineage and clean foreign-key and integrity checks.',
+    },
+    sql: `
+      ALTER TABLE run_idempotency
+        ADD COLUMN source_id TEXT REFERENCES runtime_sources(source_id);
+
+      UPDATE run_idempotency
+      SET source_id = json_extract(result_json, '$.sourceId')
+      WHERE state = 'completed'
+        AND operation IN (
+          'sources.register',
+          'source_uploads.create',
+          'source_jobs.create',
+          'source_preparations.create'
+        )
+        AND json_type(result_json, '$.sourceId') = 'text'
+        AND length(json_extract(result_json, '$.sourceId')) = 36
+        AND EXISTS (
+          SELECT 1 FROM runtime_sources s
+          WHERE s.source_id = json_extract(run_idempotency.result_json, '$.sourceId')
+        );
+
+      CREATE INDEX idx_run_idempotency_source
+        ON run_idempotency(source_id) WHERE source_id IS NOT NULL;
+
+      DROP INDEX idx_source_derived_resources_scope;
+      DROP INDEX idx_source_derived_resources_freshness;
+      DROP INDEX idx_source_jobs_scope;
+      DROP INDEX idx_source_jobs_claimable;
+      DROP INDEX idx_source_jobs_leases;
+      ALTER TABLE source_derived_resources RENAME TO source_derived_resources_v65;
+      ALTER TABLE source_jobs RENAME TO source_jobs_v65;
+
+      CREATE TABLE source_jobs (
+        job_id                  TEXT    PRIMARY KEY,
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL,
+        source_version_id       TEXT,
+        operation               TEXT    NOT NULL CHECK (operation IN (
+          'inspect_format', 'extract_text', 'delete_source'
+        )),
+        implementation_version  TEXT    NOT NULL,
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        resource_id             TEXT,
+        state                   TEXT    NOT NULL CHECK (state IN (
+          'queued', 'running', 'waiting_for_resource', 'cancel_requested',
+          'succeeded', 'partial', 'failed', 'cancelled'
+        )),
+        attempt                 INTEGER NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND 3),
+        max_attempts            INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts = 3),
+        checkpoint              INTEGER NOT NULL DEFAULT 0 CHECK (checkpoint BETWEEN 0 AND 4),
+        claim_token             TEXT,
+        claimed_by              TEXT,
+        lease_expires_at        INTEGER,
+        retry_after             INTEGER,
+        cancel_requested_at     INTEGER,
+        outcome_code            TEXT,
+        created_at              INTEGER NOT NULL,
+        updated_at              INTEGER NOT NULL,
+        terminal_at             INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (resource_id),
+        CHECK (length(job_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK ((operation = 'delete_source') = (source_version_id IS NULL)),
+        CHECK (source_version_id IS NULL OR length(source_version_id) = 36),
+        CHECK (
+          (operation = 'inspect_format' AND implementation_version = 'inspect_format.v1')
+          OR
+          (operation = 'extract_text' AND implementation_version = 'text_extraction.v1')
+          OR
+          (operation = 'delete_source' AND implementation_version = 'source_deletion.v1')
+        ),
+        CHECK ((operation = 'extract_text') = (resource_id IS NOT NULL)),
+        CHECK (resource_id IS NULL OR length(resource_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK (claim_token IS NULL OR length(claim_token) = 36),
+        CHECK (claimed_by IS NULL OR (
+          length(claimed_by) BETWEEN 1 AND 64
+          AND claimed_by NOT GLOB '*[^a-z0-9._-]*'
+        )),
+        CHECK (outcome_code IS NULL OR (
+          length(outcome_code) BETWEEN 1 AND 64
+          AND outcome_code NOT GLOB '*[^a-z0-9_]*'
+        )),
+        CHECK (
+          (claim_token IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL)
+          OR
+          (claim_token IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL)
+        ),
+        CHECK (state != 'running' OR claim_token IS NOT NULL),
+        CHECK (state NOT IN (
+          'queued', 'waiting_for_resource', 'succeeded', 'partial', 'failed', 'cancelled'
+        ) OR claim_token IS NULL),
+        CHECK ((state = 'waiting_for_resource') = (retry_after IS NOT NULL)),
+        CHECK (state != 'cancel_requested' OR cancel_requested_at IS NOT NULL),
+        CHECK (state != 'cancelled' OR cancel_requested_at IS NOT NULL),
+        CHECK ((state IN ('succeeded', 'partial', 'failed', 'cancelled')) =
+          (terminal_at IS NOT NULL)),
+        CHECK ((state IN ('succeeded', 'partial', 'failed', 'cancelled')) =
+          (outcome_code IS NOT NULL))
+      );
+
+      INSERT INTO source_jobs (
+        job_id, workspace_id, profile_id, source_id, source_version_id,
+        operation, implementation_version, source_revision, resource_id,
+        state, attempt, max_attempts, checkpoint, claim_token, claimed_by,
+        lease_expires_at, retry_after, cancel_requested_at, outcome_code,
+        created_at, updated_at, terminal_at
+      )
+      SELECT job_id, workspace_id, profile_id, source_id, source_version_id,
+        operation, implementation_version, source_revision, resource_id,
+        state, attempt, max_attempts, checkpoint, claim_token, claimed_by,
+        lease_expires_at, retry_after, cancel_requested_at, outcome_code,
+        created_at, updated_at, terminal_at
+      FROM source_jobs_v65;
+
+      CREATE TABLE source_derived_resources (
+        resource_id             TEXT    PRIMARY KEY,
+        job_id                  TEXT    NOT NULL UNIQUE REFERENCES source_jobs(job_id),
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL,
+        source_version_id       TEXT    NOT NULL,
+        kind                    TEXT    NOT NULL CHECK (kind IN ('text_extraction')),
+        operation               TEXT    NOT NULL CHECK (operation IN ('extract_text')),
+        implementation_version  TEXT    NOT NULL,
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        source_checksum         TEXT    NOT NULL CHECK (
+          source_checksum GLOB 'sha256:[0-9a-f]*' AND length(source_checksum) = 71
+        ),
+        resource_checksum       TEXT    NOT NULL CHECK (
+          resource_checksum GLOB 'sha256:[0-9a-f]*' AND length(resource_checksum) = 71
+        ),
+        byte_start              INTEGER NOT NULL CHECK (byte_start = 0),
+        byte_end                INTEGER NOT NULL CHECK (byte_end > 0),
+        byte_count              INTEGER NOT NULL CHECK (byte_count BETWEEN 1 AND 16777216),
+        classification          TEXT    NOT NULL CHECK (classification IN (
+          'public', 'internal', 'confidential', 'restricted'
+        )),
+        authority               TEXT    NOT NULL CHECK (authority IN (
+          'source_of_record', 'supporting_reference', 'example'
+        )),
+        audience_policy_ref     TEXT    NOT NULL,
+        sensitivity_policy_ref  TEXT    NOT NULL,
+        purpose_policy_ref      TEXT    NOT NULL,
+        retention_policy_ref    TEXT    NOT NULL,
+        freshness_policy_ref    TEXT    NOT NULL,
+        coverage                TEXT    NOT NULL CHECK (coverage = 'complete'),
+        freshness               TEXT    NOT NULL CHECK (freshness IN ('current', 'stale')),
+        created_at              INTEGER NOT NULL,
+        stale_at                INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (source_version_id, kind, implementation_version),
+        CHECK (length(resource_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (length(source_version_id) = 36),
+        CHECK (byte_end = byte_count),
+        CHECK ((freshness = 'current' AND stale_at IS NULL)
+          OR (freshness = 'stale' AND stale_at IS NOT NULL))
+      );
+
+      INSERT INTO source_derived_resources (
+        resource_id, job_id, workspace_id, profile_id, source_id,
+        source_version_id, kind, operation, implementation_version,
+        source_revision, source_checksum, resource_checksum, byte_start,
+        byte_end, byte_count, classification, authority, audience_policy_ref,
+        sensitivity_policy_ref, purpose_policy_ref, retention_policy_ref,
+        freshness_policy_ref, coverage, freshness, created_at, stale_at
+      )
+      SELECT resource_id, job_id, workspace_id, profile_id, source_id,
+        source_version_id, kind, operation, implementation_version,
+        source_revision, source_checksum, resource_checksum, byte_start,
+        byte_end, byte_count, classification, authority, audience_policy_ref,
+        sensitivity_policy_ref, purpose_policy_ref, retention_policy_ref,
+        freshness_policy_ref, coverage, freshness, created_at, stale_at
+      FROM source_derived_resources_v65;
+
+      DROP TABLE source_derived_resources_v65;
+      DROP TABLE source_jobs_v65;
+
+      CREATE INDEX idx_source_jobs_scope
+        ON source_jobs(workspace_id, profile_id, source_id, created_at DESC, job_id DESC);
+      CREATE INDEX idx_source_jobs_claimable
+        ON source_jobs(state, retry_after, created_at, job_id);
+      CREATE INDEX idx_source_jobs_leases
+        ON source_jobs(state, lease_expires_at);
+      CREATE UNIQUE INDEX idx_source_jobs_version_operation
+        ON source_jobs(source_version_id, operation, implementation_version)
+        WHERE source_version_id IS NOT NULL;
+      CREATE UNIQUE INDEX idx_source_jobs_source_deletion
+        ON source_jobs(source_id) WHERE operation = 'delete_source';
+
+      CREATE INDEX idx_source_derived_resources_scope
+        ON source_derived_resources(
+          workspace_id, profile_id, source_id, created_at DESC, resource_id DESC
+        );
+      CREATE INDEX idx_source_derived_resources_freshness
+        ON source_derived_resources(source_id, source_version_id, freshness);
+
+      CREATE TABLE source_deletion_plans (
+        job_id                  TEXT    PRIMARY KEY REFERENCES source_jobs(job_id) ON DELETE CASCADE,
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL UNIQUE,
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        inventory_state         TEXT    NOT NULL CHECK (inventory_state IN ('pending', 'complete')),
+        inventory_completed_at  INTEGER,
+        created_at              INTEGER NOT NULL,
+        updated_at              INTEGER NOT NULL,
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        CHECK (length(job_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK ((inventory_state = 'complete') = (inventory_completed_at IS NOT NULL)),
+        CHECK (inventory_completed_at IS NULL OR inventory_completed_at >= created_at)
+      );
+
+      CREATE INDEX idx_source_deletion_plans_scope
+        ON source_deletion_plans(workspace_id, profile_id, source_id);
+
+      CREATE TABLE source_deletion_inventory (
+        job_id         TEXT    NOT NULL REFERENCES source_deletion_plans(job_id) ON DELETE CASCADE,
+        artifact_kind  TEXT    NOT NULL CHECK (artifact_kind IN (
+           'immutable_original', 'upload_staging', 'placed_candidate',
+           'derived_resource', 'data_view', 'search_index',
+           'source_job', 'idempotency_replay', 'retrieval_cache'
+        )),
+        artifact_id    TEXT    NOT NULL,
+        state          TEXT    NOT NULL CHECK (state IN (
+          'pending', 'removed', 'verified_absent', 'failed'
+        )),
+        created_at     INTEGER NOT NULL,
+        updated_at     INTEGER NOT NULL,
+        terminal_at    INTEGER,
+        PRIMARY KEY (job_id, artifact_kind, artifact_id),
+        CHECK (length(artifact_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK ((state IN ('verified_absent', 'failed')) = (terminal_at IS NOT NULL)),
+        CHECK (terminal_at IS NULL OR terminal_at >= created_at)
+      );
+
+      CREATE INDEX idx_source_deletion_inventory_state
+        ON source_deletion_inventory(job_id, state, artifact_kind, artifact_id);
+    `,
+  },
+  {
+    version: 68,
+    name: '068_source_deletion_tombstones',
+    sql: `
+      CREATE TABLE source_deletion_tombstones (
+        job_id                    TEXT    PRIMARY KEY,
+        workspace_id              TEXT    NOT NULL,
+        profile_id                TEXT    NOT NULL,
+        source_id                 TEXT    NOT NULL,
+        state                     TEXT    NOT NULL CHECK (state IN ('cancelled', 'deleted')),
+        source_revision           INTEGER NOT NULL CHECK (source_revision > 0),
+        immutable_originals       INTEGER NOT NULL CHECK (immutable_originals >= 0),
+        upload_staging            INTEGER NOT NULL CHECK (upload_staging >= 0),
+        placed_candidates         INTEGER NOT NULL CHECK (placed_candidates >= 0),
+        derived_resources         INTEGER NOT NULL CHECK (derived_resources >= 0),
+        data_views                INTEGER NOT NULL CHECK (data_views >= 0),
+        search_indexes            INTEGER NOT NULL CHECK (search_indexes >= 0),
+        source_jobs               INTEGER NOT NULL CHECK (source_jobs >= 0),
+        idempotency_replays       INTEGER NOT NULL CHECK (idempotency_replays >= 0),
+        retrieval_cache_entries   INTEGER NOT NULL CHECK (retrieval_cache_entries >= 0),
+        created_at                INTEGER NOT NULL,
+        terminal_at               INTEGER NOT NULL,
+        CHECK (length(job_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (terminal_at >= created_at)
+      );
+
+      CREATE INDEX idx_source_deletion_tombstones_scope
+        ON source_deletion_tombstones(workspace_id, profile_id, source_id);
+    `,
+  },
+  {
+    version: 69,
+    name: '069_versioned_access_grants',
+    sql: `
+      CREATE TABLE access_grants (
+        grant_id          TEXT    PRIMARY KEY,
+        workspace_id      TEXT    NOT NULL,
+        profile_id        TEXT    NOT NULL,
+        current_revision  INTEGER NOT NULL CHECK (current_revision > 0),
+        created_at        INTEGER NOT NULL,
+        UNIQUE (grant_id, workspace_id, profile_id),
+        FOREIGN KEY (grant_id, current_revision)
+          REFERENCES access_grant_revisions(grant_id, revision)
+          DEFERRABLE INITIALLY DEFERRED,
+        CHECK (length(grant_id) = 36),
+        CHECK (length(workspace_id) BETWEEN 1 AND 128),
+        CHECK (length(profile_id) BETWEEN 1 AND 128)
+      );
+
+      CREATE TABLE access_grant_revisions (
+        grant_id             TEXT    NOT NULL,
+        revision             INTEGER NOT NULL CHECK (revision > 0),
+        workspace_id         TEXT    NOT NULL,
+        profile_id           TEXT    NOT NULL,
+        state                TEXT    NOT NULL CHECK (state IN ('active', 'revoked')),
+        subject_id           TEXT    NOT NULL,
+        purpose              TEXT    NOT NULL,
+        channel              TEXT,
+        resource_kind        TEXT    NOT NULL,
+        resource_id          TEXT    NOT NULL,
+        operation            TEXT    NOT NULL,
+        field_scope_mode     TEXT    NOT NULL CHECK (field_scope_mode IN ('all', 'list')),
+        field_ids_json       TEXT    NOT NULL CHECK (
+          json_valid(field_ids_json) AND json_type(field_ids_json) = 'array'
+        ),
+        row_scope_mode       TEXT    NOT NULL CHECK (row_scope_mode IN ('all', 'list')),
+        row_ids_json         TEXT    NOT NULL CHECK (
+          json_valid(row_ids_json) AND json_type(row_ids_json) = 'array'
+        ),
+        consent_state        TEXT    NOT NULL CHECK (consent_state IN ('not_required', 'recorded')),
+        consent_evidence_id  TEXT,
+        autonomy_ceiling     TEXT    NOT NULL CHECK (
+          autonomy_ceiling IN ('observe', 'recommend', 'draft', 'act')
+        ),
+        effective_at         INTEGER NOT NULL,
+        expires_at           INTEGER NOT NULL,
+        issued_by            TEXT    NOT NULL,
+        revision_created_at  INTEGER NOT NULL,
+        revoked_at           INTEGER,
+        PRIMARY KEY (grant_id, revision),
+        FOREIGN KEY (grant_id, workspace_id, profile_id)
+          REFERENCES access_grants(grant_id, workspace_id, profile_id),
+        CHECK (length(workspace_id) BETWEEN 1 AND 128),
+        CHECK (length(profile_id) BETWEEN 1 AND 128),
+        CHECK (length(subject_id) BETWEEN 1 AND 128),
+        CHECK (length(purpose) BETWEEN 1 AND 64),
+        CHECK (channel IS NULL OR length(channel) BETWEEN 1 AND 128),
+        CHECK (length(resource_kind) BETWEEN 1 AND 64),
+        CHECK (length(resource_id) BETWEEN 1 AND 200),
+        CHECK (length(operation) BETWEEN 3 AND 128),
+        CHECK (length(issued_by) BETWEEN 1 AND 128),
+        CHECK (expires_at > effective_at),
+        CHECK ((consent_state = 'recorded') = (consent_evidence_id IS NOT NULL)),
+        CHECK (consent_evidence_id IS NULL OR length(consent_evidence_id) BETWEEN 1 AND 128),
+        CHECK ((field_scope_mode = 'all' AND field_ids_json = '[]')
+          OR field_scope_mode = 'list'),
+        CHECK ((row_scope_mode = 'all' AND row_ids_json = '[]')
+          OR row_scope_mode = 'list'),
+        CHECK ((state = 'active' AND revoked_at IS NULL)
+          OR (state = 'revoked' AND revoked_at IS NOT NULL)),
+        CHECK (revoked_at IS NULL OR revoked_at >= revision_created_at)
+      );
+
+      CREATE INDEX idx_access_grants_scope
+        ON access_grants(workspace_id, profile_id, grant_id);
+      CREATE INDEX idx_access_grant_revisions_match
+        ON access_grant_revisions(
+          workspace_id, profile_id, subject_id, purpose, channel,
+          resource_kind, resource_id, operation, state, effective_at, expires_at
+        );
+
+      CREATE TRIGGER access_grant_revisions_no_update
+      BEFORE UPDATE ON access_grant_revisions
+      BEGIN
+        SELECT RAISE(ABORT, 'access grant revisions are immutable');
+      END;
+
+      CREATE TRIGGER access_grant_revisions_no_delete
+      BEFORE DELETE ON access_grant_revisions
+      BEGIN
+        SELECT RAISE(ABORT, 'access grant revisions are immutable');
+      END;
+
+      CREATE TRIGGER access_grants_no_delete
+      BEFORE DELETE ON access_grants
+      BEGIN
+        SELECT RAISE(ABORT, 'access grant heads are retained');
+      END;
+
+      CREATE TRIGGER access_grants_monotonic_head
+      BEFORE UPDATE ON access_grants
+      WHEN NEW.grant_id IS NOT OLD.grant_id
+        OR NEW.workspace_id IS NOT OLD.workspace_id
+        OR NEW.profile_id IS NOT OLD.profile_id
+        OR NEW.created_at IS NOT OLD.created_at
+        OR NEW.current_revision != OLD.current_revision + 1
+        OR NOT EXISTS (
+          SELECT 1 FROM access_grant_revisions r
+          WHERE r.grant_id = OLD.grant_id
+            AND r.revision = NEW.current_revision
+            AND r.workspace_id = OLD.workspace_id
+            AND r.profile_id = OLD.profile_id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'access grant head transition is invalid');
+      END;
+    `,
+  },
+  {
+    version: 70,
+    name: '070_source_grant_deletion_coupling',
+    destructive: {
+      reason:
+        'SQLite cannot widen the source deletion inventory artifact-kind CHECK in place. ' +
+        'The migration rebuilds only that content-free control table, copies every existing ' +
+        'inventory row unchanged, then drops the old table in the same checked transaction.',
+    },
+    sql: `
+      ALTER TABLE run_idempotency
+        ADD COLUMN source_mutation_kind TEXT
+        CHECK (
+          source_mutation_kind IS NULL
+          OR (source_mutation_kind = 'access_grant' AND source_id IS NOT NULL)
+        );
+
+      CREATE INDEX idx_run_idempotency_source_mutation
+        ON run_idempotency(source_id, source_mutation_kind)
+        WHERE source_mutation_kind IS NOT NULL;
+
+      DROP INDEX idx_source_deletion_inventory_state;
+      ALTER TABLE source_deletion_inventory RENAME TO source_deletion_inventory_v67;
+
+      CREATE TABLE source_deletion_inventory (
+        job_id         TEXT    NOT NULL REFERENCES source_deletion_plans(job_id) ON DELETE CASCADE,
+        artifact_kind  TEXT    NOT NULL CHECK (artifact_kind IN (
+           'immutable_original', 'upload_staging', 'placed_candidate',
+           'derived_resource', 'data_view', 'search_index',
+           'source_job', 'idempotency_replay', 'retrieval_cache',
+           'access_grant_revocation', 'grant_mutation_replay'
+        )),
+        artifact_id    TEXT    NOT NULL,
+        state          TEXT    NOT NULL CHECK (state IN (
+          'pending', 'removed', 'verified_absent', 'failed'
+        )),
+        created_at     INTEGER NOT NULL,
+        updated_at     INTEGER NOT NULL,
+        terminal_at    INTEGER,
+        PRIMARY KEY (job_id, artifact_kind, artifact_id),
+        CHECK (length(artifact_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK ((state IN ('verified_absent', 'failed')) = (terminal_at IS NOT NULL)),
+        CHECK (terminal_at IS NULL OR terminal_at >= created_at)
+      );
+
+      INSERT INTO source_deletion_inventory (
+        job_id, artifact_kind, artifact_id, state, created_at, updated_at, terminal_at
+      )
+      SELECT job_id, artifact_kind, artifact_id, state, created_at, updated_at, terminal_at
+      FROM source_deletion_inventory_v67;
+
+      DROP TABLE source_deletion_inventory_v67;
+
+      CREATE INDEX idx_source_deletion_inventory_state
+        ON source_deletion_inventory(job_id, state, artifact_kind, artifact_id);
+
+      ALTER TABLE source_deletion_tombstones
+        ADD COLUMN access_grant_revocations INTEGER NOT NULL DEFAULT 0
+        CHECK (access_grant_revocations >= 0);
+      ALTER TABLE source_deletion_tombstones
+        ADD COLUMN grant_mutation_replays INTEGER NOT NULL DEFAULT 0
+        CHECK (grant_mutation_replays >= 0);
+    `,
+  },
+  {
+    version: 71,
+    name: '071_channel_jobs_and_receipts',
+    sql: `
+      -- Channel connect/publish procedures (CC1): one durable state-machine
+      -- job per procedure run, with work lines (streamed progress), consent
+      -- gates (the job PARKS at waiting_for_input until a decision arrives
+      -- through the existing resume mechanic), and append-only receipts.
+      --
+      -- operation/channel_kind are SHAPE-checked, not enumerated — the
+      -- source_jobs operation CHECK had to be widened with a destructive
+      -- table rebuild (migration 065); channel procedures are an open set
+      -- (registry-defined), so the schema must not enumerate them.
+      --
+      -- SECRETS: params_json / state_json / gate payloads must NEVER carry
+      -- credential values — tokens go to the credential vault and only ids/
+      -- handles appear here. The store additionally rejects secret-shaped
+      -- keys as a tripwire.
+      CREATE TABLE channel_jobs (
+        job_id               TEXT    PRIMARY KEY,
+        profile_id           TEXT    NOT NULL,
+        operation            TEXT    NOT NULL,
+        channel_kind         TEXT    NOT NULL,
+        channel_id           TEXT,
+        params_json          TEXT    NOT NULL CHECK (
+          json_valid(params_json) AND json_type(params_json) = 'object'
+        ),
+        state_json           TEXT    NOT NULL CHECK (
+          json_valid(state_json) AND json_type(state_json) = 'object'
+        ),
+        step_count           INTEGER NOT NULL CHECK (step_count BETWEEN 1 AND 64),
+        state                TEXT    NOT NULL CHECK (state IN (
+          'queued', 'running', 'waiting_for_input', 'waiting_for_retry',
+          'cancel_requested', 'succeeded', 'failed', 'cancelled'
+        )),
+        attempt              INTEGER NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND 3),
+        max_attempts         INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts = 3),
+        checkpoint           INTEGER NOT NULL DEFAULT 0 CHECK (checkpoint >= 0),
+        gate_json            TEXT    CHECK (gate_json IS NULL OR (
+          json_valid(gate_json) AND json_type(gate_json) = 'object'
+        )),
+        gate_response_json   TEXT    CHECK (gate_response_json IS NULL OR (
+          json_valid(gate_response_json) AND json_type(gate_response_json) = 'object'
+        )),
+        claim_token          TEXT,
+        claimed_by           TEXT,
+        lease_expires_at     INTEGER,
+        retry_after          INTEGER,
+        cancel_requested_at  INTEGER,
+        outcome_code         TEXT,
+        created_at           INTEGER NOT NULL,
+        updated_at           INTEGER NOT NULL,
+        terminal_at          INTEGER,
+        CHECK (length(job_id) = 36),
+        CHECK (length(profile_id) BETWEEN 1 AND 128),
+        CHECK (length(operation) BETWEEN 1 AND 64 AND operation NOT GLOB '*[^a-z0-9_]*'),
+        CHECK (length(channel_kind) BETWEEN 1 AND 32 AND channel_kind NOT GLOB '*[^a-z0-9_]*'),
+        CHECK (channel_id IS NULL OR length(channel_id) BETWEEN 1 AND 128),
+        CHECK (checkpoint <= step_count),
+        CHECK (updated_at >= created_at),
+        CHECK (claim_token IS NULL OR length(claim_token) = 36),
+        CHECK (claimed_by IS NULL OR (
+          length(claimed_by) BETWEEN 1 AND 64
+          AND claimed_by NOT GLOB '*[^a-z0-9._-]*'
+        )),
+        CHECK (outcome_code IS NULL OR (
+          length(outcome_code) BETWEEN 1 AND 64
+          AND outcome_code NOT GLOB '*[^a-z0-9_]*'
+        )),
+        CHECK (
+          (claim_token IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL)
+          OR
+          (claim_token IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL)
+        ),
+        CHECK (state != 'running' OR claim_token IS NOT NULL),
+        CHECK (state NOT IN (
+          'queued', 'waiting_for_input', 'waiting_for_retry',
+          'succeeded', 'failed', 'cancelled'
+        ) OR claim_token IS NULL),
+        CHECK ((state = 'waiting_for_retry') = (retry_after IS NOT NULL)),
+        CHECK ((state = 'waiting_for_input') = (gate_json IS NOT NULL)),
+        CHECK (state != 'cancel_requested' OR cancel_requested_at IS NOT NULL),
+        CHECK (state != 'cancelled' OR cancel_requested_at IS NOT NULL),
+        CHECK ((state IN ('succeeded', 'failed', 'cancelled')) = (terminal_at IS NOT NULL)),
+        CHECK ((state IN ('succeeded', 'failed', 'cancelled')) = (outcome_code IS NOT NULL))
+      );
+
+      -- One live procedure per (profile, operation): a second connect attempt
+      -- while one is in flight is a conflict, not a silent twin.
+      CREATE UNIQUE INDEX idx_channel_jobs_active_operation
+        ON channel_jobs(profile_id, operation) WHERE terminal_at IS NULL;
+      CREATE INDEX idx_channel_jobs_claimable
+        ON channel_jobs(state, retry_after, created_at, job_id);
+      CREATE INDEX idx_channel_jobs_leases
+        ON channel_jobs(state, lease_expires_at);
+      CREATE INDEX idx_channel_jobs_profile
+        ON channel_jobs(profile_id, created_at DESC, job_id DESC);
+
+      -- Streamed progress ("work lines") — bounded per job by the store.
+      CREATE TABLE channel_job_work_lines (
+        job_id      TEXT    NOT NULL REFERENCES channel_jobs(job_id),
+        seq         INTEGER NOT NULL CHECK (seq > 0),
+        title       TEXT    NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+        detail      TEXT    CHECK (detail IS NULL OR length(detail) <= 1000),
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (job_id, seq)
+      );
+
+      -- Receipts: permanent, append-only records of decisions and effects.
+      -- body_json carries the consent-contract fields (scope, exclusions,
+      -- what remained unchanged, reversal route, actor, decision times).
+      CREATE TABLE channel_receipts (
+        receipt_id    TEXT    PRIMARY KEY,
+        job_id        TEXT,
+        profile_id    TEXT    NOT NULL,
+        channel_kind  TEXT,
+        channel_id    TEXT,
+        kind          TEXT    NOT NULL,
+        title         TEXT    NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+        body_json     TEXT    NOT NULL CHECK (
+          json_valid(body_json) AND json_type(body_json) = 'object'
+        ),
+        created_at    INTEGER NOT NULL,
+        CHECK (length(receipt_id) = 36),
+        CHECK (job_id IS NULL OR length(job_id) = 36),
+        CHECK (length(profile_id) BETWEEN 1 AND 128),
+        CHECK (channel_kind IS NULL OR (
+          length(channel_kind) BETWEEN 1 AND 32
+          AND channel_kind NOT GLOB '*[^a-z0-9_]*'
+        )),
+        CHECK (channel_id IS NULL OR length(channel_id) BETWEEN 1 AND 128),
+        CHECK (length(kind) BETWEEN 1 AND 64 AND kind NOT GLOB '*[^a-z0-9_]*')
+      );
+
+      CREATE INDEX idx_channel_receipts_job
+        ON channel_receipts(job_id, created_at, receipt_id);
+      CREATE INDEX idx_channel_receipts_profile
+        ON channel_receipts(profile_id, created_at DESC, receipt_id DESC);
+
+      CREATE TRIGGER channel_receipts_no_update
+      BEFORE UPDATE ON channel_receipts
+      BEGIN
+        SELECT RAISE(ABORT, 'channel receipts are append-only');
+      END;
+
+      CREATE TRIGGER channel_receipts_no_delete
+      BEFORE DELETE ON channel_receipts
+      BEGIN
+        SELECT RAISE(ABORT, 'channel receipts are append-only');
+      END;
+    `,
+  },
 ]

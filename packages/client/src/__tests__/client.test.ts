@@ -27,6 +27,32 @@ const seen: Seen[] = []
 /** SSE frames the fake gateway plays for any events request. */
 let sseScript: Array<Record<string, unknown>> = []
 
+function sourceDeletionFixture() {
+  const counts = {
+    immutableOriginals: 1,
+    uploadStaging: 0,
+    placedCandidates: 0,
+    derivedResources: 1,
+    dataViews: 0,
+    searchIndexes: 0,
+    sourceJobs: 2,
+    idempotencyReplays: 1,
+    retrievalCacheEntries: 0,
+  }
+  return {
+    jobId: '74747474-abab-4747-8747-747474747474',
+    sourceId: '51515151-abab-4515-8515-515151515151',
+    operation: 'delete_source',
+    state: 'queued',
+    sourceRevision: 5,
+    affected: counts,
+    remaining: counts,
+    createdAt: 100,
+    updatedAt: 100,
+    terminalAt: null,
+  }
+}
+
 beforeAll(async () => {
   server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = []
@@ -116,6 +142,188 @@ beforeAll(async () => {
         createdAt: 100,
         updatedAt: 100,
       }))
+      return
+    }
+    if (/^\/api\/v1\/sources\/[^/]+\/versions\/[^/]+\/(jobs|preparations)$/.test(url)) {
+      const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+      res.writeHead(202, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        jobId: '61616161-abab-4616-8616-616161616161',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        ...input,
+        implementationVersion: input.operation === 'extract_text'
+          ? 'text_extraction.v1' : 'inspect_format.v1',
+        resourceId: null,
+        state: 'queued',
+        attempt: 0,
+        maxAttempts: 3,
+        checkpoint: 0,
+        cancelRequestedAt: null,
+        outcomeCode: null,
+        createdAt: 100,
+        updatedAt: 100,
+        terminalAt: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-jobs\/[^/]+\/cancel$/.test(url)) {
+      res.writeHead(202, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        jobId: '61616161-abab-4616-8616-616161616161',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        operation: 'inspect_format',
+        implementationVersion: 'inspect_format.v1',
+        resourceId: null,
+        state: 'cancel_requested',
+        attempt: 0,
+        maxAttempts: 3,
+        checkpoint: 0,
+        cancelRequestedAt: 101,
+        outcomeCode: null,
+        createdAt: 100,
+        updatedAt: 101,
+        terminalAt: null,
+        cancellation: 'requested',
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-jobs\/[^/]+$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        jobId: '61616161-abab-4616-8616-616161616161',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        operation: 'inspect_format',
+        implementationVersion: 'inspect_format.v1',
+        resourceId: null,
+        state: 'queued',
+        attempt: 0,
+        maxAttempts: 3,
+        checkpoint: 0,
+        cancelRequestedAt: null,
+        outcomeCode: null,
+        createdAt: 100,
+        updatedAt: 100,
+        terminalAt: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-resources\/[^/]+$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        resourceId: '62626262-abab-4626-8626-626262626262',
+        jobId: '61616161-abab-4616-8616-616161616161',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        kind: 'text_extraction', operation: 'extract_text',
+        implementationVersion: 'text_extraction.v1', sourceRevision: 1,
+        sourceChecksum: `sha256:${'a'.repeat(64)}`,
+        resourceChecksum: `sha256:${'a'.repeat(64)}`,
+        byteStart: 0, byteEnd: 10, byteCount: 10,
+        classification: 'internal', authority: 'supporting_reference',
+        audiencePolicyRef: 'audience.support',
+        sensitivityPolicyRef: 'sensitivity.internal',
+        purposePolicyRef: 'purpose.support', retentionPolicyRef: 'retention.standard',
+        freshnessPolicyRef: 'freshness.monthly', coverage: 'complete',
+        freshness: 'current', createdAt: 100, staleAt: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-resources\/[^/]+\/access-grants$/.test(url)) {
+      res.writeHead(201, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        grantId: '63636363-abab-4636-8636-636363636363',
+        revision: 1, mutation: 'created', acceptedAt: 100,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-resources\/[^/]+\/content$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        resourceId: '62626262-abab-4626-8626-626262626262',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        sourceRevision: 1,
+        sourceChecksum: `sha256:${'a'.repeat(64)}`,
+        resourceChecksum: `sha256:${'a'.repeat(64)}`,
+        freshness: 'current', classification: 'internal',
+        authority: 'supporting_reference', text: 'guide',
+        byteStart: 0, byteEnd: 5, byteCount: 5, totalByteCount: 20,
+        observedAt: 101,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-resources\/[^/]+\/content\/search$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        resourceId: '62626262-abab-4626-8626-626262626262',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        sourceRevision: 1,
+        sourceChecksum: `sha256:${'a'.repeat(64)}`,
+        resourceChecksum: `sha256:${'a'.repeat(64)}`,
+        freshness: 'current', classification: 'internal',
+        authority: 'supporting_reference', status: 'complete',
+        matchMode: 'exact_utf8', truncated: false, totalByteCount: 20,
+        observedAt: 101,
+        matches: [{
+          evidenceId: `sha256:${'b'.repeat(64)}`, text: 'guide',
+          byteStart: 0, byteEnd: 5, matchByteStart: 0, matchByteEnd: 5,
+        }],
+      }))
+      return
+    }
+    if (url === '/api/v1/access-grants?limit=10&cursor=63636363-abab-4636-8636-636363636363') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ items: [], nextCursor: null }))
+      return
+    }
+    if (/^\/api\/v1\/access-grants\/[^/]+\/revoke$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        grantId: '63636363-abab-4636-8636-636363636363',
+        revision: 2, mutation: 'revoked', acceptedAt: 102,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/access-grants\/[^/]+$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        grantId: '63636363-abab-4636-8636-636363636363', revision: 1,
+        state: 'active', workspaceId: 'ws_1', profileId: 'assistant',
+        subjectId: 'person.synthetic-1', purpose: 'customer_support',
+        channel: 'web.primary', resourceKind: 'source_resource',
+        resourceId: '62626262-abab-4626-8626-626262626262',
+        operation: 'source_content.read', fieldScope: { mode: 'all' },
+        rowScope: { mode: 'all' },
+        consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+        autonomyCeiling: 'observe', effectiveAt: 100, expiresAt: 160,
+        issuedBy: 'install_owner', revisionCreatedAt: 100, revokedAt: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/sources\/[^/]+\/deletions$/.test(url)) {
+      res.writeHead(202, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(sourceDeletionFixture()))
+      return
+    }
+    if (/^\/api\/v1\/source-deletions\/[^/]+\/cancel$/.test(url)) {
+      res.writeHead(202, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        ...sourceDeletionFixture(), state: 'cancel_requested', cancellation: 'requested',
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-deletions\/[^/]+\/retry$/.test(url)) {
+      res.writeHead(202, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ ...sourceDeletionFixture(), retry: 'queued' }))
+      return
+    }
+    if (/^\/api\/v1\/source-deletions\/[^/]+$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(sourceDeletionFixture()))
       return
     }
     if (url === '/api/v1/candidates/stage') {
@@ -259,6 +467,30 @@ beforeAll(async () => {
         category: 'rate_limit',
         correlationId: 'e5f8caa8-c15a-48ea-9462-ec3cccfb0579',
         retryAfter: 12,
+      }))
+      return
+    }
+    if (url === '/refresh-conflict/api/v1/source-uploads/old-upload/complete') {
+      res.writeHead(409, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        error: 'source_upload_refresh_conflict',
+        message: 'Source changed after this upload session was created.',
+        category: 'invalid_request',
+        correlationId: 'b638e764-8391-4c51-a5dc-3df1b1cb42cb',
+        actualRevision: 7,
+        actualCurrentVersionId: '70707070-abab-4707-8707-707070707070',
+        privateObjectKey: '/private/source-canary',
+      }))
+      return
+    }
+    if (url === '/quota/api/v1/sources') {
+      res.writeHead(409, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        error: 'source_quota_exceeded',
+        message: 'Source quota does not allow this operation.',
+        category: 'invalid_request',
+        resourceClass: 'source_storage_bytes',
+        currentUsage: 999,
       }))
       return
     }
@@ -485,6 +717,38 @@ describe('request shapes', () => {
     })
   })
 
+  it('preserves only validated actual identity on a stale source refresh', async () => {
+    const refreshing = new OwnwareClient({ baseUrl: `${baseUrl}/refresh-conflict` })
+    const thrown = await refreshing.completeSourceUpload('old-upload')
+      .catch((error: unknown) => error)
+
+    expect(thrown).toBeInstanceOf(OwnwareError)
+    expect(thrown).toMatchObject({
+      status: 409,
+      code: 'source_upload_refresh_conflict',
+      actualRevision: 7,
+      actualCurrentVersionId: '70707070-abab-4707-8707-707070707070',
+    })
+    expect(thrown).not.toHaveProperty('privateObjectKey')
+    expect(String(thrown)).not.toContain('/private/source-canary')
+  })
+
+  it('preserves only the closed source quota resource class', async () => {
+    const quota = new OwnwareClient({ baseUrl: `${baseUrl}/quota`, token: 'test-token' })
+    const error = await quota.registerSource({
+      kind: 'file', label: 'Quota source', classification: 'internal',
+      authority: 'supporting_reference', audiencePolicyRef: 'audience.test',
+      sensitivityPolicyRef: 'sensitivity.test', purposePolicyRef: 'purpose.test',
+      retentionPolicyRef: 'retention.test', freshnessPolicyRef: 'freshness.test',
+      idempotencyKey: '35353535-abab-4535-8535-353535353535',
+    }).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(OwnwareError)
+    expect(error).toMatchObject({
+      code: 'source_quota_exceeded', resourceClass: 'source_storage_bytes',
+    })
+    expect(error).not.toHaveProperty('currentUsage')
+  })
+
   it('issues and revokes a delegation through the published owner SDK', async () => {
     const start = seen.length
     const ownware = client()
@@ -572,6 +836,162 @@ describe('request shapes', () => {
     expect(seen.at(-1)!.url).toBe(
       '/api/v1/sources/51515151-abab-4515-8515-515151515151',
     )
+  })
+
+  it('creates, reads, and requests cancellation of one exact source job', async () => {
+    const ownware = client()
+    const sourceId = '51515151-abab-4515-8515-515151515151'
+    const sourceVersionId = '52525252-abab-4525-8525-525252525252'
+    const job = await ownware.createSourceJob(sourceId, sourceVersionId, {
+      operation: 'inspect_format',
+      idempotencyKey: '61616161-abab-4616-8616-616161616161',
+    })
+    expect(job).toMatchObject({ sourceId, sourceVersionId, state: 'queued' })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/v1/sources/${sourceId}/versions/${sourceVersionId}/jobs`,
+      idempotencyKey: '61616161-abab-4616-8616-616161616161',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ operation: 'inspect_format' })
+
+    await expect(ownware.sourceJob(job.jobId)).resolves.toMatchObject({
+      jobId: job.jobId, state: 'queued',
+    })
+    await expect(ownware.cancelSourceJob(job.jobId)).resolves.toMatchObject({
+      jobId: job.jobId, state: 'cancel_requested', cancellation: 'requested',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({})
+  })
+
+  it('requests text preparation separately and reads its safe resource manifest', async () => {
+    const ownware = client()
+    const sourceId = '51515151-abab-4515-8515-515151515151'
+    const sourceVersionId = '52525252-abab-4525-8525-525252525252'
+    const prepared = await ownware.createSourcePreparation(sourceId, sourceVersionId, {
+      operation: 'extract_text',
+      idempotencyKey: '62626262-abab-4626-8626-626262626262',
+    })
+    expect(prepared).toMatchObject({
+      operation: 'extract_text', implementationVersion: 'text_extraction.v1', resourceId: null,
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/v1/sources/${sourceId}/versions/${sourceVersionId}/preparations`,
+      idempotencyKey: '62626262-abab-4626-8626-626262626262',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ operation: 'extract_text' })
+
+    const resourceId = '62626262-abab-4626-8626-626262626262'
+    await expect(ownware.sourceResource(resourceId)).resolves.toMatchObject({
+      resourceId, freshness: 'current', kind: 'text_extraction',
+    })
+    expect(seen.at(-1)!.url).toBe(`/api/v1/source-resources/${resourceId}`)
+  })
+
+  it('manages grants and reads protected content through exact request shapes', async () => {
+    const ownware = client()
+    const resourceId = '62626262-abab-4626-8626-626262626262'
+    const grantId = '63636363-abab-4636-8636-636363636363'
+    await expect(ownware.createAccessGrant(resourceId, {
+      subjectId: 'person.synthetic-1', purpose: 'customer_support',
+      channel: 'web.primary',
+      consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+      ttlSeconds: 60,
+      idempotencyKey: '64646464-abab-4646-8646-646464646464',
+    })).resolves.toEqual({ grantId, revision: 1, mutation: 'created', acceptedAt: 100 })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/v1/source-resources/${resourceId}/access-grants`,
+      idempotencyKey: '64646464-abab-4646-8646-646464646464',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      subjectId: 'person.synthetic-1', purpose: 'customer_support',
+      channel: 'web.primary',
+      consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+      ttlSeconds: 60,
+    })
+
+    await expect(ownware.accessGrant(grantId)).resolves.toMatchObject({
+      grantId, operation: 'source_content.read', state: 'active',
+    })
+    await expect(ownware.accessGrants({ limit: 10, cursor: grantId })).resolves.toEqual({
+      items: [], nextCursor: null,
+    })
+
+    await expect(ownware.readSourceContent(resourceId, {
+      subjectId: 'person.synthetic-1',
+      consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+      byteStart: 0, byteEnd: 5,
+    })).resolves.toMatchObject({ resourceId, text: 'guide', byteCount: 5 })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      subjectId: 'person.synthetic-1',
+      consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+      byteStart: 0, byteEnd: 5,
+    })
+
+    await expect(ownware.createAccessGrant(resourceId, {
+      operation: 'source_content.search',
+      subjectId: 'person.synthetic-1', purpose: 'customer_support',
+      channel: 'web.primary', consent: { state: 'not_required' }, ttlSeconds: 60,
+      idempotencyKey: '66666666-abab-4666-8666-666666666666',
+    })).resolves.toMatchObject({ mutation: 'created' })
+    expect(JSON.parse(seen.at(-1)!.body)).toMatchObject({
+      operation: 'source_content.search',
+    })
+
+    await expect(ownware.searchSourceContent(resourceId, {
+      subjectId: 'person.synthetic-1', consent: { state: 'not_required' },
+      query: 'guide', matchMode: 'exact_utf8', maxMatches: 10, contextBytes: 32,
+    })).resolves.toMatchObject({
+      resourceId, status: 'complete', matches: [{ text: 'guide' }],
+    })
+    expect(seen.at(-1)!.url).toBe(`/api/v1/source-resources/${resourceId}/content/search`)
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      subjectId: 'person.synthetic-1', consent: { state: 'not_required' },
+      query: 'guide', matchMode: 'exact_utf8', maxMatches: 10, contextBytes: 32,
+    })
+
+    await expect(ownware.revokeAccessGrant(grantId, {
+      expectedRevision: 1,
+      idempotencyKey: '65656565-abab-4656-8656-656565656565',
+    })).resolves.toEqual({ grantId, revision: 2, mutation: 'revoked', acceptedAt: 102 })
+    expect(seen.at(-1)).toMatchObject({
+      url: `/api/v1/access-grants/${grantId}/revoke`,
+      idempotencyKey: '65656565-abab-4656-8656-656565656565',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ expectedRevision: 1 })
+  })
+
+  it('creates, reads, cancels, and retries source deletion through exact request shapes', async () => {
+    const ownware = client()
+    const created = await ownware.createSourceDeletion('source/id', {
+      expectedRevision: 4,
+      idempotencyKey: '74747474-abab-4747-8747-747474747474',
+    })
+    expect(created).toMatchObject({ operation: 'delete_source', state: 'queued' })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST',
+      url: '/api/v1/sources/source%2Fid/deletions',
+      idempotencyKey: '74747474-abab-4747-8747-747474747474',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ expectedRevision: 4 })
+
+    await expect(ownware.sourceDeletion('job/id')).resolves.toMatchObject({
+      jobId: created.jobId, state: 'queued',
+    })
+    expect(seen.at(-1)!.url).toBe('/api/v1/source-deletions/job%2Fid')
+
+    await expect(ownware.cancelSourceDeletion('job/id')).resolves.toMatchObject({
+      state: 'cancel_requested', cancellation: 'requested',
+    })
+    expect(seen.at(-1)!.url).toBe('/api/v1/source-deletions/job%2Fid/cancel')
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({})
+
+    await expect(ownware.retrySourceDeletion('job/id')).resolves.toMatchObject({
+      state: 'queued', retry: 'queued',
+    })
+    expect(seen.at(-1)!.url).toBe('/api/v1/source-deletions/job%2Fid/retry')
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({})
   })
 
   it('stages exact candidate bytes through the published SDK', async () => {

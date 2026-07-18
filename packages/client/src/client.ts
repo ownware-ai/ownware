@@ -187,6 +187,38 @@ export interface PublicGatewayLimits {
     readonly sessionTtlSeconds: number
     readonly supportedMediaTypes: readonly string[]
   }
+  readonly sourceInspection?: {
+    readonly maxBytes: number
+    readonly perAttemptTimeoutMs: number
+    readonly maxAttempts: number
+  }
+  readonly sourcePreparation?: {
+    readonly maxBytes: number
+    readonly perAttemptTimeoutMs: number
+    readonly maxAttempts: number
+    readonly maxResourcesPerJob: number
+  }
+  readonly accessGrants?: {
+    readonly minTtlSeconds: number
+    readonly maxTtlSeconds: number
+    readonly maxActivePerWorkspaceProfile: number
+    readonly maxPageSize: number
+  }
+  readonly sourceContent?: {
+    readonly maxRangeBytes: number
+  }
+  readonly sourceSearch?: {
+    readonly maxScanBytes: number
+    readonly maxQueryBytes: number
+    readonly maxMatches: number
+    readonly maxContextBytes: number
+    readonly perRequestTimeoutMs: number
+    readonly matchModes: readonly SourceContentSearchMatchMode[]
+  }
+  readonly sourceQuota?: {
+    readonly workspace: SourceQuotaCeilings
+    readonly profile: SourceQuotaCeilings
+  }
   readonly delegationDefaultTtlSeconds: number
   readonly delegationMaxTtlSeconds: number
   readonly idempotencyRetentionSeconds: number
@@ -197,6 +229,21 @@ export interface PublicGatewayLimits {
     readonly runStarts: number
   }
 }
+
+export interface SourceQuotaCeilings {
+  readonly maxSourceRegistrations: number
+  readonly maxRetainedAndReservedBytes: number
+  readonly maxActiveUploadSessions: number
+  readonly maxNonterminalJobs: number
+  readonly maxDerivedResources: number
+}
+
+export type SourceQuotaResourceClass =
+  | 'source_registrations'
+  | 'source_storage_bytes'
+  | 'source_upload_sessions'
+  | 'source_jobs'
+  | 'source_derived_resources'
 
 export interface CapabilityRequirements {
   /** Contract major required by the caller. Defaults to the SDK's v1 contract. */
@@ -487,12 +534,253 @@ export interface SourceVersionManifest {
   readonly checksum: string
   readonly verifiedMediaType: 'text/plain' | 'application/pdf'
   readonly byteCount: number
-  readonly inspection: 'not_started'
+  readonly inspection: SourceHealth['inspection']
   readonly createdAt: number
 }
 
-export interface SourceUploadCompletionResult extends SourceVersionManifest {
+export interface SourceUploadCompletionResult extends Omit<SourceVersionManifest, 'inspection'> {
+  readonly inspection: 'not_started'
   readonly replayed: boolean
+}
+
+export type SourceJobOperation = 'inspect_format' | 'extract_text'
+export type SourceJobState =
+  | 'queued' | 'running' | 'waiting_for_resource' | 'cancel_requested'
+  | 'succeeded' | 'partial' | 'failed' | 'cancelled'
+export type SourceJobOutcomeCode =
+  | 'attempts_exhausted' | 'cancelled' | 'inspection_complete'
+  | 'inspection_timeout' | 'inspection_unavailable' | 'source_format_invalid'
+  | 'source_object_mismatch' | 'source_object_missing'
+  | 'source_object_oversized' | 'source_storage_inconsistent'
+  | 'preparation_complete' | 'preparation_timeout' | 'preparation_unavailable'
+
+export interface CreateSourceJobInput {
+  readonly operation: 'inspect_format'
+  readonly idempotencyKey: string
+}
+
+export interface CreateSourcePreparationInput {
+  readonly operation: 'extract_text'
+  readonly idempotencyKey: string
+}
+
+export interface SourceJob {
+  readonly jobId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly operation: SourceJobOperation
+  readonly implementationVersion: 'inspect_format.v1' | 'text_extraction.v1'
+  readonly resourceId: string | null
+  readonly state: SourceJobState
+  readonly attempt: number
+  readonly maxAttempts: number
+  readonly checkpoint: number
+  readonly cancelRequestedAt: number | null
+  readonly outcomeCode: SourceJobOutcomeCode | null
+  readonly createdAt: number
+  readonly updatedAt: number
+  readonly terminalAt: number | null
+}
+
+export interface SourceJobCancellationResult extends SourceJob {
+  readonly cancellation: 'requested' | 'already_requested'
+}
+
+export interface SourceResourceManifest {
+  readonly resourceId: string
+  readonly jobId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly kind: 'text_extraction'
+  readonly operation: 'extract_text'
+  readonly implementationVersion: 'text_extraction.v1'
+  readonly sourceRevision: number
+  readonly sourceChecksum: string
+  readonly resourceChecksum: string
+  readonly byteStart: 0
+  readonly byteEnd: number
+  readonly byteCount: number
+  readonly classification: SourceClassification
+  readonly authority: Exclude<SourceAuthority, 'excluded'>
+  readonly audiencePolicyRef: string
+  readonly sensitivityPolicyRef: string
+  readonly purposePolicyRef: string
+  readonly retentionPolicyRef: string
+  readonly freshnessPolicyRef: string
+  readonly coverage: 'complete'
+  readonly freshness: 'current' | 'stale'
+  readonly createdAt: number
+  readonly staleAt: number | null
+}
+
+export type AccessConsent =
+  | { readonly state: 'not_required' }
+  | { readonly state: 'recorded'; readonly evidenceId: string }
+
+export interface CreateAccessGrantInput {
+  readonly operation?: 'source_content.read' | 'source_content.search'
+  readonly subjectId: string
+  readonly purpose: string
+  readonly channel: string | null
+  readonly consent: AccessConsent
+  readonly ttlSeconds: number
+  /** UUID reused only when retrying this exact logical grant creation. */
+  readonly idempotencyKey: string
+}
+
+export interface AccessGrantMutationReceipt {
+  readonly grantId: string
+  readonly revision: number
+  readonly mutation: 'created' | 'revoked'
+  readonly acceptedAt: number
+}
+
+export interface AccessGrant {
+  readonly grantId: string
+  readonly revision: number
+  readonly state: 'active' | 'revoked'
+  readonly workspaceId: string
+  readonly profileId: string
+  readonly subjectId: string
+  readonly purpose: string
+  readonly channel: string | null
+  readonly resourceKind: 'source_resource'
+  readonly resourceId: string
+  readonly operation: 'source_content.read' | 'source_content.search'
+  readonly fieldScope: { readonly mode: 'all' }
+  readonly rowScope: { readonly mode: 'all' }
+  readonly consent: AccessConsent
+  readonly autonomyCeiling: 'observe'
+  readonly effectiveAt: number
+  readonly expiresAt: number
+  readonly issuedBy: 'install_owner'
+  readonly revisionCreatedAt: number
+  readonly revokedAt: number | null
+}
+
+export interface CurrentAccessGrant extends AccessGrant {
+  readonly lifecycle: 'scheduled' | 'effective' | 'expired' | 'revoked'
+}
+
+export interface AccessGrantListOptions {
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+export interface AccessGrantList {
+  readonly items: readonly CurrentAccessGrant[]
+  readonly nextCursor: string | null
+}
+
+export interface RevokeAccessGrantInput {
+  readonly expectedRevision: number
+  /** UUID reused only when retrying this exact logical revocation. */
+  readonly idempotencyKey: string
+}
+
+export interface ReadSourceContentInput {
+  readonly subjectId: string
+  readonly consent: AccessConsent
+  readonly byteStart: number
+  readonly byteEnd: number
+}
+
+export interface ProtectedSourceContent {
+  readonly resourceId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly sourceRevision: number
+  readonly sourceChecksum: string
+  readonly resourceChecksum: string
+  readonly freshness: 'current'
+  readonly classification: SourceClassification
+  readonly authority: Exclude<SourceAuthority, 'excluded'>
+  readonly text: string
+  readonly byteStart: number
+  readonly byteEnd: number
+  readonly byteCount: number
+  readonly totalByteCount: number
+  readonly observedAt: number
+}
+
+export type SourceContentSearchMatchMode =
+  | 'exact_utf8'
+  | 'ascii_case_insensitive'
+
+export interface SearchSourceContentInput {
+  readonly subjectId: string
+  readonly consent: AccessConsent
+  readonly query: string
+  readonly matchMode: SourceContentSearchMatchMode
+  readonly maxMatches: number
+  readonly contextBytes: number
+}
+
+export interface ProtectedSourceSearchMatch {
+  readonly evidenceId: string
+  readonly text: string
+  readonly byteStart: number
+  readonly byteEnd: number
+  readonly matchByteStart: number
+  readonly matchByteEnd: number
+}
+
+export interface ProtectedSourceSearchResult {
+  readonly resourceId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly sourceRevision: number
+  readonly sourceChecksum: string
+  readonly resourceChecksum: string
+  readonly freshness: 'current'
+  readonly classification: SourceClassification
+  readonly authority: Exclude<SourceAuthority, 'excluded'>
+  readonly status: 'complete' | 'no_matches'
+  readonly matchMode: SourceContentSearchMatchMode
+  readonly matches: readonly ProtectedSourceSearchMatch[]
+  readonly truncated: boolean
+  readonly totalByteCount: number
+  readonly observedAt: number
+}
+
+export interface CreateSourceDeletionInput {
+  readonly expectedRevision: number
+  readonly idempotencyKey: string
+}
+
+export interface SourceDeletionCounts {
+  readonly immutableOriginals: number
+  readonly uploadStaging: number
+  readonly placedCandidates: number
+  readonly derivedResources: number
+  readonly dataViews: number
+  readonly searchIndexes: number
+  readonly sourceJobs: number
+  readonly idempotencyReplays: number
+  readonly retrievalCacheEntries: number
+}
+
+export interface SourceDeletion {
+  readonly jobId: string
+  readonly sourceId: string
+  readonly operation: 'delete_source'
+  readonly state:
+    | 'queued' | 'deleting' | 'cancel_requested' | 'cancelled'
+    | 'partially_deleted' | 'deleted'
+  readonly sourceRevision: number
+  readonly affected: SourceDeletionCounts
+  readonly remaining: SourceDeletionCounts
+  readonly createdAt: number
+  readonly updatedAt: number
+  readonly terminalAt: number | null
+}
+
+export interface SourceDeletionCancellationResult extends SourceDeletion {
+  readonly cancellation: 'requested' | 'already_requested'
+}
+
+export interface SourceDeletionRetryResult extends SourceDeletion {
+  readonly retry: 'queued'
 }
 
 /** One entry from GET /api/v1/profiles — a pickable agent. */
@@ -529,6 +817,44 @@ export interface GatewayClient {
   ): Promise<SourceUploadChunkResult>
   completeSourceUpload(uploadId: string): Promise<SourceUploadCompletionResult>
   sourceVersion(sourceId: string, sourceVersionId: string): Promise<SourceVersionManifest>
+  createSourceJob(
+    sourceId: string,
+    sourceVersionId: string,
+    input: CreateSourceJobInput,
+  ): Promise<SourceJob>
+  createSourcePreparation(
+    sourceId: string,
+    sourceVersionId: string,
+    input: CreateSourcePreparationInput,
+  ): Promise<SourceJob>
+  sourceJob(jobId: string): Promise<SourceJob>
+  sourceResource(resourceId: string): Promise<SourceResourceManifest>
+  createAccessGrant(
+    resourceId: string,
+    input: CreateAccessGrantInput,
+  ): Promise<AccessGrantMutationReceipt>
+  accessGrant(grantId: string): Promise<AccessGrant>
+  accessGrants(options?: AccessGrantListOptions): Promise<AccessGrantList>
+  revokeAccessGrant(
+    grantId: string,
+    input: RevokeAccessGrantInput,
+  ): Promise<AccessGrantMutationReceipt>
+  readSourceContent(
+    resourceId: string,
+    input: ReadSourceContentInput,
+  ): Promise<ProtectedSourceContent>
+  searchSourceContent(
+    resourceId: string,
+    input: SearchSourceContentInput,
+  ): Promise<ProtectedSourceSearchResult>
+  cancelSourceJob(jobId: string): Promise<SourceJobCancellationResult>
+  createSourceDeletion(
+    sourceId: string,
+    input: CreateSourceDeletionInput,
+  ): Promise<SourceDeletion>
+  sourceDeletion(jobId: string): Promise<SourceDeletion>
+  cancelSourceDeletion(jobId: string): Promise<SourceDeletionCancellationResult>
+  retrySourceDeletion(jobId: string): Promise<SourceDeletionRetryResult>
   validateCandidate(input: ValidateCandidateInput): Promise<CandidateValidationResult>
   stageCandidate(input: StageCandidateInput): Promise<CandidateStageResult>
   activateCandidate(input: ActivateCandidateInput): Promise<CandidateActivationResult>
@@ -571,6 +897,9 @@ export class OwnwareError extends Error {
   readonly category: string
   readonly correlationId: string | undefined
   readonly retryAfterSeconds: number | undefined
+  readonly actualRevision: number | undefined
+  readonly actualCurrentVersionId: string | null | undefined
+  readonly resourceClass: SourceQuotaResourceClass | undefined
 
   constructor(input: {
     readonly message: string
@@ -579,6 +908,9 @@ export class OwnwareError extends Error {
     readonly category: string
     readonly correlationId?: string
     readonly retryAfterSeconds?: number
+    readonly actualRevision?: number
+    readonly actualCurrentVersionId?: string | null
+    readonly resourceClass?: SourceQuotaResourceClass
   }) {
     super(input.message)
     this.name = 'OwnwareError'
@@ -587,6 +919,9 @@ export class OwnwareError extends Error {
     this.category = input.category
     this.correlationId = input.correlationId
     this.retryAfterSeconds = input.retryAfterSeconds
+    this.actualRevision = input.actualRevision
+    this.actualCurrentVersionId = input.actualCurrentVersionId
+    this.resourceClass = input.resourceClass
   }
 }
 
@@ -725,6 +1060,224 @@ export class OwnwareClient implements GatewayClient {
     )
     if (!response.ok) throw await errorFromResponse(response)
     return (await response.json()) as SourceVersionManifest
+  }
+
+  /** Enqueue the allowlisted inspection operation for one exact immutable version. */
+  async createSourceJob(
+    sourceId: string,
+    sourceVersionId: string,
+    input: CreateSourceJobInput,
+  ): Promise<SourceJob> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/jobs`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ operation: input.operation }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceJob
+  }
+
+  /** Request the fixed bounded text extraction operation for one inspected current version. */
+  async createSourcePreparation(
+    sourceId: string,
+    sourceVersionId: string,
+    input: CreateSourcePreparationInput,
+  ): Promise<SourceJob> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/preparations`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ operation: input.operation }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceJob
+  }
+
+  /** Read one safe source-job projection in the bearer scope. */
+  async sourceJob(jobId: string): Promise<SourceJob> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-jobs/${encodeURIComponent(jobId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceJob
+  }
+
+  /** Read immutable lineage and freshness metadata; source content is not returned. */
+  async sourceResource(resourceId: string): Promise<SourceResourceManifest> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-resources/${encodeURIComponent(resourceId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceResourceManifest
+  }
+
+  /** Owner-only: grant one subject bounded observation of one current text resource. */
+  async createAccessGrant(
+    resourceId: string,
+    input: CreateAccessGrantInput,
+  ): Promise<AccessGrantMutationReceipt> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-resources/${encodeURIComponent(resourceId)}/access-grants`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...(input.operation === undefined ? {} : { operation: input.operation }),
+          subjectId: input.subjectId,
+          purpose: input.purpose,
+          channel: input.channel,
+          consent: input.consent,
+          ttlSeconds: input.ttlSeconds,
+        }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as AccessGrantMutationReceipt
+  }
+
+  /** Owner-only: inspect one current immutable grant revision. */
+  async accessGrant(grantId: string): Promise<AccessGrant> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/access-grants/${encodeURIComponent(grantId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as AccessGrant
+  }
+
+  /** Owner-only: list current grant revisions with explicit lifecycle truth. */
+  async accessGrants(options: AccessGrantListOptions = {}): Promise<AccessGrantList> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size > 0 ? `?${query.toString()}` : ''
+    const response = await this.doFetch(`${this.base}/api/v1/access-grants${suffix}`, {
+      headers: this.headers(false),
+    })
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as AccessGrantList
+  }
+
+  /** Owner-only: revoke exactly the revision the caller inspected. */
+  async revokeAccessGrant(
+    grantId: string,
+    input: RevokeAccessGrantInput,
+  ): Promise<AccessGrantMutationReceipt> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/access-grants/${encodeURIComponent(grantId)}/revoke`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ expectedRevision: input.expectedRevision }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as AccessGrantMutationReceipt
+  }
+
+  /** Delegated-only: read one UTF-8 byte range after live grant evaluation. */
+  async readSourceContent(
+    resourceId: string,
+    input: ReadSourceContentInput,
+  ): Promise<ProtectedSourceContent> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-resources/${encodeURIComponent(resourceId)}/content`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify(input),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProtectedSourceContent
+  }
+
+  /** Delegated-only: search one current prepared UTF-8 resource after live grant evaluation. */
+  async searchSourceContent(
+    resourceId: string,
+    input: SearchSourceContentInput,
+  ): Promise<ProtectedSourceSearchResult> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-resources/${encodeURIComponent(resourceId)}/content/search`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify(input),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProtectedSourceSearchResult
+  }
+
+  /** Request cancellation without claiming that in-flight work has stopped. */
+  async cancelSourceJob(jobId: string): Promise<SourceJobCancellationResult> {
+    const response = await this.post(
+      `/api/v1/source-jobs/${encodeURIComponent(jobId)}/cancel`,
+      {},
+    )
+    return (await response.json()) as SourceJobCancellationResult
+  }
+
+  /** Freeze one exact source revision and enqueue its verified deletion. */
+  async createSourceDeletion(
+    sourceId: string,
+    input: CreateSourceDeletionInput,
+  ): Promise<SourceDeletion> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/sources/${encodeURIComponent(sourceId)}/deletions`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ expectedRevision: input.expectedRevision }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceDeletion
+  }
+
+  /** Read safe deletion progress without artifact identities or storage detail. */
+  async sourceDeletion(jobId: string): Promise<SourceDeletion> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-deletions/${encodeURIComponent(jobId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceDeletion
+  }
+
+  /** Request cancellation before destructive work begins. */
+  async cancelSourceDeletion(jobId: string): Promise<SourceDeletionCancellationResult> {
+    const response = await this.post(
+      `/api/v1/source-deletions/${encodeURIComponent(jobId)}/cancel`,
+      {},
+    )
+    return (await response.json()) as SourceDeletionCancellationResult
+  }
+
+  /** Requeue only the remaining inventory of a partial deletion. */
+  async retrySourceDeletion(jobId: string): Promise<SourceDeletionRetryResult> {
+    const response = await this.post(
+      `/api/v1/source-deletions/${encodeURIComponent(jobId)}/retry`,
+      {},
+    )
+    return (await response.json()) as SourceDeletionRetryResult
   }
 
   /** Validate bounded portable Agent Kit bytes without installing or activating them. */
@@ -1118,6 +1671,25 @@ async function errorFromResponse(res: Response): Promise<OwnwareError> {
   const retryAfterHeader = retryAfterHeaderRaw !== null ? Number.parseInt(retryAfterHeaderRaw, 10) : NaN
   const retryAfterSeconds = retryAfterBody ??
     (Number.isFinite(retryAfterHeader) && retryAfterHeader >= 0 ? retryAfterHeader : undefined)
+  const actualRevision = code === 'source_upload_refresh_conflict' &&
+      typeof body['actualRevision'] === 'number' && Number.isSafeInteger(body['actualRevision']) &&
+      body['actualRevision'] > 0
+    ? body['actualRevision']
+    : undefined
+  const rawActualCurrentVersionId = body['actualCurrentVersionId']
+  const actualCurrentVersionId = code === 'source_upload_refresh_conflict' &&
+      (rawActualCurrentVersionId === null ||
+        (typeof rawActualCurrentVersionId === 'string' && UUID.test(rawActualCurrentVersionId)))
+    ? rawActualCurrentVersionId
+    : undefined
+  const sourceQuotaResourceClasses: readonly SourceQuotaResourceClass[] = [
+    'source_registrations', 'source_storage_bytes', 'source_upload_sessions',
+    'source_jobs', 'source_derived_resources',
+  ]
+  const resourceClass = code === 'source_quota_exceeded' &&
+      sourceQuotaResourceClasses.includes(body['resourceClass'] as SourceQuotaResourceClass)
+    ? body['resourceClass'] as SourceQuotaResourceClass
+    : undefined
 
   return new OwnwareError({
     message: isCommonEnvelope ? message : 'Ownware request failed',
@@ -1128,5 +1700,9 @@ async function errorFromResponse(res: Response): Promise<OwnwareError> {
       ? { correlationId: bodyCorrelation ?? headerCorrelation }
       : {}),
     ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+    ...(actualRevision !== undefined && actualCurrentVersionId !== undefined
+      ? { actualRevision, actualCurrentVersionId }
+      : {}),
+    ...(resourceClass !== undefined ? { resourceClass } : {}),
   })
 }

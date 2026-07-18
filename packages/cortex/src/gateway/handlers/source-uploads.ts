@@ -12,9 +12,12 @@ import {
   SOURCE_UPLOAD_MAX_CHUNK_BYTES,
   SOURCE_UPLOAD_MAX_CHUNKS,
   SOURCE_UPLOAD_MAX_BYTES,
+  SourceUploadRefreshConflictError,
+  SourceUploadTargetNotFoundError,
   type SourceUploadStore,
 } from '../source-upload-store.js'
 import { SourceByteStore, SourceByteStoreError } from '../source-byte-store.js'
+import { SourceQuotaExceededError } from '../source-quota-policy.js'
 
 const SAFE_FILENAME = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029/\\]+$/u
 
@@ -95,7 +98,19 @@ export function createSourceUploadSessionHandler(
       idempotency.complete({ ...key, statusCode: 201, result })
       sendJSON(res, 201, result)
     } catch (error) {
+      if (error instanceof SourceQuotaExceededError) {
+        idempotency.abandon(key)
+        sendError(res, 409, 'Source quota does not allow this operation.',
+          'source_quota_exceeded', 'invalid_request', {
+            resourceClass: error.resourceClass,
+          })
+        return
+      }
       idempotency.markIndeterminate(key)
+      if (error instanceof SourceUploadTargetNotFoundError) {
+        sendError(res, 404, 'Source not found.', 'source_not_found', 'not_found')
+        return
+      }
       throw error
     }
   }
@@ -143,7 +158,11 @@ export function createWriteSourceUploadChunkHandler(
       return
     }
     const requestedOffset = Number(rawOffset)
-    const received = await bytes.receive(req, SOURCE_UPLOAD_MAX_CHUNK_BYTES).catch((error) => {
+    const received = await bytes.receive(
+      req,
+      SOURCE_UPLOAD_MAX_CHUNK_BYTES,
+      uploadId,
+    ).catch((error) => {
       if (error instanceof SourceByteStoreError && error.code === 'chunk_too_large') {
         sendError(res, 413, 'Source upload chunk exceeds the maximum size.',
           'source_upload_chunk_too_large', 'invalid_request',
@@ -246,6 +265,21 @@ export function createCompleteSourceUploadHandler(
       if (session.state === 'completed') {
         return { kind: 'replay', version: uploads.getCompletedVersion(uploadId)! } as const
       }
+      if (session.state === 'failed' && session.code === 'source_upload_refresh_conflict') {
+        const actual = uploads.getCurrentSourceIdentity(session.sourceId)
+        if (actual) {
+          return {
+            kind: 'refresh_conflict',
+            error: new SourceUploadRefreshConflictError(
+              actual.revision,
+              actual.currentVersionId,
+            ),
+          } as const
+        }
+      }
+      if (session.state === 'failed' && session.code === 'source_upload_cleanup_failed') {
+        return { kind: 'cleanup_failed' } as const
+      }
       if (session.state !== 'open' && session.state !== 'completing') {
         return { kind: 'closed', session } as const
       }
@@ -272,13 +306,26 @@ export function createCompleteSourceUploadHandler(
           await bytes.place(uploadId, session.sourceId, versionId)
           inspected = await bytes.inspectPlaced(objectKey, session.declaredMediaType)
         }
-        const version = uploads.finishCompletion(uploadId, {
-          versionId: versionId!,
-          checksum: inspected.checksum,
-          verifiedMediaType: inspected.verifiedMediaType,
-          byteCount: inspected.byteCount,
-          objectKey,
-        })
+        let version
+        try {
+          version = uploads.finishCompletion(uploadId, {
+            versionId: versionId!,
+            checksum: inspected.checksum,
+            verifiedMediaType: inspected.verifiedMediaType,
+            byteCount: inspected.byteCount,
+            objectKey,
+          })
+        } catch (error) {
+          if (!(error instanceof SourceUploadRefreshConflictError)) throw error
+          try {
+            await bytes.discardPlaced(objectKey)
+          } catch {
+            uploads.markFailed(uploadId, 'source_upload_cleanup_failed')
+            return { kind: 'cleanup_failed' } as const
+          }
+          uploads.markFailedAfterVerifiedCleanup(uploadId, 'source_upload_refresh_conflict')
+          return { kind: 'refresh_conflict', error } as const
+        }
         return { kind: 'completed', version } as const
       } catch (error) {
         if (error instanceof SourceByteStoreError) {
@@ -301,6 +348,15 @@ export function createCompleteSourceUploadHandler(
     } else if (result.kind === 'verification_failed') {
       sendError(res, 422, 'Source upload failed checksum or format verification.',
         'source_upload_verification_failed', 'invalid_request')
+    } else if (result.kind === 'refresh_conflict') {
+      sendError(res, 409, 'Source changed after this upload session was created.',
+        'source_upload_refresh_conflict', 'invalid_request', {
+          actualRevision: result.error.actualRevision,
+          actualCurrentVersionId: result.error.actualCurrentVersionId,
+        })
+    } else if (result.kind === 'cleanup_failed') {
+      sendError(res, 500, 'Source upload cleanup could not be verified.',
+        'source_upload_cleanup_failed', 'unknown')
     } else {
       sendError(res, 409, 'Source upload is not open for completion.',
         result.session.state === 'expired' ? 'source_upload_expired' : 'source_upload_closed',

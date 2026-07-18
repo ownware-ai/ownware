@@ -22,8 +22,35 @@ import {
   SOURCE_UPLOAD_MAX_CHUNKS,
   SOURCE_UPLOAD_TTL_MS,
 } from '../source-upload-store.js'
+import { SOURCE_JOB_MAX_ATTEMPTS } from '../source-job-store.js'
+import {
+  SOURCE_INSPECTION_MAX_BYTES,
+  SOURCE_INSPECTION_TIMEOUT_MS,
+  SOURCE_PREPARATION_MAX_BYTES,
+  SOURCE_PREPARATION_MAX_RESOURCES,
+  SOURCE_PREPARATION_TIMEOUT_MS,
+} from '../source-job-worker.js'
+import type { SourceQuotaLimits } from '../source-quota-policy.js'
+import {
+  ACCESS_GRANT_MAX_ACTIVE_PER_SCOPE,
+  ACCESS_GRANT_MAX_TTL_SECONDS,
+  ACCESS_GRANT_MIN_TTL_SECONDS,
+} from '../access-grant-store.js'
+import {
+  SOURCE_UTF8_MAX_FULL_BYTES,
+  SOURCE_UTF8_RANGE_MAX_BYTES,
+  SOURCE_UTF8_SEARCH_MAX_CONTEXT_BYTES,
+  SOURCE_UTF8_SEARCH_MAX_MATCHES,
+  SOURCE_UTF8_SEARCH_MAX_QUERY_BYTES,
+  SOURCE_UTF8_SEARCH_TIMEOUT_MS,
+} from '../source-byte-store.js'
+import { ACCESS_GRANT_LIST_MAX_LIMIT } from './access-grants.js'
 
 const PUBLIC_CAPABILITIES = [
+  { id: 'access_grants.create', version: 2 },
+  { id: 'access_grants.list', version: 1 },
+  { id: 'access_grants.read', version: 1 },
+  { id: 'access_grants.revoke', version: 1 },
   { id: 'candidates.activate', version: 1 },
   { id: 'candidates.delete', version: 1 },
   { id: 'candidates.list', version: 1 },
@@ -31,7 +58,7 @@ const PUBLIC_CAPABILITIES = [
   { id: 'candidates.rollback', version: 1 },
   { id: 'candidates.stage', version: 1 },
   { id: 'candidates.validate', version: 1 },
-  { id: 'gateway.capabilities', version: 2 },
+  { id: 'gateway.capabilities', version: 5 },
   { id: 'gateway.health', version: 1 },
   { id: 'models.list', version: 1 },
   { id: 'principals.issue', version: 1 },
@@ -46,24 +73,36 @@ const PUBLIC_CAPABILITIES = [
   { id: 'runs.resume', version: 2 },
   { id: 'runs.snapshot', version: 2 },
   { id: 'runs.start', version: 4 },
-  { id: 'source_uploads.complete', version: 1 },
-  { id: 'source_uploads.create', version: 1 },
+  { id: 'source_deletions.cancel', version: 1 },
+  { id: 'source_deletions.create', version: 1 },
+  { id: 'source_deletions.read', version: 1 },
+  { id: 'source_deletions.retry', version: 1 },
+  { id: 'source_uploads.complete', version: 2 },
+  { id: 'source_uploads.create', version: 2 },
   { id: 'source_uploads.write', version: 1 },
+  { id: 'source_jobs.cancel', version: 1 },
+  { id: 'source_jobs.create', version: 2 },
+  { id: 'source_jobs.read', version: 2 },
+  { id: 'source_preparations.create', version: 2 },
+  { id: 'source_content.read', version: 1 },
+  { id: 'source_content.search', version: 1 },
+  { id: 'source_resources.read', version: 1 },
   { id: 'source_versions.read', version: 1 },
   { id: 'sources.list', version: 1 },
   { id: 'sources.read', version: 1 },
-  { id: 'sources.register', version: 1 },
+  { id: 'sources.register', version: 2 },
 ] as const
 
 export function createCapabilitiesHandler(
   rateLimit: () => RateLimitDescriptor,
+  sourceQuota: SourceQuotaLimits,
 ): (_req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (_req, res): Promise<void> => {
     sendJSON(res, 200, {
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.17.0',
+        revision: '0.24.0',
       },
       capabilities: PUBLIC_CAPABILITIES,
       limits: {
@@ -87,6 +126,33 @@ export function createCapabilitiesHandler(
           sessionTtlSeconds: SOURCE_UPLOAD_TTL_MS / 1000,
           supportedMediaTypes: ['text/plain', 'application/pdf'],
         },
+        sourceInspection: {
+          maxBytes: SOURCE_INSPECTION_MAX_BYTES,
+          perAttemptTimeoutMs: SOURCE_INSPECTION_TIMEOUT_MS,
+          maxAttempts: SOURCE_JOB_MAX_ATTEMPTS,
+        },
+        sourcePreparation: {
+          maxBytes: SOURCE_PREPARATION_MAX_BYTES,
+          perAttemptTimeoutMs: SOURCE_PREPARATION_TIMEOUT_MS,
+          maxAttempts: SOURCE_JOB_MAX_ATTEMPTS,
+          maxResourcesPerJob: SOURCE_PREPARATION_MAX_RESOURCES,
+        },
+        accessGrants: {
+          minTtlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,
+          maxTtlSeconds: ACCESS_GRANT_MAX_TTL_SECONDS,
+          maxActivePerWorkspaceProfile: ACCESS_GRANT_MAX_ACTIVE_PER_SCOPE,
+          maxPageSize: ACCESS_GRANT_LIST_MAX_LIMIT,
+        },
+        sourceContent: { maxRangeBytes: SOURCE_UTF8_RANGE_MAX_BYTES },
+        sourceSearch: {
+          maxScanBytes: SOURCE_UTF8_MAX_FULL_BYTES,
+          maxQueryBytes: SOURCE_UTF8_SEARCH_MAX_QUERY_BYTES,
+          maxMatches: SOURCE_UTF8_SEARCH_MAX_MATCHES,
+          maxContextBytes: SOURCE_UTF8_SEARCH_MAX_CONTEXT_BYTES,
+          perRequestTimeoutMs: SOURCE_UTF8_SEARCH_TIMEOUT_MS,
+          matchModes: ['exact_utf8', 'ascii_case_insensitive'],
+        },
+        sourceQuota,
         delegationDefaultTtlSeconds: DEFAULT_TTL_SECONDS,
         delegationMaxTtlSeconds: MAX_TTL_SECONDS,
         idempotencyRetentionSeconds: IDEMPOTENCY_RETENTION_MS / 1000,
