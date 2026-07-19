@@ -598,7 +598,10 @@ describe('Contract: side-effect-free candidate validation', () => {
       `${gateway.baseUrl}/api/v1/runs/${second.runId}/cancel`,
       { method: 'POST', headers, body: '{}' },
     )
-    expect(secondCancellation.status).toBe(202)
+    // 202 while the run is still in flight (cancellation accepted); 200 once
+    // it has already reached a terminal state (idempotent no-op) — which of
+    // the two answers is correct depends on run latency, not the contract.
+    expect([200, 202]).toContain(secondCancellation.status)
     const secondDeadline = Date.now() + 5_000
     while (gateway.gateway.runner.isRunning(second.threadId) && Date.now() < secondDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 20))

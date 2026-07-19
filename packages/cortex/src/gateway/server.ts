@@ -150,6 +150,7 @@ import { recoverInterruptedProfileUpdates } from '../profile/update/index.js'
 import { createPrincipalHandlers } from './handlers/principals.js'
 import { createAccessGrantHandlers } from './handlers/access-grants.js'
 import { createConnectionInventoryHandler } from './handlers/connection-inventory.js'
+import { createConnectionLifecycleHandlers } from './handlers/connection-lifecycle.js'
 import {
   createReadSourceContentHandler,
   createSearchSourceContentHandler,
@@ -2316,6 +2317,14 @@ export class OwnwareGateway {
         authEnabled: !this.authDisabled,
       }),
       { operation: 'connections.list' },
+    )
+    const connectionLifecycle = createConnectionLifecycleHandlers({
+      authEnabled: !this.authDisabled,
+    })
+    this.router.post(
+      '/api/v1/connections',
+      connectionLifecycle.start,
+      { operation: 'connections.start' },
     )
     this.router.post('/api/v1/auth/delegations', principals.issue)
     this.router.post('/api/v1/auth/delegations/:tokenId/revoke', principals.revoke)
