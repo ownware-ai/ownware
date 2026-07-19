@@ -14,6 +14,7 @@ const IssueSchema = z.object({
   delegateId: z.string().min(1).max(128),
   workspaceId: z.string().min(1).max(128),
   profileId: z.string().min(1).max(128),
+  subjectId: z.string().min(1).max(128).optional(),
   purpose: z.string().min(1).max(64),
   channel: z.string().min(1).max(64).optional(),
   operations: z.array(z.string().min(1).max(64)).min(1).max(32),

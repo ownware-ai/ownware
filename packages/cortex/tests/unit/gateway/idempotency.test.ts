@@ -120,6 +120,20 @@ describe('RunIdempotencyStore', () => {
       issuedAt: 1,
       expiresAt: 2,
     })).toBe('delegated\0client-1\0workspace-1\0assistant\0support\0web')
+
+    expect(principalContinuityKey({
+      kind: 'delegated',
+      tokenId: 'rotating-token-id',
+      delegateId: 'client-1',
+      workspaceId: 'workspace-1',
+      profileId: 'assistant',
+      subjectId: 'customer-42',
+      purpose: 'support',
+      channel: 'web',
+      operations: ['source_data_views.query'],
+      issuedAt: 1,
+      expiresAt: 2,
+    })).toBe('delegated\0client-1\0workspace-1\0assistant\0support\0web\0customer-42')
   })
 
   it('projects source replay snapshots without unexpected persisted fields', () => {

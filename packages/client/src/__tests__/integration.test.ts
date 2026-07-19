@@ -66,6 +66,15 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
         maxPathCharacters: 256,
       },
       sourceList: { maxPageSize: 100 },
+      connectionList: { maxPageSize: 100 },
+      sourceUpload: {
+        maxDecodedBytes: 16 * 1024 * 1024,
+        maxChunkBytes: 1024 * 1024,
+        maxChunks: 64,
+        sessionTtlSeconds: 15 * 60,
+        supportedSourceKinds: ['file', 'text', 'structured_export'],
+        supportedMediaTypes: ['text/plain', 'application/pdf'],
+      },
       sourceInspection: {
         maxBytes: 16 * 1024 * 1024,
         perAttemptTimeoutMs: 5_000,
@@ -76,6 +85,23 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
         perAttemptTimeoutMs: 5_000,
         maxAttempts: 3,
         maxResourcesPerJob: 1,
+      },
+      sourceDataView: {
+        supportedFormats: ['strict_utf8_csv'],
+        maxSourceBytes: 16 * 1024 * 1024,
+        maxArtifactBytes: 128 * 1024 * 1024,
+        maxFields: 256,
+        maxRows: 100_000,
+        maxCellBytes: 64 * 1024,
+        maxCells: 1_000_000,
+        perAttemptTimeoutMs: 5_000,
+        maxAttempts: 3,
+        maxQueryFields: 32,
+        maxQueryRows: 256,
+        maxQueryCells: 8_192,
+        maxQueryResultBytes: 256 * 1024,
+        queryTimeoutMs: 2_000,
+        maxGrantScopeIds: 256,
       },
       accessGrants: {
         minTtlSeconds: 60,
@@ -109,6 +135,18 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
       status: 'incompatible',
       expectedMajor: 2,
       actualMajor: 1,
+    })
+  })
+
+  it('negotiates owner connection inventory before using the real Gateway route', async () => {
+    await expect(ownware.capabilities({
+      requiredMajor: 1,
+      requiredCapabilities: { 'connections.list': 1 },
+    })).resolves.toMatchObject({ status: 'available' })
+    await expect(ownware.connections()).resolves.toEqual({
+      items: [],
+      nextCursor: null,
+      accessPolicy: 'separate_grant_required',
     })
   })
 
@@ -255,6 +293,7 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
     const workspace = gateway.state.createWorkspace(join(dir, 'source-workspace'), 'Client source')
     const issued = await ownware.issueDelegation({
       delegateId: 'client-source-registration',
+      subjectId: 'person.sdk-synthetic',
       workspaceId: workspace.id,
       profileId: 'test-agent',
       purpose: 'customer-support',
@@ -436,7 +475,6 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
       nextCursor: null,
     })
     await expect(delegated.readSourceContent(resource.resourceId, {
-      subjectId: 'person.sdk-synthetic',
       consent: { state: 'not_required' },
       byteStart: 0,
       byteEnd: 3,
@@ -453,7 +491,6 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
       idempotencyKey: '76767676-cdcd-4767-8767-767676767676',
     })
     await expect(delegated.searchSourceContent(resource.resourceId, {
-      subjectId: 'person.sdk-synthetic',
       consent: { state: 'not_required' },
       query: 'SDK', matchMode: 'ascii_case_insensitive',
       maxMatches: 20, contextBytes: 1,
@@ -466,12 +503,11 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
       idempotencyKey: '77777777-cdcd-4777-8777-777777777777',
     })
     await expect(delegated.searchSourceContent(resource.resourceId, {
-      subjectId: 'person.sdk-synthetic',
       consent: { state: 'not_required' },
       query: 'sdk', matchMode: 'exact_utf8', maxMatches: 20, contextBytes: 0,
     })).rejects.toMatchObject({ status: 404, code: 'source_content_unavailable' })
     await expect(delegated.readSourceContent(resource.resourceId, {
-      subjectId: 'person.sdk-synthetic', consent: { state: 'not_required' },
+      consent: { state: 'not_required' },
       byteStart: 0, byteEnd: 3,
     })).resolves.toMatchObject({ text: 'sdk' })
     const revokeInput = {
@@ -483,7 +519,6 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
     await expect(ownware.revokeAccessGrant(grant.grantId, revokeInput))
       .resolves.toEqual(revoked)
     await expect(delegated.readSourceContent(resource.resourceId, {
-      subjectId: 'person.sdk-synthetic',
       consent: { state: 'not_required' },
       byteStart: 0,
       byteEnd: 3,
@@ -533,6 +568,218 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
     await expect(delegated.source(source.sourceId)).rejects.toMatchObject({
       status: 404,
       code: 'source_not_found',
+    })
+  })
+
+  it('prepares a strict CSV Data View through only the public SDK contract', async () => {
+    const workspace = gateway.state.createWorkspace(join(dir, 'data-view-workspace'), 'Client Data View')
+    const issued = await ownware.issueDelegation({
+      delegateId: 'client-data-view-preparation',
+      subjectId: 'person.synthetic-data-view',
+      workspaceId: workspace.id,
+      profileId: 'test-agent',
+      purpose: 'customer-support',
+      operations: [
+        'sources.register', 'sources.list', 'sources.read',
+        'source_uploads.create', 'source_uploads.write', 'source_uploads.complete',
+        'source_versions.read',
+        'source_jobs.create', 'source_jobs.read', 'source_preparations.create',
+        'source_data_views.read', 'source_data_views.query',
+        'source_deletions.create', 'source_deletions.read',
+      ],
+    })
+    const delegated = new OwnwareClient({
+      baseUrl: `http://127.0.0.1:${gateway.port}`,
+      token: issued.token,
+    })
+    const source = await delegated.registerSource({
+      kind: 'structured_export',
+      label: 'Synthetic support export',
+      classification: 'internal',
+      authority: 'supporting_reference',
+      audiencePolicyRef: 'audience.support-team',
+      sensitivityPolicyRef: 'sensitivity.internal',
+      purposePolicyRef: 'purpose.customer-support',
+      retentionPolicyRef: 'retention.standard',
+      freshnessPolicyRef: 'freshness.daily',
+      idempotencyKey: '81818181-abab-4181-8181-818181818181',
+    })
+    const bytes = Buffer.from('name,formula\nAda,=2+2\n')
+    const checksum = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+    const upload = await delegated.createSourceUploadSession(source.sourceId, {
+      expectedBytes: bytes.length,
+      expectedChecksum: checksum,
+      declaredMediaType: 'text/plain',
+      filename: 'synthetic-support.csv',
+      idempotencyKey: '82828282-abab-4282-8282-828282828282',
+    })
+    await delegated.writeSourceUploadChunk(upload.uploadId, { offset: 0, checksum, bytes })
+    const version = await delegated.completeSourceUpload(upload.uploadId)
+    await expect(delegated.sourceVersion(
+      source.sourceId, version.sourceVersionId,
+    )).resolves.toMatchObject({ sourceVersionId: version.sourceVersionId, checksum })
+    const inspection = await delegated.createSourceJob(source.sourceId, version.sourceVersionId, {
+      operation: 'inspect_format',
+      idempotencyKey: '83838383-abab-4383-8383-838383838383',
+    })
+    const terminal = new Set(['succeeded', 'partial', 'failed', 'cancelled'])
+    const awaitJob = async (jobId: string) => {
+      const deadline = Date.now() + 2_000
+      let job = await delegated.sourceJob(jobId)
+      while (!terminal.has(job.state) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        job = await delegated.sourceJob(jobId)
+      }
+      return job
+    }
+    await expect(awaitJob(inspection.jobId)).resolves.toMatchObject({
+      state: 'succeeded', operation: 'inspect_format', dataViewId: null,
+    })
+    const preparation = await delegated.createSourcePreparation(
+      source.sourceId,
+      version.sourceVersionId,
+      {
+        operation: 'prepare_data_view',
+        idempotencyKey: '84848484-abab-4484-8484-848484848484',
+      },
+    )
+    const prepared = await awaitJob(preparation.jobId)
+    expect(prepared).toMatchObject({
+      state: 'succeeded',
+      operation: 'prepare_data_view',
+      implementationVersion: 'csv_data_view.v1',
+      outcomeCode: 'preparation_complete',
+      resourceId: null,
+      dataViewId: expect.any(String),
+    })
+    const publicProjection = JSON.stringify(prepared)
+    expect(publicProjection).not.toContain('privateObjectKey')
+    expect(publicProjection).not.toContain('source_data_views')
+    expect(publicProjection).not.toContain('Ada')
+    expect(publicProjection).not.toContain('=2+2')
+    const manifest = await delegated.sourceDataView(prepared.dataViewId!)
+    expect(manifest).toMatchObject({
+      dataViewId: prepared.dataViewId,
+      jobId: prepared.jobId,
+      sourceId: source.sourceId,
+      sourceVersionId: version.sourceVersionId,
+      fieldCount: 2,
+      rowCount: 1,
+      fields: [
+        { ordinal: 0, label: 'name' },
+        { ordinal: 1, label: 'formula' },
+      ],
+      freshness: 'current',
+      staleAt: null,
+    })
+    const publicManifest = JSON.stringify(manifest)
+    expect(publicManifest).not.toContain('privateObjectKey')
+    expect(publicManifest).not.toContain('source_data_views')
+    expect(publicManifest).not.toContain('Ada')
+    expect(publicManifest).not.toContain('=2+2')
+
+    const selectedFields = [manifest.fields[0]!.fieldId, manifest.fields[1]!.fieldId]
+    const queryGrant = await ownware.createDataViewQueryGrant(manifest.dataViewId, {
+      subjectId: 'person.synthetic-data-view',
+      purpose: 'customer-support',
+      channel: null,
+      consent: { state: 'not_required' },
+      fieldIds: selectedFields,
+      rowOffset: 0,
+      rowCount: 1,
+      ttlSeconds: 60,
+      idempotencyKey: '85858585-abab-4585-8585-858585858585',
+    })
+    expect(queryGrant).toMatchObject({ mutation: 'created', revision: 1 })
+
+    await expect(delegated.querySourceDataView(manifest.dataViewId, {
+      consent: { state: 'not_required' },
+      fieldIds: selectedFields,
+      rowOffset: 0,
+      rowCount: 1,
+    })).resolves.toMatchObject({
+      dataViewId: manifest.dataViewId,
+      sourceId: source.sourceId,
+      sourceVersionId: version.sourceVersionId,
+      sourceRevision: manifest.sourceRevision,
+      freshness: 'current',
+      implementationVersion: 'csv_data_view_selection.v1',
+      rowOffset: 0,
+      requestedRowCount: 1,
+      returnedRowCount: 1,
+      totalRowCount: 1,
+      complete: true,
+      fields: manifest.fields,
+      rows: [{ ordinal: 0, values: ['Ada', '=2+2'] }],
+      observedAt: expect.any(Number),
+    })
+
+    const current = await delegated.source(source.sourceId)
+    const deletion = await delegated.createSourceDeletion(source.sourceId, {
+      expectedRevision: current.revision,
+      idempotencyKey: '86868686-abab-4686-8686-868686868686',
+    })
+    let deleted = await delegated.sourceDeletion(deletion.jobId)
+    const deletionDeadline = Date.now() + 2_000
+    while (!['cancelled', 'partially_deleted', 'deleted'].includes(deleted.state) &&
+           Date.now() < deletionDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      deleted = await delegated.sourceDeletion(deletion.jobId)
+    }
+    expect(deleted).toMatchObject({
+      state: 'deleted',
+      affected: { dataViews: 1 },
+      remaining: {
+        immutableOriginals: 0,
+        uploadStaging: 0,
+        placedCandidates: 0,
+        derivedResources: 0,
+        dataViews: 0,
+        searchIndexes: 0,
+        sourceJobs: 0,
+        idempotencyReplays: 0,
+        retrievalCacheEntries: 0,
+      },
+      terminalAt: expect.any(Number),
+    })
+    await expect(delegated.sourceDeletion(deletion.jobId)).resolves.toEqual(deleted)
+    await expect(delegated.sourceDataView(manifest.dataViewId)).rejects.toMatchObject({
+      status: 404,
+      code: 'source_data_view_not_found',
+    })
+    const unavailableQuery = await delegated.querySourceDataView(manifest.dataViewId, {
+      consent: { state: 'not_required' },
+      fieldIds: selectedFields,
+      rowOffset: 0,
+      rowCount: 1,
+    }).catch((error: unknown) => error)
+    expect(unavailableQuery).toMatchObject({
+      status: 404,
+      code: 'source_data_view_unavailable',
+    })
+    expect(JSON.stringify(unavailableQuery)).not.toContain('Ada')
+    expect(JSON.stringify(unavailableQuery)).not.toContain('=2+2')
+    await expect(delegated.sourceJob(inspection.jobId)).rejects.toMatchObject({
+      status: 404,
+      code: 'source_job_not_found',
+    })
+    await expect(delegated.sourceJob(prepared.jobId)).rejects.toMatchObject({
+      status: 404,
+      code: 'source_job_not_found',
+    })
+    await expect(delegated.sourceVersion(
+      source.sourceId, version.sourceVersionId,
+    )).rejects.toMatchObject({ status: 404, code: 'source_version_not_found' })
+    await expect(delegated.source(source.sourceId)).rejects.toMatchObject({
+      status: 404,
+      code: 'source_not_found',
+    })
+    await expect(delegated.sources()).resolves.toEqual({ items: [], nextCursor: null })
+    await expect(ownware.accessGrant(queryGrant.grantId)).resolves.toMatchObject({
+      grantId: queryGrant.grantId,
+      state: 'revoked',
+      revision: 2,
+      revokedAt: expect.any(Number),
     })
   })
 

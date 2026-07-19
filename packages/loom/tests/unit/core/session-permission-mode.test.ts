@@ -5,7 +5,7 @@
  * accepts a value but never threaded it to Session. Now `Session({ permissionMode })`
  * is honored by the default checkPermission/requestApproval pair.
  *
- * If a custom `checkPermission` callback is also provided, it wins —
+ * If a custom `checkPermission` callback is also provided, it always wins —
  * `permissionMode` only governs the no-callback default.
  */
 
@@ -180,38 +180,35 @@ describe('Session.permissionMode — default checkPermission/requestApproval', (
   })
 
   // -------------------------------------------------------------------------
-  // S2 — Real bypass mode
+  // S2 — Automatic fallback mode
   //
-  // 'auto' is the only mode that genuinely skips every check, including
-  // host-provided checkPermission. The mode-bypass enforcement lives in
-  // Session.submitMessage's checkPermission wrapper (session.ts) so no
-  // host can accidentally suppress the user's "I trust this run" choice.
+  // 'auto' removes the default prompt for otherwise-unclassified calls. It
+  // does not override a host-provided safety decision: configured policy is
+  // authoritative, and the mode is only the fallback.
   // -------------------------------------------------------------------------
 
-  it("'auto' short-circuits even when a custom checkPermission would deny", async () => {
+  it("'auto' cannot bypass a host check or auto-approve the host's ask decision", async () => {
     const { tool, executed } = makeGatedTool()
-    // Host-style "deny everything" checker — used by hostile or
-    // mis-wired hosts. With permissionMode: 'auto' it must never be
-    // called; the session decides 'allow' before the wrapper delegates.
     const customCheck = vi.fn().mockResolvedValue('ask')
+    const requestApproval = vi.fn().mockResolvedValue(false)
     const session = new Session({
       config: { ...createDefaultConfig('mock:m'), maxTurns: 2, maxTokens: 100 },
       provider: makeToolUseProvider('gated'),
       tools: [tool],
       permissionMode: 'auto',
       checkPermission: customCheck,
+      requestApproval,
     })
     await runOneTurn(session)
-    expect(customCheck).not.toHaveBeenCalled()
-    expect(executed()).toBe(true)
+    expect(customCheck).toHaveBeenCalled()
+    expect(requestApproval).toHaveBeenCalled()
+    expect(executed()).toBe(false)
   })
 
-  it("'auto' short-circuits requestApproval too (no HITL prompt even if reached)", async () => {
+  it("'auto' does not request approval when no configured policy asks", async () => {
     const { tool, executed } = makeGatedTool()
-    // requestApproval should never be reached in auto mode because
-    // checkPermission already returned 'allow'. But if some custom
-    // host returns 'ask' anyway, the wrapper's defense-in-depth makes
-    // requestApproval return true.
+    // With no host checker, the mode supplies the `allow` fallback and the
+    // approval callback is never reached.
     const requestApproval = vi.fn().mockResolvedValue(false)
     const session = new Session({
       config: { ...createDefaultConfig('mock:m'), maxTurns: 2, maxTokens: 100 },

@@ -9,6 +9,7 @@ const PrincipalSchema = z.object({
   workspaceId: z.string(),
   profileId: z.string(),
   purpose: z.string(),
+  subjectId: z.string().optional(),
   channel: z.string().optional(),
   operations: z.array(z.string()),
   issuedAt: z.number().int(),
@@ -72,6 +73,48 @@ describe('Contract: delegated principals', () => {
     tokenId = response.body.principal.tokenId
     expect(response.body.principal).toMatchObject({ workspaceId, profileId: 'mini' })
     expect(response.headers['cache-control']).toBe('no-store')
+  })
+
+  it('requires an explicit protected-resource subject and keeps the issue body closed', async () => {
+    for (const operation of [
+      'source_content.read', 'source_content.search', 'source_data_views.query',
+    ]) {
+      const withoutSubject = await gw.client.post('/api/v1/auth/delegations', {
+        delegateId: 'browser-session-query',
+        workspaceId,
+        profileId: 'mini',
+        purpose: 'customer-support',
+        channel: 'web',
+        operations: [operation],
+      })
+      expect(withoutSubject.status).toBe(400)
+      expect(ErrorSchema.parse(withoutSubject.body).error).toBe('principal_scope_invalid')
+    }
+
+    const issued = await gw.client.post('/api/v1/auth/delegations', {
+      delegateId: 'browser-session-query',
+      workspaceId,
+      profileId: 'mini',
+      subjectId: 'customer_42',
+      purpose: 'customer-support',
+      channel: 'web',
+      operations: ['source_data_views.query'],
+    }, IssueSchema)
+    expect(issued.status).toBe(201)
+    expect(issued.body.principal.subjectId).toBe('customer_42')
+
+    const extraAuthority = await gw.client.post('/api/v1/auth/delegations', {
+      delegateId: 'browser-session-query',
+      workspaceId,
+      profileId: 'mini',
+      subjectId: 'customer_42',
+      purpose: 'customer-support',
+      channel: 'web',
+      operations: ['source_data_views.query'],
+      resourceId: 'must-not-be-accepted-here',
+    })
+    expect(extraAuthority.status).toBe(400)
+    expect(ErrorSchema.parse(extraAuthority.body).error).toBe('invalid_request')
   })
 
   it('scoped token reads its declared capability and cannot reach an unmarked route', async () => {

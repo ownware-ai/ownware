@@ -180,11 +180,16 @@ export interface PublicGatewayLimits {
   readonly sourceList?: {
     readonly maxPageSize: number
   }
+  /** Owner-only connection inventory page bound. Added in contract 0.29.0. */
+  readonly connectionList?: {
+    readonly maxPageSize: number
+  }
   readonly sourceUpload?: {
     readonly maxDecodedBytes: number
     readonly maxChunkBytes: number
     readonly maxChunks: number
     readonly sessionTtlSeconds: number
+    readonly supportedSourceKinds: readonly SourceKind[]
     readonly supportedMediaTypes: readonly string[]
   }
   readonly sourceInspection?: {
@@ -197,6 +202,29 @@ export interface PublicGatewayLimits {
     readonly perAttemptTimeoutMs: number
     readonly maxAttempts: number
     readonly maxResourcesPerJob: number
+  }
+  readonly sourceDataView?: {
+    readonly supportedFormats: readonly string[]
+    readonly maxSourceBytes: number
+    readonly maxArtifactBytes: number
+    readonly maxFields: number
+    readonly maxRows: number
+    readonly maxCellBytes: number
+    readonly maxCells: number
+    readonly perAttemptTimeoutMs: number
+    readonly maxAttempts: number
+    /** Maximum explicit fields in one protected query. Added in contract 0.27.0. */
+    readonly maxQueryFields?: number
+    /** Maximum row window in one protected query. Added in contract 0.27.0. */
+    readonly maxQueryRows?: number
+    /** Maximum projected cells in one protected query. */
+    readonly maxQueryCells?: number
+    /** Maximum canonical selection result size in bytes. */
+    readonly maxQueryResultBytes?: number
+    /** Bounded artifact verification and selection deadline. */
+    readonly queryTimeoutMs?: number
+    /** Maximum exact field or row identities in one Data View grant. */
+    readonly maxGrantScopeIds?: number
   }
   readonly accessGrants?: {
     readonly minTtlSeconds: number
@@ -276,6 +304,8 @@ export type CapabilityNegotiationResult =
 
 export interface IssueDelegationInput {
   readonly delegateId: string
+  /** Explicit grant subject. Required for protected content and Data View query operations. */
+  readonly subjectId?: string
   readonly workspaceId: string
   readonly profileId: string
   readonly purpose: string
@@ -288,6 +318,8 @@ export interface DelegatedPrincipal {
   readonly kind: 'delegated'
   readonly tokenId: string
   readonly delegateId: string
+  /** Explicit grant subject when the delegation is subject-bound. */
+  readonly subjectId?: string
   readonly workspaceId: string
   readonly profileId: string
   readonly purpose: string
@@ -492,6 +524,38 @@ export interface SourceList {
   readonly nextCursor: string | null
 }
 
+export type ConnectionInventoryStatus = 'pending' | 'connected' | 'failed' | 'expired'
+export type ConnectionRecovery =
+  | 'none'
+  | 'complete_connection'
+  | 'reconnect'
+  | 'verify_revocation'
+
+export interface ConnectionInventoryItem {
+  /** Ownware-owned opaque identity; never a vendor account or session handle. */
+  readonly connectionId: string
+  /** Provider-neutral logical capability identity. */
+  readonly capabilityId: string
+  readonly status: ConnectionInventoryStatus
+  readonly recovery: ConnectionRecovery
+  /** State-change time reduced to whole-second precision by the Gateway. */
+  readonly changedAt: number
+  readonly expiresAt: number | null
+  readonly lastVerifiedAt: number | null
+}
+
+export interface ConnectionListOptions {
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+export interface ConnectionList {
+  readonly items: readonly ConnectionInventoryItem[]
+  readonly nextCursor: string | null
+  /** Connection alone grants no profile, tool, subject, purpose or action authority. */
+  readonly accessPolicy: 'separate_grant_required'
+}
+
 export interface CreateSourceUploadSessionInput {
   readonly expectedBytes: number
   readonly expectedChecksum: string
@@ -543,7 +607,7 @@ export interface SourceUploadCompletionResult extends Omit<SourceVersionManifest
   readonly replayed: boolean
 }
 
-export type SourceJobOperation = 'inspect_format' | 'extract_text'
+export type SourceJobOperation = 'inspect_format' | 'extract_text' | 'prepare_data_view'
 export type SourceJobState =
   | 'queued' | 'running' | 'waiting_for_resource' | 'cancel_requested'
   | 'succeeded' | 'partial' | 'failed' | 'cancelled'
@@ -553,6 +617,14 @@ export type SourceJobOutcomeCode =
   | 'source_object_mismatch' | 'source_object_missing'
   | 'source_object_oversized' | 'source_storage_inconsistent'
   | 'preparation_complete' | 'preparation_timeout' | 'preparation_unavailable'
+  | 'data_view_unavailable' | 'data_view_invalid' | 'data_view_too_large'
+  | 'data_view_publication_conflict' | 'artifact_cleanup_failed'
+  | 'csv_identity_invalid' | 'csv_input_oversized' | 'csv_invalid_utf8'
+  | 'csv_header_empty' | 'csv_header_duplicate' | 'csv_quoting_invalid'
+  | 'csv_bare_carriage_return' | 'csv_row_ragged'
+  | 'csv_field_limit_exceeded' | 'csv_row_limit_exceeded'
+  | 'csv_cell_limit_exceeded' | 'csv_total_cell_limit_exceeded'
+  | 'csv_preparation_timeout'
 
 export interface CreateSourceJobInput {
   readonly operation: 'inspect_format'
@@ -560,7 +632,7 @@ export interface CreateSourceJobInput {
 }
 
 export interface CreateSourcePreparationInput {
-  readonly operation: 'extract_text'
+  readonly operation: 'extract_text' | 'prepare_data_view'
   readonly idempotencyKey: string
 }
 
@@ -569,8 +641,10 @@ export interface SourceJob {
   readonly sourceId: string
   readonly sourceVersionId: string
   readonly operation: SourceJobOperation
-  readonly implementationVersion: 'inspect_format.v1' | 'text_extraction.v1'
+  readonly implementationVersion:
+    'inspect_format.v1' | 'text_extraction.v1' | 'csv_data_view.v1'
   readonly resourceId: string | null
+  readonly dataViewId: string | null
   readonly state: SourceJobState
   readonly attempt: number
   readonly maxAttempts: number
@@ -613,6 +687,86 @@ export interface SourceResourceManifest {
   readonly staleAt: number | null
 }
 
+export interface SourceDataViewField {
+  readonly fieldId: string
+  readonly ordinal: number
+  /** Untrusted display label from the structured source header. */
+  readonly label: string
+}
+
+export interface SourceDataViewManifest {
+  readonly dataViewId: string
+  readonly jobId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly implementationVersion: 'csv_data_view.v1'
+  readonly sourceRevision: number
+  readonly sourceChecksum: string
+  readonly artifactChecksum: string
+  readonly artifactByteCount: number
+  readonly fieldCount: number
+  readonly rowCount: number
+  readonly fields: readonly SourceDataViewField[]
+  readonly classification: SourceClassification
+  readonly authority: Exclude<SourceAuthority, 'excluded'>
+  readonly audiencePolicyRef: string
+  readonly sensitivityPolicyRef: string
+  readonly purposePolicyRef: string
+  readonly retentionPolicyRef: string
+  readonly freshnessPolicyRef: string
+  readonly freshness: 'current' | 'stale'
+  readonly createdAt: number
+  readonly staleAt: number | null
+}
+
+export interface CreateDataViewQueryGrantInput {
+  readonly subjectId: string
+  readonly purpose: string
+  readonly channel: string | null
+  readonly consent: AccessConsent
+  readonly fieldIds: readonly string[]
+  readonly rowOffset: number
+  readonly rowCount: number
+  readonly ttlSeconds: number
+  /** UUID reused only when retrying this exact logical grant creation. */
+  readonly idempotencyKey: string
+}
+
+export interface QuerySourceDataViewInput {
+  readonly consent: AccessConsent
+  readonly fieldIds: readonly string[]
+  readonly rowOffset: number
+  readonly rowCount: number
+}
+
+export interface SourceDataViewSelectionRow {
+  readonly rowId: string
+  readonly ordinal: number
+  /** Values correspond positionally to `fields` and remain inert source data. */
+  readonly values: readonly string[]
+}
+
+export interface ProtectedSourceDataViewSelection {
+  readonly dataViewId: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly sourceRevision: number
+  readonly sourceChecksum: string
+  readonly artifactChecksum: string
+  readonly freshness: 'current'
+  readonly classification: SourceClassification
+  readonly authority: Exclude<SourceAuthority, 'excluded'>
+  readonly implementationVersion: 'csv_data_view_selection.v1'
+  readonly rowOffset: number
+  readonly requestedRowCount: number
+  readonly returnedRowCount: number
+  readonly totalRowCount: number
+  readonly complete: boolean
+  readonly fields: readonly SourceDataViewField[]
+  readonly rows: readonly SourceDataViewSelectionRow[]
+  readonly observedAt: number
+}
+
 export type AccessConsent =
   | { readonly state: 'not_required' }
   | { readonly state: 'recorded'; readonly evidenceId: string }
@@ -644,11 +798,15 @@ export interface AccessGrant {
   readonly subjectId: string
   readonly purpose: string
   readonly channel: string | null
-  readonly resourceKind: 'source_resource'
+  readonly resourceKind: 'source_resource' | 'source_data_view'
   readonly resourceId: string
-  readonly operation: 'source_content.read' | 'source_content.search'
-  readonly fieldScope: { readonly mode: 'all' }
-  readonly rowScope: { readonly mode: 'all' }
+  readonly operation: 'source_content.read' | 'source_content.search' | 'source_data_views.query'
+  readonly fieldScope:
+    | { readonly mode: 'all' }
+    | { readonly mode: 'list'; readonly ids: readonly string[] }
+  readonly rowScope:
+    | { readonly mode: 'all' }
+    | { readonly mode: 'list'; readonly ids: readonly string[] }
   readonly consent: AccessConsent
   readonly autonomyCeiling: 'observe'
   readonly effectiveAt: number
@@ -679,7 +837,6 @@ export interface RevokeAccessGrantInput {
 }
 
 export interface ReadSourceContentInput {
-  readonly subjectId: string
   readonly consent: AccessConsent
   readonly byteStart: number
   readonly byteEnd: number
@@ -708,7 +865,6 @@ export type SourceContentSearchMatchMode =
   | 'ascii_case_insensitive'
 
 export interface SearchSourceContentInput {
-  readonly subjectId: string
   readonly consent: AccessConsent
   readonly query: string
   readonly matchMode: SourceContentSearchMatchMode
@@ -740,6 +896,11 @@ export interface ProtectedSourceSearchResult {
   readonly matches: readonly ProtectedSourceSearchMatch[]
   readonly truncated: boolean
   readonly totalByteCount: number
+  /**
+   * When this evidence snapshot was created. Equivalent repeated searches may
+   * retain the same value; it is not proof of authorization, cache state,
+   * response time, or current source freshness for a later request.
+   */
   readonly observedAt: number
 }
 
@@ -804,6 +965,7 @@ export interface ProfileSummary {
  * implements it; tests substitute an in-memory fake.
  */
 export interface GatewayClient {
+  connections(options?: ConnectionListOptions): Promise<ConnectionList>
   registerSource(input: RegisterSourceInput): Promise<SourceManifest>
   sources(options?: SourceListOptions): Promise<SourceList>
   source(sourceId: string): Promise<SourceManifest>
@@ -829,6 +991,15 @@ export interface GatewayClient {
   ): Promise<SourceJob>
   sourceJob(jobId: string): Promise<SourceJob>
   sourceResource(resourceId: string): Promise<SourceResourceManifest>
+  sourceDataView(dataViewId: string): Promise<SourceDataViewManifest>
+  createDataViewQueryGrant(
+    dataViewId: string,
+    input: CreateDataViewQueryGrantInput,
+  ): Promise<AccessGrantMutationReceipt>
+  querySourceDataView(
+    dataViewId: string,
+    input: QuerySourceDataViewInput,
+  ): Promise<ProtectedSourceDataViewSelection>
   createAccessGrant(
     resourceId: string,
     input: CreateAccessGrantInput,
@@ -955,6 +1126,19 @@ export class OwnwareClient implements GatewayClient {
       throw await errorFromResponse(res)
     }
     return res
+  }
+
+  /** List the install owner's bounded provider-neutral connection inventory. */
+  async connections(options: ConnectionListOptions = {}): Promise<ConnectionList> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size > 0 ? `?${query.toString()}` : ''
+    const response = await this.doFetch(`${this.base}/api/v1/connections${suffix}`, {
+      headers: this.headers(false),
+    })
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ConnectionList
   }
 
   /** Register one logical source using only safe control metadata from a scoped principal. */
@@ -1122,6 +1306,66 @@ export class OwnwareClient implements GatewayClient {
     return (await response.json()) as SourceResourceManifest
   }
 
+  /** Read a scoped content-free Data View manifest; no cells or placement are returned. */
+  async sourceDataView(dataViewId: string): Promise<SourceDataViewManifest> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-data-views/${encodeURIComponent(dataViewId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SourceDataViewManifest
+  }
+
+  /** Owner-only: grant one subject exact fields and a bounded current row window. */
+  async createDataViewQueryGrant(
+    dataViewId: string,
+    input: CreateDataViewQueryGrantInput,
+  ): Promise<AccessGrantMutationReceipt> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-data-views/${encodeURIComponent(dataViewId)}/access-grants`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          subjectId: input.subjectId,
+          purpose: input.purpose,
+          channel: input.channel,
+          consent: input.consent,
+          fieldIds: input.fieldIds,
+          rowOffset: input.rowOffset,
+          rowCount: input.rowCount,
+          ttlSeconds: input.ttlSeconds,
+        }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as AccessGrantMutationReceipt
+  }
+
+  /** Delegated-only: select exact fields and one bounded row window after live grant checks. */
+  async querySourceDataView(
+    dataViewId: string,
+    input: QuerySourceDataViewInput,
+  ): Promise<ProtectedSourceDataViewSelection> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/source-data-views/${encodeURIComponent(dataViewId)}/query`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({
+          consent: input.consent,
+          fieldIds: input.fieldIds,
+          rowOffset: input.rowOffset,
+          rowCount: input.rowCount,
+        }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProtectedSourceDataViewSelection
+  }
+
   /** Owner-only: grant one subject bounded observation of one current text resource. */
   async createAccessGrant(
     resourceId: string,
@@ -1200,7 +1444,11 @@ export class OwnwareClient implements GatewayClient {
       {
         method: 'POST',
         headers: this.headers(true),
-        body: JSON.stringify(input),
+        body: JSON.stringify({
+          consent: input.consent,
+          byteStart: input.byteStart,
+          byteEnd: input.byteEnd,
+        }),
       },
     )
     if (!response.ok) throw await errorFromResponse(response)
@@ -1217,7 +1465,13 @@ export class OwnwareClient implements GatewayClient {
       {
         method: 'POST',
         headers: this.headers(true),
-        body: JSON.stringify(input),
+        body: JSON.stringify({
+          consent: input.consent,
+          query: input.query,
+          matchMode: input.matchMode,
+          maxMatches: input.maxMatches,
+          contextBytes: input.contextBytes,
+        }),
       },
     )
     if (!response.ok) throw await errorFromResponse(response)
@@ -1557,6 +1811,7 @@ export class OwnwareClient implements GatewayClient {
       purpose: input.purpose,
       operations: input.operations,
     }
+    if (input.subjectId !== undefined) body['subjectId'] = input.subjectId
     if (input.channel !== undefined) body['channel'] = input.channel
     if (input.ttlSeconds !== undefined) body['ttlSeconds'] = input.ttlSeconds
     const response = await this.post('/api/v1/auth/delegations', body)

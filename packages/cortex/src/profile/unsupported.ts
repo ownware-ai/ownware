@@ -128,11 +128,9 @@ export function assertProfileIsSupported(profile: LoadedProfile): void {
     )
   }
 
-  // permissionMode: 'ask' and 'auto' are both supported after the
-  // 2026-05-14 redesign. 'ask' = interactive (default); 'auto' = full
-  // bypass, short-circuits the entire permission pipeline before
-  // safety rules, zones, or HITL run (the standard dangerous
-  // "skip all permission prompts" escape hatch). 'deny' and 'allowlist' are
+  // permissionMode: 'ask' and 'auto' are both supported. 'ask' is the
+  // interactive default; 'auto' allows only when configured safety and zone
+  // policy has no stronger decision. 'deny' and 'allowlist' are
   // semantically dead — kept in the schema enum so old profiles load,
   // but they fall through to 'ask' at runtime. Reject them here so
   // operators don't think they're getting blocking behaviour.
@@ -143,7 +141,7 @@ export function assertProfileIsSupported(profile: LoadedProfile): void {
     throw new UnsupportedProfileFieldError(
       name,
       `security.permissionMode (="${config.security.permissionMode}")`,
-      'Only "ask" (interactive, default) and "auto" (full bypass) are honored. "deny" and "allowlist" were deprecated by the 2026-05-14 permission redesign.',
+      'Only "ask" (interactive, default) and "auto" (automatic inside configured policy) are honored. "deny" and "allowlist" were deprecated by the 2026-05-14 permission redesign.',
     )
   }
 

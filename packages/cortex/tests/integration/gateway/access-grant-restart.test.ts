@@ -38,6 +38,7 @@ describe('public access grants across real Gateway restarts', () => {
       delegateId: 'access-grant-restart-reader',
       workspaceId,
       profileId: 'mini',
+      subjectId: 'person.restart-synthetic',
       purpose: 'customer_support',
       channel: 'web.primary',
       operations: ['source_content.read'],
@@ -87,7 +88,6 @@ describe('public access grants across real Gateway restarts', () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          subjectId: 'person.restart-synthetic',
           consent: { state: 'not_required' },
           byteStart: 8,
           byteEnd: 17,
@@ -149,6 +149,7 @@ describe('public access grants across real Gateway restarts', () => {
       delegateId: 'search-grant-restart-client',
       workspaceId,
       profileId: 'mini',
+      subjectId: 'person.restart-search',
       purpose: 'customer_support',
       channel: 'web.primary',
       operations: ['source_content.read', 'source_content.search'],
@@ -191,7 +192,7 @@ describe('public access grants across real Gateway restarts', () => {
       {
         method: 'POST', headers: delegatedHeaders,
         body: JSON.stringify({
-          subjectId: common.subjectId, consent: common.consent,
+          consent: common.consent,
           query: 'PROTECTED', matchMode: 'ascii_case_insensitive',
           maxMatches: 20, contextBytes: 1,
         }),
@@ -219,7 +220,7 @@ describe('public access grants across real Gateway restarts', () => {
       {
         method: 'POST', headers: delegatedHeaders,
         body: JSON.stringify({
-          subjectId: common.subjectId, consent: common.consent,
+          consent: common.consent,
           byteStart: 8, byteEnd: 17,
         }),
       },

@@ -84,4 +84,21 @@ describe('ConnectionCompletionManager', () => {
     mgr.cancelAll()
     expect(mgr.poller.activeCount).toBe(0)
   })
+
+  it('passes terminal cleanup into the poller', async () => {
+    const bus = createConnectorStatusBus()
+    const cleaned: string[] = []
+    const mgr = new ConnectionCompletionManager(store, bus, {
+      pollerConfig: { initialDelayMs: 10, maxDurationMs: 60_000 },
+      beforeTerminal: async ({ connectionId }) => { cleaned.push(connectionId) },
+    })
+    mgr.registerListener(makeListener('composio', async () => ({ status: 'ready' })))
+    store.upsertPending({
+      connectionId: 'cleanup', connectorId: 'x', source: 'composio',
+      entityId: 'cortex-default-user',
+    })
+    mgr.dispatch('cleanup')
+    await vi.advanceTimersByTimeAsync(20)
+    expect(cleaned).toEqual(['cleanup'])
+  })
 })

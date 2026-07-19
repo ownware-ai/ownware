@@ -3,9 +3,10 @@
  *
  * Mirrors the team member-policy boundary (`team/member-policy.ts`): a
  * scheduled run is headless, so capability is governed by WHICH TOOLS it is
- * handed — never by a permission prompt (there is no human to answer an
- * `ask`, so the run uses `permissionMode: 'auto'` and the tool filter below
- * is the real boundary). A withheld tool simply isn't there; the model
+ * handed. There is no human to answer an `ask`, so the run uses
+ * `permissionMode: 'auto'`; configured zone policy still runs and fails
+ * closed if it requires approval. The tool filter below is the capability
+ * boundary. A withheld tool simply isn't there; the model
  * cannot argue its way past a missing capability.
  *
  * Levels (what the create dialog's three cards map to):

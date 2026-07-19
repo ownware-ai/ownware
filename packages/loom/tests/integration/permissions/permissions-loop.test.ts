@@ -7,10 +7,8 @@ import { CODING_AGENT_RULES } from '../../../src/security/default-rules.js'
 import type { SecurityContext } from '../../../src/permissions/types.js'
 
 describe('Permissions integration — evaluator + rules + session store + HITL', () => {
-  it('full flow: safety surfaces dangerous command to user in ask mode (auto bypasses)', () => {
-    // S2 contract: 'auto' is a true bypass — safety rules are not
-    // consulted. To exercise the safety path, use 'ask' mode (the
-    // default for interactive sessions). Post-2026-05-14 redesign,
+  it('full flow: safety surfaces dangerous command to user', () => {
+    // Post-2026-05-14 redesign,
     // a matching safety rule promotes the decision to 'ask' so the
     // user sees the warning and decides — never silent-deny.
     const evaluator = new PermissionEvaluator({ safetyRules: CODING_AGENT_RULES })
@@ -90,10 +88,8 @@ describe('Permissions integration — evaluator + rules + session store + HITL',
     expect(evaluator.evaluate('browser', { url: 'https://google.com' }, ctx)).toBe('ask')
   })
 
-  it('safety rules flag secrets in any tool (in ask mode — auto would bypass)', () => {
+  it('safety rules flag secrets in any tool', () => {
     // Use CODING_AGENT_RULES since BUILT_IN is now empty by design.
-    // S2: switch to 'ask' so the safety pipeline runs. In 'auto' mode
-    // the bypass would short-circuit before the secret-flag rule fires.
     const evaluator = new PermissionEvaluator({ safetyRules: CODING_AGENT_RULES })
     const ctx: SecurityContext = { sessionId: 'test', mode: 'ask' }
 

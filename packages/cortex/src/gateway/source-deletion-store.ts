@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { AccessGrantStore } from './access-grant-store.js'
+import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import { SOURCE_JOB_LEASE_MS, SOURCE_JOB_MAX_ATTEMPTS } from './source-job-store.js'
 
 export const SOURCE_DELETION_IMPLEMENTATION = 'source_deletion.v1' as const
@@ -88,6 +89,11 @@ export interface SourceDeletionInventoryEntry {
   readonly state: SourceDeletionArtifactState
 }
 
+export interface SourceDeletionDataViewLocator {
+  readonly sourceId: string
+  readonly sourceVersionId: string
+}
+
 export interface SourceDeletionClaim {
   readonly jobId: string
   readonly sourceId: string
@@ -149,7 +155,10 @@ interface DeletionTombstoneRow {
 }
 
 export class SourceDeletionStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(
+    private readonly db: Database.Database,
+    private readonly evidenceSearchCache?: EvidenceSearchCache,
+  ) {}
 
   plan(input: {
     readonly workspaceId: string
@@ -208,12 +217,22 @@ export class SourceDeletionStore {
         throw new SourceDeletionPlanError('source_deletion_revision_conflict')
       }
 
-      const grantRevocations = new AccessGrantStore(this.db)
-        .revokePreparedTextGrantsForFrozenSource({
+      const retrievalCacheScope = {
+        workspaceId: input.workspaceId,
+        profileId: input.profileId,
+        sourceId: input.sourceId,
+      }
+      const retrievalCacheEntries = this.evidenceSearchCache
+        ?.inventorySource(retrievalCacheScope).entries ?? 0
+      const grantRevocations = new AccessGrantStore(
+        this.db, undefined, this.evidenceSearchCache,
+      )
+        .revokeSourceGrantsForFrozenSource({
           workspaceId: input.workspaceId,
           profileId: input.profileId,
           sourceId: input.sourceId,
         }, now)
+      this.evidenceSearchCache?.invalidateSource(retrievalCacheScope)
       this.db.prepare(`
         UPDATE run_idempotency
         SET state = 'indeterminate', status_code = NULL, result_json = NULL,
@@ -233,6 +252,13 @@ export class SourceDeletionStore {
           retry_after = NULL, updated_at = ?
         WHERE source_id = ? AND workspace_id = ? AND profile_id = ?
           AND operation IN ('inspect_format', 'extract_text')
+          AND state IN ('queued', 'running', 'waiting_for_resource')
+      `).run(now, now, input.sourceId, input.workspaceId, input.profileId)
+      this.db.prepare(`
+        UPDATE source_data_view_jobs
+        SET state = 'cancel_requested', cancel_requested_at = ?,
+          retry_after = NULL, updated_at = ?
+        WHERE source_id = ? AND workspace_id = ? AND profile_id = ?
           AND state IN ('queued', 'running', 'waiting_for_resource')
       `).run(now, now, input.sourceId, input.workspaceId, input.profileId)
 
@@ -283,6 +309,7 @@ export class SourceDeletionStore {
         input.sourceId,
         jobId,
         grantRevocations.map((grant) => grant.grantId),
+        retrievalCacheEntries,
       )
       for (const artifact of inventory) {
         insertInventory.run(jobId, artifact.kind, artifact.id, now, now)
@@ -382,16 +409,46 @@ export class SourceDeletionStore {
       version.object_key === `sources/${plan.source_id}/versions/${versionId}/original`
   }
 
+  dataViewLocator(
+    jobId: string,
+    dataViewId: string,
+  ): SourceDeletionDataViewLocator | null {
+    const row = this.db.prepare(`
+      SELECT p.source_id, d.source_version_id, v.private_object_key
+      FROM source_deletion_plans p
+      JOIN source_deletion_inventory i
+        ON i.job_id = p.job_id AND i.artifact_kind = 'data_view'
+      JOIN source_data_view_jobs d
+        ON d.data_view_id = i.artifact_id AND d.source_id = p.source_id
+      LEFT JOIN source_data_views v
+        ON v.data_view_id = d.data_view_id AND v.job_id = d.job_id
+      WHERE p.job_id = ? AND i.artifact_id = ?
+    `).get(jobId, dataViewId) as {
+      source_id: string
+      source_version_id: string
+      private_object_key: string | null
+    } | undefined
+    if (!row) return null
+    const expected =
+      `sources/${row.source_id}/versions/${row.source_version_id}/data-views/${dataViewId}.json`
+    if (row.private_object_key !== null && row.private_object_key !== expected) return null
+    return { sourceId: row.source_id, sourceVersionId: row.source_version_id }
+  }
+
   claimNext(workerId: string, now: number = Date.now()): SourceDeletionClaim | null {
     if (!/^[a-z0-9._-]{1,64}$/.test(workerId)) {
       throw new TypeError('Source deletion worker identity is invalid')
     }
     return this.db.transaction((): SourceDeletionClaim | null => {
       const candidate = this.db.prepare(`
-        SELECT job_id FROM source_jobs
-        WHERE operation = 'delete_source' AND state = 'queued'
-          AND attempt < max_attempts
-        ORDER BY created_at ASC, job_id ASC LIMIT 1
+        SELECT j.job_id FROM source_jobs j
+        WHERE j.operation = 'delete_source' AND j.state = 'queued'
+          AND j.attempt < j.max_attempts
+          AND NOT EXISTS (
+            SELECT 1 FROM source_data_view_jobs d
+            WHERE d.source_id = j.source_id AND d.state = 'cancel_requested'
+          )
+        ORDER BY j.created_at ASC, j.job_id ASC LIMIT 1
       `).get() as { job_id: string } | undefined
       if (!candidate) return null
       const claimToken = randomUUID()
@@ -532,6 +589,17 @@ export class SourceDeletionStore {
           DELETE FROM source_jobs
           WHERE job_id = ? AND source_id = ? AND operation != 'delete_source'
         `).run(artifactId, plan.source_id)
+        this.db.prepare(`
+          DELETE FROM source_data_view_jobs
+          WHERE job_id = ? AND source_id = ?
+            AND state IN ('succeeded', 'failed', 'cancelled')
+            AND EXISTS (
+              SELECT 1 FROM source_deletion_inventory i
+              WHERE i.job_id = ? AND i.artifact_kind = 'data_view'
+                AND i.artifact_id = source_data_view_jobs.data_view_id
+                AND i.state = 'verified_absent'
+            )
+        `).run(artifactId, plan.source_id, jobId)
         return true
       case 'idempotency_replay':
       case 'grant_mutation_replay':
@@ -545,6 +613,11 @@ export class SourceDeletionStore {
       case 'placed_candidate':
         return true
       case 'data_view':
+        this.db.prepare(`
+          DELETE FROM source_data_views
+          WHERE data_view_id = ? AND source_id = ?
+        `).run(artifactId, plan.source_id)
+        return true
       case 'search_index':
       case 'retrieval_cache':
         return false
@@ -567,6 +640,8 @@ export class SourceDeletionStore {
       case 'source_job':
         return this.db.prepare(
           'SELECT 1 FROM source_jobs WHERE job_id = ?',
+        ).get(artifactId) === undefined && this.db.prepare(
+          'SELECT 1 FROM source_data_view_jobs WHERE job_id = ?',
         ).get(artifactId) === undefined
       case 'idempotency_replay':
       case 'grant_mutation_replay':
@@ -579,10 +654,32 @@ export class SourceDeletionStore {
       case 'placed_candidate':
         return true
       case 'data_view':
+        return this.db.prepare(
+          'SELECT 1 FROM source_data_views WHERE data_view_id = ?',
+        ).get(artifactId) === undefined
       case 'search_index':
       case 'retrieval_cache':
         return false
     }
+  }
+
+  removeRetrievalCacheArtifact(
+    jobId: string,
+    claimToken: string,
+    artifactId: string,
+    now: number = Date.now(),
+  ): boolean {
+    if (this.getActiveClaim(jobId, claimToken, now) !== 'advanced') return false
+    const target = this.retrievalCacheTarget(jobId, artifactId)
+    if (!target || !this.evidenceSearchCache) return false
+    this.evidenceSearchCache.invalidateSource(target)
+    return true
+  }
+
+  retrievalCacheArtifactAbsent(jobId: string, artifactId: string): boolean {
+    const target = this.retrievalCacheTarget(jobId, artifactId)
+    return target !== null && this.evidenceSearchCache !== undefined &&
+      this.evidenceSearchCache.inventorySource(target).entries === 0
   }
 
   finish(
@@ -636,6 +733,8 @@ export class SourceDeletionStore {
         SELECT
           (SELECT COUNT(*) FROM source_upload_sessions WHERE source_id = ?) +
           (SELECT COUNT(*) FROM source_derived_resources WHERE source_id = ?) +
+          (SELECT COUNT(*) FROM source_data_views WHERE source_id = ?) +
+          (SELECT COUNT(*) FROM source_data_view_jobs WHERE source_id = ?) +
           (SELECT COUNT(*) FROM source_jobs
             WHERE source_id = ? AND job_id != ?) +
           (SELECT COUNT(*) FROM run_idempotency WHERE source_id = ?) +
@@ -645,14 +744,28 @@ export class SourceDeletionStore {
               ON r.grant_id = g.grant_id AND r.revision = g.current_revision
             WHERE g.workspace_id = ? AND g.profile_id = ?
               AND r.state = 'active'
-              AND r.resource_kind = 'source_resource'
-              AND r.operation IN ('source_content.read', 'source_content.search')
-              AND EXISTS (
-                SELECT 1 FROM source_deletion_inventory i
-                WHERE i.job_id = ? AND i.artifact_kind = 'derived_resource'
-                  AND i.artifact_id = r.resource_id
+              AND (
+                (
+                  r.resource_kind = 'source_resource'
+                  AND r.operation IN ('source_content.read', 'source_content.search')
+                  AND EXISTS (
+                    SELECT 1 FROM source_deletion_inventory i
+                    WHERE i.job_id = ? AND i.artifact_kind = 'derived_resource'
+                      AND i.artifact_id = r.resource_id
+                  )
+                ) OR (
+                  r.resource_kind = 'source_data_view'
+                  AND r.operation = 'source_data_views.query'
+                  AND EXISTS (
+                    SELECT 1 FROM source_deletion_inventory i
+                    WHERE i.job_id = ? AND i.artifact_kind = 'data_view'
+                      AND i.artifact_id = r.resource_id
+                  )
+                )
               )) AS count
       `).get(
+        job.source_id,
+        job.source_id,
         job.source_id,
         job.source_id,
         job.source_id,
@@ -660,6 +773,7 @@ export class SourceDeletionStore {
         job.source_id,
         job.workspace_id,
         job.profile_id,
+        jobId,
         jobId,
       ) as { count: number }
       if (residual.count !== 0) {
@@ -913,6 +1027,7 @@ export class SourceDeletionStore {
     sourceId: string,
     deletionJobId: string,
     revokedGrantIds: readonly string[],
+    retrievalCacheEntries: number,
   ): Array<{ readonly kind: SourceDeletionArtifactKind; readonly id: string }> {
     const inventory: Array<{ kind: SourceDeletionArtifactKind; id: string }> = []
     const append = (kind: SourceDeletionArtifactKind, sql: string): void => {
@@ -932,12 +1047,22 @@ export class SourceDeletionStore {
     append('derived_resource', `
       SELECT resource_id AS id FROM source_derived_resources WHERE source_id = ?
     `)
+    append('data_view', `
+      SELECT data_view_id AS id FROM source_data_view_jobs WHERE source_id = ?
+    `)
     const jobs = this.db.prepare(`
       SELECT job_id AS id FROM source_jobs WHERE source_id = ? AND job_id != ?
     `).all(sourceId, deletionJobId) as Array<{ id: string }>
     for (const row of jobs) inventory.push({ kind: 'source_job', id: row.id })
+    const dataViewJobs = this.db.prepare(`
+      SELECT job_id AS id FROM source_data_view_jobs WHERE source_id = ?
+    `).all(sourceId) as Array<{ id: string }>
+    for (const row of dataViewJobs) inventory.push({ kind: 'source_job', id: row.id })
     for (const grantId of revokedGrantIds) {
       inventory.push({ kind: 'access_grant_revocation', id: grantId })
+    }
+    for (let ordinal = 0; ordinal < retrievalCacheEntries; ordinal += 1) {
+      inventory.push({ kind: 'retrieval_cache', id: randomUUID() })
     }
     append('grant_mutation_replay', `
       SELECT id FROM run_idempotency
@@ -950,12 +1075,35 @@ export class SourceDeletionStore {
     return inventory
   }
 
+  private retrievalCacheTarget(jobId: string, artifactId: string): {
+    readonly workspaceId: string
+    readonly profileId: string
+    readonly sourceId: string
+  } | null {
+    const row = this.db.prepare(`
+      SELECT p.workspace_id, p.profile_id, p.source_id
+      FROM source_deletion_plans p
+      JOIN source_deletion_inventory i ON i.job_id = p.job_id
+      WHERE p.job_id = ? AND i.artifact_kind = 'retrieval_cache'
+        AND i.artifact_id = ?
+    `).get(jobId, artifactId) as {
+      workspace_id: string
+      profile_id: string
+      source_id: string
+    } | undefined
+    return row ? {
+      workspaceId: row.workspace_id,
+      profileId: row.profile_id,
+      sourceId: row.source_id,
+    } : null
+  }
+
   ensureGrantRevoked(jobId: string, grantId: string, now: number = Date.now()): boolean {
     const target = this.grantRevocationTarget(jobId, grantId)
     if (!target) return false
     if (target.state === 'revoked') return true
     try {
-      new AccessGrantStore(this.db).revoke({
+      new AccessGrantStore(this.db, undefined, this.evidenceSearchCache).revoke({
         grantId,
         workspaceId: target.workspaceId,
         profileId: target.profileId,
@@ -991,12 +1139,24 @@ export class SourceDeletionStore {
       JOIN access_grant_revisions r
         ON r.grant_id = g.grant_id AND r.revision = g.current_revision
       WHERE p.job_id = ?
-        AND r.resource_kind = 'source_resource'
-        AND r.operation IN ('source_content.read', 'source_content.search')
-        AND EXISTS (
-          SELECT 1 FROM source_deletion_inventory di
-          WHERE di.job_id = p.job_id AND di.artifact_kind = 'derived_resource'
-            AND di.artifact_id = r.resource_id
+        AND (
+          (
+            r.resource_kind = 'source_resource'
+            AND r.operation IN ('source_content.read', 'source_content.search')
+            AND EXISTS (
+              SELECT 1 FROM source_deletion_inventory di
+              WHERE di.job_id = p.job_id AND di.artifact_kind = 'derived_resource'
+                AND di.artifact_id = r.resource_id
+            )
+          ) OR (
+            r.resource_kind = 'source_data_view'
+            AND r.operation = 'source_data_views.query'
+            AND EXISTS (
+              SELECT 1 FROM source_deletion_inventory di
+              WHERE di.job_id = p.job_id AND di.artifact_kind = 'data_view'
+                AND di.artifact_id = r.resource_id
+            )
+          )
         )
     `).get(grantId, jobId) as {
       workspace_id: string

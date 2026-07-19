@@ -584,9 +584,16 @@ describe('Contract: side-effect-free candidate validation', () => {
     await expect(activeDelete.json()).resolves.toMatchObject({ error: 'candidate_delete_active' })
     const inUseDelete = await deleteCandidate(secondCandidate)
     expect(inUseDelete.status).toBe(409)
-    await expect(inUseDelete.json()).resolves.toMatchObject({
-      error: 'candidate_delete_in_use',
-    })
+    // Two guards legitimately refuse this delete and which fires first is
+    // run-latency dependent: while the pinned run is still in flight the
+    // gateway answers `candidate_delete_in_use`; once that run terminates
+    // (fast on keyless CI runners) the same candidate is still refused as the
+    // rollback-retained previous known-good. Either way the contract holds:
+    // the candidate cannot be deleted.
+    const inUseBody = (await inUseDelete.json()) as { error: string }
+    expect(['candidate_delete_in_use', 'candidate_delete_rollback_retained']).toContain(
+      inUseBody.error,
+    )
     const secondCancellation = await fetch(
       `${gateway.baseUrl}/api/v1/runs/${second.runId}/cancel`,
       { method: 'POST', headers, body: '{}' },

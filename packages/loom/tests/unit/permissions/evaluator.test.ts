@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PermissionEvaluator } from '../../../src/permissions/evaluator.js'
 import { SessionPermissionStore } from '../../../src/permissions/session-store.js'
 import type { SecurityContext, PermissionRule } from '../../../src/permissions/types.js'
@@ -34,9 +34,7 @@ describe('PermissionEvaluator', () => {
     })
   })
 
-  describe('safety rules take priority (non-auto modes only)', () => {
-    // S2 contract: 'auto' is a true bypass — safety rules are not
-    // consulted. These tests use 'ask' so the safety rule path runs.
+  describe('safety rules take priority', () => {
     it('safety ask surfaces in ask mode', () => {
       const evaluator = new PermissionEvaluator({
         safetyRules: [() => 'ask'],
@@ -59,11 +57,13 @@ describe('PermissionEvaluator', () => {
       expect(evaluator.evaluate('anything', {}, ctx('ask'))).toBe('ask')
     })
 
-    it("'auto' bypass beats safety rules — even a safety 'ask' is skipped", () => {
+    it("'auto' is only the fallback and cannot bypass a configured safety rule", () => {
+      const safetyRule = vi.fn(() => 'ask' as const)
       const evaluator = new PermissionEvaluator({
-        safetyRules: [() => 'ask'],
+        safetyRules: [safetyRule],
       })
-      expect(evaluator.evaluate('shell', { command: 'rm -rf /' }, ctx('auto'))).toBe('allow')
+      expect(evaluator.evaluate('shell', { command: 'rm -rf /' }, ctx('auto'))).toBe('ask')
+      expect(safetyRule).toHaveBeenCalledWith('shell', { command: 'rm -rf /' })
     })
   })
 
@@ -107,7 +107,7 @@ describe('PermissionEvaluator', () => {
       expect(evaluator.evaluate('filesystem.writeFile', {}, ctx('deny'))).toBe('allow')
     })
 
-    it('glob browser.* matches browser.navigate (in ask mode — auto would bypass rules entirely)', () => {
+    it('glob browser.* matches browser.navigate', () => {
       expect(evaluator.evaluate('browser.navigate', {}, ctx('ask'))).toBe('ask')
     })
 
@@ -157,7 +157,7 @@ describe('PermissionEvaluator', () => {
   })
 
   describe('addRule / removeRule / setRules', () => {
-    it('addRule appends a rule (exercised via ask mode — auto bypasses rules)', () => {
+    it('addRule appends a rule', () => {
       const evaluator = new PermissionEvaluator({ safetyRules: [] })
       evaluator.addRule({ pattern: 'shell', decision: 'ask' })
       expect(evaluator.evaluate('shell', {}, ctx('ask'))).toBe('ask')

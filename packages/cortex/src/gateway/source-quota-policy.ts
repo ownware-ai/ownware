@@ -141,6 +141,15 @@ export class SourceQuotaPolicy {
           AND operation = 'extract_text'
           AND resource_id IS NOT NULL
           AND state IN ('queued', 'running', 'waiting_for_resource', 'cancel_requested')
+        UNION
+        SELECT data_view_id FROM source_data_views
+        WHERE workspace_id = @workspaceId
+          AND (@profileId IS NULL OR profile_id = @profileId)
+        UNION
+        SELECT data_view_id FROM source_data_view_jobs
+        WHERE workspace_id = @workspaceId
+          AND (@profileId IS NULL OR profile_id = @profileId)
+          AND state IN ('queued', 'running', 'waiting_for_resource', 'cancel_requested')
       )
       SELECT
         (SELECT COUNT(*) FROM runtime_sources
@@ -162,6 +171,10 @@ export class SourceQuotaPolicy {
           WHERE workspace_id = @workspaceId
             AND (@profileId IS NULL OR profile_id = @profileId)
             AND state IN ('queued', 'running', 'waiting_for_resource', 'cancel_requested'))
+          + (SELECT COUNT(*) FROM source_data_view_jobs
+            WHERE workspace_id = @workspaceId
+              AND (@profileId IS NULL OR profile_id = @profileId)
+              AND state IN ('queued', 'running', 'waiting_for_resource', 'cancel_requested'))
           AS nonterminal_jobs,
         (SELECT COUNT(*) FROM derived_slots) AS derived_resources
     `).get({ workspaceId, profileId }) as SourceQuotaUsage

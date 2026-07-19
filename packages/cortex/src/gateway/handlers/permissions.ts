@@ -8,8 +8,9 @@
  * flat audit log. The client's Settings → Permissions page reads from here
  * to show the user every decision they've made across every thread.
  *
- * The permission.request event carries `{ requestId, toolName, input,
- * reason }`; the permission.response event carries `{ requestId, granted }`.
+ * The permission.request event carries safe identity, an HMAC operation hash
+ * and a content-free input summary; raw model input is never retained. The
+ * permission.response event carries `{ requestId, granted }`.
  * We join them so each record is "what was asked + what was decided".
  *
  * No pagination yet — the data set is bounded by the number of tool-use
@@ -117,7 +118,8 @@ export function createPermissionHandlers(state: GatewayState) {
               agentId: agent.agentId,
               requestId,
               toolName,
-              target: extractTarget(payload['input']),
+              target: extractTarget(payload['input'])
+                ?? (typeof payload['inputSummary'] === 'string' ? payload['inputSummary'] : null),
               reason,
               requestedAt: new Date(ev.createdAt).toISOString(),
             })

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash, createSecretKey } from 'node:crypto'
+import { SignJWT } from 'jose'
 import { GatewayState } from '../../../../src/gateway/state.js'
 import { MIGRATIONS } from '../../../../src/gateway/db/schema.js'
 import { openDatabaseSafely } from '../../../../src/gateway/db/migration-safety.js'
@@ -48,6 +50,7 @@ describe('migration 051 delegated principal store', () => {
       'expires_at',
       'revoked_at',
       'revoke_reason',
+      'subject_id',
     ])
   })
 
@@ -79,6 +82,98 @@ describe('migration 051 delegated principal store', () => {
 })
 
 describe('ScopedPrincipalService', () => {
+  it('requires and preserves an explicit subject for protected resource authority across restart', async () => {
+    const service = new ScopedPrincipalService({
+      ownerToken: OWNER_TOKEN,
+      store: new DelegatedPrincipalStore(state.rawDbHandle),
+    })
+    const input = {
+      delegateId: 'embed-session-42',
+      workspaceId: 'workspace_1',
+      profileId: 'assistant',
+      purpose: 'customer-support',
+      channel: 'web',
+      operations: ['source_content.read'],
+    } as const
+
+    await expect(service.issue(input, 1_750_000_000_000)).rejects.toMatchObject({
+      code: 'principal_scope_invalid',
+    })
+    await expect(service.issue({
+      ...input,
+      operations: ['source_content.search'],
+    }, 1_750_000_000_000)).rejects.toMatchObject({ code: 'principal_scope_invalid' })
+    await expect(service.issue({
+      ...input,
+      operations: ['source_data_views.query'],
+    }, 1_750_000_000_000)).rejects.toMatchObject({ code: 'principal_scope_invalid' })
+
+    const issued = await service.issue({
+      ...input,
+      subjectId: 'customer_42',
+    }, 1_750_000_000_000)
+    expect(issued.principal.subjectId).toBe('customer_42')
+    expect(state.rawDbHandle.prepare(`
+      SELECT subject_id FROM delegated_principals WHERE token_id = ?
+    `).pluck().get(issued.principal.tokenId)).toBe('customer_42')
+
+    state.close()
+    state = new GatewayState(dbPath)
+    const reopened = new ScopedPrincipalService({
+      ownerToken: OWNER_TOKEN,
+      store: new DelegatedPrincipalStore(state.rawDbHandle),
+    })
+    await expect(reopened.verify(issued.token, 1_750_000_001_000))
+      .resolves.toEqual(issued.principal)
+  })
+
+  it('rejects a validly signed token whose subject claim differs from persisted issuance', async () => {
+    const service = new ScopedPrincipalService({
+      ownerToken: OWNER_TOKEN,
+      store: new DelegatedPrincipalStore(state.rawDbHandle),
+    })
+    const issued = await service.issue({
+      delegateId: 'embed-session-42',
+      workspaceId: 'workspace_1',
+      profileId: 'assistant',
+      subjectId: 'customer_42',
+      purpose: 'customer-support',
+      channel: 'web',
+      operations: ['source_data_views.query'],
+    }, 1_750_000_000_000)
+    const principal = issued.principal
+    const signingKey = createSecretKey(createHash('sha256')
+      .update('ownware.gateway.delegated-principal.hs256.v1\0')
+      .update(OWNER_TOKEN)
+      .digest())
+    const issuer = `ownware:${createHash('sha256')
+      .update('ownware.gateway.delegated-principal.issuer.v1\0')
+      .update(OWNER_TOKEN)
+      .digest('hex')
+      .slice(0, 32)}`
+    const tampered = await new SignJWT({
+      workspace_id: principal.workspaceId,
+      profile_id: principal.profileId,
+      subject_id: 'customer_99',
+      purpose: principal.purpose,
+      channel: principal.channel,
+      operations: principal.operations,
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+      .setIssuer(issuer)
+      .setAudience('ownware.gateway.v1')
+      .setSubject(principal.delegateId)
+      .setJti(principal.tokenId)
+      .setIssuedAt(principal.issuedAt)
+      .setNotBefore(principal.issuedAt)
+      .setExpirationTime(principal.expiresAt)
+      .sign(signingKey)
+
+    await expect(service.verify(tampered, 1_750_000_001_000)).rejects.toMatchObject({
+      code: 'principal_invalid',
+    })
+  })
+
   it('issues and verifies canonical bounded claims without storing the bearer token', async () => {
     const store = new DelegatedPrincipalStore(state.rawDbHandle)
     const service = new ScopedPrincipalService({ ownerToken: OWNER_TOKEN, store })

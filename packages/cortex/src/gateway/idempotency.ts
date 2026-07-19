@@ -75,9 +75,11 @@ export interface SourceJobSnapshot {
   readonly jobId: string
   readonly sourceId: string
   readonly sourceVersionId: string
-  readonly operation: 'inspect_format' | 'extract_text'
-  readonly implementationVersion: 'inspect_format.v1' | 'text_extraction.v1'
+  readonly operation: 'inspect_format' | 'extract_text' | 'prepare_data_view'
+  readonly implementationVersion:
+    'inspect_format.v1' | 'text_extraction.v1' | 'csv_data_view.v1'
   readonly resourceId: string | null
+  readonly dataViewId: string | null
   readonly state: 'queued' | 'running' | 'waiting_for_resource' |
     'cancel_requested' | 'succeeded' | 'partial' | 'failed' | 'cancelled'
   readonly attempt: number
@@ -167,14 +169,16 @@ interface IdempotencyRow {
 
 export function principalContinuityKey(principal: RuntimePrincipal): string {
   if (principal.kind === 'owner') return 'owner'
-  return [
+  const scope = [
     'delegated',
     principal.delegateId,
     principal.workspaceId,
     principal.profileId,
     principal.purpose,
     principal.channel ?? '',
-  ].join('\0')
+  ]
+  if (principal.subjectId !== undefined) scope.push(principal.subjectId)
+  return scope.join('\0')
 }
 
 export function isValidIdempotencyKey(value: string): boolean {
@@ -437,25 +441,43 @@ function validateSourceJobSnapshot(row: Record<string, unknown>): SourceJobSnaps
     'source_storage_inconsistent',
     ...(row['operation'] === 'inspect_format'
       ? ['inspection_complete', 'inspection_timeout', 'inspection_unavailable']
-      : ['preparation_complete', 'preparation_timeout', 'preparation_unavailable']),
+      : row['operation'] === 'extract_text'
+        ? ['preparation_complete', 'preparation_timeout', 'preparation_unavailable']
+        : [
+            'preparation_complete', 'preparation_timeout', 'data_view_unavailable',
+            'data_view_invalid', 'data_view_too_large', 'data_view_publication_conflict',
+            'artifact_cleanup_failed', 'csv_identity_invalid', 'csv_input_oversized',
+            'csv_invalid_utf8', 'csv_header_empty', 'csv_header_duplicate',
+            'csv_quoting_invalid', 'csv_bare_carriage_return', 'csv_row_ragged',
+            'csv_field_limit_exceeded', 'csv_row_limit_exceeded',
+            'csv_cell_limit_exceeded', 'csv_total_cell_limit_exceeded',
+            'csv_preparation_timeout',
+          ]),
   ])
   const state = row['state'] as SourceJobSnapshot['state']
   const operation = row['operation']
   const expectedImplementation = operation === 'inspect_format'
-    ? 'inspect_format.v1' : operation === 'extract_text' ? 'text_extraction.v1' : null
+    ? 'inspect_format.v1'
+    : operation === 'extract_text'
+      ? 'text_extraction.v1'
+      : operation === 'prepare_data_view' ? 'csv_data_view.v1' : null
   const implementationVersion = row['implementationVersion'] ??
     (operation === 'inspect_format' ? 'inspect_format.v1' : undefined)
   const resourceId = row['resourceId'] ?? null
-  const resourceIdentityValid = operation === 'inspect_format'
-    ? resourceId === null
-    : state === 'succeeded' ? uuid.test(String(resourceId)) : resourceId === null
+  const dataViewId = row['dataViewId'] ?? null
+  const resourceIdentityValid = operation === 'extract_text'
+    ? state === 'succeeded' ? uuid.test(String(resourceId)) : resourceId === null
+    : resourceId === null
+  const dataViewIdentityValid = operation === 'prepare_data_view'
+    ? state === 'succeeded' ? uuid.test(String(dataViewId)) : dataViewId === null
+    : dataViewId === null
   const cancelRequestedAt = row['cancelRequestedAt']
   const terminalAt = row['terminalAt']
   const outcomeCode = row['outcomeCode']
   if (!uuid.test(String(row['jobId'])) || !uuid.test(String(row['sourceId'])) ||
       !uuid.test(String(row['sourceVersionId'])) || expectedImplementation === null ||
       implementationVersion !== expectedImplementation ||
-      !resourceIdentityValid ||
+      !resourceIdentityValid || !dataViewIdentityValid ||
       !states.includes(state) || !Number.isInteger(row['attempt']) ||
       (row['attempt'] as number) < 0 || (row['attempt'] as number) > 3 ||
       row['maxAttempts'] !== 3 || !Number.isInteger(row['checkpoint']) ||
@@ -474,6 +496,7 @@ function validateSourceJobSnapshot(row: Record<string, unknown>): SourceJobSnaps
     operation: operation as SourceJobSnapshot['operation'],
     implementationVersion: expectedImplementation,
     resourceId: resourceId as string | null,
+    dataViewId: dataViewId as string | null,
     state,
     attempt: row['attempt'] as number,
     maxAttempts: 3,

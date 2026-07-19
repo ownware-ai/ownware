@@ -13,6 +13,11 @@ import { SourceDeletionStore } from '../../../src/gateway/source-deletion-store.
 import { SourceJobStore } from '../../../src/gateway/source-job-store.js'
 import { SourceStore } from '../../../src/gateway/source-store.js'
 import { SourceUploadStore } from '../../../src/gateway/source-upload-store.js'
+import {
+  EvidenceSearchCache,
+  type EvidenceSearchCacheKey,
+} from '../../../src/gateway/evidence-search-cache.js'
+import type { ProtectedSourceSearchResult } from '../../../src/gateway/protected-source-search.js'
 
 const WORKSPACE_ID = 'workspace-a'
 const PROFILE_ID = 'mini'
@@ -149,6 +154,84 @@ describe('SourceDeletionStore', () => {
       expectedRevision: 2,
     }, 60)).toEqual(plan)
     expect(new SourceJobStore(database.rawMainHandle).claimNext('normal-worker', 60)).toBeNull()
+  })
+
+  it('freezes, inventories and invalidates only the exact scoped retrieval cache', () => {
+    const { resourceId } = seedGrantAndMutationReplay()
+    const grants = new AccessGrantStore(database.rawMainHandle)
+    const searchGrant = grants.createPreparedTextAccessGrant({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      subjectId: 'person.synthetic-1',
+      purpose: 'customer_support',
+      channel: 'web.primary',
+      resourceId,
+      operation: 'source_content.search',
+      consent: { state: 'not_required' },
+      ttlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,
+      issuedBy: 'owner.synthetic',
+    }, 55)
+    const target = grants.getPreparedTextReadTargetScoped(
+      WORKSPACE_ID, PROFILE_ID, resourceId,
+    )!
+    const cache = new EvidenceSearchCache({
+      maxEntries: 8,
+      maxEntriesPerWorkspace: 8,
+      maxEntriesPerProfile: 8,
+      maxRetainedBytes: 64 * 1024,
+      maxRetainedBytesPerWorkspace: 64 * 1024,
+      maxRetainedBytesPerProfile: 64 * 1024,
+      clock: () => 40,
+    })
+    const exactCandidate = {
+      grantId: searchGrant.grantId,
+      grantRevision: searchGrant.revision,
+      grantExpiresAt: searchGrant.expiresAt,
+      resourceId: target.resourceId,
+      sourceId: target.sourceId,
+      sourceVersionId: target.sourceVersionId,
+      sourceRevision: target.sourceRevision,
+      sourceChecksum: target.expectedChecksum,
+      resourceChecksum: target.expectedChecksum,
+      preparationJobId: target.jobId,
+      objectKey: target.objectKey,
+      expectedByteCount: target.expectedByteCount,
+      classification: target.classification,
+      authority: target.authority,
+      audiencePolicyRef: target.audiencePolicyRef,
+      sensitivityPolicyRef: target.sensitivityPolicyRef,
+      purposePolicyRef: target.purposePolicyRef,
+      retentionPolicyRef: target.retentionPolicyRef,
+      freshnessPolicyRef: target.freshnessPolicyRef,
+    } satisfies Partial<EvidenceSearchCacheKey>
+    putNoMatchCandidate(cache, { ...exactCandidate, query: 'first' })
+    putNoMatchCandidate(cache, { ...exactCandidate, query: 'second' })
+    putNoMatchCandidate(cache, {
+      ...exactCandidate,
+      profileId: 'other-profile',
+      query: 'unrelated',
+    })
+    const exactScope = { workspaceId: WORKSPACE_ID, profileId: PROFILE_ID, sourceId }
+    expect(cache.inventorySource(exactScope).entries).toBe(2)
+
+    const store = new SourceDeletionStore(database.rawMainHandle, cache)
+    const plan = store.plan({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+      expectedRevision: 2,
+    }, 60)
+
+    expect(plan.inventoryCounts.retrievalCacheEntries).toBe(2)
+    expect(store.getInventory(plan.jobId).filter(
+      (entry) => entry.kind === 'retrieval_cache',
+    )).toHaveLength(2)
+    expect(cache.inventorySource(exactScope)).toEqual({ entries: 0, retainedBytes: 0 })
+    expect(cache.inventorySource({
+      workspaceId: WORKSPACE_ID,
+      profileId: 'other-profile',
+      sourceId,
+    }).entries).toBe(1)
   })
 
   it('rolls back the source fence and dependent state when inventory persistence fails', () => {
@@ -338,6 +421,87 @@ describe('SourceDeletionStore', () => {
     })
   })
 
+  it('revokes and inventories a Data View query grant through manifest removal', () => {
+    const dataViewId = '66666666-6666-4666-8666-666666666666'
+    const dataViewJobId = '77777777-7777-4777-8777-777777777777'
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_data_view_jobs (
+        job_id, data_view_id, workspace_id, profile_id, source_id,
+        source_version_id, implementation_version, source_revision,
+        state, attempt, max_attempts, checkpoint, outcome_code,
+        created_at, updated_at, terminal_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, 'csv_data_view.v1', 2,
+        'succeeded', 1, 3, 4, 'preparation_complete', 50, 50, 50
+      )
+    `).run(
+      dataViewJobId, dataViewId, WORKSPACE_ID, PROFILE_ID, sourceId, VERSION_ID,
+    )
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_data_views (
+        data_view_id, job_id, workspace_id, profile_id, source_id,
+        source_version_id, implementation_version, source_revision,
+        source_checksum, artifact_checksum, artifact_byte_count,
+        private_object_key, field_count, row_count, fields_json,
+        classification, authority, audience_policy_ref,
+        sensitivity_policy_ref, purpose_policy_ref, retention_policy_ref,
+        freshness_policy_ref, freshness, created_at, stale_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, 'csv_data_view.v1', 2, ?, ?, 64, ?, 1, 1, ?,
+        'internal', 'supporting_reference', 'audience.test', 'sensitivity.test',
+        'purpose.test', 'retention.test', 'freshness.test', 'current', 50, NULL
+      )
+    `).run(
+      dataViewId,
+      dataViewJobId,
+      WORKSPACE_ID,
+      PROFILE_ID,
+      sourceId,
+      VERSION_ID,
+      `sha256:${'a'.repeat(64)}`,
+      `sha256:${'b'.repeat(64)}`,
+      `sources/${sourceId}/versions/${VERSION_ID}/data-views/${dataViewId}.json`,
+      JSON.stringify([{ fieldId: 'field.synthetic', ordinal: 0, label: 'name' }]),
+    )
+    const grants = new AccessGrantStore(database.rawMainHandle)
+    const grant = grants.create({
+      ...grantInput(dataViewId),
+      resourceKind: 'source_data_view',
+      operation: 'source_data_views.query',
+      fieldScope: { mode: 'list', ids: ['field.synthetic'] },
+      rowScope: { mode: 'list', ids: ['row.synthetic'] },
+      effectiveAt: 51,
+      expiresAt: 10_000,
+    }, 51)
+    database.rawMainHandle.prepare('DELETE FROM source_data_views WHERE data_view_id = ?')
+      .run(dataViewId)
+    const store = new SourceDeletionStore(database.rawMainHandle)
+
+    const plan = store.plan({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+      expectedRevision: 2,
+    }, 60)
+
+    expect(grants.getCurrentScoped(
+      grant.grantId, WORKSPACE_ID, PROFILE_ID,
+    )).toMatchObject({ revision: 2, state: 'revoked', revokedAt: 60 })
+    expect(store.getInventory(plan.jobId)).toEqual(expect.arrayContaining([
+      { kind: 'data_view', id: dataViewId },
+      { kind: 'access_grant_revocation', id: grant.grantId },
+    ]))
+    expect(plan.inventoryCounts.accessGrantRevocations).toBe(1)
+
+    reactivateGrant(grant.grantId, 3, 61)
+    expect(store.grantRevocationEffective(plan.jobId, grant.grantId)).toBe(false)
+    expect(store.ensureGrantRevoked(plan.jobId, grant.grantId, 62)).toBe(true)
+    expect(store.grantRevocationEffective(plan.jobId, grant.grantId)).toBe(true)
+    expect(grants.getCurrentScoped(
+      grant.grantId, WORKSPACE_ID, PROFILE_ID,
+    )).toMatchObject({ revision: 4, state: 'revoked', revokedAt: 62 })
+  })
+
   it('rolls grant revocation and replay neutralization back when planning fails', () => {
     const { grant, replayId } = seedGrantAndMutationReplay()
     database.rawMainHandle.exec(`
@@ -438,4 +602,85 @@ describe('SourceDeletionStore', () => {
       issuedBy: 'owner.synthetic',
     }
   }
+
+  function reactivateGrant(grantId: string, revision: number, now: number): void {
+    database.rawMainHandle.prepare(`
+      INSERT INTO access_grant_revisions (
+        grant_id, revision, workspace_id, profile_id, state, subject_id,
+        purpose, channel, resource_kind, resource_id, operation,
+        field_scope_mode, field_ids_json, row_scope_mode, row_ids_json,
+        consent_state, consent_evidence_id, autonomy_ceiling, effective_at,
+        expires_at, issued_by, revision_created_at, revoked_at
+      )
+      SELECT grant_id, ?, workspace_id, profile_id, 'active', subject_id,
+        purpose, channel, resource_kind, resource_id, operation,
+        field_scope_mode, field_ids_json, row_scope_mode, row_ids_json,
+        consent_state, consent_evidence_id, autonomy_ceiling, effective_at,
+        expires_at, issued_by, ?, NULL
+      FROM access_grant_revisions WHERE grant_id = ? AND revision = 2
+    `).run(revision, now, grantId)
+    database.rawMainHandle.prepare(`
+      UPDATE access_grants SET current_revision = ? WHERE grant_id = ?
+    `).run(revision, grantId)
+  }
 })
+
+function putNoMatchCandidate(
+  cache: EvidenceSearchCache,
+  overrides: Partial<EvidenceSearchCacheKey>,
+): void {
+  const checksum = `sha256:${'a'.repeat(64)}`
+  const key: EvidenceSearchCacheKey = {
+    grantId: 'grant.synthetic-1',
+    grantRevision: 1,
+    grantExpiresAt: 10_000,
+    evaluatorVersion: 'access_grant.v1',
+    workspaceId: WORKSPACE_ID,
+    profileId: PROFILE_ID,
+    subjectId: 'person.synthetic-1',
+    purpose: 'customer_support',
+    channel: 'web.primary',
+    consent: { state: 'not_required' },
+    permissionMode: 'auto',
+    operation: 'source_content.search',
+    resourceId: 'resource.synthetic-1',
+    sourceId: 'source.synthetic-1',
+    sourceVersionId: VERSION_ID,
+    sourceRevision: 2,
+    sourceChecksum: checksum,
+    resourceChecksum: checksum,
+    preparationJobId: 'job.synthetic-1',
+    objectKey: 'sources/synthetic/derived/resource/content',
+    expectedByteCount: 4,
+    classification: 'internal',
+    authority: 'supporting_reference',
+    audiencePolicyRef: 'audience.test',
+    sensitivityPolicyRef: 'sensitivity.test',
+    purposePolicyRef: 'purpose.test',
+    retentionPolicyRef: 'retention.test',
+    freshnessPolicyRef: 'freshness.test',
+    query: 'needle',
+    matchMode: 'exact_utf8',
+    maxMatches: 5,
+    contextBytes: 8,
+    ...overrides,
+  }
+  const result: ProtectedSourceSearchResult = {
+    resourceId: key.resourceId,
+    sourceId: key.sourceId,
+    sourceVersionId: key.sourceVersionId,
+    sourceRevision: key.sourceRevision,
+    sourceChecksum: key.sourceChecksum,
+    resourceChecksum: key.resourceChecksum,
+    freshness: 'current',
+    classification: key.classification,
+    authority: key.authority,
+    status: 'no_matches',
+    matchMode: key.matchMode,
+    matches: [],
+    truncated: false,
+    totalByteCount: key.expectedByteCount,
+    observedAt: 40,
+  }
+  expect(cache.put(key, result)).toBe(true)
+}

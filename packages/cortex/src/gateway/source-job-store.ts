@@ -28,6 +28,7 @@ export interface SourceJob {
   readonly operation: SourceJobOperation
   readonly implementationVersion: SourceJobImplementation
   readonly resourceId: string | null
+  readonly dataViewId: null
   readonly state: SourceJobState
   readonly attempt: number
   readonly maxAttempts: typeof SOURCE_JOB_MAX_ATTEMPTS
@@ -936,6 +937,7 @@ export class SourceJobStore {
       operation: row.operation,
       implementationVersion: row.implementation_version,
       resourceId: resourcePublished ? row.resource_id : null,
+      dataViewId: null,
       state: row.state,
       attempt: row.attempt,
       maxAttempts: row.max_attempts,

@@ -45,6 +45,75 @@ export interface IngestParams {
   readonly event: LoomEvent
 }
 
+const SAFE_PERMISSION_REASON = 'Tool requires explicit approval'
+const SAFE_PERMISSION_EXPLANATION = 'Review this action before allowing it to continue.'
+
+/**
+ * Return a bounded, content-free description of a model-authored tool input.
+ *
+ * Field names and values are deliberately excluded: either can contain a
+ * secret, personal data, or business content. The exact call is bound by the
+ * HMAC operation hash added by GatewayRunStore; this summary is display-only.
+ */
+function summarizePermissionInput(input: unknown): string {
+  if (input == null || typeof input !== 'object' || Array.isArray(input)) {
+    return 'Input withheld'
+  }
+  const count = Object.keys(input as Record<string, unknown>).length
+  if (count === 0) return 'No input fields'
+  if (count > 100) return 'More than 100 input fields'
+  return `${count} input field${count === 1 ? '' : 's'}`
+}
+
+function readProjectedInputSummary(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  if (value === 'Input withheld' || value === 'No input fields'
+    || value === 'More than 100 input fields') return value
+  return /^(?:[1-9]|[1-9][0-9]|100) input fields?$/.test(value) ? value : null
+}
+
+/**
+ * Safe durable/live projection for permission evidence.
+ *
+ * Loom must retain the raw input transiently so the approval callback can
+ * execute the exact call. Cortex must not retain or publish that raw input.
+ * Constructing an allowlisted projection here also prevents a future Loom
+ * permission field from silently crossing the gateway evidence boundary.
+ */
+export function projectPermissionEvidenceEvent(event: LoomEvent): LoomEvent {
+  if (event.type === 'permission.request') {
+    const source = event as unknown as Record<string, unknown>
+    return {
+      type: 'permission.request',
+      requestId: event.requestId,
+      toolName: event.toolName,
+      input: {},
+      inputSummary: readProjectedInputSummary(source['inputSummary'])
+        ?? summarizePermissionInput(event.input),
+      reason: SAFE_PERMISSION_REASON,
+      turnIndex: event.turnIndex,
+      ...(typeof source['operationHash'] === 'string'
+        ? { operationHash: source['operationHash'] }
+        : {}),
+      ...(typeof event.zoneLevel === 'number' ? { zoneLevel: event.zoneLevel } : {}),
+      ...(typeof event.zoneName === 'string' ? { zoneName: event.zoneName } : {}),
+      explanation: SAFE_PERMISSION_EXPLANATION,
+      ...(event.severityTag !== undefined ? { severityTag: event.severityTag } : {}),
+    } as unknown as LoomEvent
+  }
+
+  if (event.type === 'permission.response') {
+    return {
+      type: 'permission.response',
+      requestId: event.requestId,
+      granted: event.granted,
+      turnIndex: event.turnIndex,
+    }
+  }
+
+  return event
+}
+
 export class EventIngestor {
   constructor(
     private readonly db: CortexDatabase,
@@ -61,6 +130,7 @@ export class EventIngestor {
    * bad event, but still reports them).
    */
   ingest(params: IngestParams): number {
+    const evidenceEvent = projectPermissionEvidenceEvent(params.event)
     // Decide which agent_id this event actually belongs to on disk.
     // The sub-agent generator in Loom yields its own agent.spawn and
     // agent.complete events — but the parent's UI expects to see the
@@ -75,7 +145,7 @@ export class EventIngestor {
     // on the root stream regardless of type.
     const isLifecycleRewrite =
       params.parentAgentId !== null &&
-      (params.event.type === 'agent.spawn' || params.event.type === 'agent.complete')
+      (evidenceEvent.type === 'agent.spawn' || evidenceEvent.type === 'agent.complete')
 
     const storageAgentId = isLifecycleRewrite
       ? params.parentAgentId!
@@ -94,18 +164,18 @@ export class EventIngestor {
       threadId: params.threadId,
       agentId: storageAgentId,
       parentAgentId: storageParentId,
-      type: params.event.type,
-      payload: params.event,
+      type: evidenceEvent.type,
+      payload: evidenceEvent,
     }
 
     // Permission events get an always-on lifecycle log (low volume, high
     // stakes — a dropped permission.request leaves a tool stuck forever).
     // Tagged [perm-trace] so a single grep across cortex stderr +
     // the client's devtools console reconstructs the full handoff chain.
-    const isPermEvent = params.event.type === 'permission.request'
-      || params.event.type === 'permission.response'
+    const isPermEvent = evidenceEvent.type === 'permission.request'
+      || evidenceEvent.type === 'permission.response'
     const permRequestId = isPermEvent
-      ? (params.event as { requestId?: string }).requestId ?? null
+      ? (evidenceEvent as { requestId?: string }).requestId ?? null
       : null
 
     let seq: number
@@ -117,7 +187,7 @@ export class EventIngestor {
         console.log('[perm-trace] cortex-ingest-db-FAIL', {
           threadId: params.threadId,
           requestId: permRequestId,
-          type: params.event.type,
+          type: evidenceEvent.type,
           err: err instanceof Error ? err.message : String(err),
           ts: Date.now(),
         })
@@ -129,32 +199,32 @@ export class EventIngestor {
       console.log('[perm-trace] cortex-ingest-db', {
         threadId: params.threadId,
         requestId: permRequestId,
-        type: params.event.type,
+        type: evidenceEvent.type,
         seq,
         ts: Date.now(),
       })
     }
 
-    trace('ingest-db', params.threadId, storageAgentId, params.event.type, {
+    trace('ingest-db', params.threadId, storageAgentId, evidenceEvent.type, {
       seq,
       ...(isLifecycleRewrite ? { rewrite: `${params.agentId}→${storageAgentId}` } : {}),
     })
 
     this.bus.publish(params.threadId, storageAgentId, {
       seq,
-      event: params.event,
+      event: evidenceEvent,
     })
     if (isPermEvent && traceEnabled) {
       // eslint-disable-next-line no-console
       console.log('[perm-trace] cortex-ingest-bus', {
         threadId: params.threadId,
         requestId: permRequestId,
-        type: params.event.type,
+        type: evidenceEvent.type,
         seq,
         ts: Date.now(),
       })
     }
-    trace('bus-publish', params.threadId, storageAgentId, params.event.type, { seq })
+    trace('bus-publish', params.threadId, storageAgentId, evidenceEvent.type, { seq })
 
     return seq
   }

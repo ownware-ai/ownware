@@ -191,7 +191,7 @@ Three layers: which security **level** applies, what **permission mode** does on
 | Field | Type / values | Default | Meaning |
 |---|---|---|---|
 | `level` | `permissive` \| `standard` \| `strict` \| `paranoid` | `standard` | The safety rule set. |
-| `permissionMode` | `auto` \| `ask` \| `deny` \| `allowlist` | `ask` | What happens on a sensitive action. |
+| `permissionMode` | `auto` \| `ask` \| `deny` \| `allowlist` | `ask` | Default for otherwise-unclassified actions. `auto` defaults to allow but never bypasses configured safety rules or zone decisions. |
 | `sandbox` | `{ enabled, provider }` | `{ enabled: false, provider: "local" }` | Provider ∈ `local` \| `docker` \| `modal` \| `anthropic`. |
 | `zones` | see below | `{ enabled: true, … }` | Zone-based classification of every tool call. |
 | `hitlTimeoutMs` | number | `1800000` (30 min) | How long a permission prompt waits before auto-deny. |

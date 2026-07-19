@@ -16,6 +16,11 @@ import {
 import { SourceJobStore } from '../../../src/gateway/source-job-store.js'
 import { SourceStore } from '../../../src/gateway/source-store.js'
 import { SourceUploadStore } from '../../../src/gateway/source-upload-store.js'
+import {
+  EvidenceSearchCache,
+  type EvidenceSearchCacheKey,
+} from '../../../src/gateway/evidence-search-cache.js'
+import type { ProtectedSourceSearchResult } from '../../../src/gateway/protected-source-search.js'
 
 const WORKSPACE_ID = 'workspace-a'
 const PROFILE_ID = 'mini'
@@ -26,7 +31,11 @@ const RESOURCE_ID = '44444444-4444-4444-8444-444444444444'
 class FakeDeletionBytes implements SourceDeletionByteRemover {
   readonly removedUploads: string[] = []
   readonly removedVersions: Array<{ sourceId: string; versionId: string }> = []
+  readonly removedDataViews: Array<{
+    sourceId: string; sourceVersionId: string; dataViewId: string
+  }> = []
   versionAbsent = true
+  dataViewAbsent = true
   throwOnVersionRemove = false
 
   async removeUploadArtifacts(uploadId: string): Promise<void> {
@@ -44,6 +53,18 @@ class FakeDeletionBytes implements SourceDeletionByteRemover {
 
   async versionArtifactsAbsent(): Promise<boolean> {
     return this.versionAbsent
+  }
+
+  async removeDataViewArtifact(
+    sourceId: string,
+    sourceVersionId: string,
+    dataViewId: string,
+  ): Promise<void> {
+    this.removedDataViews.push({ sourceId, sourceVersionId, dataViewId })
+  }
+
+  async dataViewArtifactAbsent(): Promise<boolean> {
+    return this.dataViewAbsent
   }
 }
 
@@ -256,6 +277,103 @@ describe('SourceDeletionWorker', () => {
     )!
     expect(publicDeletion.affected).not.toHaveProperty('accessGrantRevocations')
     expect(publicDeletion.affected).not.toHaveProperty('grantMutationReplays')
+  })
+
+  it('verifies frozen retrieval-cache inventory after an empty-cache restart', async () => {
+    const cache = deletionCache()
+    const searchGrant = new AccessGrantStore(database.rawMainHandle).create({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      subjectId: 'person.synthetic-1',
+      purpose: 'customer_support',
+      channel: 'web.primary',
+      resourceKind: 'source_resource',
+      resourceId: RESOURCE_ID,
+      operation: 'source_content.search',
+      fieldScope: { mode: 'all' },
+      rowScope: { mode: 'all' },
+      consent: { state: 'not_required' },
+      autonomyCeiling: 'observe',
+      effectiveAt: 45,
+      expiresAt: 10_000,
+      issuedBy: 'owner.synthetic',
+    }, 45)
+    putDeletionCandidate(cache, sourceId, searchGrant.grantId)
+    deletions = new SourceDeletionStore(database.rawMainHandle, cache)
+    const plan = planDeletion()
+    expect(plan.inventoryCounts.retrievalCacheEntries).toBe(1)
+    expect(cache.inventorySource({
+      workspaceId: WORKSPACE_ID,
+      profileId: PROFILE_ID,
+      sourceId,
+    })).toEqual({ entries: 0, retainedBytes: 0 })
+
+    const restarted = new SourceDeletionStore(database.rawMainHandle, deletionCache())
+    expect(await new SourceDeletionWorker(restarted, new FakeDeletionBytes(), {
+      workerId: 'restarted-cache-deletion',
+    }).runAvailable(100)).toBe(1)
+    expect(restarted.getPublicByJobScoped(
+      plan.jobId, WORKSPACE_ID, PROFILE_ID,
+    )).toMatchObject({
+      state: 'deleted',
+      affected: { retrievalCacheEntries: 1 },
+      remaining: { retrievalCacheEntries: 0 },
+    })
+  })
+
+  it('verifies Data View bytes absent before removing its manifest and job', async () => {
+    const dataView = seedPublishedDataView()
+    const plan = planDeletion()
+    const bytes = new FakeDeletionBytes()
+
+    expect(deletions.getInventory(plan.jobId)).toEqual(expect.arrayContaining([
+      { kind: 'data_view', id: dataView.dataViewId },
+      { kind: 'source_job', id: dataView.jobId },
+    ]))
+    expect(await new SourceDeletionWorker(deletions, bytes, {
+      workerId: 'deletion-test',
+    }).runAvailable(100)).toBe(1)
+
+    expect(bytes.removedDataViews).toEqual([{
+      sourceId,
+      sourceVersionId: VERSION_ID,
+      dataViewId: dataView.dataViewId,
+    }])
+    expect(database.rawMainHandle.prepare(`
+      SELECT data_views, source_jobs FROM source_deletion_tombstones WHERE job_id = ?
+    `).get(plan.jobId)).toEqual({ data_views: 1, source_jobs: 2 })
+    expect(database.rawMainHandle.prepare(`
+      SELECT 1 FROM source_data_views WHERE data_view_id = ?
+    `).get(dataView.dataViewId)).toBeUndefined()
+    expect(database.rawMainHandle.prepare(`
+      SELECT 1 FROM source_data_view_jobs WHERE job_id = ?
+    `).get(dataView.jobId)).toBeUndefined()
+  })
+
+  it('keeps Data View control truth when byte absence cannot be proven, then retries', async () => {
+    const dataView = seedPublishedDataView()
+    const plan = planDeletion()
+    const bytes = new FakeDeletionBytes()
+    bytes.dataViewAbsent = false
+    const worker = new SourceDeletionWorker(deletions, bytes, {
+      workerId: 'deletion-test',
+    })
+
+    expect(await worker.runAvailable(100)).toBe(1)
+    expect(deletions.getScoped(sourceId, WORKSPACE_ID, PROFILE_ID)).toMatchObject({
+      state: 'partial',
+    })
+    expect(inventoryState(plan.jobId, 'data_view')).toBe('failed')
+    expect(database.rawMainHandle.prepare(`
+      SELECT 1 FROM source_data_views WHERE data_view_id = ?
+    `).get(dataView.dataViewId)).toBeDefined()
+
+    bytes.dataViewAbsent = true
+    expect(deletions.retryPartial(plan.jobId, 200)).toBe('queued')
+    expect(await worker.runAvailable(300)).toBe(1)
+    expect(deletions.getScoped(sourceId, WORKSPACE_ID, PROFILE_ID)).toMatchObject({
+      state: 'succeeded',
+    })
   })
 
   it('keeps failed absence truthful and retries the exact durable inventory', async () => {
@@ -494,6 +612,47 @@ describe('SourceDeletionWorker', () => {
     }, 50)
   }
 
+  function seedPublishedDataView(): { jobId: string; dataViewId: string } {
+    const jobId = '66666666-6666-4666-8666-666666666666'
+    const dataViewId = '77777777-7777-4777-8777-777777777777'
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_data_view_jobs (
+        job_id, data_view_id, workspace_id, profile_id, source_id,
+        source_version_id, implementation_version, source_revision,
+        state, attempt, max_attempts, checkpoint, outcome_code,
+        created_at, updated_at, terminal_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, 'csv_data_view.v1', 2,
+        'succeeded', 1, 3, 4, 'preparation_complete', 45, 45, 45
+      )
+    `).run(
+      jobId, dataViewId, WORKSPACE_ID, PROFILE_ID, sourceId, VERSION_ID,
+    )
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_data_views (
+        data_view_id, job_id, workspace_id, profile_id, source_id,
+        source_version_id, implementation_version, source_revision,
+        source_checksum, artifact_checksum, artifact_byte_count,
+        private_object_key, field_count, row_count, fields_json,
+        classification, authority, audience_policy_ref,
+        sensitivity_policy_ref, purpose_policy_ref, retention_policy_ref,
+        freshness_policy_ref, freshness, created_at, stale_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, 'csv_data_view.v1', 2, ?, ?, 16, ?, 1, 1, ?,
+        'internal', 'supporting_reference', 'audience.test',
+        'sensitivity.test', 'purpose.test', 'retention.test',
+        'freshness.test', 'current', 45, NULL
+      )
+    `).run(
+      dataViewId, jobId, WORKSPACE_ID, PROFILE_ID, sourceId, VERSION_ID,
+      `sha256:${'a'.repeat(64)}`,
+      `sha256:${'b'.repeat(64)}`,
+      `sources/${sourceId}/versions/${VERSION_ID}/data-views/${dataViewId}.json`,
+      JSON.stringify([{ fieldId: 'field.synthetic', ordinal: 0, label: 'name' }]),
+    )
+    return { jobId, dataViewId }
+  }
+
   function inventoryState(jobId: string, kind: SourceDeletionArtifactKind): string {
     return deletions.getInventoryEntries(jobId).find((entry) => entry.kind === kind)!.state
   }
@@ -519,3 +678,75 @@ describe('SourceDeletionWorker', () => {
     `).run(revision, grantId)
   }
 })
+
+function deletionCache(): EvidenceSearchCache {
+  return new EvidenceSearchCache({
+    maxEntries: 8,
+    maxEntriesPerWorkspace: 8,
+    maxEntriesPerProfile: 8,
+    maxRetainedBytes: 64 * 1024,
+    maxRetainedBytesPerWorkspace: 64 * 1024,
+    maxRetainedBytesPerProfile: 64 * 1024,
+    clock: () => 40,
+  })
+}
+
+function putDeletionCandidate(
+  cache: EvidenceSearchCache,
+  sourceId: string,
+  grantId: string,
+): void {
+  const checksum = `sha256:${'a'.repeat(64)}`
+  const key: EvidenceSearchCacheKey = {
+    grantId,
+    grantRevision: 1,
+    grantExpiresAt: 10_000,
+    evaluatorVersion: 'access_grant.v1',
+    workspaceId: WORKSPACE_ID,
+    profileId: PROFILE_ID,
+    subjectId: 'person.synthetic-1',
+    purpose: 'customer_support',
+    channel: 'web.primary',
+    consent: { state: 'not_required' },
+    permissionMode: 'auto',
+    operation: 'source_content.search',
+    resourceId: RESOURCE_ID,
+    sourceId,
+    sourceVersionId: VERSION_ID,
+    sourceRevision: 2,
+    sourceChecksum: checksum,
+    resourceChecksum: checksum,
+    preparationJobId: 'job.synthetic-1',
+    objectKey: 'sources/synthetic/derived/resource/content',
+    expectedByteCount: 4,
+    classification: 'internal',
+    authority: 'supporting_reference',
+    audiencePolicyRef: 'audience.test',
+    sensitivityPolicyRef: 'sensitivity.test',
+    purposePolicyRef: 'purpose.test',
+    retentionPolicyRef: 'retention.test',
+    freshnessPolicyRef: 'freshness.test',
+    query: 'needle',
+    matchMode: 'exact_utf8',
+    maxMatches: 5,
+    contextBytes: 8,
+  }
+  const result: ProtectedSourceSearchResult = {
+    resourceId: key.resourceId,
+    sourceId: key.sourceId,
+    sourceVersionId: key.sourceVersionId,
+    sourceRevision: key.sourceRevision,
+    sourceChecksum: key.sourceChecksum,
+    resourceChecksum: key.resourceChecksum,
+    freshness: 'current',
+    classification: key.classification,
+    authority: key.authority,
+    status: 'no_matches',
+    matchMode: key.matchMode,
+    matches: [],
+    truncated: false,
+    totalByteCount: key.expectedByteCount,
+    observedAt: 40,
+  }
+  expect(cache.put(key, result)).toBe(true)
+}

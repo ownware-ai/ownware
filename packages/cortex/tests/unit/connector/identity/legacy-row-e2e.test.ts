@@ -65,7 +65,7 @@ describe('Legacy connection survives identity rename — E2E', () => {
         'ca_legacy_sheets', 'googlesheets', 'composio',
         'cortex-default-user', 'ready',
         ?, ?, NULL, NULL, NULL,
-        '{"composioConnectedAccountId":"ca_legacy_sheets"}',
+        NULL,
         'ac_legacy',
         'ca_legacy_sheets',
         NULL
@@ -99,7 +99,7 @@ describe('Legacy connection survives identity rename — E2E', () => {
         'ca_legacy_sheets', 'googlesheets', 'composio',
         'cortex-default-user', 'ready',
         ?, ?, NULL, NULL, NULL,
-        '{"composioConnectedAccountId":"ca_legacy_sheets"}',
+        NULL,
         'ac_legacy',
         'ca_legacy_sheets',
         NULL
@@ -149,8 +149,9 @@ describe('Legacy connection survives identity rename — E2E', () => {
     `).run(Date.now())
 
     // Initially vendor_account_id is null because the INSERT didn't set it.
-    let found = connections.findByConnectionId('ca_pre021')
-    expect(found!.vendorAccountId).toBeNull()
+    expect(db.rawMainHandle.prepare(
+      'SELECT vendor_account_id FROM connector_connections WHERE connection_id = ?',
+    ).get('ca_pre021')).toEqual({ vendor_account_id: null })
 
     // Run the migration's backfill clause directly. Same SQL as
     // migration 021. If this changes, the migration changes too.
@@ -162,7 +163,12 @@ describe('Legacy connection survives identity rename — E2E', () => {
          AND json_extract(metadata_json, '$.composioConnectedAccountId') IS NOT NULL
     `)
 
-    found = connections.findByConnectionId('ca_pre021')
+    // Migration 076 subsequently removes the legacy metadata envelope. Only
+    // after that redaction should the current strict store read this row.
+    db.rawMainHandle.prepare(
+      'UPDATE connector_connections SET metadata_json = NULL WHERE connection_id = ?',
+    ).run('ca_pre021')
+    const found = connections.findByConnectionId('ca_pre021')
     expect(found!.vendorAccountId).toBe('ca_pre021')
 
     // Resolver gives the right thing post-backfill.
@@ -184,8 +190,7 @@ describe('New connection (post-021) — full happy path', () => {
       vendorUserId: 'cortex-default-user',
       authConfigId: 'ac_slack',
       metadata: {
-        authorizationUrl: 'https://oauth/slack/redirect',
-        userId: 'cortex-default-user',
+        sessionHandle: 'connection-session.11111111-1111-4111-8111-111111111111',
       },
     })
 
@@ -197,7 +202,6 @@ describe('New connection (post-021) — full happy path', () => {
       connectionId: 'ca_new',
       vendorAccountId: 'ca_new',
       vendorUserId: 'real-vendor-side-user-from-poll',
-      metadata: { reconciled: false },
     })
 
     row = connections.findByConnectionId('ca_new')

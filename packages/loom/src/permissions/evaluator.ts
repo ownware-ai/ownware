@@ -52,15 +52,9 @@ export class PermissionEvaluator {
     input: Record<string, unknown>,
     context: SecurityContext,
   ): PolicyDecision {
-    // 0. 'auto' mode is a true bypass — skip every check below. The
-    //    user explicitly opted into "no prompts" by setting the mode;
-    //    safety rules, session grants, and user rules are all bypassed.
-    //    Same semantics as a "dangerously skip permissions" flag.
-    if (context.mode === 'auto') {
-      return 'allow'
-    }
-
-    // 1. Safety rules — checked first for non-bypass modes
+    // 1. Safety rules — configured policy always runs before the mode
+    //    fallback. Loom supplies no opinionated rules by default; when a
+    //    host does provide them, `auto` cannot erase that policy.
     for (const rule of this.safetyRules) {
       const decision = rule(toolName, input)
       if (decision !== null) {

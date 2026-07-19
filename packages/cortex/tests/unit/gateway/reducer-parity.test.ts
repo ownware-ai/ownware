@@ -209,12 +209,13 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     expect(assistant!.permissions).toHaveLength(1)
     expect(assistant!.permissions![0]).toMatchObject({
       toolName: 'shell_exec',
-      input: { cmd: 'ls' },
-      reason: 'needs shell',
+      input: {},
+      inputSummary: '1 input field',
+      reason: 'Tool requires explicit approval',
       decision: 'approved',
       zoneLevel: 3,
       zoneName: 'network',
-      explanation: 'network-tier',
+      explanation: 'Review this action before allowing it to continue.',
     })
 
     expect(assistant!.subAgents).toHaveLength(1)
@@ -283,6 +284,94 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       requestId: 'req_exact',
       operationHash: permission!.operationHash,
     })
+  })
+
+  it('persists and streams only bounded permission evidence, never raw model input', async () => {
+    const thread = state.createThread('test')
+    const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
+    runner = new SessionRunner(state, runStore)
+    const run = runStore.create({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      timeoutMs: 60_000,
+      startSeq: 0,
+    })
+    const inputCanary = 'private-input-canary'
+    const contextCanary = 'private-denial-context-canary'
+    const events: LoomEvent[] = [
+      { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
+      {
+        type: 'permission.request',
+        turnIndex: 0,
+        requestId: 'req_private',
+        toolName: 'send_email',
+        input: { body: inputCanary, recipient: 'synthetic@example.test' },
+        reason: `Approval for ${contextCanary}`,
+        explanation: `External action containing ${contextCanary}`,
+        severityTag: 'warn',
+        severityReason: contextCanary,
+      },
+      {
+        type: 'permission.response',
+        turnIndex: 0,
+        requestId: 'req_private',
+        granted: false,
+        reason: {
+          type: 'user-denied',
+          toolName: 'send_email',
+          toolInput: { body: inputCanary, note: contextCanary },
+          severityTag: 'warn',
+          severityReason: contextCanary,
+          note: contextCanary,
+        },
+      },
+      { type: 'turn.end', turnIndex: 0, stopReason: 'end_turn', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, model: 'test', costUsd: 0 }, timestamp: Date.now() },
+    ]
+    installFakeSession(state, thread.id, events)
+
+    const liveEvents: LoomEvent[] = []
+    const unsubscribe = state.eventBus.subscribe(thread.id, 'root', ({ event }) => liveEvents.push(event))
+    const handle = runner.start({
+      runId: run.runId,
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      prompt: 'go',
+    })
+    await handle.done
+    unsubscribe()
+
+    const permission = runStore.getPermissionRequest(run.runId, 'req_private')
+    expect(permission?.operationHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const persistedEvents = state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const persistedRequest = persistedEvents.find(event => event.type === 'permission.request')
+    expect(persistedRequest?.payload).toMatchObject({
+      type: 'permission.request',
+      requestId: 'req_private',
+      toolName: 'send_email',
+      input: {},
+      inputSummary: '2 input fields',
+      reason: 'Tool requires explicit approval',
+      operationHash: permission!.operationHash,
+    })
+
+    const assistant = state.getMessages(thread.id).find(message => message.role === 'assistant')
+    expect(assistant?.permissions?.[0]).toMatchObject({
+      requestId: 'req_private',
+      toolName: 'send_email',
+      inputSummary: '2 input fields',
+      operationHash: permission!.operationHash,
+      decision: 'denied',
+    })
+
+    const debugLog = state.getEventLog(thread.id)
+    for (const surface of [persistedEvents, liveEvents, debugLog, assistant?.permissions]) {
+      const serialized = JSON.stringify(surface)
+      expect(serialized).not.toContain(inputCanary)
+      expect(serialized).not.toContain(contextCanary)
+    }
   })
 
   it('marks a wall-clock timeout only after the runner finalizer observes it', async () => {

@@ -11,6 +11,10 @@ import {
 import { AccessGrantEvaluator } from '../../../src/gateway/access-grant-evaluator.js'
 import { CortexDatabase } from '../../../src/gateway/db/database.js'
 import {
+  EvidenceSearchCache,
+  type EvidenceSearchCacheKey,
+} from '../../../src/gateway/evidence-search-cache.js'
+import {
   ProtectedSourceReadService,
   type ProtectedSourceReadHardFloor,
   type ProtectedSourceReadInput,
@@ -39,6 +43,7 @@ let database: CortexDatabase
 let grants: AccessGrantStore
 let evaluator: AccessGrantEvaluator
 let bytes: HookedByteStore
+let searchCache: HookedEvidenceSearchCache
 let target: Awaited<ReturnType<typeof seedPreparedTextResource>>
 let grant: AccessGrantRevision
 
@@ -49,6 +54,7 @@ beforeEach(async () => {
   grants = new AccessGrantStore(database.rawMainHandle)
   evaluator = new AccessGrantEvaluator(grants)
   bytes = new HookedByteStore(storageRoot)
+  searchCache = new HookedEvidenceSearchCache({ clock: () => 200 })
   target = await seedPreparedTextResource()
   grant = grants.createPreparedTextReadGrant({
     workspaceId: 'workspace.test',
@@ -183,7 +189,7 @@ describe('ProtectedSourceReadService', () => {
   })
 
   it('collapses full-object tampering and never returns the selected text', async () => {
-    await writeFile(target.objectPath, Buffer.from('first|cafe|final'))
+    await writeFile(target.objectPath, Buffer.from('first|xxxxx|final'))
 
     await expect(createService().read(input(0, 5))).rejects.toMatchObject({
       code: 'protected_source_unavailable',
@@ -261,6 +267,73 @@ describe('ProtectedSourceSearchService', () => {
     })
   })
 
+  it('reuses a candidate only between two complete live authorization proofs', async () => {
+    createSearchGrant()
+    const operations: string[] = []
+    const service = createSearchService((context) => {
+      operations.push(context.operation)
+      return { decision: 'allow' }
+    })
+    const first = await service.search(searchInput())
+    const second = await service.search(searchInput())
+
+    expect(second).toEqual(first)
+    expect(bytes.calls).toBe(1)
+    expect(bytes.verificationCalls).toBe(1)
+    expect(operations).toEqual([
+      'source_content.search', 'source_content.search',
+      'source_content.search', 'source_content.search',
+    ])
+  })
+
+  it('withholds a cache candidate when the exact matched grant changes before release', async () => {
+    const candidates = [createSearchGrant(), createSearchGrant()]
+    const selected = [...candidates].sort((a, b) => a.grantId.localeCompare(b.grantId))[0]!
+    const service = createSearchService()
+    await service.search(searchInput())
+    searchCache.afterGet = () => {
+      grants.revoke({
+        grantId: selected.grantId,
+        workspaceId: selected.workspaceId,
+        profileId: selected.profileId,
+        expectedRevision: selected.revision,
+      }, 201)
+    }
+
+    await expect(service.search(searchInput())).rejects.toMatchObject({
+      code: 'protected_source_search_unavailable',
+    })
+    expect(bytes.calls).toBe(1)
+  })
+
+  it('withholds a cache candidate when current source lineage changes before release', async () => {
+    createSearchGrant()
+    const service = createSearchService()
+    await service.search(searchInput())
+    searchCache.afterGet = () => {
+      database.rawMainHandle.prepare(`
+        UPDATE runtime_sources SET freshness_state = 'stale', revision = revision + 1
+        WHERE source_id = ?
+      `).run(target.sourceId)
+    }
+
+    await expect(service.search(searchInput())).rejects.toMatchObject({
+      code: 'protected_source_search_unavailable',
+    })
+    expect(bytes.calls).toBe(1)
+  })
+
+  it('withholds a cache candidate when immutable source bytes are replaced out of band', async () => {
+    createSearchGrant()
+    const service = createSearchService()
+    await service.search(searchInput())
+    await writeFile(target.objectPath, Buffer.from('first|xxxxx|final'))
+
+    await expect(service.search(searchInput())).rejects.toMatchObject({
+      code: 'protected_source_search_unavailable',
+    })
+  })
+
   it('withholds matches when the search grant is revoked after scanning', async () => {
     const searchGrant = createSearchGrant()
     bytes.afterRead = () => {
@@ -274,8 +347,24 @@ describe('ProtectedSourceSearchService', () => {
     await expect(createSearchService().search(searchInput())).rejects.toMatchObject({
       code: 'protected_source_search_unavailable',
     })
+    expect(searchCache.inventoryAll()).toEqual({ entries: 0, retainedBytes: 0 })
     bytes.afterRead = undefined
     await expect(createService().read(input(0, 5))).resolves.toMatchObject({ text: 'first' })
+  })
+
+  it('withholds matches when live source policy lineage changes during scanning', async () => {
+    createSearchGrant()
+    bytes.afterRead = () => {
+      database.rawMainHandle.prepare(`
+        UPDATE runtime_sources SET purpose_policy_ref = 'purpose.policy.changed'
+        WHERE source_id = ?
+      `).run(target.sourceId)
+    }
+
+    await expect(createSearchService().search(searchInput())).rejects.toMatchObject({
+      code: 'protected_source_search_unavailable',
+    })
+    expect(searchCache.inventoryAll()).toEqual({ entries: 0, retainedBytes: 0 })
   })
 
   it('rejects malformed search bounds before lookup or bytes', async () => {
@@ -307,6 +396,7 @@ describe('ProtectedSourceSearchService', () => {
 
 class HookedByteStore extends SourceByteStore {
   calls = 0
+  verificationCalls = 0
   afterRead: (() => void | Promise<void>) | undefined
 
   override async readPlacedUtf8Range(
@@ -326,6 +416,23 @@ class HookedByteStore extends SourceByteStore {
     await this.afterRead?.()
     return result
   }
+
+  override async verifyPlacedUtf8(
+    value: Pick<SourceUtf8SearchInput, 'objectKey' | 'expectedByteCount' | 'expectedChecksum'>,
+  ): Promise<void> {
+    this.verificationCalls += 1
+    await super.verifyPlacedUtf8(value)
+  }
+}
+
+class HookedEvidenceSearchCache extends EvidenceSearchCache {
+  afterGet: (() => void) | undefined
+
+  override get(key: EvidenceSearchCacheKey) {
+    const candidate = super.get(key)
+    this.afterGet?.()
+    return candidate
+  }
 }
 
 function createService(
@@ -339,7 +446,9 @@ function createSearchService(
   hardFloor: ProtectedSourceReadHardFloor = () => ({ decision: 'allow' }),
   clock: () => number = () => 200,
 ): ProtectedSourceSearchService {
-  return new ProtectedSourceSearchService(grants, evaluator, bytes, hardFloor, clock)
+  return new ProtectedSourceSearchService(
+    grants, evaluator, bytes, searchCache, hardFloor, clock,
+  )
 }
 
 function createSearchGrant(): AccessGrantRevision {

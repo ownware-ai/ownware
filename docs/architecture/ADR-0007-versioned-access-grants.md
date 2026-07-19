@@ -16,18 +16,22 @@ field/row scope.
 ADR-0006 requires source content reads, Data Views and search to check a live
 versioned grant. A connection, source registration, policy-reference label or
 delegated bearer is a necessary prerequisite at most; none grants access.
-Permission mode `auto` also currently bypasses host permission callbacks, so it
-cannot be allowed to bypass this evaluator's hard safety floor.
+At adoption time, permission mode `auto` also bypassed host permission
+callbacks, so it could not be allowed to bypass this evaluator's hard safety
+floor. Legacy permissions were subsequently aligned with the same precedence:
+configured policy first, mode fallback second.
 
 ## Decision
 
 ### Boundary
 
-The first grant release is an internal, provider-neutral Cortex foundation. It
-uses the existing checked Gateway SQLite database and adds no public route, SDK
-method, capability or wire-contract revision. Retrieval and connector handlers
-may consume it only in later slices with their own public contract and
-black-box proof.
+The first grant release was an internal, provider-neutral Cortex foundation in
+the existing checked Gateway SQLite database. Contract `0.27.0` subsequently
+publishes the first bounded consumer: owner-only Data View query-grant admission
+and subject-bound delegated Data View selection. The public route, SDK,
+capability and black-box proof remain narrower than the generic grant store;
+other retrieval and connector consumers still require their own accepted
+contract.
 
 Existing permission, HITL, connection and subagent mechanisms keep their
 current meanings. They are not migrated or silently interpreted as access
@@ -102,6 +106,14 @@ freeze and removed only if verified deletion proceeds.
 Owner credentials may administer grants through a separately accepted
 management contract, but owner identity does not bypass resource evaluation.
 
+For a protected operation that evaluates a subject-bound grant, the delegated
+principal carries the explicit opaque subject as an owner-issued, signed and
+persisted claim. It is never accepted from the protected-operation request body
+and never inferred from the delegate identity. Legacy subject-less delegations
+remain valid for operations that do not require a subject grant, while issuance
+or verification of `source_data_views.query` authority requires the subject
+claim. Idempotency continuity includes that claim.
+
 ## Consequences
 
 - Retrieval remains unavailable until a later handler evaluates this fence
@@ -109,16 +121,25 @@ management contract, but owner identity does not bypass resource evaluation.
 - Strict exact scopes may require a new grant when resource identity or consent
   evidence changes; this is safer than implicit inheritance in the first
   release.
-- Existing `auto` behavior remains unchanged outside this new evaluator. Any
-  general permission-mode compatibility change requires a separate decision.
+- The later legacy-permission hardening makes `auto` a fallback rather than a
+  bypass: configured safety rules and host callbacks remain authoritative.
+  This does not turn those legacy mechanisms into access grants.
 - Subject identity, consent evidence and issuer identity remain opaque runtime
   identifiers; integrating an external identity or consent system requires its
   own contract and, where applicable, ADR.
+- Public Data View grant admission accepts an exact bounded ordinal window and
+  resolves it transactionally to stable row identities. This avoids publishing
+  a large row-identity inventory or duplicating the internal identity algorithm
+  in portable clients while preserving an exact stored fence.
 
 ## Rejected alternatives
 
 - **Treat delegated operations as grants.** They do not bind subject, resource,
   consent, autonomy or field/row scope.
+- **Infer the grant subject from the delegate identity or protected-operation
+  body.** A delegate identifies the integration recipient, not necessarily the
+  person whose data is being accessed; a body field is caller-controlled. The
+  subject must be an explicit owner-issued signed claim.
 - **Treat a ready connection as permission.** Authentication availability does
   not authorize an agent action.
 - **Extend profile tool-rule JSON.** It is path-based, mutable, profile-only and

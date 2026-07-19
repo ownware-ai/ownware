@@ -111,6 +111,10 @@ import { createWorkspaceEventsHandler } from './handlers/workspace-events.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { ConnectorsToolProvider } from '../connector/providers/connectors-tool-provider.js'
 import { ConnectorConnectionsStore } from '../connector/connections/store.js'
+import {
+  connectionSessionHandle,
+  ConnectionSessionVault,
+} from '../connector/connections/session-vault.js'
 import { ComposioCatalogCache } from '../connector/composio/catalog-cache.js'
 import { ComposioSourceProxy } from '../connector/composio/source-proxy.js'
 import { ComposioToolProviderProxy } from '../connector/composio/tool-provider-proxy.js'
@@ -145,6 +149,7 @@ import { createMarketplaceHandlers } from './handlers/marketplace.js'
 import { recoverInterruptedProfileUpdates } from '../profile/update/index.js'
 import { createPrincipalHandlers } from './handlers/principals.js'
 import { createAccessGrantHandlers } from './handlers/access-grants.js'
+import { createConnectionInventoryHandler } from './handlers/connection-inventory.js'
 import {
   createReadSourceContentHandler,
   createSearchSourceContentHandler,
@@ -153,6 +158,9 @@ import { AccessGrantStore } from './access-grant-store.js'
 import { AccessGrantEvaluator } from './access-grant-evaluator.js'
 import { ProtectedSourceReadService } from './protected-source-read.js'
 import { ProtectedSourceSearchService } from './protected-source-search.js'
+import { EvidenceSearchCache } from './evidence-search-cache.js'
+import { ProtectedDataViewSelectionService } from './protected-data-view-selection.js'
+import { createSourceDataViewQueryHandler } from './handlers/source-data-view-query.js'
 import {
   createGetSourceHandler,
   createListSourcesHandler,
@@ -162,6 +170,7 @@ import { SourceStore } from './source-store.js'
 import { SourceUploadStore } from './source-upload-store.js'
 import { SourceJobStore } from './source-job-store.js'
 import { SourceJobWorker } from './source-job-worker.js'
+import { SourceDataViewStore } from './source-data-view-store.js'
 import { ChannelJobStore } from './channel-job-store.js'
 import { ChannelJobWorker } from './channel-job-worker.js'
 import { ChannelProcedureRegistry } from './channel-procedures.js'
@@ -183,6 +192,7 @@ import {
 } from './source-quota-policy.js'
 import {
   createCancelSourceJobHandler,
+  createGetSourceDataViewHandler,
   createGetSourceJobHandler,
   createGetSourceResourceHandler,
   createSourceJobHandler,
@@ -456,6 +466,8 @@ export class OwnwareGateway {
    * etc. register listeners here. Webhook-driven sources skip this.
    */
   readonly connectionCompletionManager: ConnectionCompletionManager
+  /** Encrypted, short-lived continuation material for pending OAuth sessions. */
+  readonly connectionSessions: ConnectionSessionVault
   /**
    * Stable proxy registered with the connector registry at boot. The
    * gateway swaps the inner Composio source provider via `setInner()`
@@ -532,6 +544,7 @@ export class OwnwareGateway {
   private teamModule: TeamModule | null = null
   private sourceJobWorker: SourceJobWorker | null = null
   private sourceDeletionWorker: SourceDeletionWorker | null = null
+  private readonly evidenceSearchCache = new EvidenceSearchCache()
   /**
    * Channel procedures (CC1/CC3): store + registry exist from start();
    * the worker runs only after `enableChannelProcedures()` registers the
@@ -685,9 +698,18 @@ export class OwnwareGateway {
     // from `this.installIdentity.id` — no inline literals, no per-site
     // env reads, no defaults at call sites.
     this.installIdentity = InstallIdentity.resolve()
+    this.connectionSessions = new ConnectionSessionVault({
+      directory: join(this.opts.dataDir, 'connection-sessions'),
+    })
     this.connectionCompletionManager = new ConnectionCompletionManager(
       this.connectorConnections,
       this.connectorStatusBus,
+      {
+        beforeTerminal: async ({ metadata }) => {
+          const handle = connectionSessionHandle(metadata)
+          if (handle !== null) await this.connectionSessions.remove(handle)
+        },
+      },
     )
 
     // Composio runtime — built once now using the boot-time key, then
@@ -1302,6 +1324,39 @@ export class OwnwareGateway {
     }
     bootLap('bridge catalog')
 
+    // 2a. Remove encrypted continuation material left by an interrupted
+    //     gateway process before clearing its opaque database handle. A
+    //     cleanup failure leaves the row pending so a later boot can retry;
+    //     no secret value or identity is written to the log.
+    try {
+      let recovered = 0
+      let cleanupFailures = 0
+      for (const pending of this.connectorConnections.findPending()) {
+        const handle = connectionSessionHandle(pending.metadata)
+        if (handle === null) continue
+        try {
+          await this.connectionSessions.remove(handle)
+          this.connectorConnections.markExpired(
+            pending.connectionId,
+            'Connection attempt was interrupted by a gateway restart. Please retry.',
+          )
+          recovered += 1
+        } catch {
+          cleanupFailures += 1
+        }
+      }
+      if (recovered > 0) {
+        console.log(`  connector connections: safely cleared ${recovered} interrupted session(s)`)
+      }
+      if (cleanupFailures > 0) {
+        console.warn(
+          `[ownware] connector connection session cleanup will retry on next boot (${cleanupFailures} row(s))`,
+        )
+      }
+    } catch (err) {
+      console.warn('[ownware] interrupted connection cleanup failed (continuing):', err)
+    }
+
     // 2a. Expire stale `pending` connector connections left behind by
     //     a previous gateway restart. Honest v1 behaviour: without
     //     cross-restart poll persistence, an in-flight OAuth attempt
@@ -1336,8 +1391,7 @@ export class OwnwareGateway {
       if (foreign > 0) {
         console.warn(
           `[ownware] connector_connections: ${foreign} row(s) under a foreign entity_id ` +
-            `(install identity is "${this.installIdentity.id}"). These rows are unreachable ` +
-            `by the agent's tool list — users will see them as "not connected" until ` +
+            `are unreachable by the agent's tool list — users will see them as "not connected" until ` +
             `reconnected. Likely cause: OWNWARE_COMPOSIO_USER_ID was changed after rows ` +
             `were written.`,
         )
@@ -1451,7 +1505,21 @@ export class OwnwareGateway {
     }
     bootLap('source job recovery')
 
-    const sourceDeletionStore = new SourceDeletionStore(this.state.rawDbHandle)
+    const sourceDataViewRecovery = new SourceDataViewStore(
+      this.state.rawDbHandle,
+      this.sourceQuota,
+    ).recoverExpiredClaims()
+    if (sourceDataViewRecovery.requeued > 0 || sourceDataViewRecovery.failed > 0) {
+      console.log(
+        `  source Data Views: recovered ${sourceDataViewRecovery.requeued} queued, ` +
+        `${sourceDataViewRecovery.failed} failed`,
+      )
+    }
+    bootLap('source Data View recovery')
+
+    const sourceDeletionStore = new SourceDeletionStore(
+      this.state.rawDbHandle, this.evidenceSearchCache,
+    )
     const sourceDeletionRecovery = sourceDeletionStore.recoverExpiredClaims()
     if (sourceDeletionRecovery.requeued > 0 || sourceDeletionRecovery.partial > 0) {
       console.log(
@@ -1487,6 +1555,7 @@ export class OwnwareGateway {
         new SourceJobStore(this.state.rawDbHandle, this.sourceQuota),
         sourceRecoveryBytes,
         { workerId: `gateway-${process.pid}` },
+        new SourceDataViewStore(this.state.rawDbHandle, this.sourceQuota),
       )
       this.sourceJobWorker.start()
       this.sourceDeletionWorker = new SourceDeletionWorker(
@@ -1711,6 +1780,7 @@ export class OwnwareGateway {
       await this.sourceDeletionWorker.stop()
       this.sourceDeletionWorker = null
     }
+    this.evidenceSearchCache.clear()
 
     // Close the bridge-catalog fs watcher (Phase 9). `persistent: false`
     // already keeps it from blocking exit; this just releases the handle
@@ -1799,6 +1869,30 @@ export class OwnwareGateway {
       this.connectionCompletionManager.cancelAll()
     } catch {
       // Best-effort — never block shutdown
+    }
+    try {
+      let cleanupFailures = 0
+      for (const pending of this.connectorConnections.findPending()) {
+        const handle = connectionSessionHandle(pending.metadata)
+        if (handle === null) continue
+        try {
+          await this.connectionSessions.remove(handle)
+          this.connectorConnections.markExpired(
+            pending.connectionId,
+            'Connection attempt was interrupted by gateway shutdown. Please retry.',
+          )
+        } catch {
+          cleanupFailures += 1
+        }
+      }
+      if (cleanupFailures > 0) {
+        console.warn(
+          `[ownware] connector connection session cleanup will retry on next boot (${cleanupFailures} row(s))`,
+        )
+      }
+    } catch {
+      // The encrypted session remains referenced by its pending row and
+      // boot cleanup retries; shutdown itself must still proceed.
     }
 
     // Tear down the Composio runtime (releases the status-bus
@@ -1928,10 +2022,17 @@ export class OwnwareGateway {
     const userProfilesDir = join(this.opts.dataDir, 'profiles')
     const candidateStore = new CandidateStore(this.state.rawDbHandle)
     const sourceStore = new SourceStore(this.state.rawDbHandle, this.sourceQuota)
-    const sourceUploadStore = new SourceUploadStore(this.state.rawDbHandle, this.sourceQuota)
+    const sourceUploadStore = new SourceUploadStore(
+      this.state.rawDbHandle, this.sourceQuota, this.evidenceSearchCache,
+    )
     const sourceJobStore = new SourceJobStore(this.state.rawDbHandle, this.sourceQuota)
+    const sourceDataViewStore = new SourceDataViewStore(
+      this.state.rawDbHandle, this.sourceQuota,
+    )
     const sourceByteStore = new SourceByteStore(join(this.opts.dataDir, 'source-storage'))
-    const accessGrantStore = new AccessGrantStore(this.state.rawDbHandle)
+    const accessGrantStore = new AccessGrantStore(
+      this.state.rawDbHandle, undefined, this.evidenceSearchCache,
+    )
     const accessGrantHandlers = createAccessGrantHandlers({
       grants: accessGrantStore,
       idempotency: this.runIdempotency,
@@ -1950,6 +2051,17 @@ export class OwnwareGateway {
       accessGrantStore,
       new AccessGrantEvaluator(accessGrantStore),
       sourceByteStore,
+      this.evidenceSearchCache,
+      () => ({ decision: 'allow' }),
+    )
+    const protectedDataViewSelections = new ProtectedDataViewSelectionService(
+      sourceDataViewStore,
+      new AccessGrantEvaluator(accessGrantStore),
+      sourceByteStore,
+      // The strict current source/version/job/view lifecycle join is the
+      // deployed Data View floor. Policy-reference labels remain metadata;
+      // an enforced runtime policy producer must replace this callback before
+      // the public contract can claim policy-rule denial.
       () => ({ decision: 'allow' }),
     )
     candidateStore.recoverInterrupted()
@@ -2196,6 +2308,15 @@ export class OwnwareGateway {
       }, this.sourceQuota.limits),
       { operation: 'gateway.capabilities' },
     )
+    this.router.get(
+      '/api/v1/connections',
+      createConnectionInventoryHandler({
+        connections: this.connectorConnections,
+        entityId: this.installIdentity.id,
+        authEnabled: !this.authDisabled,
+      }),
+      { operation: 'connections.list' },
+    )
     this.router.post('/api/v1/auth/delegations', principals.issue)
     this.router.post('/api/v1/auth/delegations/:tokenId/revoke', principals.revoke)
     this.router.post(
@@ -2213,7 +2334,9 @@ export class OwnwareGateway {
       createGetSourceHandler(sourceStore),
       { operation: 'sources.read' },
     )
-    const sourceDeletionStore = new SourceDeletionStore(this.state.rawDbHandle)
+    const sourceDeletionStore = new SourceDeletionStore(
+      this.state.rawDbHandle, this.evidenceSearchCache,
+    )
     this.router.post(
       '/api/v1/sources/:sourceId/deletions',
       createSourceDeletionHandler(
@@ -2279,6 +2402,7 @@ export class OwnwareGateway {
       '/api/v1/sources/:sourceId/versions/:sourceVersionId/preparations',
       createSourcePreparationHandler(
         sourceJobStore,
+        sourceDataViewStore,
         this.runIdempotency,
         () => this.sourceJobWorker?.wake(),
       ),
@@ -2289,9 +2413,24 @@ export class OwnwareGateway {
       createGetSourceResourceHandler(sourceJobStore),
       { operation: 'source_resources.read' },
     )
+    this.router.get(
+      '/api/v1/source-data-views/:dataViewId',
+      createGetSourceDataViewHandler(sourceDataViewStore),
+      { operation: 'source_data_views.read' },
+    )
+    this.router.post(
+      '/api/v1/source-data-views/:dataViewId/query',
+      createSourceDataViewQueryHandler(protectedDataViewSelections),
+      { operation: 'source_data_views.query' },
+    )
     this.router.post(
       '/api/v1/source-resources/:resourceId/access-grants',
       accessGrantHandlers.create,
+      { operation: 'access_grants.create' },
+    )
+    this.router.post(
+      '/api/v1/source-data-views/:dataViewId/access-grants',
+      accessGrantHandlers.createDataView,
       { operation: 'access_grants.create' },
     )
     this.router.get(
@@ -2321,13 +2460,14 @@ export class OwnwareGateway {
     )
     this.router.get(
       '/api/v1/source-jobs/:jobId',
-      createGetSourceJobHandler(sourceJobStore),
+      createGetSourceJobHandler(sourceJobStore, sourceDataViewStore),
       { operation: 'source_jobs.read' },
     )
     this.router.post(
       '/api/v1/source-jobs/:jobId/cancel',
       createCancelSourceJobHandler(
         sourceJobStore,
+        sourceDataViewStore,
         () => this.sourceJobWorker?.wake(),
       ),
       { operation: 'source_jobs.cancel' },
@@ -2755,6 +2895,7 @@ export class OwnwareGateway {
       registry: connectorHandlers.registry,
       connections: this.connectorConnections,
       completionManager: this.connectionCompletionManager,
+      connectionSessions: this.connectionSessions,
       composio: {
         get client() {
           return gateway.composioClient
@@ -2783,6 +2924,8 @@ export class OwnwareGateway {
       registry: connectorHandlers.registry,
       connections: this.connectorConnections,
       statusBus: this.connectorStatusBus,
+      completionManager: this.connectionCompletionManager,
+      connectionSessions: this.connectionSessions,
       entityId: this.installIdentity.id,
       // Live getter — see the connect handler above. A key saved after
       // boot must reach disconnect too, without a restart.

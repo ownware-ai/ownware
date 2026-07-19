@@ -377,7 +377,15 @@ export interface PermissionRecord {
    */
   readonly requestId?: string
   readonly toolName: string
+  /**
+   * Legacy rows may contain model-authored input. New rows retain an empty
+   * object only; callers should render inputSummary instead.
+   */
   readonly input?: Record<string, unknown>
+  /** Bounded, content-free display summary (for example, "2 input fields"). */
+  readonly inputSummary?: string
+  /** HMAC identity of the exact tool name + input for run-scoped decisions. */
+  readonly operationHash?: string
   readonly reason: string
   readonly decision: 'approved' | 'denied' | 'pending'
   /** Zone level (0-6) if zone system is active */
@@ -663,7 +671,8 @@ export interface RunRequest {
    * Per-run tool safety envelope for an UNATTENDED (scheduled) run. When set,
    * the assembled tool list is filtered to this level and the Session runs
    * with `permissionMode: 'auto'` (headless — no human to answer an `ask`;
-   * capability is the tool filter, mirroring team members). Omitted on
+   * configured zone policy still applies, and capability is also bounded by
+   * the tool filter, mirroring team members). Omitted on
    * interactive / HTTP runs → no behavior change.
    */
   readonly safetyLevel?: SafetyLevel

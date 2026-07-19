@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.24.0
+  version: 0.29.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -74,6 +74,38 @@ paths:
                         version: { type: integer, minimum: 1 }
                   limits: { $ref: '#/components/schemas/PublicGatewayLimits' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/connections:
+    get:
+      operationId: listConnections
+      summary: List the install owner's provider-neutral connection inventory.
+      description: >
+        Requires an authenticated install owner; delegated principals cannot
+        enumerate connection state. Only the latest material state per logical
+        capability is returned. Provider identity, vendor account handles,
+        credential/session material, raw errors and explicitly revoked history
+        are never projected. A connection is not permission: every use still
+        requires a separate scoped grant and live evaluator decision.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Bounded content-free inventory with fixed recovery guidance.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionList' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/sources:
     post:
@@ -340,11 +372,12 @@ paths:
   /api/v1/sources/{sourceId}/versions/{sourceVersionId}/preparations:
     post:
       operationId: createSourcePreparation
-      summary: Enqueue exact text extraction for one inspected current source version.
+      summary: Enqueue one allowlisted preparation for an inspected current source version.
       description: >
         Requires the separate source_preparations.create authority and a UUID
-        idempotency key. Only the fixed extract_text operation is accepted;
-        workspace and profile scope come only from the delegated bearer.
+        idempotency key. The fixed extract_text and prepare_data_view operations
+        are accepted; workspace and profile scope come only from the delegated
+        bearer. Data View output cells and its private locator are never returned.
       parameters:
         - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
         - { in: path, name: sourceVersionId, required: true, schema: { type: string, format: uuid } }
@@ -357,11 +390,11 @@ paths:
               type: object
               required: [operation]
               properties:
-                operation: { type: string, const: extract_text }
+                operation: { type: string, enum: [extract_text, prepare_data_view] }
               additionalProperties: false
       responses:
         '202':
-          description: Durable preparation job accepted; poll it before reading its resource manifest.
+          description: Durable preparation job accepted; poll the unified job projection.
           content: { application/json: { schema: { $ref: '#/components/schemas/SourceJob' } } }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
@@ -423,6 +456,95 @@ paths:
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
+  /api/v1/source-data-views/{dataViewId}:
+    get:
+      operationId: getSourceDataView
+      summary: Read one scoped content-free Data View manifest.
+      description: >
+        Requires the separate source_data_views.read authority. Cross-workspace/profile
+        identities and views whose source is deleting are indistinguishable from absence.
+        Field labels are untrusted source header labels; no cells, row values, private
+        placement, diagnostics, grant, or query authority are returned.
+      parameters:
+        - { in: path, name: dataViewId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Validated Data View lineage, policy, field shape, counts, and freshness only.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceDataViewManifest' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-data-views/{dataViewId}/access-grants:
+    post:
+      operationId: createDataViewQueryGrant
+      summary: Owner-only admission of one exact Data View observation fence.
+      description: >
+        Authentication must be enabled and the bearer must be the install owner.
+        The request names explicit current field identities and one bounded row window;
+        the Gateway atomically derives and stores the exact stable row identities. The
+        fixed grant is source_data_view / source_data_views.query / observe. It grants
+        no manifest, source-content, search, write, filter, sort, aggregation, SQL or
+        expression authority. Exact idempotency retries return the same minimal receipt.
+      parameters:
+        - { in: path, name: dataViewId, required: true, schema: { type: string, format: uuid } }
+        - { in: header, name: Idempotency-Key, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDataViewQueryGrantInput' }
+      responses:
+        '201':
+          description: Minimal immutable mutation receipt; no cells, row identities or policy detail.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AccessGrantMutationReceipt' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/source-data-views/{dataViewId}/query:
+    post:
+      operationId: querySourceDataView
+      summary: Read one exact field list and bounded row window after live grant evaluation.
+      description: >
+        Requires a subject-bound delegated principal carrying source_data_views.query.
+        Workspace, profile, subject, purpose and channel come only from verified signed
+        claims; the body cannot override identity or authority. The live grant, strict
+        current lineage/lifecycle floor and artifact integrity are checked before and after the
+        bounded selection. Protected denial, stale/deleting state, tamper and race failures
+        return no cells through one generic unavailable response. This is a retry-safe read
+        POST with no durable side effect and no SQL, filter, sort, aggregation, expression
+        or arbitrary row predicate.
+      parameters:
+        - { in: path, name: dataViewId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuerySourceDataViewInput' }
+      responses:
+        '200':
+          description: Verified current cells with complete immutable lineage and bounded-window truth.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProtectedSourceDataViewSelection' } } }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+
   /api/v1/source-resources/{resourceId}/access-grants:
     post:
       operationId: createAccessGrant
@@ -456,7 +578,7 @@ paths:
       summary: Read one bounded UTF-8 range after live grant and source-state evaluation.
       description: >
         Requires a delegated principal with source_content.read. Workspace, profile,
-        purpose and channel come only from that principal. Owner tokens cannot bypass
+        subject, purpose and channel come only from that principal. Owner tokens cannot bypass
         the route or grant. Grant, lineage, availability, freshness and deletion truth
         are checked before and after the private byte read; denial is indistinguishable
         from absence.
@@ -485,6 +607,7 @@ paths:
         Requires a delegated principal with source_content.search, which is a
         separate grant from source_content.read. The Gateway performs a bounded
         literal scan without a model, network access, SQL, shell, or durable index.
+        Workspace, profile, subject, purpose and channel come only from that principal.
         Grant and exact current lineage are checked before and after the scan;
         timeout returns no partial matches and denial is indistinguishable from absence.
       parameters:
@@ -932,6 +1055,11 @@ paths:
               required: [delegateId, workspaceId, profileId, purpose, operations]
               properties:
                 delegateId: { type: string, minLength: 1, maxLength: 128 }
+                subjectId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  description: Explicit grant subject; required when operations includes source_content.read, source_content.search or source_data_views.query.
                 workspaceId: { type: string, minLength: 1, maxLength: 128 }
                 profileId: { type: string, minLength: 1, maxLength: 128 }
                 purpose: { type: string, minLength: 1, maxLength: 64 }
@@ -1410,7 +1538,7 @@ components:
       additionalProperties: false
     PublicGatewayLimits:
       type: object
-      required: [jsonBodyBytes, candidateUpload, runAttachments, sourceList, sourceUpload, sourceInspection, sourcePreparation, accessGrants, sourceContent, sourceSearch, sourceQuota, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
+      required: [jsonBodyBytes, candidateUpload, runAttachments, sourceList, connectionList, sourceUpload, sourceInspection, sourcePreparation, sourceDataView, accessGrants, sourceContent, sourceSearch, sourceQuota, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
       properties:
         jsonBodyBytes:
           type: integer
@@ -1439,14 +1567,28 @@ components:
           properties:
             maxPageSize: { type: integer, const: 100 }
           additionalProperties: false
+        connectionList:
+          type: object
+          required: [maxPageSize]
+          properties:
+            maxPageSize: { type: integer, const: 100 }
+          additionalProperties: false
         sourceUpload:
           type: object
-          required: [maxDecodedBytes, maxChunkBytes, maxChunks, sessionTtlSeconds, supportedMediaTypes]
+          required: [maxDecodedBytes, maxChunkBytes, maxChunks, sessionTtlSeconds, supportedSourceKinds, supportedMediaTypes]
           properties:
             maxDecodedBytes: { type: integer, const: 16777216 }
             maxChunkBytes: { type: integer, const: 1048576 }
             maxChunks: { type: integer, const: 64 }
             sessionTtlSeconds: { type: integer, const: 900 }
+            supportedSourceKinds:
+              type: array
+              prefixItems:
+                - { const: file }
+                - { const: text }
+                - { const: structured_export }
+              minItems: 3
+              maxItems: 3
             supportedMediaTypes:
               type: array
               prefixItems:
@@ -1471,6 +1613,31 @@ components:
             perAttemptTimeoutMs: { type: integer, const: 5000 }
             maxAttempts: { type: integer, const: 3 }
             maxResourcesPerJob: { type: integer, const: 1 }
+          additionalProperties: false
+        sourceDataView:
+          type: object
+          required: [supportedFormats, maxSourceBytes, maxArtifactBytes, maxFields, maxRows, maxCellBytes, maxCells, perAttemptTimeoutMs, maxAttempts, maxQueryFields, maxQueryRows, maxQueryCells, maxQueryResultBytes, queryTimeoutMs, maxGrantScopeIds]
+          properties:
+            supportedFormats:
+              type: array
+              prefixItems:
+                - { const: strict_utf8_csv }
+              minItems: 1
+              maxItems: 1
+            maxSourceBytes: { type: integer, const: 16777216 }
+            maxArtifactBytes: { type: integer, const: 134217728 }
+            maxFields: { type: integer, const: 256 }
+            maxRows: { type: integer, const: 100000 }
+            maxCellBytes: { type: integer, const: 65536 }
+            maxCells: { type: integer, const: 1000000 }
+            perAttemptTimeoutMs: { type: integer, const: 5000 }
+            maxAttempts: { type: integer, const: 3 }
+            maxQueryFields: { type: integer, const: 32 }
+            maxQueryRows: { type: integer, const: 256 }
+            maxQueryCells: { type: integer, const: 8192 }
+            maxQueryResultBytes: { type: integer, const: 262144 }
+            queryTimeoutMs: { type: integer, const: 2000 }
+            maxGrantScopeIds: { type: integer, const: 256 }
           additionalProperties: false
         accessGrants:
           type: object
@@ -1600,6 +1767,44 @@ components:
           items: { $ref: '#/components/schemas/SourceManifest' }
         nextCursor: { type: [string, 'null'], format: uuid }
       additionalProperties: false
+    ConnectionInventoryItem:
+      type: object
+      required: [connectionId, capabilityId, status, recovery, changedAt, expiresAt, lastVerifiedAt]
+      properties:
+        connectionId:
+          type: string
+          format: uuid
+          description: Ownware-owned opaque identity; never a vendor account handle.
+        capabilityId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+          description: Provider-neutral logical capability identity.
+        status: { type: string, enum: [pending, connected, failed, expired] }
+        recovery:
+          type: string
+          enum: [none, complete_connection, reconnect, verify_revocation]
+        changedAt:
+          type: integer
+          minimum: 0
+          multipleOf: 1000
+          description: Durable state-change time reduced to whole-second precision.
+        expiresAt: { type: [integer, 'null'], minimum: 0, multipleOf: 1000 }
+        lastVerifiedAt: { type: [integer, 'null'], minimum: 0, multipleOf: 1000 }
+      additionalProperties: false
+    ConnectionList:
+      type: object
+      required: [items, nextCursor, accessPolicy]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ConnectionInventoryItem' }
+        nextCursor: { type: [string, 'null'], format: uuid }
+        accessPolicy:
+          type: string
+          const: separate_grant_required
+          description: Connection alone grants no resource or action authority.
+      additionalProperties: false
     CreateSourceUploadSessionInput:
       type: object
       required: [expectedBytes, expectedChecksum, declaredMediaType, filename]
@@ -1662,17 +1867,21 @@ components:
       additionalProperties: false
     SourceJob:
       type: object
-      required: [jobId, sourceId, sourceVersionId, operation, implementationVersion, resourceId, state, attempt, maxAttempts, checkpoint, cancelRequestedAt, outcomeCode, createdAt, updatedAt, terminalAt]
+      required: [jobId, sourceId, sourceVersionId, operation, implementationVersion, resourceId, dataViewId, state, attempt, maxAttempts, checkpoint, cancelRequestedAt, outcomeCode, createdAt, updatedAt, terminalAt]
       properties:
         jobId: { type: string, format: uuid }
         sourceId: { type: string, format: uuid }
         sourceVersionId: { type: string, format: uuid }
-        operation: { type: string, enum: [inspect_format, extract_text] }
-        implementationVersion: { type: string, enum: [inspect_format.v1, text_extraction.v1] }
+        operation: { type: string, enum: [inspect_format, extract_text, prepare_data_view] }
+        implementationVersion: { type: string, enum: [inspect_format.v1, text_extraction.v1, csv_data_view.v1] }
         resourceId:
           type: [string, 'null']
           format: uuid
           description: Published only after successful preparation creates its safe resource manifest.
+        dataViewId:
+          type: [string, 'null']
+          format: uuid
+          description: Published only after successful Data View preparation; no cells or private locator are returned.
         state:
           type: string
           enum: [queued, running, waiting_for_resource, cancel_requested, succeeded, partial, failed, cancelled]
@@ -1682,7 +1891,7 @@ components:
         cancelRequestedAt: { type: [integer, 'null'], minimum: 0 }
         outcomeCode:
           type: [string, 'null']
-          enum: [attempts_exhausted, cancelled, inspection_complete, inspection_timeout, inspection_unavailable, source_format_invalid, source_object_mismatch, source_object_missing, source_object_oversized, source_storage_inconsistent, preparation_complete, preparation_timeout, preparation_unavailable, null]
+          enum: [attempts_exhausted, cancelled, inspection_complete, inspection_timeout, inspection_unavailable, source_format_invalid, source_object_mismatch, source_object_missing, source_object_oversized, source_storage_inconsistent, preparation_complete, preparation_timeout, preparation_unavailable, data_view_unavailable, data_view_invalid, data_view_too_large, data_view_publication_conflict, artifact_cleanup_failed, csv_identity_invalid, csv_input_oversized, csv_invalid_utf8, csv_header_empty, csv_header_duplicate, csv_quoting_invalid, csv_bare_carriage_return, csv_row_ragged, csv_field_limit_exceeded, csv_row_limit_exceeded, csv_cell_limit_exceeded, csv_total_cell_limit_exceeded, csv_preparation_timeout, null]
         createdAt: { type: integer, minimum: 0 }
         updatedAt: { type: integer, minimum: 0 }
         terminalAt: { type: [integer, 'null'], minimum: 0 }
@@ -1717,6 +1926,139 @@ components:
         createdAt: { type: integer, minimum: 0 }
         staleAt: { type: [integer, 'null'], minimum: 0 }
       additionalProperties: false
+    SourceDataViewField:
+      type: object
+      required: [fieldId, ordinal, label]
+      properties:
+        fieldId: { type: string, pattern: '^field\.[0-9a-f]{32}$' }
+        ordinal: { type: integer, minimum: 0, maximum: 255 }
+        label:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          description: Untrusted display label copied mechanically from the source header.
+      additionalProperties: false
+    SourceDataViewManifest:
+      type: object
+      required: [dataViewId, jobId, sourceId, sourceVersionId, implementationVersion, sourceRevision, sourceChecksum, artifactChecksum, artifactByteCount, fieldCount, rowCount, fields, classification, authority, audiencePolicyRef, sensitivityPolicyRef, purposePolicyRef, retentionPolicyRef, freshnessPolicyRef, freshness, createdAt, staleAt]
+      properties:
+        dataViewId: { type: string, format: uuid }
+        jobId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        sourceVersionId: { type: string, format: uuid }
+        implementationVersion: { type: string, const: csv_data_view.v1 }
+        sourceRevision: { type: integer, minimum: 1 }
+        sourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        artifactChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        artifactByteCount: { type: integer, minimum: 1, maximum: 134217728 }
+        fieldCount: { type: integer, minimum: 1, maximum: 256 }
+        rowCount: { type: integer, minimum: 0, maximum: 100000 }
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items: { $ref: '#/components/schemas/SourceDataViewField' }
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example] }
+        audiencePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        sensitivityPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        purposePolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        retentionPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        freshnessPolicyRef: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' }
+        freshness: { type: string, enum: [current, stale] }
+        createdAt: { type: integer, minimum: 0 }
+        staleAt: { type: [integer, 'null'], minimum: 0 }
+      additionalProperties: false
+    CreateDataViewQueryGrantInput:
+      type: object
+      required: [subjectId, purpose, channel, consent, fieldIds, rowOffset, rowCount, ttlSeconds]
+      properties:
+        subjectId: { type: string, minLength: 1, maxLength: 128 }
+        purpose: { type: string, minLength: 1, maxLength: 64 }
+        channel: { type: [string, 'null'], minLength: 1, maxLength: 64 }
+        consent: { $ref: '#/components/schemas/AccessConsent' }
+        fieldIds:
+          type: array
+          minItems: 1
+          maxItems: 256
+          uniqueItems: true
+          items: { type: string, pattern: '^field\.[0-9a-f]{32}$' }
+        rowOffset:
+          type: integer
+          minimum: 0
+          maximum: 99999
+          description: First row ordinal in the exact grant window.
+        rowCount:
+          type: integer
+          minimum: 1
+          maximum: 256
+          description: Exact row count; a window extending beyond the current manifest rejects rather than clipping.
+        ttlSeconds: { type: integer, minimum: 60, maximum: 2592000 }
+      additionalProperties: false
+    QuerySourceDataViewInput:
+      type: object
+      required: [consent, fieldIds, rowOffset, rowCount]
+      properties:
+        consent: { $ref: '#/components/schemas/AccessConsent' }
+        fieldIds:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items: { type: string, pattern: '^field\.[0-9a-f]{32}$' }
+        rowOffset: { type: integer, minimum: 0, maximum: 99999 }
+        rowCount: { type: integer, minimum: 1, maximum: 256 }
+      additionalProperties: false
+      description: >
+        The product of fieldIds and rowCount cannot exceed 8192. Identity,
+        purpose, channel, operation, autonomy and permission mode are never body fields.
+    SourceDataViewSelectionRow:
+      type: object
+      required: [rowId, ordinal, values]
+      properties:
+        rowId: { type: string, pattern: '^row\.[0-9a-f]{32}$' }
+        ordinal: { type: integer, minimum: 0, maximum: 99999 }
+        values:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            type: string
+            description: Inert untrusted source data; never interpreted as an instruction or expression.
+      additionalProperties: false
+    ProtectedSourceDataViewSelection:
+      type: object
+      required: [dataViewId, sourceId, sourceVersionId, sourceRevision, sourceChecksum, artifactChecksum, freshness, classification, authority, implementationVersion, rowOffset, requestedRowCount, returnedRowCount, totalRowCount, complete, fields, rows, observedAt]
+      properties:
+        dataViewId: { type: string, format: uuid }
+        sourceId: { type: string, format: uuid }
+        sourceVersionId: { type: string, format: uuid }
+        sourceRevision: { type: integer, minimum: 1 }
+        sourceChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        artifactChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        freshness: { type: string, const: current }
+        classification: { type: string, enum: [public, internal, confidential, restricted] }
+        authority: { type: string, enum: [source_of_record, supporting_reference, example] }
+        implementationVersion: { type: string, const: csv_data_view_selection.v1 }
+        rowOffset: { type: integer, minimum: 0, maximum: 99999 }
+        requestedRowCount: { type: integer, minimum: 1, maximum: 256 }
+        returnedRowCount: { type: integer, minimum: 1, maximum: 256 }
+        totalRowCount: { type: integer, minimum: 1, maximum: 100000 }
+        complete:
+          type: boolean
+          description: True only when the returned window reaches the current final row.
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items: { $ref: '#/components/schemas/SourceDataViewField' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items: { $ref: '#/components/schemas/SourceDataViewSelectionRow' }
+        observedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
     AccessConsent:
       oneOf:
         - type: object
@@ -1728,7 +2070,9 @@ components:
           required: [state, evidenceId]
           properties:
             state: { type: string, const: recorded }
-            evidenceId: { type: string, minLength: 1, maxLength: 128 }
+            evidenceId:
+              type: string
+              pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
           additionalProperties: false
     CreateAccessGrantInput:
       type: object
@@ -1736,8 +2080,8 @@ components:
       properties:
         operation: { type: string, enum: [source_content.read, source_content.search] }
         subjectId: { type: string, minLength: 1, maxLength: 128 }
-        purpose: { type: string, minLength: 1, maxLength: 128 }
-        channel: { type: [string, 'null'], minLength: 1, maxLength: 128 }
+        purpose: { type: string, minLength: 1, maxLength: 64 }
+        channel: { type: [string, 'null'], minLength: 1, maxLength: 64 }
         consent: { $ref: '#/components/schemas/AccessConsent' }
         ttlSeconds: { type: integer, minimum: 60, maximum: 2592000 }
       additionalProperties: false
@@ -1762,11 +2106,17 @@ components:
         subjectId: { type: string }
         purpose: { type: string }
         channel: { type: [string, 'null'] }
-        resourceKind: { type: string, const: source_resource }
+        resourceKind: { type: string, enum: [source_resource, source_data_view] }
         resourceId: { type: string, format: uuid }
-        operation: { type: string, enum: [source_content.read, source_content.search] }
-        fieldScope: { $ref: '#/components/schemas/AllAccessScope' }
-        rowScope: { $ref: '#/components/schemas/AllAccessScope' }
+        operation: { type: string, enum: [source_content.read, source_content.search, source_data_views.query] }
+        fieldScope:
+          oneOf:
+            - { $ref: '#/components/schemas/AllAccessScope' }
+            - { $ref: '#/components/schemas/FieldListAccessScope' }
+        rowScope:
+          oneOf:
+            - { $ref: '#/components/schemas/AllAccessScope' }
+            - { $ref: '#/components/schemas/RowListAccessScope' }
         consent: { $ref: '#/components/schemas/AccessConsent' }
         autonomyCeiling: { type: string, const: observe }
         effectiveAt: { type: integer }
@@ -1783,6 +2133,30 @@ components:
       required: [mode]
       properties:
         mode: { type: string, const: all }
+      additionalProperties: false
+    FieldListAccessScope:
+      type: object
+      required: [mode, ids]
+      properties:
+        mode: { type: string, const: list }
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 256
+          uniqueItems: true
+          items: { type: string, pattern: '^field\.[0-9a-f]{32}$' }
+      additionalProperties: false
+    RowListAccessScope:
+      type: object
+      required: [mode, ids]
+      properties:
+        mode: { type: string, const: list }
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 256
+          uniqueItems: true
+          items: { type: string, pattern: '^row\.[0-9a-f]{32}$' }
       additionalProperties: false
     CurrentAccessGrant:
       allOf:
@@ -1803,13 +2177,13 @@ components:
       additionalProperties: false
     ReadSourceContentInput:
       type: object
-      required: [subjectId, consent, byteStart, byteEnd]
+      required: [consent, byteStart, byteEnd]
       properties:
-        subjectId: { type: string, minLength: 1, maxLength: 128 }
         consent: { $ref: '#/components/schemas/AccessConsent' }
         byteStart: { type: integer, minimum: 0 }
         byteEnd: { type: integer, minimum: 1 }
       additionalProperties: false
+      description: Subject identity comes only from the verified delegated principal.
     ProtectedSourceContent:
       type: object
       required: [resourceId, sourceId, sourceVersionId, sourceRevision, sourceChecksum, resourceChecksum, freshness, classification, authority, text, byteStart, byteEnd, byteCount, totalByteCount, observedAt]
@@ -1832,15 +2206,19 @@ components:
       additionalProperties: false
     SearchSourceContentInput:
       type: object
-      required: [subjectId, consent, query, matchMode, maxMatches, contextBytes]
+      required: [consent, query, matchMode, maxMatches, contextBytes]
       properties:
-        subjectId: { type: string, minLength: 1, maxLength: 128 }
         consent: { $ref: '#/components/schemas/AccessConsent' }
-        query: { type: string, minLength: 1, maxLength: 128 }
+        query:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Literal query limited to 128 UTF-8 bytes; maxLength is the outer character-count ceiling.
         matchMode: { type: string, enum: [exact_utf8, ascii_case_insensitive] }
         maxMatches: { type: integer, minimum: 1, maximum: 20 }
         contextBytes: { type: integer, minimum: 0, maximum: 1024 }
       additionalProperties: false
+      description: Subject identity comes only from the verified delegated principal.
     ProtectedSourceSearchMatch:
       type: object
       required: [evidenceId, text, byteStart, byteEnd, matchByteStart, matchByteEnd]
@@ -1873,7 +2251,10 @@ components:
           items: { $ref: '#/components/schemas/ProtectedSourceSearchMatch' }
         truncated: { type: boolean }
         totalByteCount: { type: integer, minimum: 1 }
-        observedAt: { type: integer, minimum: 0 }
+        observedAt:
+          type: integer
+          minimum: 0
+          description: Evidence-snapshot creation time. Equivalent repeated searches may retain this value; it is not proof of current authorization, cache state, response time, or source freshness.
       additionalProperties: false
     SourceJobCancellationResult:
       allOf:
@@ -2084,6 +2465,9 @@ components:
         kind: { type: string, const: delegated }
         tokenId: { type: string, format: uuid }
         delegateId: { type: string }
+        subjectId:
+          type: string
+          description: Explicit grant subject when this delegated principal is subject-bound.
         workspaceId: { type: string }
         profileId: { type: string }
         purpose: { type: string }

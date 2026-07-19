@@ -2,8 +2,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
+  ACCESS_GRANT_MAX_SCOPE_IDS,
   ACCESS_GRANT_MAX_TTL_SECONDS,
   ACCESS_GRANT_MIN_TTL_SECONDS,
+  ACCESS_GRANT_OPAQUE_ID_PATTERN,
   AccessGrantStore,
   AccessGrantStoreError,
   type AccessGrantRevision,
@@ -14,6 +16,7 @@ import {
   type AccessGrantMutationReceipt,
   type RunIdempotencyStore,
 } from '../idempotency.js'
+import { CSV_DATA_VIEW_MAX_ROWS } from '../csv-data-view.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -21,18 +24,31 @@ const ConsentSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('not_required') }).strict(),
   z.object({
     state: z.literal('recorded'),
-    evidenceId: z.string().min(1).max(128),
+    evidenceId: z.string().regex(ACCESS_GRANT_OPAQUE_ID_PATTERN),
   }).strict(),
 ])
 const CreateSchema = z.object({
   operation: z.enum(['source_content.read', 'source_content.search']).optional(),
   subjectId: z.string().min(1).max(128),
-  purpose: z.string().min(1).max(128),
-  channel: z.string().min(1).max(128).nullable(),
+  purpose: z.string().min(1).max(64),
+  channel: z.string().min(1).max(64).nullable(),
   consent: ConsentSchema,
   ttlSeconds: z.number().int()
     .min(ACCESS_GRANT_MIN_TTL_SECONDS)
     .max(ACCESS_GRANT_MAX_TTL_SECONDS),
+}).strict()
+const DataViewCreateSchema = z.object({
+  subjectId: z.string().min(1).max(128),
+  purpose: z.string().min(1).max(64),
+  channel: z.string().min(1).max(64).nullable(),
+  consent: ConsentSchema,
+  ttlSeconds: z.number().int()
+    .min(ACCESS_GRANT_MIN_TTL_SECONDS)
+    .max(ACCESS_GRANT_MAX_TTL_SECONDS),
+  fieldIds: z.array(z.string().regex(/^field\.[0-9a-f]{32}$/))
+    .min(1).max(ACCESS_GRANT_MAX_SCOPE_IDS),
+  rowOffset: z.number().int().min(0).max(CSV_DATA_VIEW_MAX_ROWS - 1),
+  rowCount: z.number().int().min(1).max(ACCESS_GRANT_MAX_SCOPE_IDS),
 }).strict()
 const RevokeSchema = z.object({ expectedRevision: z.number().int().positive() }).strict()
 export const ACCESS_GRANT_LIST_MAX_LIMIT = 100
@@ -110,6 +126,84 @@ export function createAccessGrantHandlers(options: {
       sendJSON(res, 201, receipt)
     } catch (error) {
       options.idempotency.abandon(claimKey)
+      handleStoreError(res, error, null)
+    }
+  }
+
+  async function createDataView(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    if (!requireOwner(req, res, options.authEnabled)) return
+    if (hasQuery(req)) return invalid(res, 'Access grant request is invalid.')
+    const dataViewId = params['dataViewId'] ?? ''
+    const body = await readJSON(req)
+    if (dataViewGrantLimitExceeded(body)) return scopeLimitExceeded(res)
+    const parsed = DataViewCreateSchema.safeParse(body)
+    if (!UUID.test(dataViewId) || !parsed.success ||
+        new Set(parsed.data.fieldIds).size !== parsed.data.fieldIds.length) {
+      return invalid(res, 'Access grant request is invalid.')
+    }
+    const key = idempotencyKey(req, res)
+    if (!key) return
+    const principal = getRequestPrincipal(req)!
+    const fence = { dataViewId, ...parsed.data }
+    const claimKey = {
+      principalKey: principalContinuityKey(principal),
+      operation: 'access_grants.create',
+      key,
+    }
+    const claim = options.idempotency.claim({ ...claimKey, input: fence })
+    if (claim.kind === 'replay') return replay(res, claim.statusCode, claim.result)
+    if (claim.kind !== 'claimed') return replayFailure(res, claim.kind)
+    const target = options.grants.getDataViewQueryTargetForOwner(dataViewId)
+    if (!target) {
+      options.idempotency.abandon(claimKey)
+      return unavailableDataView(res)
+    }
+    try {
+      options.idempotency.linkSourceMutation(
+        claim.recordId, target.sourceId, 'access_grant', clock(),
+      )
+    } catch {
+      options.idempotency.markIndeterminate(claimKey)
+      return indeterminate(res)
+    }
+
+    const acceptedAt = clock()
+    try {
+      const created = options.grants.createDataViewQueryWindowGrant({
+        workspaceId: target.workspaceId,
+        profileId: target.profileId,
+        dataViewId,
+        subjectId: parsed.data.subjectId,
+        purpose: parsed.data.purpose,
+        channel: parsed.data.channel,
+        consent: parsed.data.consent,
+        ttlSeconds: parsed.data.ttlSeconds,
+        fieldIds: parsed.data.fieldIds,
+        rowOffset: parsed.data.rowOffset,
+        rowCount: parsed.data.rowCount,
+        issuedBy: 'install_owner',
+      }, acceptedAt)
+      const receipt = grantReceipt(created, 'created', acceptedAt)
+      try {
+        options.idempotency.complete({
+          ...claimKey, statusCode: 201, result: receipt,
+        }, acceptedAt)
+      } catch {
+        options.idempotency.markIndeterminate(claimKey)
+        return indeterminate(res)
+      }
+      noStore(res)
+      sendJSON(res, 201, receipt)
+    } catch (error) {
+      options.idempotency.abandon(claimKey)
+      if (error instanceof AccessGrantStoreError &&
+          error.code === 'access_grant_resource_unavailable') {
+        return unavailableDataView(res)
+      }
       handleStoreError(res, error, null)
     }
   }
@@ -203,7 +297,16 @@ export function createAccessGrantHandlers(options: {
     }
   }
 
-  return { create, read, list, revoke }
+  return { create, createDataView, read, list, revoke }
+}
+
+function dataViewGrantLimitExceeded(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const body = value as { readonly fieldIds?: unknown; readonly rowCount?: unknown }
+  return (Array.isArray(body.fieldIds) &&
+      body.fieldIds.length > ACCESS_GRANT_MAX_SCOPE_IDS) ||
+    (typeof body.rowCount === 'number' &&
+      body.rowCount > ACCESS_GRANT_MAX_SCOPE_IDS)
 }
 
 function requireOwner(
@@ -319,6 +422,16 @@ function invalid(res: ServerResponse, message: string): void {
 function unavailableResource(res: ServerResponse): void {
   sendError(res, 404, 'Prepared source resource is unavailable.',
     'access_grant_resource_unavailable', 'not_found')
+}
+
+function unavailableDataView(res: ServerResponse): void {
+  sendError(res, 404, 'Data View is unavailable.',
+    'access_grant_resource_unavailable', 'not_found')
+}
+
+function scopeLimitExceeded(res: ServerResponse): void {
+  sendError(res, 413, 'Access grant scope exceeds the supported limit.',
+    'access_grant_scope_limit_exceeded', 'invalid_request')
 }
 
 function grantNotFound(res: ServerResponse): void {

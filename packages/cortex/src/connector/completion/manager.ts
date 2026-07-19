@@ -16,10 +16,14 @@
 import type { ConnectorConnectionsStore } from '../connections/store.js'
 import type { ConnectorStatusBus } from '../status-bus.js'
 import { ConnectionPoller, type PollerConfig } from './poller.js'
-import type { ConnectionCompletionListener } from './types.js'
+import type {
+  BeforeConnectionTerminal,
+  ConnectionCompletionListener,
+} from './types.js'
 
 export interface ConnectionCompletionManagerOptions {
   readonly pollerConfig?: Partial<PollerConfig>
+  readonly beforeTerminal?: BeforeConnectionTerminal
 }
 
 export class ConnectionCompletionManager {
@@ -31,7 +35,12 @@ export class ConnectionCompletionManager {
     statusBus: ConnectorStatusBus,
     opts: ConnectionCompletionManagerOptions = {},
   ) {
-    this.poller = new ConnectionPoller(store, statusBus, opts.pollerConfig ?? {})
+    this.poller = new ConnectionPoller(
+      store,
+      statusBus,
+      opts.pollerConfig ?? {},
+      opts.beforeTerminal,
+    )
   }
 
   /**

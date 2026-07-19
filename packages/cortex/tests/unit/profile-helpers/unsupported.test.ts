@@ -120,13 +120,13 @@ describe('assertProfileIsSupported — sandbox (F-08)', () => {
 })
 
 describe('assertProfileIsSupported — permissionMode (F-05)', () => {
-  // Post-2026-05-14 redesign: 'auto' is the real bypass mode (S2), so
-  // it must be accepted at load time. 'deny' and 'allowlist' are
+  // `auto` is a policy-aware fallback, so it must be accepted at load
+  // time. 'deny' and 'allowlist' are
   // semantically dead (S1 made them coerce to 'ask') and still
   // rejected so operators don't think they're getting blocking
   // behaviour. 'ask' remains the default.
 
-  it('accepts permissionMode="auto" (real bypass, S2)', () => {
+  it('accepts permissionMode="auto" as a policy-aware fallback', () => {
     const p = makeProfile({ security: { permissionMode: 'auto' } })
     expect(() => assertProfileIsSupported(p)).not.toThrow()
   })

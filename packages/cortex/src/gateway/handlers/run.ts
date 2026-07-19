@@ -1296,12 +1296,11 @@ export function createRunHandlers(
           ...(assembled.hookRuntime ? { hooks: assembled.hookRuntime } : {}),
           ...(assembled.reminderInjector ? { reminders: assembled.reminderInjector } : {}),
 
-          // Permission mode. A scheduled (headless) run runs 'auto' — there is
-          // no human to answer an 'ask', so capability is the tool filter above,
-          // never a prompt that would hang forever (mirrors team members,
-          // team/member-policy.ts). An interactive run keeps the profile's
-          // configured mode so its pre-callback bypass + zone-manager
-          // checkPermission below behave exactly as before.
+          // Permission mode. A scheduled (headless) run uses `auto` as its
+          // fallback and the tool filter above as its capability envelope.
+          // The zone-manager check below remains authoritative; if it asks and
+          // no human approves, the run fails closed through the bounded HITL
+          // path. Interactive runs keep the profile's configured fallback.
           permissionMode:
             body.safetyLevel != null ? 'auto' : profile.config.security.permissionMode,
 

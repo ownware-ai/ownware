@@ -43,20 +43,16 @@ describe('ComposioCompletionListener.checkStatus', () => {
     expect((await l.checkStatus('ca_1', null, unabortedSignal)).status).toBe('pending')
   })
 
-  it('maps ACTIVE → ready with metadata', async () => {
+  it('maps ACTIVE → ready with only frozen vendor identity', async () => {
     const l = new ComposioCompletionListener({
       client: makeClient({ getConnectedAccount: vi.fn(async () => makeAccount('ACTIVE')) }),
     })
     const r = await l.checkStatus('ca_1', null, unabortedSignal)
     expect(r.status).toBe('ready')
-    expect(r.status === 'ready' && r.completedMetadata).toMatchObject({
-      composioConnectedAccountId: 'ca_1',
-      composioAuthConfigId: 'ac_1',
-      composioToolkitSlug: 'github',
-    })
+    expect(r).toEqual({ status: 'ready', vendorAccountId: 'ca_1' })
   })
 
-  it('maps FAILED → failed with status_reason', async () => {
+  it('maps FAILED to a fixed safe reconnect reason', async () => {
     const l = new ComposioCompletionListener({
       client: makeClient({
         getConnectedAccount: vi.fn(async () => makeAccount('FAILED', { status_reason: 'user denied' })),
@@ -64,7 +60,9 @@ describe('ComposioCompletionListener.checkStatus', () => {
     })
     const r = await l.checkStatus('ca_1', null, unabortedSignal)
     expect(r.status).toBe('failed')
-    expect(r.status === 'failed' && r.errorReason).toBe('user denied')
+    expect(r.status === 'failed' && r.errorReason)
+      .toBe('Composio reported the connection as failed. Please reconnect.')
+    expect(r.status === 'failed' && r.errorReason).not.toContain('user denied')
   })
 
   it('maps EXPIRED → failed with actionable reason', async () => {

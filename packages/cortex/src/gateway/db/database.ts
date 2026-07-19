@@ -73,6 +73,7 @@ export class CortexDatabase {
   // hot path to one transaction + two `.get()` / `.run()` calls.
   private readonly agentEventSeqStmt: Database.Statement
   private readonly agentEventInsertStmt: Database.Statement
+  private readonly agentEventHighWaterStmt: Database.Statement
   /**
    * Reusable transaction wrapper for `appendAgentEvent`. `db.transaction`
    * returns a closure — we want one closure for the lifetime of the
@@ -114,11 +115,20 @@ export class CortexDatabase {
     // Prepare hot-path statements (must come AFTER migrations, since
     // they reference `agent_events` which is created by a migration).
     this.agentEventSeqStmt = this.db.prepare(
-      'SELECT COALESCE(MAX(seq), 0) as max_seq FROM agent_events WHERE thread_id = ? AND agent_id = ?',
+      `SELECT COALESCE(high_water_seq, 0) AS max_seq
+       FROM (SELECT 1) LEFT JOIN agent_event_streams
+         ON thread_id = ? AND agent_id = ?`,
     )
     this.agentEventInsertStmt = this.db.prepare(
       'INSERT INTO agent_events (thread_id, agent_id, parent_agent_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
+    this.agentEventHighWaterStmt = this.db.prepare(`
+      INSERT INTO agent_event_streams (thread_id, agent_id, high_water_seq)
+      VALUES (?, ?, ?)
+      ON CONFLICT(thread_id, agent_id) DO UPDATE SET
+        high_water_seq = excluded.high_water_seq
+      WHERE excluded.high_water_seq > agent_event_streams.high_water_seq
+    `)
     this.appendAgentEventTx = this.db.transaction((params: {
       threadId: string
       agentId: string
@@ -141,6 +151,7 @@ export class CortexDatabase {
         params.payloadJson,
         params.createdAt,
       )
+      this.agentEventHighWaterStmt.run(params.threadId, params.agentId, seq)
       return seq
     })
   }
@@ -440,11 +451,9 @@ export class CortexDatabase {
     }))
   }
 
-  /** Latest seq number for an agent's stream (0 if no events). */
+  /** Durable high-water seq for an agent's stream (0 if none ever existed). */
   getAgentEventMaxSeq(threadId: string, agentId: string): number {
-    const row = this.db.prepare(
-      'SELECT COALESCE(MAX(seq), 0) as max_seq FROM agent_events WHERE thread_id = ? AND agent_id = ?',
-    ).get(threadId, agentId) as { max_seq: number }
+    const row = this.agentEventSeqStmt.get(threadId, agentId) as { max_seq: number }
     return row.max_seq
   }
 
@@ -596,10 +605,24 @@ export class CortexDatabase {
    * deletion by date alone would bypass those checks.
    */
   pruneAgentEvents(threadId: string): number {
-    const result = this.db.prepare(
-      "DELETE FROM agent_events WHERE thread_id = ? AND agent_id = 'root'",
-    ).run(threadId)
-    return result.changes
+    return this.db.transaction(() => {
+      // Defensively capture the current position in the same transaction
+      // as deletion. Normal EventIngestor writes already maintain this
+      // row, but retention must remain safe for upgraded databases and
+      // operator/test rows inserted through the raw database seam.
+      this.db.prepare(`
+        INSERT INTO agent_event_streams (thread_id, agent_id, high_water_seq)
+        SELECT thread_id, agent_id, MAX(seq)
+        FROM agent_events
+        WHERE thread_id = ? AND agent_id = 'root'
+        GROUP BY thread_id, agent_id
+        ON CONFLICT(thread_id, agent_id) DO UPDATE SET
+          high_water_seq = MAX(high_water_seq, excluded.high_water_seq)
+      `).run(threadId)
+      return this.db.prepare(
+        "DELETE FROM agent_events WHERE thread_id = ? AND agent_id = 'root'",
+      ).run(threadId).changes
+    }).immediate()
   }
 
   /** Total rows currently in agent_events. Observability helper. */

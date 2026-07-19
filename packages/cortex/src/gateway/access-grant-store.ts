@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
+import type { EvidenceSearchCache } from './evidence-search-cache.js'
+import { csvDataViewOrdinalId } from './csv-data-view.js'
+import { SourceDataViewStore } from './source-data-view-store.js'
 
-const SAFE_SCOPE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+export const ACCESS_GRANT_OPAQUE_ID_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+const SAFE_SCOPE = ACCESS_GRANT_OPAQUE_ID_PATTERN
 const SAFE_RESOURCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
 const SAFE_OPERATION = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
-const MAX_SCOPE_IDS = 256
+export const ACCESS_GRANT_MAX_SCOPE_IDS = 256
 export const ACCESS_GRANT_MAX_ACTIVE_PER_SCOPE = 1_024
 export const ACCESS_GRANT_MIN_TTL_SECONDS = 60
 export const ACCESS_GRANT_MAX_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -58,6 +63,33 @@ export interface CreatePreparedTextReadGrantInput {
 export interface CreatePreparedTextAccessGrantInput
   extends CreatePreparedTextReadGrantInput {
   readonly operation: PreparedTextAccessOperation
+}
+
+export interface CreateDataViewQueryGrantInput {
+  readonly workspaceId: string
+  readonly profileId: string
+  readonly subjectId: string
+  readonly purpose: string
+  readonly channel: string | null
+  readonly dataViewId: string
+  readonly fieldIds: readonly string[]
+  readonly rowIds: readonly string[]
+  readonly consent: AccessConsent
+  readonly ttlSeconds: number
+  readonly issuedBy: string
+}
+
+export interface CreateDataViewQueryWindowGrantInput
+  extends Omit<CreateDataViewQueryGrantInput, 'rowIds'> {
+  readonly rowOffset: number
+  readonly rowCount: number
+}
+
+export interface DataViewQueryTargetIdentity {
+  readonly workspaceId: string
+  readonly profileId: string
+  readonly dataViewId: string
+  readonly sourceId: string
 }
 
 export interface AccessGrantRevision extends CreateAccessGrantInput {
@@ -156,6 +188,7 @@ export class AccessGrantStore {
   constructor(
     private readonly db: Database.Database,
     private readonly maxActivePerScope: number = ACCESS_GRANT_MAX_ACTIVE_PER_SCOPE,
+    private readonly evidenceSearchCache?: EvidenceSearchCache,
   ) {
     if (!Number.isSafeInteger(maxActivePerScope) || maxActivePerScope < 1) {
       throw new TypeError('Access grant limit is invalid')
@@ -214,6 +247,100 @@ export class AccessGrantStore {
       )) {
         throw new AccessGrantStoreError('access_grant_resource_unavailable')
       }
+      return this.createNormalizedInTransaction(normalized, now)
+    }).immediate()
+  }
+
+  createDataViewQueryGrant(
+    input: CreateDataViewQueryGrantInput,
+    now: number = Date.now(),
+  ): AccessGrantRevision {
+    if (!validExactDataViewIds(input.fieldIds, 'field') ||
+        !validExactDataViewIds(input.rowIds, 'row')) {
+      throw new AccessGrantStoreError('access_grant_invalid')
+    }
+    const normalized = normalizeImmediateGrantInput({
+      workspaceId: input.workspaceId,
+      profileId: input.profileId,
+      subjectId: input.subjectId,
+      purpose: input.purpose,
+      channel: input.channel,
+      resourceKind: 'source_data_view',
+      resourceId: input.dataViewId,
+      operation: 'source_data_views.query',
+      fieldScope: { mode: 'list', ids: input.fieldIds },
+      rowScope: { mode: 'list', ids: input.rowIds },
+      consent: input.consent,
+      autonomyCeiling: 'observe',
+      ttlSeconds: input.ttlSeconds,
+      issuedBy: input.issuedBy,
+    }, now)
+    return this.db.transaction(() => {
+      const target = new SourceDataViewStore(this.db).getProtectedSelectionTargetScoped(
+        normalized.resourceId,
+        normalized.workspaceId,
+        normalized.profileId,
+      )
+      if (!target) {
+        throw new AccessGrantStoreError('access_grant_resource_unavailable')
+      }
+      const manifest = target.manifest
+      const knownFields = new Set(manifest.fields.map(field => field.fieldId))
+      if (input.fieldIds.some(fieldId => !knownFields.has(fieldId)) ||
+          !rowIdsBelongToManifest(
+            input.rowIds, manifest.sourceVersionId, manifest.rowCount,
+          )) {
+        throw new AccessGrantStoreError('access_grant_invalid')
+      }
+      return this.createNormalizedInTransaction(normalized, now)
+    }).immediate()
+  }
+
+  createDataViewQueryWindowGrant(
+    input: CreateDataViewQueryWindowGrantInput,
+    now: number = Date.now(),
+  ): AccessGrantRevision {
+    if (!validExactDataViewIds(input.fieldIds, 'field') ||
+        !Number.isSafeInteger(input.rowOffset) || input.rowOffset < 0 ||
+        !Number.isSafeInteger(input.rowCount) || input.rowCount < 1 ||
+        input.rowCount > ACCESS_GRANT_MAX_SCOPE_IDS) {
+      throw new AccessGrantStoreError('access_grant_invalid')
+    }
+    return this.db.transaction(() => {
+      const target = new SourceDataViewStore(this.db).getProtectedSelectionTargetScoped(
+        input.dataViewId, input.workspaceId, input.profileId,
+      )
+      if (!target) {
+        throw new AccessGrantStoreError('access_grant_resource_unavailable')
+      }
+      const manifest = target.manifest
+      const rowEnd = input.rowOffset + input.rowCount
+      if (!Number.isSafeInteger(rowEnd) || input.rowOffset >= manifest.rowCount ||
+          rowEnd > manifest.rowCount) {
+        throw new AccessGrantStoreError('access_grant_invalid')
+      }
+      const knownFields = new Set(manifest.fields.map(field => field.fieldId))
+      if (input.fieldIds.some(fieldId => !knownFields.has(fieldId))) {
+        throw new AccessGrantStoreError('access_grant_invalid')
+      }
+      const rowIds = Array.from({ length: input.rowCount }, (_, offset) =>
+        csvDataViewOrdinalId('row', manifest.sourceVersionId, input.rowOffset + offset))
+      const normalized = normalizeImmediateGrantInput({
+        workspaceId: input.workspaceId,
+        profileId: input.profileId,
+        subjectId: input.subjectId,
+        purpose: input.purpose,
+        channel: input.channel,
+        resourceKind: 'source_data_view',
+        resourceId: input.dataViewId,
+        operation: 'source_data_views.query',
+        fieldScope: { mode: 'list', ids: input.fieldIds },
+        rowScope: { mode: 'list', ids: rowIds },
+        consent: input.consent,
+        autonomyCeiling: 'observe',
+        ttlSeconds: input.ttlSeconds,
+        issuedBy: input.issuedBy,
+      }, now)
       return this.createNormalizedInTransaction(normalized, now)
     }).immediate()
   }
@@ -291,6 +418,14 @@ export class AccessGrantStore {
         AND r.resource_checksum = v.checksum
         AND r.byte_count = v.byte_count
         AND s.current_version_id = r.source_version_id
+        AND s.revision = r.source_revision
+        AND s.classification = r.classification
+        AND s.authority = r.authority
+        AND s.audience_policy_ref = r.audience_policy_ref
+        AND s.sensitivity_policy_ref = r.sensitivity_policy_ref
+        AND s.purpose_policy_ref = r.purpose_policy_ref
+        AND s.retention_policy_ref = r.retention_policy_ref
+        AND s.freshness_policy_ref = r.freshness_policy_ref
         AND s.registration_state = 'registered'
         AND s.inspection_state = 'complete'
         AND s.preparation_state = 'ready'
@@ -358,6 +493,24 @@ export class AccessGrantStore {
     ) : null
   }
 
+  getDataViewQueryTargetForOwner(dataViewId: string): DataViewQueryTargetIdentity | null {
+    if (!isUuid(dataViewId)) return null
+    const scope = this.db.prepare(`
+      SELECT workspace_id, profile_id FROM source_data_views
+      WHERE data_view_id = ?
+    `).get(dataViewId) as { workspace_id: string; profile_id: string } | undefined
+    if (!scope) return null
+    const target = new SourceDataViewStore(this.db).getProtectedSelectionTargetScoped(
+      dataViewId, scope.workspace_id, scope.profile_id,
+    )
+    return target ? {
+      workspaceId: target.workspaceId,
+      profileId: target.profileId,
+      dataViewId: target.manifest.dataViewId,
+      sourceId: target.manifest.sourceId,
+    } : null
+  }
+
   getCurrentScoped(
     grantId: string,
     workspaceId: string,
@@ -408,11 +561,35 @@ export class AccessGrantStore {
       profile_id: string
       source_id: string
     } | undefined
-    return row ? {
+    if (row) return {
       grantId: row.grant_id,
       workspaceId: row.workspace_id,
       profileId: row.profile_id,
       sourceId: row.source_id,
+    }
+    const dataViewRow = this.db.prepare(`
+      SELECT g.grant_id, g.workspace_id, g.profile_id, d.source_id
+      FROM access_grants g
+      JOIN access_grant_revisions r
+        ON r.grant_id = g.grant_id AND r.revision = g.current_revision
+      JOIN source_data_views d
+        ON d.data_view_id = r.resource_id
+        AND d.workspace_id = r.workspace_id
+        AND d.profile_id = r.profile_id
+      WHERE g.grant_id = ?
+        AND r.resource_kind = 'source_data_view'
+        AND r.operation = 'source_data_views.query'
+    `).get(grantId) as {
+      grant_id: string
+      workspace_id: string
+      profile_id: string
+      source_id: string
+    } | undefined
+    return dataViewRow ? {
+      grantId: dataViewRow.grant_id,
+      workspaceId: dataViewRow.workspace_id,
+      profileId: dataViewRow.profile_id,
+      sourceId: dataViewRow.source_id,
     } : null
   }
 
@@ -496,18 +673,24 @@ export class AccessGrantStore {
         input.expectedRevision < 1 || !Number.isSafeInteger(now) || now < 0) {
       throw new AccessGrantStoreError('access_grant_invalid')
     }
-    return this.db.transaction(
+    const revoked = this.db.transaction(
       () => this.revokeInTransaction(input, now),
     ).immediate()
+    this.evidenceSearchCache?.invalidateGrant({
+      workspaceId: input.workspaceId,
+      profileId: input.profileId,
+      grantId: input.grantId,
+    })
+    return revoked
   }
 
-  revokePreparedTextGrantsForFrozenSource(input: {
+  revokeSourceGrantsForFrozenSource(input: {
     readonly workspaceId: string
     readonly profileId: string
     readonly sourceId: string
   }, now: number = Date.now()): readonly SourceDeletionGrantRevocation[] {
     validateTimestamp(now)
-    return this.db.transaction(() => {
+    const revoked = this.db.transaction(() => {
       const source = this.db.prepare(`
         SELECT 1 FROM runtime_sources
         WHERE source_id = ? AND workspace_id = ? AND profile_id = ?
@@ -519,17 +702,38 @@ export class AccessGrantStore {
         FROM access_grants g
         JOIN access_grant_revisions r
           ON r.grant_id = g.grant_id AND r.revision = g.current_revision
-        JOIN source_derived_resources d
-          ON d.resource_id = r.resource_id
-          AND d.workspace_id = r.workspace_id
-          AND d.profile_id = r.profile_id
         WHERE g.workspace_id = ? AND g.profile_id = ?
-          AND d.source_id = ?
           AND r.state = 'active'
-          AND r.resource_kind = 'source_resource'
-          AND r.operation IN ('source_content.read', 'source_content.search')
+          AND (
+            (
+              r.resource_kind = 'source_resource'
+              AND r.operation IN ('source_content.read', 'source_content.search')
+              AND EXISTS (
+                SELECT 1 FROM source_derived_resources d
+                WHERE d.resource_id = r.resource_id
+                  AND d.workspace_id = r.workspace_id
+                  AND d.profile_id = r.profile_id
+                  AND d.source_id = ?
+              )
+            ) OR (
+              r.resource_kind = 'source_data_view'
+              AND r.operation = 'source_data_views.query'
+              AND EXISTS (
+                SELECT 1 FROM source_data_view_jobs dvj
+                WHERE dvj.data_view_id = r.resource_id
+                  AND dvj.workspace_id = r.workspace_id
+                  AND dvj.profile_id = r.profile_id
+                  AND dvj.source_id = ?
+              )
+            )
+          )
         ORDER BY g.grant_id
-      `).all(input.workspaceId, input.profileId, input.sourceId) as Array<{
+      `).all(
+        input.workspaceId,
+        input.profileId,
+        input.sourceId,
+        input.sourceId,
+      ) as Array<{
         grant_id: string
         current_revision: number
       }>
@@ -543,6 +747,14 @@ export class AccessGrantStore {
         return { grantId: revoked.grantId, revision: revoked.revision }
       })
     }).immediate()
+    for (const grant of revoked) {
+      this.evidenceSearchCache?.invalidateGrant({
+        workspaceId: input.workspaceId,
+        profileId: input.profileId,
+        grantId: grant.grantId,
+      })
+    }
+    return revoked
   }
 
   findLiveCandidates(input: {
@@ -763,8 +975,34 @@ function normalizeScope(scope: AccessScope): AccessScope {
 }
 
 function validIds(ids: readonly string[], allowEmpty: boolean): boolean {
-  return Array.isArray(ids) && ids.length <= MAX_SCOPE_IDS &&
+  return Array.isArray(ids) && ids.length <= ACCESS_GRANT_MAX_SCOPE_IDS &&
     (allowEmpty || ids.length > 0) && ids.every((id) => isScope(id))
+}
+
+function validExactDataViewIds(
+  ids: readonly string[],
+  kind: 'field' | 'row',
+): boolean {
+  const pattern = kind === 'field'
+    ? /^field\.[0-9a-f]{32}$/
+    : /^row\.[0-9a-f]{32}$/
+  return Array.isArray(ids) && ids.length >= 1 &&
+    ids.length <= ACCESS_GRANT_MAX_SCOPE_IDS &&
+    new Set(ids).size === ids.length && ids.every(id =>
+      typeof id === 'string' && pattern.test(id),
+    )
+}
+
+function rowIdsBelongToManifest(
+  requested: readonly string[],
+  sourceVersionId: string,
+  rowCount: number,
+): boolean {
+  const remaining = new Set(requested)
+  for (let ordinal = 0; ordinal < rowCount && remaining.size > 0; ordinal += 1) {
+    remaining.delete(csvDataViewOrdinalId('row', sourceVersionId, ordinal))
+  }
+  return remaining.size === 0
 }
 
 function validRequestScope(scope: AccessScope): boolean {

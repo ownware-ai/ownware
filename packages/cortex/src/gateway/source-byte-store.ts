@@ -1,11 +1,28 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants, createReadStream, createWriteStream } from 'node:fs'
-import { lstat, mkdir, open, rename, rm, stat, truncate } from 'node:fs/promises'
+import { link, lstat, mkdir, open, rename, rm, stat, truncate } from 'node:fs/promises'
 import type { IncomingMessage } from 'node:http'
 import { dirname, join } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { SourceUploadCheckpoint } from './source-upload-store.js'
+import {
+  CSV_DATA_VIEW_IMPLEMENTATION,
+  CSV_DATA_VIEW_MAX_CELL_BYTES,
+  CSV_DATA_VIEW_MAX_CELLS,
+  CSV_DATA_VIEW_MAX_FIELDS,
+  CSV_DATA_VIEW_MAX_ROWS,
+  csvDataViewOrdinalId,
+  profileCsvDataView,
+  type CsvDataViewField,
+  type CsvDataViewProfile,
+} from './csv-data-view.js'
+import {
+  CSV_DATA_VIEW_SELECTION_TIMEOUT_MS,
+  selectCsvDataView,
+  type CsvDataViewSelectionInput,
+  type CsvDataViewSelectionResult,
+} from './csv-data-view-selection.js'
 
 export type SourceByteStoreErrorCode =
   | 'chunk_too_large'
@@ -16,6 +33,9 @@ export type SourceByteStoreErrorCode =
   | 'range_invalid'
   | 'range_too_large'
   | 'search_invalid'
+  | 'data_view_invalid'
+  | 'data_view_too_large'
+  | 'data_view_timeout'
   | 'inspection_too_large'
   | 'inspection_timeout'
 
@@ -33,6 +53,7 @@ export const SOURCE_UTF8_SEARCH_MAX_QUERY_BYTES = 128
 export const SOURCE_UTF8_SEARCH_MAX_MATCHES = 20
 export const SOURCE_UTF8_SEARCH_MAX_CONTEXT_BYTES = 1_024
 export const SOURCE_UTF8_SEARCH_TIMEOUT_MS = SOURCE_UTF8_RANGE_TIMEOUT_MS
+export const CSV_DATA_VIEW_ARTIFACT_MAX_BYTES = 128 * 1024 * 1024
 export type SourceUtf8SearchMatchMode = 'exact_utf8' | 'ascii_case_insensitive'
 
 export interface ReceivedChunk {
@@ -77,6 +98,11 @@ export interface SourceUtf8SearchInput {
   readonly contextBytes: number
 }
 
+export type SourceUtf8VerifiedIdentity = Pick<
+  SourceUtf8SearchInput,
+  'objectKey' | 'expectedByteCount' | 'expectedChecksum'
+>
+
 export interface SourceUtf8SearchMatch {
   readonly text: string
   readonly byteStart: number
@@ -88,6 +114,55 @@ export interface SourceUtf8SearchMatch {
 export interface SourceUtf8SearchResult {
   readonly matches: readonly SourceUtf8SearchMatch[]
   readonly truncated: boolean
+}
+
+export interface PrepareCsvDataViewArtifactInput {
+  readonly objectKey: string
+  readonly expectedByteCount: number
+  readonly expectedChecksum: string
+  readonly sourceId: string
+  readonly sourceVersionId: string
+  readonly dataViewId: string
+}
+
+export interface CsvDataViewArtifactManifest {
+  readonly dataViewId: string
+  readonly implementationVersion: typeof CSV_DATA_VIEW_IMPLEMENTATION
+  readonly sourceVersionId: string
+  readonly sourceChecksum: string
+  readonly artifactChecksum: string
+  readonly artifactByteCount: number
+  readonly fieldCount: number
+  readonly rowCount: number
+  readonly fields: readonly CsvDataViewField[]
+}
+
+export interface PreparedCsvDataViewArtifact {
+  readonly manifest: CsvDataViewArtifactManifest
+  /** Runtime-private locator. Never include this value in a public projection. */
+  readonly privateObjectKey: string
+}
+
+export interface ReadCsvDataViewArtifactInput {
+  readonly privateObjectKey: string
+  readonly dataViewId: string
+  readonly sourceVersionId: string
+  readonly sourceChecksum: string
+  readonly artifactChecksum: string
+  readonly artifactByteCount: number
+}
+
+export interface SelectCsvDataViewArtifactInput extends ReadCsvDataViewArtifactInput,
+  CsvDataViewSelectionInput {}
+
+interface CsvDataViewArtifactEnvelope {
+  readonly schemaVersion: 'ownware.csv-data-view/v1'
+  readonly implementationVersion: typeof CSV_DATA_VIEW_IMPLEMENTATION
+  readonly dataViewId: string
+  readonly sourceVersionId: string
+  readonly sourceChecksum: string
+  readonly labels: readonly string[]
+  readonly rows: ReadonlyArray<readonly string[]>
 }
 
 export class SourceByteStore {
@@ -374,6 +449,221 @@ export class SourceByteStore {
     return { matches, truncated }
   }
 
+  async verifyPlacedUtf8(input: SourceUtf8VerifiedIdentity): Promise<void> {
+    if (!isSourceObjectKey(input.objectKey) ||
+        !validVerifiedUtf8Identity(input.expectedByteCount, input.expectedChecksum)) {
+      throw new SourceByteStoreError('storage_inconsistent')
+    }
+    await this.scanVerifiedPlacedUtf8(input, () => undefined)
+  }
+
+  async prepareCsvDataViewArtifact(
+    input: PrepareCsvDataViewArtifactInput,
+  ): Promise<PreparedCsvDataViewArtifact> {
+    if (!validCsvDataViewPreparationIdentity(input)) {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    const chunks: Buffer[] = []
+    await this.scanVerifiedPlacedUtf8(input, (chunk) => chunks.push(chunk))
+    const profile = profileCsvDataView({
+      bytes: Buffer.concat(chunks, input.expectedByteCount),
+      sourceVersionId: input.sourceVersionId,
+      sourceChecksum: input.expectedChecksum,
+    })
+    const envelope: CsvDataViewArtifactEnvelope = {
+      schemaVersion: 'ownware.csv-data-view/v1',
+      implementationVersion: CSV_DATA_VIEW_IMPLEMENTATION,
+      dataViewId: input.dataViewId,
+      sourceVersionId: input.sourceVersionId,
+      sourceChecksum: input.expectedChecksum,
+      labels: profile.fields.map((field) => field.label),
+      rows: profile.rows.map((row) => row.values),
+    }
+    const artifact = Buffer.from(JSON.stringify(envelope), 'utf8')
+    if (artifact.length > CSV_DATA_VIEW_ARTIFACT_MAX_BYTES) {
+      throw new SourceByteStoreError('data_view_too_large')
+    }
+    const artifactChecksum = sha256(artifact)
+    const privateObjectKey = dataViewObjectKey(
+      input.sourceId, input.sourceVersionId, input.dataViewId,
+    )
+    const parts = privateObjectKey.split('/')
+    const target = join(this.root, ...parts)
+    const directoryParts = parts.slice(0, -1)
+    await this.assertNoSymlink(directoryParts)
+    await mkdir(join(this.root, ...directoryParts), { recursive: true, mode: 0o700 })
+    await this.assertNoSymlink(directoryParts)
+    const temporary = `${target}.${randomUUID()}.tmp`
+    let handle: Awaited<ReturnType<typeof open>> | null = null
+    try {
+      handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
+      await handle.writeFile(artifact)
+      await handle.sync()
+      await handle.close()
+      handle = null
+      try {
+        await link(temporary, target)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        const existing = await this.readVerifiedDataViewBytes({
+          privateObjectKey,
+          artifactByteCount: artifact.length,
+          artifactChecksum,
+        })
+        if (!existing.equals(artifact)) {
+          throw new SourceByteStoreError('data_view_invalid')
+        }
+      }
+    } catch (error) {
+      if (error instanceof SourceByteStoreError) throw error
+      throw new SourceByteStoreError('storage_inconsistent')
+    } finally {
+      await handle?.close().catch(() => undefined)
+      await rm(temporary, { force: true }).catch(() => undefined)
+    }
+    return {
+      manifest: manifestFromProfile(
+        profile, input.dataViewId, artifactChecksum, artifact.length,
+      ),
+      privateObjectKey,
+    }
+  }
+
+  async readCsvDataViewArtifact(
+    input: ReadCsvDataViewArtifactInput,
+  ): Promise<CsvDataViewProfile> {
+    return this.readCsvDataViewArtifactBefore(input)
+  }
+
+  private async readCsvDataViewArtifactBefore(
+    input: ReadCsvDataViewArtifactInput,
+    deadlineAt?: number,
+    now: () => number = Date.now,
+  ): Promise<CsvDataViewProfile> {
+    if (!validCsvDataViewReadIdentity(input)) {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    const artifact = await this.readVerifiedDataViewBytes(input, deadlineAt, now)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(artifact))
+    } catch {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    return profileFromArtifactEnvelope(parsed, input)
+  }
+
+  async selectCsvDataViewArtifact(
+    input: SelectCsvDataViewArtifactInput,
+    now: () => number = Date.now,
+  ): Promise<CsvDataViewSelectionResult> {
+    const deadlineAt = now() + CSV_DATA_VIEW_SELECTION_TIMEOUT_MS
+    const profile = await this.readCsvDataViewArtifactBefore(input, deadlineAt, now)
+    const remainingMs = deadlineAt - now()
+    if (remainingMs < 1) throw new SourceByteStoreError('data_view_timeout')
+    return selectCsvDataView(profile, input, { timeoutMs: remainingMs }, now)
+  }
+
+  async removeDataViewArtifact(
+    sourceId: string,
+    sourceVersionId: string,
+    dataViewId: string,
+  ): Promise<void> {
+    if (![sourceId, sourceVersionId, dataViewId].every(isUuid)) {
+      throw new SourceByteStoreError('storage_inconsistent')
+    }
+    await this.removeContained(
+      dataViewObjectKey(sourceId, sourceVersionId, dataViewId).split('/'),
+      false,
+    )
+  }
+
+  async dataViewArtifactAbsent(
+    sourceId: string,
+    sourceVersionId: string,
+    dataViewId: string,
+  ): Promise<boolean> {
+    if (![sourceId, sourceVersionId, dataViewId].every(isUuid)) {
+      throw new SourceByteStoreError('storage_inconsistent')
+    }
+    return this.containedTargetAbsent(
+      dataViewObjectKey(sourceId, sourceVersionId, dataViewId).split('/'),
+    )
+  }
+
+  private async readVerifiedDataViewBytes(input: Pick<
+    ReadCsvDataViewArtifactInput,
+    'privateObjectKey' | 'artifactByteCount' | 'artifactChecksum'
+  >, deadlineAt?: number, now: () => number = Date.now): Promise<Buffer> {
+    if (!isDataViewObjectKey(input.privateObjectKey) ||
+        !Number.isSafeInteger(input.artifactByteCount) ||
+        input.artifactByteCount < 1 ||
+        input.artifactByteCount > CSV_DATA_VIEW_ARTIFACT_MAX_BYTES ||
+        !/^sha256:[0-9a-f]{64}$/.test(input.artifactChecksum)) {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    const parts = input.privateObjectKey.split('/')
+    const privatePath = join(this.root, ...parts)
+    const abort = deadlineAt === undefined ? null : new AbortController()
+    const remainingMs = deadlineAt === undefined ? null : deadlineAt - now()
+    if (remainingMs !== null && remainingMs < 1) {
+      throw new SourceByteStoreError('data_view_timeout')
+    }
+    const timer = abort ? setTimeout(() => abort.abort(), remainingMs!) : null
+    timer?.unref()
+    const checkDeadline = (): void => {
+      if (deadlineAt !== undefined && now() >= deadlineAt) {
+        throw new SourceByteStoreError('data_view_timeout')
+      }
+    }
+    let handle: Awaited<ReturnType<typeof open>> | null = null
+    try {
+      checkDeadline()
+      await this.assertNoSymlink(parts)
+      handle = await open(privatePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+      const before = await handle.stat()
+      checkDeadline()
+      if (!before.isFile() || before.size !== input.artifactByteCount) {
+        throw new SourceByteStoreError('data_view_invalid')
+      }
+      const chunks: Buffer[] = []
+      let byteCount = 0
+      const hash = createHash('sha256')
+      for await (const raw of handle.createReadStream({
+        autoClose: false,
+        ...(abort ? { signal: abort.signal } : {}),
+      })) {
+        checkDeadline()
+        const chunk = Buffer.from(raw)
+        byteCount += chunk.length
+        if (byteCount > CSV_DATA_VIEW_ARTIFACT_MAX_BYTES) {
+          throw new SourceByteStoreError('data_view_too_large')
+        }
+        hash.update(chunk)
+        chunks.push(chunk)
+      }
+      await this.assertNoSymlink(parts)
+      checkDeadline()
+      const after = await lstat(privatePath)
+      if (!after.isFile() || after.dev !== before.dev || after.ino !== before.ino ||
+          byteCount !== input.artifactByteCount ||
+          `sha256:${hash.digest('hex')}` !== input.artifactChecksum) {
+        throw new SourceByteStoreError('data_view_invalid')
+      }
+      return Buffer.concat(chunks, byteCount)
+    } catch (error) {
+      if (abort?.signal.aborted) throw new SourceByteStoreError('data_view_timeout')
+      if (error instanceof SourceByteStoreError) throw error
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new SourceByteStoreError('object_missing')
+      }
+      throw new SourceByteStoreError('storage_inconsistent')
+    } finally {
+      if (timer) clearTimeout(timer)
+      await handle?.close().catch(() => undefined)
+    }
+  }
+
   private async scanVerifiedPlacedUtf8(
     input: Pick<SourceUtf8RangeReadInput, 'objectKey' | 'expectedByteCount' | 'expectedChecksum'>,
     onChunk: (chunk: Buffer, byteStart: number, byteEnd: number) => void,
@@ -544,6 +834,119 @@ export class SourceByteStore {
 
 function isSourceObjectKey(objectKey: string): boolean {
   return /^sources\/[0-9a-f-]{36}\/versions\/[0-9a-f-]{36}\/original$/.test(objectKey)
+}
+
+function isDataViewObjectKey(objectKey: string): boolean {
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+  return new RegExp(`^sources/${uuid}/versions/${uuid}/data-views/${uuid}\\.json$`, 'i')
+    .test(objectKey)
+}
+
+function dataViewObjectKey(sourceId: string, sourceVersionId: string, dataViewId: string): string {
+  return `sources/${sourceId}/versions/${sourceVersionId}/data-views/${dataViewId}.json`
+}
+
+function validCsvDataViewPreparationIdentity(input: PrepareCsvDataViewArtifactInput): boolean {
+  return [input.sourceId, input.sourceVersionId, input.dataViewId].every(isUuid) &&
+    input.objectKey === `sources/${input.sourceId}/versions/${input.sourceVersionId}/original` &&
+    validVerifiedUtf8Identity(input.expectedByteCount, input.expectedChecksum)
+}
+
+function validCsvDataViewReadIdentity(input: ReadCsvDataViewArtifactInput): boolean {
+  return [input.dataViewId, input.sourceVersionId].every(isUuid) &&
+    /^sha256:[0-9a-f]{64}$/.test(input.sourceChecksum) &&
+    input.privateObjectKey.endsWith(`/versions/${input.sourceVersionId}/data-views/${input.dataViewId}.json`)
+}
+
+function manifestFromProfile(
+  profile: CsvDataViewProfile,
+  dataViewId: string,
+  artifactChecksum: string,
+  artifactByteCount: number,
+): CsvDataViewArtifactManifest {
+  return Object.freeze({
+    dataViewId,
+    implementationVersion: CSV_DATA_VIEW_IMPLEMENTATION,
+    sourceVersionId: profile.sourceVersionId,
+    sourceChecksum: profile.sourceChecksum,
+    artifactChecksum,
+    artifactByteCount,
+    fieldCount: profile.fieldCount,
+    rowCount: profile.rowCount,
+    fields: profile.fields,
+  })
+}
+
+function profileFromArtifactEnvelope(
+  value: unknown,
+  expected: ReadCsvDataViewArtifactInput,
+): CsvDataViewProfile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new SourceByteStoreError('data_view_invalid')
+  }
+  const row = value as Record<string, unknown>
+  const keys = Object.keys(row).sort()
+  if (keys.join(',') !== [
+    'dataViewId', 'implementationVersion', 'labels', 'rows',
+    'schemaVersion', 'sourceChecksum', 'sourceVersionId',
+  ].join(',') ||
+      row['schemaVersion'] !== 'ownware.csv-data-view/v1' ||
+      row['implementationVersion'] !== CSV_DATA_VIEW_IMPLEMENTATION ||
+      row['dataViewId'] !== expected.dataViewId ||
+      row['sourceVersionId'] !== expected.sourceVersionId ||
+      row['sourceChecksum'] !== expected.sourceChecksum ||
+      !Array.isArray(row['labels']) || !Array.isArray(row['rows']) ||
+      row['labels'].length < 1 || row['labels'].length > CSV_DATA_VIEW_MAX_FIELDS ||
+      row['rows'].length > CSV_DATA_VIEW_MAX_ROWS) {
+    throw new SourceByteStoreError('data_view_invalid')
+  }
+  const labels = row['labels']
+  const rawRows = row['rows']
+  const fields: CsvDataViewField[] = []
+  const headerKeys = new Set<string>()
+  for (let ordinal = 0; ordinal < labels.length; ordinal += 1) {
+    const label = labels[ordinal]
+    if (typeof label !== 'string' || Buffer.byteLength(label) > CSV_DATA_VIEW_MAX_CELL_BYTES) {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    const key = label.trim().normalize('NFKC').toLowerCase()
+    if (!key || headerKeys.has(key)) throw new SourceByteStoreError('data_view_invalid')
+    headerKeys.add(key)
+    fields.push(Object.freeze({
+      fieldId: csvDataViewOrdinalId('field', expected.sourceVersionId, ordinal),
+      ordinal,
+      label,
+    }))
+  }
+  let cellCount = 0
+  const rows = rawRows.map((candidate, ordinal) => {
+    if (!Array.isArray(candidate) || candidate.length !== fields.length) {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    cellCount += candidate.length
+    if (cellCount > CSV_DATA_VIEW_MAX_CELLS || candidate.some((cell) =>
+      typeof cell !== 'string' || Buffer.byteLength(cell) > CSV_DATA_VIEW_MAX_CELL_BYTES)) {
+      throw new SourceByteStoreError('data_view_invalid')
+    }
+    return Object.freeze({
+      rowId: csvDataViewOrdinalId('row', expected.sourceVersionId, ordinal),
+      ordinal,
+      values: Object.freeze(candidate as string[]),
+    })
+  })
+  return Object.freeze({
+    implementationVersion: CSV_DATA_VIEW_IMPLEMENTATION,
+    sourceVersionId: expected.sourceVersionId,
+    sourceChecksum: expected.sourceChecksum,
+    fieldCount: fields.length,
+    rowCount: rows.length,
+    fields: Object.freeze(fields),
+    rows: Object.freeze(rows),
+  })
+}
+
+function sha256(content: Buffer): string {
+  return `sha256:${createHash('sha256').update(content).digest('hex')}`
 }
 
 function isUuid(value: string): boolean {

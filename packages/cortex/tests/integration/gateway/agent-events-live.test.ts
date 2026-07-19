@@ -20,7 +20,7 @@
  * model (exact seq cursor positioning, concurrent subscribers, etc.).
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { createTestGateway, type TestGateway } from '../../framework/harness/index.js'
 import { ROOT_AGENT_ID } from '../../../src/gateway/event-bus.js'
 import type { LoomEvent } from '@ownware/loom'
@@ -281,6 +281,22 @@ describe('Agent events SSE — live tail + replay', () => {
     })
   })
 
+  it('rejects a malformed legacy thread cursor instead of replaying from zero', async () => {
+    const agentId = 'agent_invalid_cursor'
+    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('must-not-replay'))
+
+    const res = await fetch(
+      `${gw.baseUrl}/api/v1/threads/${threadId}/agents/${agentId}/events?since=not-a-cursor`,
+      { headers: { Authorization: `Bearer ${gw.token}` } },
+    )
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({
+      error: 'cursor_invalid',
+      category: 'invalid_request',
+    })
+  })
+
   it('resume: since=max-seq returns no existing events, still tails live', async () => {
     const agentId = 'agent_resume_at_tail'
     for (let i = 0; i < 3; i++) {
@@ -533,6 +549,38 @@ describe('Agent events SSE — live tail + replay', () => {
       })
     } finally {
       await localGw.stop()
+    }
+  })
+
+  it('sanitizes internal replay failures before emitting a legacy stream error', async () => {
+    const agentId = 'agent_sanitized_error'
+    const canary = 'secret-path-/private/customer.db'
+    const listSpy = vi.spyOn(gw.state, 'listAgentEvents')
+      .mockImplementationOnce(() => {
+        throw new Error(canary)
+      })
+
+    try {
+      const res = await fetch(
+        `${gw.baseUrl}/api/v1/threads/${threadId}/agents/${agentId}/events`,
+        { headers: { Authorization: `Bearer ${gw.token}` } },
+      )
+      expect(res.status).toBe(200)
+
+      const events = await readSSEWithTimeout(res, {
+        maxMs: 3_000,
+        exitWhen: evts => evts.some(e => e.event === 'error'),
+      })
+      const error = events.find(e => e.event === 'error')
+      expect(error?.data).toMatchObject({
+        type: 'error',
+        code: 'stream_error',
+        message: 'Event stream failed',
+        recoverable: false,
+      })
+      expect(JSON.stringify(events)).not.toContain(canary)
+    } finally {
+      listSpy.mockRestore()
     }
   })
 

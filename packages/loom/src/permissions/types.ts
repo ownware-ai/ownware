@@ -12,13 +12,11 @@
 /**
  * The top-level permission policy for a session.
  *
- * - 'auto': **Full bypass.** Every tool call short-circuits to 'allow'
- *           before any safety rule, zone classifier, combination
- *           tracker, or HITL handler runs. The user explicitly opted
- *           into a no-prompts session; the host's `checkPermission`
- *           closure is not consulted. This is Ownware's
- *           "dangerously skip permissions" bypass — fast and
- *           unattended, intended for trusted automation runs.
+ * - 'auto': Default unclassified tool calls to 'allow'. Configured safety
+ *           rules and a host's `checkPermission` callback still run first;
+ *           an explicit `ask` still requires approval. This keeps unattended
+ *           runs automatic inside their configured operating policy without
+ *           turning autonomy into authority.
  * - 'ask': Default interactive mode. The session-stored grants are
  *          consulted, then the host's `checkPermission` (zone
  *          classifier, etc.) decides whether to allow or ask. The user
@@ -204,7 +202,7 @@ export function formatDecisionReason(reason: DecisionReason): string {
       return (
         `Permission timed out: ${reason.toolName} was not approved within ${reason.timeoutMs}ms ` +
         `(no user available). Stop the run and surface the pending action to the user, ` +
-        `or re-run interactively / with permissionMode set to 'auto'.`
+        `or re-run interactively / with an operating policy that explicitly allows it.`
       )
     case 'hook-blocked':
       return (

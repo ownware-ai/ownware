@@ -10,6 +10,11 @@ export const MAX_TTL_SECONDS = 60 * 60
 const SAFE_SCOPE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const SAFE_PURPOSE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/
 const SAFE_OPERATION = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/
+const SUBJECT_REQUIRED_OPERATIONS = new Set([
+  'source_content.read',
+  'source_content.search',
+  'source_data_views.query',
+])
 
 export interface DelegatedPrincipal {
   readonly kind: 'delegated'
@@ -17,6 +22,7 @@ export interface DelegatedPrincipal {
   readonly delegateId: string
   readonly workspaceId: string
   readonly profileId: string
+  readonly subjectId?: string
   readonly purpose: string
   readonly channel?: string
   readonly operations: readonly string[]
@@ -54,6 +60,7 @@ export interface PrincipalIssueInput {
   readonly delegateId: string
   readonly workspaceId: string
   readonly profileId: string
+  readonly subjectId?: string
   readonly purpose: string
   readonly channel?: string
   readonly operations: readonly string[]
@@ -72,6 +79,7 @@ interface PrincipalRow {
   readonly delegate_id: string
   readonly workspace_id: string
   readonly profile_id: string
+  readonly subject_id: string | null
   readonly purpose: string
   readonly channel: string | null
   readonly operations_json: string
@@ -87,14 +95,15 @@ export class DelegatedPrincipalStore {
   insert(principal: DelegatedPrincipal): void {
     this.db.prepare(`
       INSERT INTO delegated_principals (
-        token_id, delegate_id, workspace_id, profile_id, purpose, channel,
+        token_id, delegate_id, workspace_id, profile_id, subject_id, purpose, channel,
         operations_json, issued_at, expires_at, revoked_at, revoke_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
     `).run(
       principal.tokenId,
       principal.delegateId,
       principal.workspaceId,
       principal.profileId,
+      principal.subjectId ?? null,
       principal.purpose,
       principal.channel ?? null,
       JSON.stringify(principal.operations),
@@ -114,6 +123,7 @@ export class DelegatedPrincipalStore {
       delegateId: row.delegate_id,
       workspaceId: row.workspace_id,
       profileId: row.profile_id,
+      ...(row.subject_id !== null ? { subjectId: row.subject_id } : {}),
       purpose: row.purpose,
       ...(row.channel !== null ? { channel: row.channel } : {}),
       operations: parseOperations(row.operations_json),
@@ -171,6 +181,7 @@ export class ScopedPrincipalService {
       delegateId: canonical.delegateId,
       workspaceId: canonical.workspaceId,
       profileId: canonical.profileId,
+      ...(canonical.subjectId !== undefined ? { subjectId: canonical.subjectId } : {}),
       purpose: canonical.purpose,
       ...(canonical.channel !== undefined ? { channel: canonical.channel } : {}),
       operations: canonical.operations,
@@ -181,6 +192,7 @@ export class ScopedPrincipalService {
     const token = await new SignJWT({
       workspace_id: principal.workspaceId,
       profile_id: principal.profileId,
+      ...(principal.subjectId !== undefined ? { subject_id: principal.subjectId } : {}),
       purpose: principal.purpose,
       ...(principal.channel !== undefined ? { channel: principal.channel } : {}),
       operations: principal.operations,
@@ -221,13 +233,18 @@ export class ScopedPrincipalService {
     const delegateId = boundedClaim(payload.sub)
     const workspaceId = boundedClaim(payload['workspace_id'])
     const profileId = boundedClaim(payload['profile_id'])
+    const subjectId = payload['subject_id'] === undefined
+      ? undefined
+      : boundedClaim(payload['subject_id'])
     const purpose = purposeClaim(payload['purpose'])
     const channel = payload['channel'] === undefined ? undefined : purposeClaim(payload['channel'])
     const operations = operationsClaim(payload['operations'])
     const issuedAt = integerClaim(payload.iat)
     const expiresAt = integerClaim(payload.exp)
     if (!tokenId || !delegateId || !workspaceId || !profileId || !purpose ||
-        !operations || issuedAt === undefined || expiresAt === undefined) {
+        (payload['subject_id'] !== undefined && subjectId === undefined) ||
+        !operations || requiresSubject(operations) && subjectId === undefined ||
+        issuedAt === undefined || expiresAt === undefined) {
       throw new PrincipalAuthError('principal_invalid', 'Delegated principal claims are invalid')
     }
 
@@ -241,6 +258,7 @@ export class ScopedPrincipalService {
       delegateId,
       workspaceId,
       profileId,
+      ...(subjectId !== undefined ? { subjectId } : {}),
       purpose,
       ...(channel !== undefined ? { channel } : {}),
       operations,
@@ -265,6 +283,7 @@ function validateIssueInput(input: PrincipalIssueInput): PrincipalIssueInput & {
   if (!SAFE_SCOPE_VALUE.test(input.delegateId) ||
       !SAFE_SCOPE_VALUE.test(input.workspaceId) ||
       !SAFE_SCOPE_VALUE.test(input.profileId) ||
+      (input.subjectId !== undefined && !SAFE_SCOPE_VALUE.test(input.subjectId)) ||
       !SAFE_PURPOSE.test(input.purpose) ||
       (input.channel !== undefined && !SAFE_PURPOSE.test(input.channel))) {
     throw new PrincipalAuthError('principal_scope_invalid', 'Delegated principal scope is invalid')
@@ -273,6 +292,12 @@ function validateIssueInput(input: PrincipalIssueInput): PrincipalIssueInput & {
   if (operations.length === 0 || operations.length > 32 ||
       operations.some((operation) => !SAFE_OPERATION.test(operation))) {
     throw new PrincipalAuthError('principal_scope_invalid', 'Delegated principal operations are invalid')
+  }
+  if (requiresSubject(operations) && input.subjectId === undefined) {
+    throw new PrincipalAuthError(
+      'principal_scope_invalid',
+      'Delegated principal subject is required for the requested operation',
+    )
   }
   const ttlSeconds = input.ttlSeconds ?? DEFAULT_TTL_SECONDS
   if (!Number.isInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > MAX_TTL_SECONDS) {
@@ -313,9 +338,14 @@ function integerClaim(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) ? value : undefined
 }
 
+function requiresSubject(operations: readonly string[]): boolean {
+  return operations.some((operation) => SUBJECT_REQUIRED_OPERATIONS.has(operation))
+}
+
 function samePrincipal(a: DelegatedPrincipal, b: DelegatedPrincipal): boolean {
   return a.tokenId === b.tokenId && a.delegateId === b.delegateId &&
     a.workspaceId === b.workspaceId && a.profileId === b.profileId &&
+    a.subjectId === b.subjectId &&
     a.purpose === b.purpose && a.channel === b.channel &&
     a.issuedAt === b.issuedAt && a.expiresAt === b.expiresAt &&
     a.operations.length === b.operations.length &&

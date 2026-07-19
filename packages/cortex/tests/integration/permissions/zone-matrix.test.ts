@@ -10,8 +10,8 @@
  *   - In `'ask'` mode: above-maxAutoZone tools emit a
  *     `permission.request` event with the right `zoneName` (and
  *     `severityTag` for warn/critical classifications).
- *   - In `'auto'` mode: NO `permission.request` events fire — the
- *     session-level bypass (S2) short-circuits every call to `'allow'`.
+ *   - In `'auto'` mode: the mode supplies only the default decision;
+ *     configured zone policy still classifies every gated tool and can ask.
  *   - User-deny on a `'ask'` path produces a typed `DecisionReason`
  *     (S4) on the `permission.response` event.
  *
@@ -289,42 +289,55 @@ describe('S8 zone matrix — ask mode (full assembler wire)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Per-zone matrix — `auto` mode (true bypass, S2)
+// Per-zone matrix — `auto` mode (policy-aware fallback)
 // ---------------------------------------------------------------------------
 
-describe('S8 zone matrix — auto mode (true bypass)', () => {
-  it('Zone BUILD: writeFile auto-allows — no permission.request', async () => {
+describe('S8 zone matrix — auto mode (configured zones remain authoritative)', () => {
+  it('Zone SAFE: configured zone policy still auto-allows safe reads', async () => {
+    const { events } = await buildSession({
+      permissionMode: 'auto',
+      toolName: 'readFile',
+      toolInput: { file_path: 'README.md' },
+    })
+    expect(findPermissionRequests(events).length).toBe(0)
+    expect(hasPolicyDenyString(events)).toBe(false)
+  })
+
+  it('Zone BUILD: configured zone policy asks even when the mode fallback is auto', async () => {
     const { events } = await buildSession({
       permissionMode: 'auto',
       toolName: 'writeFile',
       toolInput: { file_path: 'foo.html', content: 'hi' },
     })
-    expect(findPermissionRequests(events).length).toBe(0)
+    const reqs = findPermissionRequests(events)
+    expect(reqs.length).toBeGreaterThanOrEqual(1)
+    expect(reqs[0]?.zoneName).toBe('build')
     expect(hasPolicyDenyString(events)).toBe(false)
   })
 
-  it('Zone NEVER (sensitive path): auto bypasses even the most-sensitive classifications', async () => {
+  it('Zone MACHINE: sensitive paths cannot bypass the configured zone policy', async () => {
     const { events } = await buildSession({
       permissionMode: 'auto',
       toolName: 'readFile',
       toolInput: { file_path: '/home/user/.ssh/id_rsa' },
     })
-    // The user explicitly chose auto mode — that's their authorisation.
-    // No prompt, no silent deny.
-    expect(findPermissionRequests(events).length).toBe(0)
+    const reqs = findPermissionRequests(events)
+    expect(reqs.length).toBeGreaterThanOrEqual(1)
+    expect(reqs[0]?.zoneName).toBe('machine')
+    expect(reqs[0]?.severityTag).toBe('critical')
     expect(hasPolicyDenyString(events)).toBe(false)
   })
 
-  it('Zone NEVER (catastrophic): auto bypasses even rm -rf /', async () => {
+  it('Zone NEVER: catastrophic calls cannot bypass the configured zone policy', async () => {
     const { events } = await buildSession({
       permissionMode: 'auto',
       toolName: 'shell_execute',
       toolInput: { command: 'rm -rf /' },
     })
-    // Documented design choice (S2 note): bypass is bypass. Users
-    // who want per-call confirmation on critical actions stay on
-    // 'ask' mode (the default). Auto means "I trust this run".
-    expect(findPermissionRequests(events).length).toBe(0)
+    const reqs = findPermissionRequests(events)
+    expect(reqs.length).toBeGreaterThanOrEqual(1)
+    expect(reqs[0]?.zoneName).toBe('never')
+    expect(reqs[0]?.severityTag).toBe('critical')
     expect(hasPolicyDenyString(events)).toBe(false)
   })
 })

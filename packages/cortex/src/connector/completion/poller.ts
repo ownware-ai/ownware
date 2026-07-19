@@ -22,8 +22,10 @@
 import type { ConnectorConnectionsStore } from '../connections/store.js'
 import type { ConnectorStatusBus } from '../status-bus.js'
 import type {
+  BeforeConnectionTerminal,
   ConnectionCompletionListener,
   ConnectionCheckResult,
+  ConnectionTerminalState,
 } from './types.js'
 import type { ConnectorSource, ConnectorStatus } from '../schema.js'
 
@@ -100,6 +102,7 @@ export class ConnectionPoller {
     private readonly store: ConnectorConnectionsStore,
     private readonly statusBus: ConnectorStatusBus,
     config: Partial<PollerConfig> = {},
+    private readonly beforeTerminal: BeforeConnectionTerminal = async () => {},
   ) {
     this.config = { ...DEFAULT_POLLER_CONFIG, ...config }
   }
@@ -187,7 +190,7 @@ export class ConnectionPoller {
     // Budget check FIRST so a slow listener doesn't run past expiry.
     const elapsed = Date.now() - state.startedAt
     if (elapsed >= this.config.maxDurationMs) {
-      this.terminate(state, 'expired', {
+      await this.terminate(state, 'expired', {
         reason: 'Connection attempt timed out.',
       })
       return
@@ -202,8 +205,9 @@ export class ConnectionPoller {
       )
     } catch (err) {
       // Listener threw. Terminal failure — the gateway must not crash.
-      const message = err instanceof Error ? err.message : String(err)
-      this.terminate(state, 'failed', { reason: message })
+      await this.terminate(state, 'failed', {
+        reason: 'Connection status check failed. Please retry.',
+      })
       return
     }
 
@@ -214,34 +218,24 @@ export class ConnectionPoller {
 
     switch (result.status) {
       case 'pending': {
-        if (result.completedMetadata) {
-          state.metadata = { ...(state.metadata ?? {}), ...result.completedMetadata }
-        }
-        const nextDelay = Math.min(
-          state.currentDelay * this.config.backoffMultiplier,
-          this.config.maxDelayMs,
-        )
-        state.currentDelay = nextDelay
-        this.scheduleNext(state, nextDelay)
+        this.scheduleRetry(state)
         return
       }
       case 'ready': {
-        this.terminate(state, 'ready', {
-          metadata: result.completedMetadata,
+        await this.terminate(state, 'ready', {
           ...(result.vendorAccountId !== undefined ? { vendorAccountId: result.vendorAccountId } : {}),
           ...(result.vendorUserId !== undefined ? { vendorUserId: result.vendorUserId } : {}),
         })
         return
       }
       case 'failed': {
-        this.terminate(state, 'failed', {
+        await this.terminate(state, 'failed', {
           reason: result.errorReason,
-          metadata: result.completedMetadata,
         })
         return
       }
       case 'not_found': {
-        this.terminate(state, 'failed', {
+        await this.terminate(state, 'failed', {
           reason: result.errorReason ?? 'Vendor has no record of this connection attempt.',
         })
         return
@@ -249,41 +243,88 @@ export class ConnectionPoller {
     }
   }
 
-  private terminate(
+  private scheduleRetry(state: PollState): void {
+    const nextDelay = Math.min(
+      state.currentDelay * this.config.backoffMultiplier,
+      this.config.maxDelayMs,
+    )
+    state.currentDelay = nextDelay
+    this.scheduleNext(state, nextDelay)
+  }
+
+  private finish(state: PollState): void {
+    this.active.delete(state.connectionId)
+    if (state.timeoutHandle) clearTimeout(state.timeoutHandle)
+  }
+
+  private async terminate(
     state: PollState,
-    terminal: 'ready' | 'failed' | 'expired',
+    terminal: ConnectionTerminalState,
     opts: {
       reason?: string
-      metadata?: Record<string, unknown>
       vendorAccountId?: string
       vendorUserId?: string
     },
-  ): void {
-    this.active.delete(state.connectionId)
-    if (state.timeoutHandle) clearTimeout(state.timeoutHandle)
+  ): Promise<void> {
+    if (!this.active.has(state.connectionId)) return
+    const before = this.store.findByConnectionId(state.connectionId)
+    if (!before || before.status !== 'pending') {
+      this.finish(state)
+      return
+    }
+
+    try {
+      await this.beforeTerminal({
+        connectionId: state.connectionId,
+        connectorId: state.connectorId,
+        source: state.source,
+        terminal,
+        metadata: before.metadata,
+      })
+    } catch {
+      if (!this.active.has(state.connectionId)) return
+      const current = this.store.findByConnectionId(state.connectionId)
+      if (!current || current.status !== 'pending') {
+        this.finish(state)
+        return
+      }
+      this.scheduleRetry(state)
+      return
+    }
+
+    // Cancellation or another terminal writer may win while cleanup awaits.
+    // Store transitions compare-and-set pending, and only that winner emits.
+    if (!this.active.has(state.connectionId)) return
 
     // Update the durable row FIRST so a crash between write and emit
     // still leaves the correct state on disk.
+    let transitioned = false
     switch (terminal) {
-      case 'ready':
-        this.store.markReady({
+      case 'ready': {
+        const result = this.store.markReady({
           connectionId: state.connectionId,
-          ...(opts.metadata !== undefined ? { metadata: opts.metadata } : {}),
           ...(opts.vendorAccountId !== undefined ? { vendorAccountId: opts.vendorAccountId } : {}),
           ...(opts.vendorUserId !== undefined ? { vendorUserId: opts.vendorUserId } : {}),
         })
+        transitioned = result.transitioned
         break
-      case 'failed':
-        this.store.markFailed({
+      }
+      case 'failed': {
+        const result = this.store.markFailed({
           connectionId: state.connectionId,
           reason: opts.reason ?? 'Connection failed.',
-          ...(opts.metadata !== undefined ? { metadata: opts.metadata } : {}),
         })
+        transitioned = result.transitioned
         break
-      case 'expired':
-        this.store.markExpired(state.connectionId, opts.reason)
+      }
+      case 'expired': {
+        const result = this.store.markExpired(state.connectionId, opts.reason)
+        transitioned = result?.transitioned === true
         break
+      }
     }
+    this.finish(state)
+    if (!transitioned) return
 
     // Map the terminal state to the (coarser) connector status vocabulary
     // used by the ConnectorStatusBus.

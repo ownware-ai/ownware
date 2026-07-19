@@ -102,12 +102,11 @@ describe('assembleAgent: unsupported-field guard is wired (F-04/05/06/08/20)', (
     await expect(assembleAgent(profile)).rejects.toThrow(/sandbox\.enabled/)
   })
 
-  it('accepts security.permissionMode="auto" (full-bypass mode added in S2 of the 2026-05-14 permission redesign)', async () => {
+  it('accepts security.permissionMode="auto" as a policy-aware fallback', async () => {
     // 'auto' was previously rejected by the unsupported-field guard
     // because pre-redesign the value had unpredictable interactions
-    // with the zone-as-safety-rule pipeline. After S2, 'auto' is a
-    // true bypass — the session short-circuits checkPermission to
-    // 'allow' before the host's wired closure runs. The guard now
+    // with the zone-as-safety-rule pipeline. `auto` now controls only the
+    // fallback after the host's wired closure runs. The guard now
     // accepts it; only the truly-unwired modes ('deny', 'allowlist')
     // are rejected.
     const { dir } = track(await createMinimalProfile({

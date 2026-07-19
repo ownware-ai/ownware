@@ -28,19 +28,29 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | Method | Wire call | What it does |
 |---|---|---|
 | `capabilities(requirements?)` | `GET /api/v1/capabilities` | Negotiate a contract major and required capabilities as `available`, `unavailable`, or `incompatible` before a dependent mutation. |
-| `issueDelegation(input)` | `POST /api/v1/auth/delegations` | Owner-only: mint a short-lived workspace/profile/purpose/operation-scoped bearer. Never give a browser the owner token. |
+| `issueDelegation(input)` | `POST /api/v1/auth/delegations` | Owner-only: mint a short-lived workspace/profile/purpose/operation-scoped bearer. Bind an explicit `subjectId` for protected content reads/searches and Data View queries; never give a browser the owner token. |
 | `revokeDelegation(tokenId, reason)` | `POST /api/v1/auth/delegations/:id/revoke` | Owner-only: immediately revoke one delegated bearer by its public token ID. |
+| `connections(options?)` | `GET /api/v1/connections` | Owner-only: list the latest provider-neutral connection states and fixed recovery guidance without vendor, credential, session, install-identity or raw-error detail. |
 | `registerSource(input)` | `POST /api/v1/sources` | With a scoped delegated bearer and UUID idempotency key, register safe logical-source metadata without paths, URLs, bytes or storage detail. |
 | `sources(options?)` | `GET /api/v1/sources` | Read a bounded page of safe manifests from only the bearer’s workspace/profile scope. |
 | `source(id)` | `GET /api/v1/sources/:id` | Read one safe manifest; cross-scope identities are indistinguishable from absence. |
-| `createSourceUploadSession(sourceId, input, idempotencyKey)` | `POST /api/v1/sources/:id/upload-sessions` | Open one bounded source-scoped upload with declared total bytes, checksum and media type. |
+| `createSourceUploadSession(sourceId, input)` | `POST /api/v1/sources/:id/upload-sessions` | Open one bounded source-scoped upload with declared total bytes, checksum and media type; `input.idempotencyKey` identifies the logical request. |
 | `writeSourceUploadChunk(uploadId, input)` | `PATCH /api/v1/source-uploads/:id` | Stream one exact-offset, checksum-bound chunk; identical retries replay without a second append. |
 | `completeSourceUpload(uploadId)` | `POST /api/v1/source-uploads/:id/complete` | Verify the whole object and compare-and-set one immutable source version against its server-captured base. |
 | `sourceVersion(sourceId, versionId)` | `GET /api/v1/sources/:sourceId/versions/:versionId` | Read the safe immutable version manifest without placement or source content. |
 | `createSourceJob(sourceId, versionId, input)` | `POST /api/v1/sources/:sourceId/versions/:versionId/jobs` | With a UUID idempotency key, enqueue the allowlisted format inspection for one exact immutable version. |
-| `createSourcePreparation(sourceId, versionId, input)` | `POST /api/v1/sources/:sourceId/versions/:versionId/preparations` | With a UUID idempotency key, enqueue exactly `extract_text` for an inspected current text version. |
-| `sourceJob(jobId)` | `GET /api/v1/source-jobs/:jobId` | Poll safe durable inspection or preparation progress, including implementation and published resource identity, without worker, storage, content, or raw diagnostic detail. |
+| `createSourcePreparation(sourceId, versionId, input)` | `POST /api/v1/sources/:sourceId/versions/:versionId/preparations` | With a UUID idempotency key, enqueue `extract_text` or strict CSV `prepare_data_view` for one eligible inspected current version. |
+| `sourceJob(jobId)` | `GET /api/v1/source-jobs/:jobId` | Poll safe durable inspection or preparation progress, including implementation and either the published resource or Data View identity, without worker, storage, cells, content, or raw diagnostic detail. |
 | `sourceResource(resourceId)` | `GET /api/v1/source-resources/:resourceId` | Read the closed content-free lineage, policy, coverage and freshness manifest for one derived resource. |
+| `sourceDataView(dataViewId)` | `GET /api/v1/source-data-views/:dataViewId` | With separate authority, read validated field identities, untrusted header labels, lineage, counts and freshness without cells, row values or private placement. |
+| `createDataViewQueryGrant(dataViewId, input)` | `POST /api/v1/source-data-views/:dataViewId/access-grants` | Owner-only: grant one explicit subject exact current fields and one bounded row window under a fixed observe-only query fence. |
+| `querySourceDataView(dataViewId, input)` | `POST /api/v1/source-data-views/:dataViewId/query` | With subject-bound delegation and a matching live grant, return only an exact field list and bounded row window with verified current lineage. |
+| `createAccessGrant(resourceId, input)` | `POST /api/v1/source-resources/:resourceId/access-grants` | Owner-only: create one observe-only subject/purpose/consent fence for protected text read or search. |
+| `accessGrant(grantId)` | `GET /api/v1/access-grants/:grantId` | Owner-only: read one current immutable grant revision without content or private placement. |
+| `accessGrants(options?)` | `GET /api/v1/access-grants` | Owner-only: list a bounded page of current grant revisions and lifecycle truth. |
+| `revokeAccessGrant(grantId, input)` | `POST /api/v1/access-grants/:grantId/revoke` | Owner-only: compare-and-set exact grant revision to revoked with durable idempotent replay. |
+| `readSourceContent(resourceId, input)` | `POST /api/v1/source-resources/:resourceId/content` | With subject-bound delegation and a matching live read grant, return one verified bounded UTF-8 range. |
+| `searchSourceContent(resourceId, input)` | `POST /api/v1/source-resources/:resourceId/content/search` | With separate subject-bound search authority and grant, return bounded byte-addressed literal evidence. |
 | `cancelSourceJob(jobId)` | `POST /api/v1/source-jobs/:jobId/cancel` | Request cancellation; poll until `cancelled` or another terminal state because a request is not confirmation. |
 | `createSourceDeletion(sourceId, input)` | `POST /api/v1/sources/:sourceId/deletions` | With an exact expected revision and UUID idempotency key, freeze the source and enqueue verified deletion. |
 | `sourceDeletion(jobId)` | `GET /api/v1/source-deletions/:jobId` | Poll closed affected/remaining counts and safe lifecycle timestamps, or read the minimal verified tombstone. |
@@ -107,25 +117,61 @@ idempotency key across restart. Cancellation remains `cancel_requested` until
 in-flight work yields; terminal jobs reject stale cancellation.
 
 Preparation has separate authority from inspection: delegated callers need
-`source_preparations.create` to enqueue exactly `extract_text`, `source_jobs.read`
-to poll it, and `source_resources.read` to read the resulting manifest. Granting
+`source_preparations.create` to enqueue `extract_text` or strict CSV
+`prepare_data_view`, and `source_jobs.read` to poll the unified job. Text
+extraction additionally needs `source_resources.read` to read its resulting
+manifest. Granting
 `source_jobs.create` implies none of these. The flow is prepare, poll the returned
 job until `succeeded`, then read its non-null `resourceId`. That final endpoint is
 a closed metadata manifest only. Reading bytes is a separate protected flow: the
 install owner creates a short-lived grant for one subject/resource/purpose/channel,
-and a delegated client carrying `source_content.read` requests only the UTF-8 byte
+and a subject-bound delegated client carrying `source_content.read` requests only the UTF-8 byte
 range it needs. Discovery is separately fenced: the owner creates a
-`source_content.search` grant and a delegated client carrying that operation can
+`source_content.search` grant and a subject-bound delegated client carrying that operation can
 run a bounded literal `searchSourceContent` scan. Search returns byte-addressed
 passages and stable evidence IDs; it does not invoke a model or durable index.
+Its `observedAt` is the evidence-snapshot creation time. An equivalent repeated
+search may retain that timestamp; callers must not treat it as proof of current
+authorization, cache state, response time, or source freshness.
+Both retrieval methods derive the subject from the verified principal; their
+request bodies cannot select or override a subject.
 An owner token cannot use either content route, and route authority
 without a matching live grant is denied. Revocation takes effect on the next read.
 A refresh marks manifests from the prior current
 version `stale` with `staleAt` but keeps their immutable lineage readable. Work
 already in flight may finish as stale, and neither case labels the replacement
 version prepared; inspect and prepare that new current version separately.
+Data View preparation accepts only a current inspected `structured_export`
+whose verified media is UTF-8 text. Its public job exposes `dataViewId` only
+after success; the private artifact locator and all rows/cells remain runtime-
+private. Reading the content-free manifest additionally requires
+`source_data_views.read`; cross-scope and deleting-source identities look absent.
+The manifest exposes stable field IDs and untrusted header labels but no cells,
+and it grants no query authority. Querying is a separate least-privilege flow:
+the owner admits an explicit subject, field list and exact row window, then a
+subject-bound delegated principal carrying `source_data_views.query` can request
+only a field list and row window inside that live grant. Identity, purpose,
+channel, operation, observe-only autonomy and permission mode come from verified
+server context, never the query body. Results include exact current lineage,
+stable field/row identities, completeness and observation time. Formula-like or
+instruction-like cell strings remain inert data. Protected denial, revocation,
+expiry, stale/deleting state, lineage drift, tamper and races return no cells via
+`source_data_view_unavailable`; malformed requests use
+`source_data_view_query_invalid`, and declared ceiling excess uses
+`source_data_view_query_limit_exceeded`. The query is a retry-safe read POST and
+offers no SQL, filter, sort, aggregation, expression or arbitrary predicate.
 
-A connection or source registration is not permission. Registration does not
+A connection or source registration is not permission. The connection inventory
+is install-owner-global in this contract revision because runtime connection
+records are not workspace/profile resources. It exposes an Ownware-owned opaque
+identity, provider-neutral capability, reduced-precision state timestamps and
+fixed recovery guidance only. Explicit revocations disappear; an unconfirmed
+provider revocation remains a fixed `failed` / `verify_revocation` state instead
+of optimistic success. Connection state never grants profile, tool, subject,
+purpose, channel, resource or action authority; use still requires a separate
+scoped grant and the live evaluator.
+
+Registration does not
 grant inspection, preparation, retrieval, deletion, Data View, search, or any
 connected-system operation. Source deletion has four separate delegated
 authorities for create, read, cancel, and retry; granting any one implies none of
@@ -175,15 +221,20 @@ values. A successful `run()` result carries `timeoutMs`, the wall-clock limit
 selected from the resolved profile. Older v1 Gateways may omit `limits` and
 `timeoutMs`; the SDK keeps both optional for additive compatibility.
 
-The owner-side grant methods are `createAccessGrant`, `accessGrant`,
+The owner-side grant methods are `createAccessGrant`, `createDataViewQueryGrant`, `accessGrant`,
 `accessGrants`, and `revokeAccessGrant`; protected delegated retrieval is
 `readSourceContent` and `searchSourceContent`. Grant mutations use caller-generated UUID idempotency keys
 and return only immutable mutation receipts. Negotiate the four
-`access_grants.*`, `source_content.read`, and `source_content.search` before depending on
+`access_grants.*`, `source_content.read`, `source_content.search`, and
+`source_data_views.query` before depending on
 this flow. `limits.accessGrants` advertises TTL, active-count, and pagination
 bounds; `limits.sourceContent.maxRangeBytes` advertises the maximum range.
 `limits.sourceSearch` advertises the scan, query, match, context, timeout, and
 match-mode bounds.
+`limits.sourceDataView` separately advertises query ceilings of 32 fields, 256
+rows, 8,192 cells, 256 KiB and two seconds, plus the 256-identity grant-scope
+ceiling. A row grant window never clips beyond the current manifest; it rejects
+instead, so the owner knows exactly which rows were admitted.
 
 ## What it handles for you
 

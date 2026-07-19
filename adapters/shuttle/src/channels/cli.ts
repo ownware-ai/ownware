@@ -21,7 +21,14 @@ const FLAG_TO_CRED: Record<ChannelKind, Record<string, string>> = {
   telegram: { token: 'token' },
   slack: { 'bot-token': 'botToken', 'app-token': 'appToken' },
   discord: { token: 'token' },
-  whatsapp: { 'access-token': 'accessToken', 'phone-number-id': 'phoneNumberId', 'app-secret': 'appSecret', 'verify-token': 'verifyToken' },
+  whatsapp: {
+    'access-token': 'accessToken',
+    'phone-number-id': 'phoneNumberId',
+    'app-secret': 'appSecret',
+    'verify-token': 'verifyToken',
+    'waba-id': 'wabaId',
+    'verification-pin': 'verificationPin',
+  },
   sms: { 'account-sid': 'accountSid', 'auth-token': 'authToken', from: 'from' },
 }
 

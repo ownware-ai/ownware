@@ -10,10 +10,10 @@
  * directly from their HTTP handler and never instantiate a listener.
  *
  * The listener is deliberately narrow: it does not own the store, it
- * does not decide retry timing, it does not emit events. Its single
- * responsibility is "given this connection id + metadata, what's the
- * current vendor-side state?" The poller (the vendor-agnostic engine)
- * handles everything else.
+ * does not decide retry timing, it does not emit events, and it cannot
+ * persist arbitrary completion metadata. Its single responsibility is
+ * "given this connection id + metadata, what's the current vendor-side
+ * state?" The poller (the vendor-agnostic engine) handles everything else.
  */
 
 import { z } from 'zod'
@@ -35,12 +35,9 @@ import { z } from 'zod'
 export const ConnectionCheckResultSchema = z.discriminatedUnion('status', [
   z.object({
     status: z.literal('pending'),
-    /** Optional merged-in metadata to persist alongside the row. */
-    completedMetadata: z.record(z.unknown()).optional(),
-  }),
+  }).strict(),
   z.object({
     status: z.literal('ready'),
-    completedMetadata: z.record(z.unknown()).optional(),
     /**
      * Vendor-frozen identity captured at completion. Plumbed through
      * to `ConnectorConnectionsStore.markReady` so the row records:
@@ -57,18 +54,36 @@ export const ConnectionCheckResultSchema = z.discriminatedUnion('status', [
      */
     vendorAccountId: z.string().min(1).optional(),
     vendorUserId: z.string().min(1).optional(),
-  }),
+  }).strict(),
   z.object({
     status: z.literal('failed'),
     errorReason: z.string().min(1),
-    completedMetadata: z.record(z.unknown()).optional(),
-  }),
+  }).strict(),
   z.object({
     status: z.literal('not_found'),
     errorReason: z.string().min(1).optional(),
-  }),
+  }).strict(),
 ])
 export type ConnectionCheckResult = z.infer<typeof ConnectionCheckResultSchema>
+
+export type ConnectionTerminalState = 'ready' | 'failed' | 'expired'
+
+export interface BeforeConnectionTerminalInput {
+  readonly connectionId: string
+  readonly connectorId: string
+  readonly source: string
+  readonly terminal: ConnectionTerminalState
+  readonly metadata: Record<string, unknown> | null
+}
+
+/**
+ * Removes short-lived connection-session material before durable terminal
+ * truth is published. Throwing leaves the row pending so cleanup can retry;
+ * callers must make the hook idempotent.
+ */
+export type BeforeConnectionTerminal = (
+  input: BeforeConnectionTerminalInput,
+) => Promise<void>
 
 /**
  * Implemented by each source that wants polling-driven completion

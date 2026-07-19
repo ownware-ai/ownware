@@ -336,7 +336,8 @@ export class Session {
      * Default policy for tool calls when no `checkPermission` callback
      * is supplied. Determines the fallback decision returned by the
      * built-in checkPermission/requestApproval pair:
-     *   - 'auto'      → permission requests are auto-allowed
+     *   - 'auto'      → unclassified calls are allowed by default; an explicit
+     *                   host or stored decision still takes precedence
      *   - 'ask'       → permission requests fall through to HITL (default)
      *   - 'deny'      → **deprecated** — coerced to 'ask' after the
      *                   2026-05-14 redesign. No policy-level deny exists.
@@ -344,8 +345,8 @@ export class Session {
      *                   allowlist (use a custom checkPermission to
      *                   auto-allow specific tools)
      *
-     * If `checkPermission` is also provided, the explicit callback wins
-     * — `permissionMode` only governs the default. Default: 'ask' for
+     * If `checkPermission` is also provided, the explicit callback always
+     * wins — `permissionMode` only governs the default. Default: 'ask' for
      * backwards compatibility.
      */
     permissionMode?: PermissionMode
@@ -452,18 +453,10 @@ export class Session {
       compaction: this.compaction,
       checkpoint: this.checkpoint,
       checkPermission: async (tool) => {
-        // 'auto' is a true bypass — short-circuit BEFORE any custom
-        // callback runs. The user explicitly opted into "no prompts,
-        // I trust this run" by setting the mode; a host wiring a
-        // zone manager or safety pipeline must not be able to
-        // re-introduce friction here. Same semantics as a
-        // "dangerously skip permissions" bypass flag.
-        if (this.permissionMode === 'auto') {
-          return 'allow'
-        }
-
         // Host-provided checkPermission (cortex's zone manager wiring,
-        // CLI custom hosts, …) takes precedence over the default.
+        // CLI custom hosts, …) is configured policy and therefore takes
+        // precedence over every mode, including `auto`. The mode controls
+        // only the fallback when no stronger decision exists.
         if (this.customCheckPermission) {
           return this.customCheckPermission(tool)
         }
@@ -480,6 +473,7 @@ export class Session {
         // preserved for back-compat) falls through to 'ask'. The user
         // is the only party that can decline a call.
         switch (this.permissionMode) {
+          case 'auto': return 'allow'
           case 'deny': return 'ask'
           case 'allowlist': return 'ask'
           case 'ask':
@@ -487,14 +481,8 @@ export class Session {
         }
       },
       requestApproval: async (tool) => {
-        // Same bypass invariant — if the host or default somehow
-        // reaches requestApproval in 'auto' mode (shouldn't happen
-        // since checkPermission returned 'allow', but defense in depth),
-        // succeed without prompting.
-        if (this.permissionMode === 'auto') {
-          return true
-        }
-
+        // Reaching approval means configured policy explicitly returned
+        // `ask`; the mode fallback must not turn that decision into allow.
         if (this.customRequestApproval) {
           return this.customRequestApproval(tool)
         }

@@ -12,6 +12,16 @@ export interface SourceDeletionByteRemover {
   uploadArtifactsAbsent(uploadId: string): Promise<boolean>
   removeVersionArtifacts(sourceId: string, versionId: string): Promise<void>
   versionArtifactsAbsent(sourceId: string, versionId: string): Promise<boolean>
+  removeDataViewArtifact(
+    sourceId: string,
+    sourceVersionId: string,
+    dataViewId: string,
+  ): Promise<void>
+  dataViewArtifactAbsent(
+    sourceId: string,
+    sourceVersionId: string,
+    dataViewId: string,
+  ): Promise<boolean>
 }
 
 export interface SourceDeletionWorkerOptions {
@@ -193,9 +203,24 @@ export class SourceDeletionWorker {
         )
       case 'access_grant_revocation':
         return this.deletions.ensureGrantRevoked(claim.jobId, artifact.id, now)
-      case 'data_view':
-      case 'search_index':
+      case 'data_view': {
+        const locator = this.deletions.dataViewLocator(claim.jobId, artifact.id)
+        if (!locator) return false
+        await this.bytes.removeDataViewArtifact(
+          locator.sourceId, locator.sourceVersionId, artifact.id,
+        )
+        if (!await this.bytes.dataViewArtifactAbsent(
+          locator.sourceId, locator.sourceVersionId, artifact.id,
+        )) return false
+        return this.deletions.removeControlArtifact(
+          claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
+        )
+      }
       case 'retrieval_cache':
+        return this.deletions.removeRetrievalCacheArtifact(
+          claim.jobId, claim.claimToken, artifact.id, now,
+        )
+      case 'search_index':
         return false
     }
   }
@@ -223,15 +248,34 @@ export class SourceDeletionWorker {
         return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       }
       case 'derived_resource':
-      case 'source_job':
       case 'idempotency_replay':
       case 'grant_mutation_replay':
         return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+      case 'source_job':
+        if (!this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
+          this.deletions.removeControlArtifact(
+            claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
+          )
+        }
+        return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       case 'access_grant_revocation':
         return this.deletions.grantRevocationEffective(claim.jobId, artifact.id)
-      case 'data_view':
-      case 'search_index':
+      case 'data_view': {
+        const locator = this.deletions.dataViewLocator(claim.jobId, artifact.id)
+        if (!locator) return false
+        if (!await this.bytes.dataViewArtifactAbsent(
+          locator.sourceId, locator.sourceVersionId, artifact.id,
+        )) return false
+        if (!this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
+          this.deletions.removeControlArtifact(
+            claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
+          )
+        }
+        return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+      }
       case 'retrieval_cache':
+        return this.deletions.retrievalCacheArtifactAbsent(claim.jobId, artifact.id)
+      case 'search_index':
         return false
     }
   }

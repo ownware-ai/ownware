@@ -151,7 +151,7 @@ export function profileCsvDataView(
         if (headerKeys.has(key)) throw new CsvDataViewError('csv_header_duplicate')
         headerKeys.add(key)
         fields.push(Object.freeze({
-          fieldId: deriveOrdinalId('field', input.sourceVersionId, ordinal),
+          fieldId: csvDataViewOrdinalId('field', input.sourceVersionId, ordinal),
           ordinal,
           label,
         }))
@@ -169,7 +169,7 @@ export function profileCsvDataView(
       }
       const ordinal = rows.length
       rows.push(Object.freeze({
-        rowId: deriveOrdinalId('row', input.sourceVersionId, ordinal),
+        rowId: csvDataViewOrdinalId('row', input.sourceVersionId, ordinal),
         ordinal,
         values: Object.freeze(record),
       }))
@@ -257,7 +257,7 @@ function normalizeHeader(label: string): string {
   return label.trim().normalize('NFKC').toLowerCase()
 }
 
-function deriveOrdinalId(
+export function csvDataViewOrdinalId(
   kind: 'field' | 'row',
   sourceVersionId: string,
   ordinal: number,

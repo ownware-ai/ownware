@@ -163,9 +163,8 @@ describe('S0 baseline: today\'s policy behavior for the four redesign scenarios'
   const captures: ScenarioCapture[] = []
 
   // The main scenarios run in 'ask' mode — the interactive-session
-  // default, where the safety+zone pipeline actually runs and we can
-  // observe what each scenario classifies as. ('auto' would bypass
-  // everything; that's covered by the dedicated S2 tests below.)
+  // default, where the safety+zone pipeline runs and we can observe what
+  // each scenario classifies as. Auto-mode precedence is covered below.
 
   it('writeFile to a workspace-relative path (index.html) classifies and decides predictably', () => {
     const { evaluator, zones, ctx } = buildStack('ask')
@@ -286,15 +285,14 @@ describe('S0 baseline: today\'s policy behavior for the four redesign scenarios'
   })
 
   // -------------------------------------------------------------------------
-  // S2 — Bypass mode contract
+  // S2 — Automatic fallback contract
   //
   // Same scenarios, run through the PermissionEvaluator with mode 'auto'.
-  // Expected outcome: every call returns 'allow' regardless of zone, safety
-  // rule, or combination history. This proves the bypass short-circuit at
-  // `evaluator.ts:50-78` actually skips the rest of the pipeline.
+  // Configured safety and zone policy still runs; `auto` is only the fallback
+  // when those policies have no opinion.
   // -------------------------------------------------------------------------
 
-  it("S2: 'auto' mode bypasses every safety rule, zone, and combination", () => {
+  it("S2: 'auto' mode cannot bypass safety rules, zones, or combinations", () => {
     const zoneConfig = createZoneConfig('standard')
     const zones = new ZoneManager(zoneConfig)
     const evaluator = new PermissionEvaluator({
@@ -303,10 +301,7 @@ describe('S0 baseline: today\'s policy behavior for the four redesign scenarios'
     })
     const ctx: SecurityContext = { sessionId: 'bypass-test', mode: 'auto' }
 
-    // Drive every formerly-blocking scenario through the evaluator. With
-    // mode 'auto', the bypass short-circuits before zones run, so even
-    // the most aggressive classification (Zone NEVER on `cat > foo $(...)`)
-    // returns 'allow' without consulting any rule.
+    // Drive every risky scenario through the configured zone safety rule.
     const scenarios: Array<[string, Record<string, unknown>]> = [
       ['writeFile', { file_path: 'examples/work/secret_key_demo.html', content: 'demo' }],
       ['shell.execute', { command: "cat > examples/index.html << 'END'\n$(date)\nEND" }],
@@ -318,17 +313,11 @@ describe('S0 baseline: today\'s policy behavior for the four redesign scenarios'
 
     for (const [tool, input] of scenarios) {
       const decision = evaluator.evaluate(tool, input, ctx)
-      expect(decision, `${tool} should auto-allow in bypass mode`).toBe('allow')
+      expect(decision, `${tool} should remain inside configured zone policy`).toBe('ask')
     }
   })
 
-  it("S2: 'auto' bypass also covers the Session-level wrapper", () => {
-    // The Session wraps checkPermission to enforce the mode-bypass even
-    // when a custom (host-provided) callback is wired. This is the
-    // belt-and-suspenders that ensures no host can re-introduce friction
-    // for an 'auto' session. (Behavioral coverage lives in the dedicated
-    // unit test `tests/unit/core/session-permission-mode.test.ts`; this
-    // one just locks in the contract from the evaluator side.)
+  it("S2: 'auto' remains a fallback at the evaluator boundary", () => {
     const zoneConfig = createZoneConfig('paranoid') // toughest config
     const zones = new ZoneManager(zoneConfig)
     const evaluator = new PermissionEvaluator({
@@ -337,8 +326,8 @@ describe('S0 baseline: today\'s policy behavior for the four redesign scenarios'
     const ctxAuto: SecurityContext = { sessionId: 't', mode: 'auto' }
     const ctxAsk: SecurityContext = { sessionId: 't', mode: 'ask' }
 
-    // Same call, two modes: auto bypasses, ask prompts.
-    expect(evaluator.evaluate('writeFile', { file_path: 'x.html', content: '' }, ctxAuto)).toBe('allow')
+    // The configured policy asks in both modes.
+    expect(evaluator.evaluate('writeFile', { file_path: 'x.html', content: '' }, ctxAuto)).toBe('ask')
     expect(evaluator.evaluate('writeFile', { file_path: 'x.html', content: '' }, ctxAsk)).toBe('ask')
   })
 
@@ -355,7 +344,7 @@ describe('S0 baseline: today\'s policy behavior for the four redesign scenarios'
         captureDate: new Date().toISOString().slice(0, 10),
         zoneConfigUsed: 'standard',
         permissionModeUsed: 'ask',
-        policyContract: 'allow | ask (no deny). auto mode bypasses entirely — see S2 tests in same file.',
+        policyContract: 'allow | ask (no deny). Configured policy precedes the auto fallback.',
       },
       scenarios: captures,
       summary: {

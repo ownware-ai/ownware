@@ -30,6 +30,11 @@ older capability rather than inventing a value.
 | `0.22.0` | Separately authorized exact-revision source deletion jobs with durable replay, pre-destruction cancellation, partial retry, closed progress counts and verified minimal tombstones. |
 | `0.23.0` | Owner-managed, revision-fenced source-content grants plus delegated bounded UTF-8 reads with live grant and source-state re-evaluation. |
 | `0.24.0` | Separate protected-source search grants plus bounded exact/ASCII-folded keyword scans that return stable byte-addressed evidence without a model or durable index. |
+| `0.25.0` | Strict UTF-8 CSV Data View preparation through the unified source-preparation/job contract, with bounded advertised limits and no public cells or private locator. |
+| `0.26.0` | Separately authorized content-free Data View manifests with validated field identities, policy lineage and honest current/stale truth. |
+| `0.27.0` | Subject-bound delegated principals plus owner-admitted exact Data View field/row fences and bounded protected cell selection with verified current lineage. |
+| `0.28.0` | Protected source reads and searches derive their subject only from a signed, persisted subject-bound principal; request bodies can no longer select a grant subject. |
+| `0.29.0` | Owner-only provider-neutral connection inventory with Ownware-owned opaque identities, fixed recovery truth, revoked/legacy-history exclusion and an explicit separate-grant requirement. |
 
 Compatibility rules:
 
@@ -42,8 +47,10 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.24.0`,
-  `gateway.capabilities` is version 5, `runs.start` is version 4,
+- A capability's integer version is the minimum-behavior check. In `0.29.0`,
+  `gateway.capabilities` is version 10, `connections.list` is version 1,
+  `principals.issue` is version 3,
+  `runs.start` is version 4,
   `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 2,
   and `candidates.validate`, `candidates.stage`, `candidates.activate` and
   `candidates.rollback` are version 1.
@@ -53,11 +60,19 @@ Compatibility rules:
   `candidates.list` and `candidates.delete` are version 1.
   `runs.attachments` is version 1 and requires a separately declared delegated
   operation plus the negotiated count/decoded-byte/filename limits.
+  `connections.list` requires authenticated Gateway mode and the install-owner
+  bearer; delegated tokens remain denied even if they advertise the operation.
+  It is install-global, accepts only bounded limit/opaque-cursor pagination, and
+  returns only the latest provider-neutral capability state. Vendor/source,
+  install identity, credential/session material, raw errors and confirmed
+  revocations are absent. `accessPolicy: separate_grant_required` is invariant:
+  connection state supplies no resource or action authority.
   `sources.register` is version 2; `sources.list` and `sources.read` remain
   version 1. They require a delegated workspace/profile-scoped principal and
   never accept workspace, profile, path, URL, bytes or storage authority from
   the request body.
-  `source_uploads.create` is version 2; `source_uploads.write` and
+  `source_uploads.create` is version 3 and advertises file, text and
+  structured-export admission; `source_uploads.write` and
   `source_versions.read` remain version 1, and `source_uploads.complete` remains
   version 2. Uploads use exact
   offsets and checksums under negotiated byte/chunk/count/expiry/media limits;
@@ -66,39 +81,72 @@ Compatibility rules:
   version and returns safe actual identity on a typed stale-refresh conflict.
   Rejected placement is removed before conflict confirmation; cleanup failure
   remains a typed terminal non-success.
-  `source_jobs.create` is version 2; `source_jobs.cancel` remains version 1,
-  while `source_jobs.read` remains version 2 and includes `implementationVersion` plus a
-  nullable `resourceId`. Inspection creation supports only `inspect_format` for
+  `source_jobs.create` is version 2; `source_jobs.cancel` is version 2,
+  while `source_jobs.read` is version 3 and includes `implementationVersion` plus
+  nullable `resourceId` and `dataViewId` output identities. Inspection creation supports only `inspect_format` for
   one exact immutable version and requires a UUID idempotency key.
-  `source_preparations.create` is version 2; `source_resources.read` remains
-  version 1. They require separate delegated operations. Preparation accepts only `extract_text`
-  for an inspected current text version, under the negotiated 16 MiB, 5-second,
-  three-attempt and one-resource limits. Its resource read returns only a closed
+  `source_preparations.create` is version 3; `source_resources.read` remains
+  version 1. They require separate delegated operations. Preparation accepts
+  `extract_text` for an inspected current text version or `prepare_data_view`
+  for current inspected `structured_export` text under the negotiated source,
+  artifact, field, row, cell and time limits. Data View preparation returns only
+  its output identity after success; cells and the private locator are absent.
+  `source_data_views.read` is version 1 and separately returns only the scoped,
+  content-free manifest for that identity: validated stable field IDs, untrusted
+  header labels, counts, checksums, policy lineage and current/stale truth. It
+  grants no cell query authority and refuses views while source deletion is active.
+  `source_data_views.query` is version 1 and requires an explicitly subject-bound
+  delegated principal. `subjectId` is additive and optional on delegation types so
+  older operations and principals remain representable, but issuing a delegation
+  containing `source_content.read`, `source_content.search` or this query operation
+  without `subjectId` rejects. The query body has
+  only consent, exact field identities and a row window; workspace, profile,
+  subject, purpose, channel, operation, observe autonomy and permission mode cannot
+  be supplied or overridden there.
+  Text resource reads return only a closed
   lineage/policy/coverage/freshness manifest and never embeds content. Public job
   and resource state excludes worker claims, leases, retry schedules, paths,
   object keys, source or derived bytes, parser output and raw errors.
-- `access_grants.create` is version 2; `access_grants.list`, `access_grants.read`,
-  `access_grants.revoke`, `source_content.read` and `source_content.search` are version 1. Grant
+- `access_grants.create` is version 3; `access_grants.list`, `access_grants.read`,
+  and `access_grants.revoke` are version 1; `source_content.read` and
+  `source_content.search` are version 2. Grant
   administration requires authenticated mode and the install-owner bearer even
   when a delegated token advertises an administration operation. Creation is
   bound to one current prepared text resource; revocation compare-and-sets its
   exact revision. Both mutations require UUID idempotency keys and replay only a
   four-field immutable receipt. List/detail are owner-only inspection surfaces.
-- `source_content.read` requires a delegated principal carrying that exact
+- Data View grant creation admits exact current field identities and one non-clipping
+  row window of at most 256 rows. The Gateway atomically resolves the stable row
+  identities and persists a fixed `source_data_view` / `source_data_views.query` /
+  observe fence; clients never compute or enumerate hidden row identities. A grant
+  field or row-scope ceiling excess is HTTP 413
+  `access_grant_scope_limit_exceeded`. Querying
+  rechecks the live grant, strict current source/view lineage and lifecycle floor, and artifact
+  integrity before and after selection. Protected denial, revocation, expiry, stale
+  or deleting state, tamper and races return no cells as HTTP 404
+  `source_data_view_unavailable`; malformed structure is 400
+  `source_data_view_query_invalid`; declared ceiling excess is 413
+  `source_data_view_query_limit_exceeded`. The read POST is retry-safe and exposes no
+  SQL, filter, sort, aggregation, expression or arbitrary predicate.
+- `source_content.read` requires a subject-bound delegated principal carrying that exact
   operation plus a currently effective matching grant for workspace, profile,
   subject, purpose, channel, resource, consent and observe-only autonomy. It
+  derives subject from the verified principal and rejects a body-supplied subject.
   returns at most the negotiated 64 KiB UTF-8 range and safe immutable lineage.
   Source availability, current version, preparation, freshness, conflict and
   deletion truth are rechecked around the private read. Revocation or source
   invalidation denies the next read; denial and cross-scope mismatch look absent.
-- `source_content.search` requires its own delegated route authority and matching
+- `source_content.search` requires its own subject-bound delegated route authority and matching
   live grant; a read grant never implies search and a search grant never implies
-  read. It scans one exact current strict-UTF-8 resource under the negotiated
+  read. Subject comes only from the verified principal and is not a request-body
+  field. It scans one exact current strict-UTF-8 resource under the negotiated
   16 MiB, 128-query-byte, 20-match, 1024-context-byte and five-second limits.
   Results are byte ordered and carry exact match/context offsets plus stable
   evidence IDs. `no_matches` is explicit; truncation is explicit; timeout returns
-  no partial result. The first implementation uses no model, network, shell, SQL,
-  or durable search index.
+  no partial result. `observedAt` is the evidence-snapshot creation time and may
+  be retained by an equivalent repeated search; it is not proof of current
+  authorization, cache state, response time or source freshness. The first
+  implementation uses no model, network, shell, SQL, or durable search index.
 - `limits.sourceQuota` publishes required `workspace` and `profile` effective
   ceilings for registrations, retained plus reserved bytes, active upload
   sessions, nonterminal jobs and derived resources. These negotiated positive
@@ -112,6 +160,11 @@ Compatibility rules:
   is disclosed beyond standard safe error metadata: no usage, failed scope,
   resource IDs or paths. There is no `Retry-After` header or body hint. Reads and
   non-growing recovery remain allowed while an installation is over limit.
+- `limits.sourceDataView` publishes the protected-query ceilings: 32 fields, 256
+  rows, 8,192 projected cells, a 256 KiB canonical result and a two-second artifact
+  verification/selection deadline, plus 256 exact identities per grant scope. These
+  additive nested fields stay optional in SDK types for pre-0.27 Gateways; negotiate
+  `source_data_views.query` before reading them as present.
 - A connection or source registration is not permission. Registration grants no
   inspection, preparation, retrieval, deletion, Data View, search, or connected-
   system operation. `source_deletions.create`, `source_deletions.read`,

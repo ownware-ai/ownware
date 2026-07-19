@@ -39,11 +39,15 @@ function mkListener(
 describe('ConnectionPoller', () => {
   it('ready result marks row and emits one event', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 100, maxDurationMs: 60_000 })
-    store.upsertPending({ connectionId: 'c', connectorId: 'notion', source: 'composio', entityId: 'cortex-default-user' })
-    poller.register('c', mkListener(async () => ({ status: 'ready', completedMetadata: { tok: 'x' } })))
+    store.upsertPending({
+      connectionId: 'c', connectorId: 'notion', source: 'composio',
+      entityId: 'cortex-default-user',
+      metadata: { sessionHandle: 'connection-session.11111111-1111-4111-8111-111111111111' },
+    })
+    poller.register('c', mkListener(async () => ({ status: 'ready' })))
     await vi.advanceTimersByTimeAsync(150)
     expect(store.findByConnectionId('c')?.status).toBe('ready')
-    expect(store.findByConnectionId('c')?.metadata).toMatchObject({ tok: 'x' })
+    expect(store.findByConnectionId('c')?.metadata).toBeNull()
     expect(events).toHaveLength(1)
     expect(events[0]!.status).toBe('ready')
     expect(events[0]!.source).toBe('composio')
@@ -81,7 +85,8 @@ describe('ConnectionPoller', () => {
     await vi.advanceTimersByTimeAsync(60)
     const row = store.findByConnectionId('c')
     expect(row?.status).toBe('failed')
-    expect(row?.errorReason).toBe('boom')
+    expect(row?.errorReason).toBe('Connection status check failed. Please retry.')
+    expect(row?.errorReason).not.toContain('boom')
     expect(poller.activeCount).toBe(0)
   })
 
@@ -144,5 +149,67 @@ describe('ConnectionPoller', () => {
     await vi.advanceTimersByTimeAsync(500)  // 2 (capped)
     await vi.advanceTimersByTimeAsync(500)  // 3 (capped)
     expect(attempts).toBe(3)
+  })
+
+  it('does not emit or resurrect when revoke wins an in-flight ready race', async () => {
+    const poller = new ConnectionPoller(store, bus, {
+      initialDelayMs: 10, maxDurationMs: 60_000,
+    })
+    store.upsertPending({
+      connectionId: 'race', connectorId: 'notion', source: 'composio',
+      entityId: 'cortex-default-user',
+    })
+    let release!: (result: ConnectionCheckResult) => void
+    poller.register('race', mkListener(() => new Promise((resolve) => { release = resolve })))
+    await vi.advanceTimersByTimeAsync(10)
+    store.markRevoked('race', 'owner revoked')
+    release({ status: 'ready' })
+    await vi.runAllTimersAsync()
+
+    expect(store.findByConnectionId('race')).toMatchObject({ status: 'expired' })
+    expect(events).toHaveLength(0)
+    expect(poller.activeCount).toBe(0)
+  })
+
+  it('retries terminal cleanup before changing durable state or emitting', async () => {
+    let cleanupAttempts = 0
+    const poller = new ConnectionPoller(
+      store,
+      bus,
+      { initialDelayMs: 10, backoffMultiplier: 2, maxDurationMs: 60_000 },
+      async ({ connectionId, terminal, metadata }) => {
+        cleanupAttempts++
+        expect(connectionId).toBe('cleanup')
+        expect(terminal).toBe('ready')
+        expect(metadata).toEqual({
+          sessionHandle: 'connection-session.22222222-2222-4222-8222-222222222222',
+        })
+        if (cleanupAttempts === 1) throw new Error('vault unavailable')
+      },
+    )
+    store.upsertPending({
+      connectionId: 'cleanup', connectorId: 'notion', source: 'composio',
+      entityId: 'cortex-default-user',
+      metadata: { sessionHandle: 'connection-session.22222222-2222-4222-8222-222222222222' },
+    })
+    let checks = 0
+    poller.register('cleanup', mkListener(async () => {
+      checks++
+      return { status: 'ready' }
+    }))
+
+    await vi.advanceTimersByTimeAsync(10)
+    expect(store.findByConnectionId('cleanup')).toMatchObject({ status: 'pending' })
+    expect(events).toHaveLength(0)
+    expect(poller.activeCount).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(20)
+    expect(checks).toBe(2)
+    expect(cleanupAttempts).toBe(2)
+    expect(store.findByConnectionId('cleanup')).toMatchObject({
+      status: 'ready', metadata: null,
+    })
+    expect(events).toHaveLength(1)
+    expect(poller.activeCount).toBe(0)
   })
 })

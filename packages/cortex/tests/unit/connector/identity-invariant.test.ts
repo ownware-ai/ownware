@@ -21,6 +21,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CortexDatabase } from '../../../src/gateway/db/database.js'
 import { ConnectorConnectionsStore } from '../../../src/connector/connections/store.js'
+import { CredentialVault } from '../../../src/connector/credentials/vault.js'
+import { ConnectionSessionVault } from '../../../src/connector/connections/session-vault.js'
 import { createConnectorStatusBus } from '../../../src/connector/status-bus.js'
 import { createComposioSource } from '../../../src/connector/composio/source.js'
 import {
@@ -165,6 +167,9 @@ describe('install-identity invariant: connect → list → assemble', () => {
       registry: stubRegistry(fakeConnector('gmail')),
       connections,
       completionManager,
+      connectionSessions: new ConnectionSessionVault(
+        new CredentialVault(join(tmpDir, 'connection-sessions')),
+      ),
       composio: { client: composioClient, defaultUserId: identity.id },
     })
 

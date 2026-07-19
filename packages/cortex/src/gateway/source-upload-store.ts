@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
+import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import { SourceQuotaPolicy } from './source-quota-policy.js'
 
 export const SOURCE_UPLOAD_MAX_BYTES = 16 * 1024 * 1024
@@ -120,6 +121,7 @@ export class SourceUploadStore {
   constructor(
     private readonly db: Database.Database,
     private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
+    private readonly evidenceSearchCache?: EvidenceSearchCache,
   ) {}
 
   create(input: CreateSourceUploadInput, now: number = Date.now()): SourceUploadSession {
@@ -316,12 +318,14 @@ export class SourceUploadStore {
   ): SourceVersionManifest {
     return this.db.transaction((): SourceVersionManifest => {
       const session = this.db.prepare(`
-        SELECT source_id, pending_version_id, base_source_revision,
+        SELECT source_id, workspace_id, profile_id, pending_version_id, base_source_revision,
           base_current_version_id
         FROM source_upload_sessions
         WHERE upload_id = ? AND state = 'completing'
       `).get(uploadId) as {
         source_id: string
+        workspace_id: string
+        profile_id: string
         pending_version_id: string | null
         base_source_revision: number
         base_current_version_id: string | null
@@ -374,6 +378,16 @@ export class SourceUploadStore {
         SET freshness = 'stale', stale_at = ?
         WHERE source_id = ? AND source_version_id != ? AND freshness = 'current'
       `).run(now, session.source_id, input.versionId)
+      this.db.prepare(`
+        UPDATE source_data_views
+        SET freshness = 'stale', stale_at = ?
+        WHERE source_id = ? AND source_version_id != ? AND freshness = 'current'
+      `).run(now, session.source_id, input.versionId)
+      this.evidenceSearchCache?.invalidateSource({
+        workspaceId: session.workspace_id,
+        profileId: session.profile_id,
+        sourceId: session.source_id,
+      })
       const sessionUpdated = this.db.prepare(`
         UPDATE source_upload_sessions
         SET state = 'completed', completed_version_id = ?, code = NULL,

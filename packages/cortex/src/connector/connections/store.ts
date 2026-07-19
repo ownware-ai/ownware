@@ -19,8 +19,10 @@
  *   runMigrations(store.db, MIGRATIONS) // or use CortexDatabase
  */
 
+import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { z } from 'zod'
+import { CONNECTION_SESSION_HANDLE_PATTERN } from './session-vault.js'
 
 // ---------------------------------------------------------------------------
 // Status enum + Zod
@@ -44,9 +46,22 @@ export const ConnectionStatusSchema = z.enum([
 ])
 export type ConnectionStatus = z.infer<typeof ConnectionStatusSchema>
 
+export const ConnectionTerminalCauseSchema = z.enum([
+  'failed',
+  'timeout',
+  'revoked',
+  'revocation_unconfirmed',
+  'legacy_hidden',
+])
+export type ConnectionTerminalCause = z.infer<typeof ConnectionTerminalCauseSchema>
+
 /** Matches the `connector_connections.source` column. Free-form string
  * so future vendors can register without a schema change. */
 export const ConnectionSourceSchema = z.string().min(1).max(64)
+export const ConnectionMetadataSchema = z.object({
+  sessionHandle: z.string().regex(CONNECTION_SESSION_HANDLE_PATTERN),
+}).strict()
+export type ConnectionMetadata = z.infer<typeof ConnectionMetadataSchema>
 
 // ---------------------------------------------------------------------------
 // Row schema
@@ -58,6 +73,7 @@ export const ConnectionSourceSchema = z.string().min(1).max(64)
  */
 export const ConnectionRowSchema = z.object({
   connectionId: z.string().min(1),
+  publicConnectionId: z.string().uuid().nullable(),
   connectorId: z.string().min(1),
   source: ConnectionSourceSchema,
   // entity_id is NOT NULL at the schema layer (migration 019). The runtime
@@ -69,7 +85,7 @@ export const ConnectionRowSchema = z.object({
   lastPolledAt: z.number().int().nonnegative().nullable(),
   expiresAt: z.number().int().nonnegative().nullable(),
   errorReason: z.string().nullable(),
-  metadata: z.record(z.unknown()).nullable(),
+  metadata: ConnectionMetadataSchema.nullable(),
   /**
    * Phase 2b.1: vendor auth-configuration id used when the link was
    * created (Composio writes its `auth_config_id` here). Nullable because
@@ -117,6 +133,7 @@ export const ConnectionRowSchema = z.object({
    * Added migration 028 (2026-05-16, F4.c-1).
    */
   lastVerifiedAt: z.number().int().nonnegative().nullable(),
+  terminalCause: ConnectionTerminalCauseSchema.nullable(),
 })
 export type ConnectionRow = z.infer<typeof ConnectionRowSchema>
 
@@ -126,6 +143,7 @@ export type ConnectionRow = z.infer<typeof ConnectionRowSchema>
 
 interface DbRow {
   connection_id: string
+  public_connection_id: string | null
   connector_id: string
   source: string
   entity_id: string
@@ -140,6 +158,7 @@ interface DbRow {
   vendor_account_id: string | null
   vendor_user_id: string | null
   last_verified_at: number | null
+  terminal_cause: string | null
 }
 
 function mapRow(r: DbRow): ConnectionRow {
@@ -158,6 +177,7 @@ function mapRow(r: DbRow): ConnectionRow {
   }
   return ConnectionRowSchema.parse({
     connectionId: r.connection_id,
+    publicConnectionId: r.public_connection_id,
     connectorId: r.connector_id,
     source: r.source,
     entityId: r.entity_id,
@@ -172,7 +192,25 @@ function mapRow(r: DbRow): ConnectionRow {
     vendorAccountId: r.vendor_account_id,
     vendorUserId: r.vendor_user_id,
     lastVerifiedAt: r.last_verified_at,
+    terminalCause: r.terminal_cause,
   })
+}
+
+export const ConnectionInventoryListOptionsSchema = z.object({
+  limit: z.number().int().min(1).max(100),
+  cursor: z.string().uuid().optional(),
+}).strict()
+export type ConnectionInventoryListOptions = z.infer<
+  typeof ConnectionInventoryListOptionsSchema
+>
+
+export interface ConnectionInventoryPage {
+  readonly items: readonly (ConnectionRow & { readonly publicConnectionId: string })[]
+  readonly nextCursor: string | null
+}
+
+export class ConnectionInventoryCursorNotFoundError extends Error {
+  readonly name = 'ConnectionInventoryCursorNotFoundError'
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +228,7 @@ export const UpsertPendingInputSchema = z.object({
   /** Unix ms. When set, the poller/`expireStaleOnBoot()` will expire the
    * row after this deadline passes without reaching `ready`/`failed`. */
   expiresAt: z.number().int().nonnegative().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: ConnectionMetadataSchema.optional(),
   /** Phase 2b.1: optional vendor auth-config id (Composio `auth_config_id`). */
   authConfigId: z.string().min(1).optional(),
   /**
@@ -209,9 +247,6 @@ export const MarkReadyInputSchema = z.object({
   connectionId: z.string().min(1),
   /** Unix ms. Defaults to `Date.now()`. */
   completedAt: z.number().int().nonnegative().optional(),
-  /** Merged (shallow) with existing metadata. Caller passes vendor-supplied
-   * completion payload (tokens, final scopes, etc.). */
-  metadata: z.record(z.unknown()).optional(),
   /**
    * Vendor identity captured at OAuth completion. The listener / resync
    * passes whatever the vendor's "connected account" record carries —
@@ -231,9 +266,12 @@ export const MarkFailedInputSchema = z.object({
   connectionId: z.string().min(1),
   reason: z.string().min(1),
   completedAt: z.number().int().nonnegative().optional(),
-  metadata: z.record(z.unknown()).optional(),
 })
 export type MarkFailedInput = z.infer<typeof MarkFailedInputSchema>
+
+export type ConnectionTransitionResult = ConnectionRow & {
+  readonly transitioned: boolean
+}
 
 // ---------------------------------------------------------------------------
 // Store
@@ -250,11 +288,10 @@ export class ConnectorConnectionsStore {
    * caller passes one). Callers that want to start a FRESH attempt
    * must pick a new `connectionId`.
    *
-   * Conflict with the partial-unique index: if another `pending` or
-   * `ready` row exists for the same (connector_id, source, entity_id)
-   * with a DIFFERENT connection_id, the insert throws
-   * `SQLITE_CONSTRAINT_UNIQUE`. Callers translate that into a
-   * `ConnectorAlreadyConnectingError` or similar.
+   * If another live row exists for the same connector/source/entity tuple,
+   * that row is returned. Replacing it here would discard the only durable
+   * pointer to short-lived vault material; callers must explicitly expire a
+   * safely-cleaned pending attempt before creating its replacement.
    */
   upsertPending(input: UpsertPendingInput): ConnectionRow {
     const parsed = UpsertPendingInputSchema.parse(input)
@@ -311,13 +348,11 @@ export class ConnectorConnectionsStore {
     // bug that surfaced in the user's DB on 2026-05-26 (one expired
     // + one pending row for the same tuple).
     //
-    // Resolution: SELECT only the live row. If it's `ready` → return
-    // it (never destroy a working connection). If `pending` → DELETE +
-    // INSERT inside a transaction so a concurrent insert can't slip
-    // between. Old `expired` / `failed` rows are left in place as
-    // history; they don't conflict and pruning them is the
-    // retention job's responsibility, not this hot path's.
-    const tx = this.db.transaction((): { reusedReady: ConnectionRow | null } => {
+    // Resolution: return either live state rather than deleting it. A pending
+    // row may be the only durable owner of an encrypted session handle; the
+    // connection handler verifies deletion and expires it before retry. The
+    // transaction keeps lookup+insert atomic against another writer.
+    const tx = this.db.transaction((): { reusedLive: ConnectionRow | null } => {
       const live = this.db.prepare(
         `SELECT connection_id, status FROM connector_connections
           WHERE connector_id = ? AND source = ? AND entity_id = ?
@@ -326,29 +361,19 @@ export class ConnectorConnectionsStore {
       ).get(parsed.connectorId, parsed.source, parsed.entityId) as
         { connection_id: string; status: string } | undefined
 
-      if (live && live.status === 'ready') {
-        return { reusedReady: this.findByConnectionId(live.connection_id) }
-      }
       if (live) {
-        // Replace the stuck pending row. The new INSERT below uses a
-        // different connection_id (Composio generated a fresh one),
-        // so the partial unique constraint needs the old pending row
-        // gone before we insert. DELETE + INSERT is wrapped in this
-        // transaction so no other writer can sneak a conflicting row
-        // in between.
-        this.db.prepare(
-          `DELETE FROM connector_connections WHERE connection_id = ?`,
-        ).run(live.connection_id)
+        return { reusedLive: this.findByConnectionId(live.connection_id) }
       }
       this.db.prepare(
         `INSERT INTO connector_connections
-           (connection_id, connector_id, source, entity_id, status,
+           (connection_id, public_connection_id, connector_id, source, entity_id, status,
             initiated_at, completed_at, last_polled_at, expires_at,
             error_reason, metadata_json, auth_config_id,
-            vendor_account_id, vendor_user_id)
-         VALUES (?, ?, ?, ?, 'pending', ?, NULL, NULL, ?, NULL, ?, ?, ?, ?)`,
+            vendor_account_id, vendor_user_id, terminal_cause)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, NULL)`,
       ).run(
         parsed.connectionId,
+        randomUUID(),
         parsed.connectorId,
         parsed.source,
         parsed.entityId,
@@ -359,58 +384,21 @@ export class ConnectorConnectionsStore {
         parsed.vendorAccountId ?? null,
         parsed.vendorUserId ?? null,
       )
-      return { reusedReady: null }
+      return { reusedLive: null }
     })
     const result = tx()
-    if (result.reusedReady !== null) return result.reusedReady
+    if (result.reusedLive !== null) return result.reusedLive
     return this.findByConnectionId(parsed.connectionId)!
   }
 
   /**
-   * Transition a pending/ready row to `ready`. Idempotent on an
-   * already-`ready` row (timestamps are preserved, metadata is merged
-   * shallowly if supplied).
+   * Compare-and-set a pending row to `ready`. Already-ready calls are
+   * idempotent and may fill missing frozen vendor identity, but failed or
+   * expired history can never be resurrected. Every terminal path clears
+   * short-lived session metadata.
    */
-  markReady(input: MarkReadyInput): ConnectionRow {
+  markReady(input: MarkReadyInput): ConnectionTransitionResult {
     const parsed = MarkReadyInputSchema.parse(input)
-    const existing = this.findByConnectionId(parsed.connectionId)
-    if (!existing) {
-      throw new Error(`Connection not found: ${parsed.connectionId}`)
-    }
-
-    const mergedMetadata = parsed.metadata
-      ? { ...(existing.metadata ?? {}), ...parsed.metadata }
-      : existing.metadata
-    const metadataJson = mergedMetadata ? JSON.stringify(mergedMetadata) : null
-
-    if (existing.status === 'ready') {
-      // Already ready — only update metadata + vendor identity if the
-      // caller supplied any. Preserves completedAt for audit. Vendor
-      // identity COALESCE means resync re-running on an already-ready
-      // row can fill in a missing vendorAccountId without overwriting
-      // an existing one. The architectural rule: vendor identity is
-      // append-only-if-null; never replaces a known value.
-      const wantsUpdate =
-        parsed.metadata !== undefined
-        || parsed.vendorAccountId !== undefined
-        || parsed.vendorUserId !== undefined
-      if (wantsUpdate) {
-        this.db.prepare(
-          `UPDATE connector_connections
-              SET metadata_json     = COALESCE(?, metadata_json),
-                  vendor_account_id = COALESCE(vendor_account_id, ?),
-                  vendor_user_id    = COALESCE(vendor_user_id, ?)
-            WHERE connection_id = ?`,
-        ).run(
-          parsed.metadata ? metadataJson : null,
-          parsed.vendorAccountId ?? null,
-          parsed.vendorUserId ?? null,
-          parsed.connectionId,
-        )
-      }
-      return this.findByConnectionId(parsed.connectionId)!
-    }
-
     const now = parsed.completedAt ?? Date.now()
     // Vendor identity is append-only-if-null: preserve any value
     // already on the row, only fill when the column is currently null.
@@ -419,73 +407,101 @@ export class ConnectorConnectionsStore {
     // value back. We keep the EARLIER (connect-time) value to honour
     // the rule that vendor-frozen identity is recorded once and never
     // overwritten.
-    this.db.prepare(
+    const updated = this.db.prepare(
       `UPDATE connector_connections
           SET status = 'ready',
               completed_at = ?,
               error_reason = NULL,
-              metadata_json = ?,
+              metadata_json = NULL,
               vendor_account_id = COALESCE(vendor_account_id, ?),
               vendor_user_id    = COALESCE(vendor_user_id, ?)
-        WHERE connection_id = ?`,
+        WHERE connection_id = ? AND status = 'pending'`,
     ).run(
       now,
-      metadataJson,
       parsed.vendorAccountId ?? null,
       parsed.vendorUserId ?? null,
       parsed.connectionId,
     )
-
-    return this.findByConnectionId(parsed.connectionId)!
-  }
-
-  /** Transition to terminal `failed` with a human-readable reason. */
-  markFailed(input: MarkFailedInput): ConnectionRow {
-    const parsed = MarkFailedInputSchema.parse(input)
-    const existing = this.findByConnectionId(parsed.connectionId)
-    if (!existing) {
-      throw new Error(`Connection not found: ${parsed.connectionId}`)
+    if (updated.changes === 1) {
+      return transition(this.findByConnectionId(parsed.connectionId)!, true)
     }
 
-    const mergedMetadata = parsed.metadata
-      ? { ...(existing.metadata ?? {}), ...parsed.metadata }
-      : existing.metadata
-    const metadataJson = mergedMetadata ? JSON.stringify(mergedMetadata) : null
+    const existing = this.findByConnectionId(parsed.connectionId)
+    if (!existing) throw new Error(`Connection not found: ${parsed.connectionId}`)
+    if (existing.status === 'ready') {
+      // Reconciliation may idempotently fill identity that was absent on an
+      // older ready row. It never overwrites a frozen value or completion time.
+      this.db.prepare(
+        `UPDATE connector_connections
+            SET metadata_json = NULL,
+                vendor_account_id = COALESCE(vendor_account_id, ?),
+                vendor_user_id = COALESCE(vendor_user_id, ?)
+          WHERE connection_id = ? AND status = 'ready'`,
+      ).run(
+        parsed.vendorAccountId ?? null,
+        parsed.vendorUserId ?? null,
+        parsed.connectionId,
+      )
+    }
+    return transition(this.findByConnectionId(parsed.connectionId)!, false)
+  }
+
+  /** Compare-and-set a pending completion attempt to terminal `failed`. */
+  markFailed(input: MarkFailedInput): ConnectionTransitionResult {
+    const parsed = MarkFailedInputSchema.parse(input)
     const now = parsed.completedAt ?? Date.now()
 
-    this.db.prepare(
+    const updated = this.db.prepare(
       `UPDATE connector_connections
           SET status = 'failed',
               completed_at = ?,
               error_reason = ?,
-              metadata_json = ?
-        WHERE connection_id = ?`,
-    ).run(now, parsed.reason, metadataJson, parsed.connectionId)
-
-    return this.findByConnectionId(parsed.connectionId)!
+              metadata_json = NULL,
+              terminal_cause = 'failed'
+        WHERE connection_id = ? AND status = 'pending'`,
+    ).run(now, parsed.reason, parsed.connectionId)
+    const row = this.findByConnectionId(parsed.connectionId)
+    if (!row) throw new Error(`Connection not found: ${parsed.connectionId}`)
+    return transition(row, updated.changes === 1)
   }
 
   /**
    * Transition the given connection to `expired` with a fixed reason.
    * Used by the poller when `expires_at` passes mid-flight.
    */
-  markExpired(connectionId: string, reason?: string): ConnectionRow | null {
-    const existing = this.findByConnectionId(connectionId)
-    if (!existing) return null
-    if (existing.status !== 'pending') return existing
-
-    this.db.prepare(
+  markExpired(connectionId: string, reason?: string): ConnectionTransitionResult | null {
+    const updated = this.db.prepare(
       `UPDATE connector_connections
           SET status = 'expired',
               completed_at = ?,
-              error_reason = ?
-        WHERE connection_id = ?`,
+              error_reason = ?,
+              metadata_json = NULL,
+              terminal_cause = 'timeout'
+        WHERE connection_id = ? AND status = 'pending'`,
     ).run(
       Date.now(),
       reason ?? 'Connection attempt timed out.',
       connectionId,
     )
-    return this.findByConnectionId(connectionId)
+    const row = this.findByConnectionId(connectionId)
+    return row ? transition(row, updated.changes === 1) : null
+  }
+
+  /** Reconciliation-only demotion of a formerly ready connection. */
+  markUnhealthy(
+    connectionId: string,
+    reason: string,
+    completedAt: number = Date.now(),
+  ): ConnectionTransitionResult | null {
+    const parsed = MarkFailedInputSchema.parse({ connectionId, reason, completedAt })
+    const updated = this.db.prepare(
+      `UPDATE connector_connections
+          SET status = 'failed', completed_at = ?, error_reason = ?, metadata_json = NULL,
+              terminal_cause = 'failed'
+        WHERE connection_id = ? AND status = 'ready'`,
+    ).run(parsed.completedAt, parsed.reason, parsed.connectionId)
+    const row = this.findByConnectionId(connectionId)
+    return row ? transition(row, updated.changes === 1) : null
   }
 
   /**
@@ -496,21 +512,27 @@ export class ConnectorConnectionsStore {
    * state change. Already-terminal rows (`expired` / `failed`) are
    * no-ops so replaying a disconnect is safe.
    */
-  markRevoked(connectionId: string, reason: string): ConnectionRow | null {
-    const existing = this.findByConnectionId(connectionId)
-    if (!existing) return null
-    if (existing.status === 'expired' || existing.status === 'failed') {
-      return existing
-    }
-
-    this.db.prepare(
+  markRevoked(
+    connectionId: string,
+    reason: string,
+    confirmed: boolean = true,
+  ): ConnectionTransitionResult | null {
+    const updated = this.db.prepare(
       `UPDATE connector_connections
           SET status = 'expired',
               completed_at = ?,
-              error_reason = ?
-        WHERE connection_id = ?`,
-    ).run(Date.now(), reason, connectionId)
-    return this.findByConnectionId(connectionId)
+              error_reason = ?,
+              metadata_json = NULL,
+              terminal_cause = ?
+        WHERE connection_id = ? AND status IN ('pending', 'ready')`,
+    ).run(
+      Date.now(),
+      reason,
+      confirmed ? 'revoked' : 'revocation_unconfirmed',
+      connectionId,
+    )
+    const row = this.findByConnectionId(connectionId)
+    return row ? transition(row, updated.changes === 1) : null
   }
 
   /** Record that the poller just ran against this connection. */
@@ -540,6 +562,78 @@ export class ConnectorConnectionsStore {
       `SELECT * FROM connector_connections WHERE connection_id = ?`,
     ).get(connectionId) as DbRow | undefined
     return row ? mapRow(row) : null
+  }
+
+  /**
+   * Latest material state for each provider-neutral connector owned by the
+   * current installation identity. Revoked and historically ambiguous rows
+   * are excluded before pagination; vendor identity never leaves this store.
+   */
+  listInventory(
+    entityId: string,
+    options: ConnectionInventoryListOptions,
+  ): ConnectionInventoryPage {
+    const parsedEntityId = z.string().min(1).parse(entityId)
+    const parsed = ConnectionInventoryListOptionsSchema.parse(options)
+    const cte = `
+      WITH ranked AS (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY connector_id, source
+          ORDER BY initiated_at DESC, public_connection_id DESC
+        ) AS inventory_rank
+        FROM connector_connections
+        WHERE entity_id = ? AND public_connection_id IS NOT NULL
+      ), visible AS (
+        SELECT * FROM ranked
+        WHERE inventory_rank = 1
+          AND (
+            status IN ('pending', 'ready')
+            OR (status = 'failed' AND terminal_cause = 'failed')
+            OR (status = 'expired' AND terminal_cause = 'timeout')
+            OR (status = 'expired' AND terminal_cause = 'revocation_unconfirmed')
+          )
+      )`
+
+    let cursorAt: number | null = null
+    if (parsed.cursor !== undefined) {
+      const cursor = this.db.prepare(
+        `${cte}
+         SELECT initiated_at
+         FROM visible
+         WHERE public_connection_id = ?`,
+      ).get(parsedEntityId, parsed.cursor) as { initiated_at: number } | undefined
+      if (!cursor) throw new ConnectionInventoryCursorNotFoundError()
+      cursorAt = cursor.initiated_at
+    }
+
+    const rows = this.db.prepare(
+      `${cte}
+       SELECT * FROM visible
+       WHERE (? IS NULL)
+          OR initiated_at < ?
+          OR (initiated_at = ? AND public_connection_id < ?)
+       ORDER BY initiated_at DESC, public_connection_id DESC
+       LIMIT ?`,
+    ).all(
+      parsedEntityId,
+      cursorAt,
+      cursorAt,
+      cursorAt,
+      parsed.cursor ?? null,
+      parsed.limit + 1,
+    ) as DbRow[]
+
+    const hasMore = rows.length > parsed.limit
+    const items = rows.slice(0, parsed.limit).map(mapRow).map((row) => {
+      if (row.publicConnectionId === null) {
+        throw new Error('Inventory query returned a connection without a public id')
+      }
+      return { ...row, publicConnectionId: row.publicConnectionId }
+    })
+    return {
+      items,
+      nextCursor: hasMore ? items.at(-1)?.publicConnectionId ?? null : null,
+    }
   }
 
   /**
@@ -656,7 +750,9 @@ export class ConnectorConnectionsStore {
       `UPDATE connector_connections
           SET status = 'expired',
               completed_at = ?,
-              error_reason = ?
+              error_reason = ?,
+              metadata_json = NULL,
+              terminal_cause = 'timeout'
         WHERE status = 'pending'
           AND expires_at IS NOT NULL
           AND expires_at < ?`,
@@ -667,4 +763,11 @@ export class ConnectorConnectionsStore {
     )
     return result.changes
   }
+}
+
+function transition(
+  row: ConnectionRow,
+  transitioned: boolean,
+): ConnectionTransitionResult {
+  return { ...row, transitioned }
 }

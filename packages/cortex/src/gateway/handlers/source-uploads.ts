@@ -56,8 +56,9 @@ export function createSourceUploadSessionHandler(
         'source_upload_session_invalid', 'invalid_request')
       return
     }
-    if ((source.kind !== 'file' && source.kind !== 'text') ||
-        (source.kind === 'text' && parsed.data.declaredMediaType !== 'text/plain') ||
+    if (!['file', 'text', 'structured_export'].includes(source.kind) ||
+        (['text', 'structured_export'].includes(source.kind) &&
+          parsed.data.declaredMediaType !== 'text/plain') ||
         source.health.deletion !== 'active') {
       sendError(res, 409, 'Source does not support this upload declaration.',
         'source_upload_unsupported', 'invalid_request')

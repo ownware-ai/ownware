@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { OwnwareGateway } from '../../../src/gateway/server.js'
 import { AccessGrantStore } from '../../../src/gateway/access-grant-store.js'
 import { RunIdempotencyStore } from '../../../src/gateway/idempotency.js'
 import { SourceDeletionStore } from '../../../src/gateway/source-deletion-store.js'
+import { SourceDataViewStore } from '../../../src/gateway/source-data-view-store.js'
+import { SourceByteStore } from '../../../src/gateway/source-byte-store.js'
 import { SourceJobStore } from '../../../src/gateway/source-job-store.js'
 import { SourceStore } from '../../../src/gateway/source-store.js'
 import { createTestGateway } from '../../framework/harness/gateway.js'
@@ -266,6 +269,112 @@ describe('source deletion plan across a real Gateway restart', () => {
       affected: { immutableOriginals: 1 },
       remaining: { immutableOriginals: 0 },
     })
+  }, 20_000)
+
+  it('recovers a frozen checkpointed Data View, cleans it, then deletes after restart', async () => {
+    const gateway = await createTestGateway({
+      disableAuth: false,
+      disableSourceWorker: true,
+    })
+    cleanupDir = gateway.tmpDir
+    const workspaceId = gateway.state.createWorkspace(
+      gateway.tmpDir,
+      'Data View deletion restart',
+    ).id
+    const source = new SourceStore(gateway.state.rawDbHandle).create({
+      workspaceId,
+      profileId: 'mini',
+      kind: 'structured_export',
+      label: 'Synthetic Data View deletion restart source',
+      classification: 'internal',
+      authority: 'supporting_reference',
+      audiencePolicyRef: 'audience.test',
+      sensitivityPolicyRef: 'sensitivity.test',
+      purposePolicyRef: 'purpose.test',
+      retentionPolicyRef: 'retention.test',
+      freshnessPolicyRef: 'freshness.test',
+    })
+    const original = Buffer.from('name\nAda\n')
+    const sourceChecksum = `sha256:${createHash('sha256').update(original).digest('hex')}`
+    const objectKey = `sources/${source.sourceId}/versions/${VERSION_ID}/original`
+    const storageRoot = join(gateway.tmpDir, 'data', 'source-storage')
+    const objectPath = join(storageRoot, objectKey)
+    await mkdir(dirname(objectPath), { recursive: true, mode: 0o700 })
+    await writeFile(objectPath, original, { mode: 0o600 })
+    gateway.state.rawDbHandle.prepare(`
+      INSERT INTO source_versions (
+        source_version_id, source_id, checksum, verified_media_type,
+        byte_count, object_key, inspection_state, preparation_state, created_at
+      ) VALUES (?, ?, ?, 'text/plain', ?, ?, 'complete', 'not_requested', ?)
+    `).run(
+      VERSION_ID, source.sourceId, sourceChecksum, original.length, objectKey, Date.now(),
+    )
+    gateway.state.rawDbHandle.prepare(`
+      UPDATE runtime_sources SET current_version_id = ?,
+        registration_state = 'registered', inspection_state = 'complete',
+        freshness_state = 'fresh'
+      WHERE source_id = ?
+    `).run(VERSION_ID, source.sourceId)
+    const dataViews = new SourceDataViewStore(gateway.state.rawDbHandle)
+    const job = dataViews.enqueue({
+      workspaceId,
+      profileId: 'mini',
+      sourceId: source.sourceId,
+      sourceVersionId: VERSION_ID,
+    })
+    const claimedAt = Date.now()
+    const claim = dataViews.claimNext('crashed-data-view-worker', claimedAt)!
+    const target = dataViews.getClaimedTarget(
+      claim.jobId, claim.claimToken, claimedAt + 1,
+    )!
+    expect(dataViews.advanceCheckpoint(
+      claim.jobId, claim.claimToken, 0, 1, claimedAt + 2,
+    )).toBe('advanced')
+    const artifact = await new SourceByteStore(storageRoot)
+      .prepareCsvDataViewArtifact(target)
+    expect(dataViews.advanceCheckpoint(
+      claim.jobId, claim.claimToken, 1, 2, claimedAt + 3,
+    )).toBe('advanced')
+    const deletions = new SourceDeletionStore(gateway.state.rawDbHandle)
+    const plan = deletions.plan({
+      workspaceId,
+      profileId: 'mini',
+      sourceId: source.sourceId,
+      expectedRevision: 1,
+    }, claimedAt + 4)
+    expect(deletions.claimNext('blocked-deletion-worker', claimedAt + 5)).toBeNull()
+    gateway.state.rawDbHandle.prepare(`
+      UPDATE source_data_view_jobs SET lease_expires_at = ? WHERE job_id = ?
+    `).run(Date.now() - 1, job.jobId)
+    await gateway.stop({ cleanup: false })
+
+    restarted = new OwnwareGateway({
+      port: 0,
+      profilesDir: join(cleanupDir, 'profiles'),
+      dataDir: join(cleanupDir, 'data'),
+      dbPath: join(cleanupDir, 'test.db'),
+      tls: false,
+      disableAuth: false,
+    })
+    await restarted.start()
+    await waitFor(() => new SourceDeletionStore(restarted!.state.rawDbHandle).getScoped(
+      source.sourceId,
+      workspaceId,
+      'mini',
+    )?.state === 'succeeded')
+
+    await expect(stat(join(storageRoot, artifact.privateObjectKey)))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+    expect(new SourceDeletionStore(restarted.state.rawDbHandle).getPublicByJobScoped(
+      plan.jobId, workspaceId, 'mini',
+    )).toMatchObject({
+      state: 'deleted',
+      affected: { dataViews: 1, sourceJobs: 1 },
+      remaining: { dataViews: 0, sourceJobs: 0 },
+    })
+    expect(restarted.state.rawDbHandle.prepare(`
+      SELECT 1 FROM source_data_view_jobs WHERE job_id = ?
+    `).get(job.jobId)).toBeUndefined()
   }, 20_000)
 })
 

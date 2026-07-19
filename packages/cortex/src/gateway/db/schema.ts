@@ -3793,4 +3793,327 @@ export const MIGRATIONS: Migration[] = [
       END;
     `,
   },
+  {
+    version: 72,
+    name: '072_source_data_view_preparations',
+    sql: `
+      CREATE TABLE source_data_view_jobs (
+        job_id                  TEXT    PRIMARY KEY,
+        data_view_id            TEXT    NOT NULL UNIQUE,
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL,
+        source_version_id       TEXT    NOT NULL,
+        implementation_version  TEXT    NOT NULL CHECK (
+          implementation_version = 'csv_data_view.v1'
+        ),
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        state                   TEXT    NOT NULL CHECK (state IN (
+          'queued', 'running', 'waiting_for_resource', 'cancel_requested',
+          'succeeded', 'failed', 'cancelled'
+        )),
+        attempt                 INTEGER NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND 3),
+        max_attempts            INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts = 3),
+        checkpoint              INTEGER NOT NULL DEFAULT 0 CHECK (checkpoint BETWEEN 0 AND 4),
+        claim_token             TEXT,
+        claimed_by              TEXT,
+        lease_expires_at        INTEGER,
+        retry_after             INTEGER,
+        cancel_requested_at     INTEGER,
+        outcome_code            TEXT,
+        created_at              INTEGER NOT NULL,
+        updated_at              INTEGER NOT NULL,
+        terminal_at             INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (source_version_id, implementation_version),
+        CHECK (length(job_id) = 36),
+        CHECK (length(data_view_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (length(source_version_id) = 36),
+        CHECK (updated_at >= created_at),
+        CHECK (claim_token IS NULL OR length(claim_token) = 36),
+        CHECK (claimed_by IS NULL OR (
+          length(claimed_by) BETWEEN 1 AND 64
+          AND claimed_by NOT GLOB '*[^a-z0-9._-]*'
+        )),
+        CHECK (outcome_code IS NULL OR (
+          length(outcome_code) BETWEEN 1 AND 64
+          AND outcome_code NOT GLOB '*[^a-z0-9_]*'
+        )),
+        CHECK (
+          (claim_token IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL)
+          OR
+          (claim_token IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL)
+        ),
+        CHECK (state != 'running' OR claim_token IS NOT NULL),
+        CHECK (state NOT IN (
+          'queued', 'waiting_for_resource', 'succeeded', 'failed', 'cancelled'
+        ) OR claim_token IS NULL),
+        CHECK ((state = 'waiting_for_resource') = (retry_after IS NOT NULL)),
+        CHECK (state != 'cancel_requested' OR cancel_requested_at IS NOT NULL),
+        CHECK (state != 'cancelled' OR cancel_requested_at IS NOT NULL),
+        CHECK ((state IN ('succeeded', 'failed', 'cancelled')) =
+          (terminal_at IS NOT NULL)),
+        CHECK ((state IN ('succeeded', 'failed', 'cancelled')) =
+          (outcome_code IS NOT NULL))
+      );
+
+      CREATE INDEX idx_source_data_view_jobs_scope
+        ON source_data_view_jobs(
+          workspace_id, profile_id, source_id, created_at DESC, job_id DESC
+        );
+      CREATE INDEX idx_source_data_view_jobs_claimable
+        ON source_data_view_jobs(state, retry_after, created_at, job_id);
+      CREATE INDEX idx_source_data_view_jobs_leases
+        ON source_data_view_jobs(state, lease_expires_at);
+
+      CREATE TABLE source_data_views (
+        data_view_id            TEXT    PRIMARY KEY,
+        job_id                  TEXT    NOT NULL UNIQUE
+          REFERENCES source_data_view_jobs(job_id),
+        workspace_id            TEXT    NOT NULL,
+        profile_id              TEXT    NOT NULL,
+        source_id               TEXT    NOT NULL,
+        source_version_id       TEXT    NOT NULL,
+        implementation_version  TEXT    NOT NULL CHECK (
+          implementation_version = 'csv_data_view.v1'
+        ),
+        source_revision         INTEGER NOT NULL CHECK (source_revision > 0),
+        source_checksum         TEXT    NOT NULL CHECK (
+          source_checksum GLOB 'sha256:[0-9a-f]*' AND length(source_checksum) = 71
+        ),
+        artifact_checksum       TEXT    NOT NULL CHECK (
+          artifact_checksum GLOB 'sha256:[0-9a-f]*' AND length(artifact_checksum) = 71
+        ),
+        artifact_byte_count     INTEGER NOT NULL CHECK (
+          artifact_byte_count BETWEEN 1 AND 134217728
+        ),
+        private_object_key      TEXT    NOT NULL UNIQUE CHECK (
+          length(private_object_key) BETWEEN 120 AND 220
+          AND private_object_key NOT GLOB '*[^a-zA-Z0-9._/-]*'
+        ),
+        field_count             INTEGER NOT NULL CHECK (field_count BETWEEN 1 AND 256),
+        row_count               INTEGER NOT NULL CHECK (row_count BETWEEN 0 AND 100000),
+        fields_json             TEXT    NOT NULL CHECK (
+          json_valid(fields_json) AND json_type(fields_json) = 'array'
+          AND json_array_length(fields_json) = field_count
+        ),
+        classification          TEXT    NOT NULL CHECK (classification IN (
+          'public', 'internal', 'confidential', 'restricted'
+        )),
+        authority               TEXT    NOT NULL CHECK (authority IN (
+          'source_of_record', 'supporting_reference', 'example'
+        )),
+        audience_policy_ref     TEXT    NOT NULL,
+        sensitivity_policy_ref  TEXT    NOT NULL,
+        purpose_policy_ref      TEXT    NOT NULL,
+        retention_policy_ref    TEXT    NOT NULL,
+        freshness_policy_ref    TEXT    NOT NULL,
+        freshness               TEXT    NOT NULL CHECK (freshness IN ('current', 'stale')),
+        created_at              INTEGER NOT NULL,
+        stale_at                INTEGER,
+        FOREIGN KEY (source_version_id, source_id)
+          REFERENCES source_versions(source_version_id, source_id),
+        FOREIGN KEY (source_id, workspace_id, profile_id)
+          REFERENCES runtime_sources(source_id, workspace_id, profile_id),
+        UNIQUE (source_version_id, implementation_version),
+        CHECK (length(data_view_id) = 36),
+        CHECK (length(source_id) = 36),
+        CHECK (length(source_version_id) = 36),
+        CHECK ((freshness = 'current' AND stale_at IS NULL)
+          OR (freshness = 'stale' AND stale_at IS NOT NULL))
+      );
+
+      CREATE INDEX idx_source_data_views_scope
+        ON source_data_views(
+          workspace_id, profile_id, source_id, created_at DESC, data_view_id DESC
+        );
+      CREATE INDEX idx_source_data_views_freshness
+        ON source_data_views(source_id, source_version_id, freshness);
+    `,
+  },
+  {
+    version: 73,
+    name: '073_agent_event_stream_high_water',
+    sql: `
+      -- Retention may remove every replay row from a root stream, but a
+      -- resume cursor remains an immutable position. Keeping the durable
+      -- high-water prevents later turns from reusing old sequence numbers
+      -- and lets the gateway distinguish expired cursors from ahead ones.
+      CREATE TABLE agent_event_streams (
+        thread_id       TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        agent_id        TEXT    NOT NULL,
+        high_water_seq  INTEGER NOT NULL CHECK (high_water_seq >= 0),
+        PRIMARY KEY (thread_id, agent_id)
+      );
+
+      INSERT INTO agent_event_streams (thread_id, agent_id, high_water_seq)
+      SELECT thread_id, agent_id, MAX(seq)
+      FROM agent_events
+      GROUP BY thread_id, agent_id;
+    `,
+  },
+  {
+    version: 74,
+    name: '074_redact_permission_evidence',
+    sql: `
+      -- Permission events are durable evidence, not a second copy of the
+      -- model-authored tool payload. Replace historical request bodies and
+      -- derived denial context with bounded identity/summary fields.
+      UPDATE agent_events
+      SET payload = json_object(
+        'type', 'permission.request',
+        'requestId', json_extract(payload, '$.requestId'),
+        'toolName', json_extract(payload, '$.toolName'),
+        'input', json('{}'),
+        'inputSummary', CASE
+          WHEN json_type(payload, '$.input') != 'object' THEN 'Input withheld'
+          WHEN (SELECT COUNT(*) FROM json_each(payload, '$.input')) = 0
+            THEN 'No input fields'
+          WHEN (SELECT COUNT(*) FROM json_each(payload, '$.input')) > 100
+            THEN 'More than 100 input fields'
+          WHEN (SELECT COUNT(*) FROM json_each(payload, '$.input')) = 1
+            THEN '1 input field'
+          ELSE printf(
+            '%d input fields',
+            (SELECT COUNT(*) FROM json_each(payload, '$.input'))
+          )
+        END,
+        'reason', 'Tool requires explicit approval',
+        'turnIndex', json_extract(payload, '$.turnIndex'),
+        'operationHash', json_extract(payload, '$.operationHash'),
+        'zoneLevel', json_extract(payload, '$.zoneLevel'),
+        'zoneName', json_extract(payload, '$.zoneName'),
+        'explanation', 'Review this action before allowing it to continue.',
+        'severityTag', json_extract(payload, '$.severityTag')
+      )
+      WHERE type = 'permission.request' AND json_valid(payload);
+
+      UPDATE agent_events
+      SET payload = json_object(
+        'type', 'permission.response',
+        'requestId', json_extract(payload, '$.requestId'),
+        'granted', json(CASE
+          WHEN json_extract(payload, '$.granted') = 1 THEN 'true'
+          ELSE 'false'
+        END),
+        'turnIndex', json_extract(payload, '$.turnIndex')
+      )
+      WHERE type = 'permission.response' AND json_valid(payload);
+
+      -- Hydrated messages outlive the raw event-retention window, so scrub
+      -- their denormalized permission cards in the same migration.
+      UPDATE messages
+      SET permissions = (
+        SELECT json_group_array(json_object(
+          'requestId', json_extract(entry.value, '$.requestId'),
+          'toolName', json_extract(entry.value, '$.toolName'),
+          'input', json('{}'),
+          'inputSummary', CASE
+            WHEN json_type(entry.value, '$.input') != 'object' THEN 'Input withheld'
+            WHEN (SELECT COUNT(*) FROM json_each(entry.value, '$.input')) = 0
+              THEN 'No input fields'
+            WHEN (SELECT COUNT(*) FROM json_each(entry.value, '$.input')) > 100
+              THEN 'More than 100 input fields'
+            WHEN (SELECT COUNT(*) FROM json_each(entry.value, '$.input')) = 1
+              THEN '1 input field'
+            ELSE printf(
+              '%d input fields',
+              (SELECT COUNT(*) FROM json_each(entry.value, '$.input'))
+            )
+          END,
+          'operationHash', json_extract(entry.value, '$.operationHash'),
+          'reason', 'Tool requires explicit approval',
+          'decision', json_extract(entry.value, '$.decision'),
+          'zoneLevel', json_extract(entry.value, '$.zoneLevel'),
+          'zoneName', json_extract(entry.value, '$.zoneName'),
+          'explanation', 'Review this action before allowing it to continue.',
+          'severityTag', json_extract(entry.value, '$.severityTag')
+        ))
+        FROM json_each(messages.permissions) AS entry
+      )
+      WHERE permissions IS NOT NULL
+        AND json_valid(permissions)
+        AND json_type(permissions) = 'array';
+    `,
+    destructive: {
+      reason: 'Intentionally removes historically retained model-authored permission inputs and denial context while preserving decision identity and status.',
+    },
+  },
+  {
+    version: 75,
+    name: '075_delegated_principal_subjects',
+    sql: `
+      -- A delegated route principal may carry the opaque end-subject whose
+      -- resource fence it will evaluate. Nullable preserves principals issued
+      -- for operations that do not require subject-bound authorization.
+      ALTER TABLE delegated_principals ADD COLUMN subject_id TEXT;
+    `,
+  },
+  {
+    version: 76,
+    name: '076_redact_connector_connection_metadata',
+    sql: `
+      -- Before secure connection sessions, connector metadata could contain
+      -- transient OAuth material and a duplicate install identity. A process
+      -- restart cannot recover the in-memory poller for those attempts, so no
+      -- pre-v76 pending row can be resumed safely. Expire them with a clear
+      -- recovery path while retaining the first-class connection identifiers.
+      UPDATE connector_connections
+      SET status = 'expired',
+          completed_at = COALESCE(completed_at, unixepoch('now') * 1000),
+          error_reason = 'Connection attempt expired during a security upgrade. Please reconnect.'
+      WHERE status = 'pending';
+
+      -- Keep durable status, timestamps, auth configuration, and frozen vendor
+      -- identity columns, but remove the legacy untyped payload from every row.
+      UPDATE connector_connections
+      SET metadata_json = NULL
+      WHERE metadata_json IS NOT NULL;
+    `,
+    destructive: {
+      reason: 'Intentionally removes legacy untyped connector metadata that could contain transient OAuth material; durable first-class connection fields are preserved and non-resumable pending attempts are expired.',
+    },
+  },
+  {
+    version: 77,
+    name: '077_public_connection_inventory_identity',
+    sql: `
+      -- Public connection inventory must never expose connection_id: for some
+      -- sources it is a vendor-owned connected-account handle. Give every
+      -- existing row an Ownware-owned opaque UUID and generate the same field
+      -- for all future rows in ConnectorConnectionsStore.
+      ALTER TABLE connector_connections ADD COLUMN public_connection_id TEXT;
+      ALTER TABLE connector_connections ADD COLUMN terminal_cause TEXT
+        CHECK (terminal_cause IN (
+          'failed', 'timeout', 'revoked', 'revocation_unconfirmed', 'legacy_hidden'
+        ));
+
+      UPDATE connector_connections
+      SET public_connection_id =
+        lower(hex(randomblob(4))) || '-' ||
+        lower(hex(randomblob(2))) || '-4' ||
+        substr(lower(hex(randomblob(2))), 2) || '-' ||
+        '8' ||
+        substr(lower(hex(randomblob(2))), 2) || '-' ||
+        lower(hex(randomblob(6)));
+
+      -- Historical expired rows conflate owner revocation with timeouts in a
+      -- free-text reason. Hide them rather than guessing. Historical failures
+      -- are safe to classify as reconnectable without exposing their reason.
+      UPDATE connector_connections
+      SET terminal_cause = CASE
+        WHEN status = 'failed' THEN 'failed'
+        WHEN status = 'expired' THEN 'legacy_hidden'
+        ELSE NULL
+      END;
+
+      CREATE UNIQUE INDEX idx_connector_connections_public_id
+        ON connector_connections(public_connection_id)
+        WHERE public_connection_id IS NOT NULL;
+    `,
+  },
 ]

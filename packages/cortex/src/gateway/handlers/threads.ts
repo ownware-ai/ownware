@@ -189,8 +189,9 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
   //   - maxSeq                : highest seq on the root agent's stream —
   //                             observability marker, NOT the cursor
   //                             the client should use for SSE reconnect
-  //   - lastClosedTurnEndSeq  : highest seq of `turn.end` on the root
-  //                             agent's stream. THIS is the cursor a
+  //   - lastClosedTurnEndSeq  : highest retained seq of `turn.end`, or
+  //                             the retained cursor floor after pruning.
+  //                             THIS is the cursor a
   //                             reconnecting SSE client must pass as
   //                             `?since`. Replaying from the last closed
   //                             turn boundary lets the reducer rebuild
@@ -226,7 +227,14 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
     const agents = state.listAgentsForThread(threadId)
     const runningAgentId = deps.runner?.isRunning(threadId) ? ROOT_AGENT_ID : null
     const maxSeq = state.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID)
-    const lastClosedTurnEndSeq = state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID)
+    const firstRetainedSeq = state.getAgentEventMinSeq(threadId, ROOT_AGENT_ID, -1)
+    const retainedCursorFloor = firstRetainedSeq === null
+      ? maxSeq
+      : Math.max(0, firstRetainedSeq - 1)
+    const lastClosedTurnEndSeq = Math.max(
+      state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID),
+      retainedCursorFloor,
+    )
 
     sendJSON(res, 200, {
       thread,

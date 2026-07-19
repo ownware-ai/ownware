@@ -55,6 +55,7 @@ describe('SourceJobStore', () => {
       operation: 'inspect_format',
       implementationVersion: 'inspect_format.v1',
       resourceId: null,
+      dataViewId: null,
       state: 'queued',
       attempt: 0,
       maxAttempts: 3,

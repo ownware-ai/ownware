@@ -35,12 +35,19 @@ import type { ConnectorRegistry } from '../../connector/registry.js'
 import type { ConnectorConnectionsStore } from '../../connector/connections/store.js'
 import type { ConnectorStatusBus } from '../../connector/status-bus.js'
 import type { ComposioClient } from '../../connector/composio/client.js'
+import type { ConnectionCompletionManager } from '../../connector/completion/manager.js'
+import {
+  connectionSessionHandle,
+  type ConnectionSessionVault,
+} from '../../connector/connections/session-vault.js'
 import { ConnectorError } from '../../connector/errors.js'
 
 export interface ConnectorDisconnectHandlersDeps {
   readonly registry: ConnectorRegistry
   readonly connections: ConnectorConnectionsStore
   readonly statusBus: ConnectorStatusBus
+  readonly completionManager: Pick<ConnectionCompletionManager, 'cancel'>
+  readonly connectionSessions: Pick<ConnectionSessionVault, 'remove'>
   /**
    * Null-safe: when Composio is disabled, composio-source requests 501.
    * `client` resolves LIVE (gateway passes a getter) so a key saved after
@@ -61,7 +68,14 @@ const REVOKE_REASON = 'Revoked by user'
 export function createConnectorDisconnectHandlers(
   deps: ConnectorDisconnectHandlersDeps,
 ) {
-  const { registry, connections, statusBus, composio } = deps
+  const {
+    registry,
+    connections,
+    statusBus,
+    composio,
+    completionManager,
+    connectionSessions,
+  } = deps
   const entityId = deps.entityId
 
   async function disconnect(
@@ -134,11 +148,33 @@ export function createConnectorDisconnectHandlers(
           return
         }
 
-        // Always clear the local row first. The Composio call is a
-        // best-effort attempt to revoke upstream — if it fails the
-        // user still sees "disconnected" locally (which matches
-        // their click) and we tell them to double-check at Composio.
-        // Ordering: revoke Composio-side FIRST so a flaky vendor
+        // Stop any in-flight completion result before beginning revocation.
+        // Store transitions also compare-and-swap from pending, but cancelling
+        // here avoids needless vendor work and narrows the race window.
+        completionManager.cancel(active.connectionId)
+
+        // Pending OAuth continuation material is capability-bearing. It must
+        // be verifiably removed before the row loses its opaque handle; if
+        // cleanup cannot be proven, keep the row recoverable and ask the user
+        // to retry instead of silently orphaning a secret.
+        const sessionHandle = connectionSessionHandle(active.metadata)
+        if (sessionHandle !== null) {
+          try {
+            await connectionSessions.remove(sessionHandle)
+          } catch {
+            sendError(
+              res,
+              500,
+              'The connection session could not be safely cleared. Please retry disconnect.',
+            )
+            return
+          }
+        }
+
+        // The Composio call is a best-effort upstream revoke. If it
+        // fails, the user still sees "disconnected" locally (which
+        // matches their click) and we tell them to double-check at
+        // Composio. Ordering: revoke Composio-side first so a flaky vendor
         // response doesn't leave the user with a stale-looking
         // local state while a token still works remotely.
         let vendorError: string | null = null
@@ -156,7 +192,8 @@ export function createConnectorDisconnectHandlers(
           active.connectionId,
           vendorError === null
             ? REVOKE_REASON
-            : `${REVOKE_REASON} (Composio API error: ${vendorError})`,
+            : `${REVOKE_REASON} (provider revocation unconfirmed)`,
+          vendorError === null,
         )
         statusBus.emit({
           connectorId: connector.id,
@@ -169,7 +206,7 @@ export function createConnectorDisconnectHandlers(
         if (vendorError !== null) {
           sendJSON(res, 200, {
             partial: true,
-            vendorError,
+            vendorError: 'Composio could not confirm revocation.',
           })
           return
         }

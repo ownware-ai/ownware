@@ -74,6 +74,7 @@ beforeAll(async () => {
           kind: 'delegated',
           tokenId: '9139eb73-c93f-4a7d-a042-bc07a108c251',
           delegateId: 'browser-1',
+          subjectId: 'person.synthetic-1',
           workspaceId: 'ws_1',
           profileId: 'assistant',
           purpose: 'support',
@@ -119,6 +120,23 @@ beforeAll(async () => {
       res.end(JSON.stringify({ items: [], nextCursor: null }))
       return
     }
+    if (url === '/api/v1/connections?limit=2&cursor=40404040-abab-4404-8404-404040404040') {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        items: [{
+          connectionId: '30303030-abab-4303-8303-303030303030',
+          capabilityId: 'calendar',
+          status: 'connected',
+          recovery: 'none',
+          changedAt: 1_000,
+          expiresAt: null,
+          lastVerifiedAt: 2_000,
+        }],
+        nextCursor: null,
+        accessPolicy: 'separate_grant_required',
+      }))
+      return
+    }
     if (url === '/api/v1/sources/51515151-abab-4515-8515-515151515151') {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
@@ -153,8 +171,11 @@ beforeAll(async () => {
         sourceVersionId: '52525252-abab-4525-8525-525252525252',
         ...input,
         implementationVersion: input.operation === 'extract_text'
-          ? 'text_extraction.v1' : 'inspect_format.v1',
+          ? 'text_extraction.v1'
+          : input.operation === 'prepare_data_view'
+            ? 'csv_data_view.v1' : 'inspect_format.v1',
         resourceId: null,
+        dataViewId: null,
         state: 'queued',
         attempt: 0,
         maxAttempts: 3,
@@ -176,6 +197,7 @@ beforeAll(async () => {
         operation: 'inspect_format',
         implementationVersion: 'inspect_format.v1',
         resourceId: null,
+        dataViewId: null,
         state: 'cancel_requested',
         attempt: 0,
         maxAttempts: 3,
@@ -198,6 +220,7 @@ beforeAll(async () => {
         operation: 'inspect_format',
         implementationVersion: 'inspect_format.v1',
         resourceId: null,
+        dataViewId: null,
         state: 'queued',
         attempt: 0,
         maxAttempts: 3,
@@ -207,6 +230,58 @@ beforeAll(async () => {
         createdAt: 100,
         updatedAt: 100,
         terminalAt: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-data-views\/[^/]+$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        dataViewId: '64646464-abab-4646-8646-646464646464',
+        jobId: '61616161-abab-4616-8616-616161616161',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        implementationVersion: 'csv_data_view.v1', sourceRevision: 1,
+        sourceChecksum: `sha256:${'a'.repeat(64)}`,
+        artifactChecksum: `sha256:${'b'.repeat(64)}`,
+        artifactByteCount: 128, fieldCount: 2, rowCount: 1,
+        fields: [
+          { fieldId: `field.${'c'.repeat(32)}`, ordinal: 0, label: 'name' },
+          { fieldId: `field.${'d'.repeat(32)}`, ordinal: 1, label: 'formula' },
+        ],
+        classification: 'internal', authority: 'supporting_reference',
+        audiencePolicyRef: 'audience.support',
+        sensitivityPolicyRef: 'sensitivity.internal',
+        purposePolicyRef: 'purpose.support', retentionPolicyRef: 'retention.standard',
+        freshnessPolicyRef: 'freshness.monthly', freshness: 'current',
+        createdAt: 100, staleAt: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-data-views\/[^/]+\/access-grants$/.test(url)) {
+      res.writeHead(201, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        grantId: '65656565-abab-4656-8656-656565656565',
+        revision: 1, mutation: 'created', acceptedAt: 100,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/source-data-views\/[^/]+\/query$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        dataViewId: '64646464-abab-4646-8646-646464646464',
+        sourceId: '51515151-abab-4515-8515-515151515151',
+        sourceVersionId: '52525252-abab-4525-8525-525252525252',
+        sourceRevision: 1,
+        sourceChecksum: `sha256:${'a'.repeat(64)}`,
+        artifactChecksum: `sha256:${'b'.repeat(64)}`,
+        freshness: 'current', classification: 'internal',
+        authority: 'supporting_reference',
+        implementationVersion: 'csv_data_view_selection.v1',
+        rowOffset: 0, requestedRowCount: 1, returnedRowCount: 1,
+        totalRowCount: 1, complete: true,
+        fields: [{ fieldId: `field.${'c'.repeat(32)}`, ordinal: 0, label: 'name' }],
+        rows: [{ rowId: `row.${'d'.repeat(32)}`, ordinal: 0, values: ['Ada'] }],
+        observedAt: 101,
       }))
       return
     }
@@ -754,6 +829,7 @@ describe('request shapes', () => {
     const ownware = client()
     const issued = await ownware.issueDelegation({
       delegateId: 'browser-1',
+      subjectId: 'person.synthetic-1',
       workspaceId: 'ws_1',
       profileId: 'assistant',
       purpose: 'support',
@@ -769,6 +845,7 @@ describe('request shapes', () => {
     ])
     expect(JSON.parse(calls[0]!.body)).toEqual({
       delegateId: 'browser-1',
+      subjectId: 'person.synthetic-1',
       workspaceId: 'ws_1',
       profileId: 'assistant',
       purpose: 'support',
@@ -838,6 +915,30 @@ describe('request shapes', () => {
     )
   })
 
+  it('lists only the bounded owner connection projection', async () => {
+    await expect(client().connections({
+      limit: 2,
+      cursor: '40404040-abab-4404-8404-404040404040',
+    })).resolves.toEqual({
+      items: [{
+        connectionId: '30303030-abab-4303-8303-303030303030',
+        capabilityId: 'calendar',
+        status: 'connected',
+        recovery: 'none',
+        changedAt: 1_000,
+        expiresAt: null,
+        lastVerifiedAt: 2_000,
+      }],
+      nextCursor: null,
+      accessPolicy: 'separate_grant_required',
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'GET',
+      url: '/api/v1/connections?limit=2&cursor=40404040-abab-4404-8404-404040404040',
+      auth: 'Bearer tok123',
+    })
+  })
+
   it('creates, reads, and requests cancellation of one exact source job', async () => {
     const ownware = client()
     const sourceId = '51515151-abab-4515-8515-515151515151'
@@ -888,6 +989,94 @@ describe('request shapes', () => {
     expect(seen.at(-1)!.url).toBe(`/api/v1/source-resources/${resourceId}`)
   })
 
+  it('requests Data View preparation through the same typed job method', async () => {
+    const ownware = client()
+    const sourceId = '51515151-abab-4515-8515-515151515151'
+    const sourceVersionId = '52525252-abab-4525-8525-525252525252'
+    const prepared = await ownware.createSourcePreparation(sourceId, sourceVersionId, {
+      operation: 'prepare_data_view',
+      idempotencyKey: '63636363-abab-4636-8636-636363636363',
+    })
+    expect(prepared).toMatchObject({
+      operation: 'prepare_data_view',
+      implementationVersion: 'csv_data_view.v1',
+      resourceId: null,
+      dataViewId: null,
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/v1/sources/${sourceId}/versions/${sourceVersionId}/preparations`,
+      idempotencyKey: '63636363-abab-4636-8636-636363636363',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ operation: 'prepare_data_view' })
+  })
+
+  it('reads one content-free Data View manifest through its dedicated method', async () => {
+    const ownware = client()
+    const dataViewId = '64646464-abab-4646-8646-646464646464'
+    await expect(ownware.sourceDataView(dataViewId)).resolves.toMatchObject({
+      dataViewId,
+      implementationVersion: 'csv_data_view.v1',
+      fieldCount: 2,
+      rowCount: 1,
+      fields: [
+        { ordinal: 0, label: 'name' },
+        { ordinal: 1, label: 'formula' },
+      ],
+      freshness: 'current',
+      staleAt: null,
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'GET',
+      url: `/api/v1/source-data-views/${dataViewId}`,
+    })
+  })
+
+  it('creates an exact Data View query grant and queries without a caller-supplied subject', async () => {
+    const ownware = client()
+    const dataViewId = '64646464-abab-4646-8646-646464646464'
+    const fieldId = `field.${'c'.repeat(32)}`
+    const rowId = `row.${'d'.repeat(32)}`
+
+    await expect(ownware.createDataViewQueryGrant(dataViewId, {
+      subjectId: 'delegate.synthetic-1', purpose: 'customer_support',
+      channel: 'web.primary', consent: { state: 'not_required' },
+      fieldIds: [fieldId], rowOffset: 0, rowCount: 1, ttlSeconds: 60,
+      idempotencyKey: '65656565-abab-4656-8656-656565656565',
+    })).resolves.toEqual({
+      grantId: '65656565-abab-4656-8656-656565656565',
+      revision: 1, mutation: 'created', acceptedAt: 100,
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/v1/source-data-views/${dataViewId}/access-grants`,
+      idempotencyKey: '65656565-abab-4656-8656-656565656565',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      subjectId: 'delegate.synthetic-1', purpose: 'customer_support',
+      channel: 'web.primary', consent: { state: 'not_required' },
+      fieldIds: [fieldId], rowOffset: 0, rowCount: 1, ttlSeconds: 60,
+    })
+
+    await expect(ownware.querySourceDataView(dataViewId, {
+      consent: { state: 'not_required' }, fieldIds: [fieldId],
+      rowOffset: 0, rowCount: 1,
+    })).resolves.toMatchObject({
+      dataViewId, implementationVersion: 'csv_data_view_selection.v1',
+      complete: true,
+      fields: [{ fieldId, ordinal: 0, label: 'name' }],
+      rows: [{ rowId, ordinal: 0, values: ['Ada'] }],
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'POST', url: `/api/v1/source-data-views/${dataViewId}/query`,
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      consent: { state: 'not_required' }, fieldIds: [fieldId],
+      rowOffset: 0, rowCount: 1,
+    })
+    expect(seen.at(-1)!.body).not.toContain('subjectId')
+  })
+
   it('manages grants and reads protected content through exact request shapes', async () => {
     const ownware = client()
     const resourceId = '62626262-abab-4626-8626-626262626262'
@@ -918,13 +1107,14 @@ describe('request shapes', () => {
       items: [], nextCursor: null,
     })
 
-    await expect(ownware.readSourceContent(resourceId, {
+    const readInputWithLegacySubject = {
       subjectId: 'person.synthetic-1',
       consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
       byteStart: 0, byteEnd: 5,
-    })).resolves.toMatchObject({ resourceId, text: 'guide', byteCount: 5 })
+    } as const
+    await expect(ownware.readSourceContent(resourceId, readInputWithLegacySubject))
+      .resolves.toMatchObject({ resourceId, text: 'guide', byteCount: 5 })
     expect(JSON.parse(seen.at(-1)!.body)).toEqual({
-      subjectId: 'person.synthetic-1',
       consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
       byteStart: 0, byteEnd: 5,
     })
@@ -939,15 +1129,18 @@ describe('request shapes', () => {
       operation: 'source_content.search',
     })
 
-    await expect(ownware.searchSourceContent(resourceId, {
-      subjectId: 'person.synthetic-1', consent: { state: 'not_required' },
+    const searchInputWithLegacySubject = {
+      subjectId: 'person.synthetic-1',
+      consent: { state: 'not_required' },
       query: 'guide', matchMode: 'exact_utf8', maxMatches: 10, contextBytes: 32,
-    })).resolves.toMatchObject({
-      resourceId, status: 'complete', matches: [{ text: 'guide' }],
-    })
+    } as const
+    await expect(ownware.searchSourceContent(resourceId, searchInputWithLegacySubject))
+      .resolves.toMatchObject({
+        resourceId, status: 'complete', matches: [{ text: 'guide' }],
+      })
     expect(seen.at(-1)!.url).toBe(`/api/v1/source-resources/${resourceId}/content/search`)
     expect(JSON.parse(seen.at(-1)!.body)).toEqual({
-      subjectId: 'person.synthetic-1', consent: { state: 'not_required' },
+      consent: { state: 'not_required' },
       query: 'guide', matchMode: 'exact_utf8', maxMatches: 10, contextBytes: 32,
     })
 

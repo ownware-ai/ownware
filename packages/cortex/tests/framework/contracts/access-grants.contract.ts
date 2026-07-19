@@ -99,8 +99,12 @@ describe('Contract: owner grants and protected source content', () => {
     gw = await createTestGateway({ disableAuth: false, disableSourceWorker: true })
     workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Access grant contract').id
     target = await seedPreparedText()
-    contentToken = await issue('content-client', ['source_content.read'])
-    searchToken = await issue('search-client', ['source_content.search'])
+    contentToken = await issue(
+      'content-client', ['source_content.read'], 'person.synthetic-1',
+    )
+    searchToken = await issue(
+      'search-client', ['source_content.search'], 'person.synthetic-1',
+    )
     adminToken = await issue('admin-client', [
       'access_grants.create', 'access_grants.list',
       'access_grants.read', 'access_grants.revoke',
@@ -190,7 +194,6 @@ describe('Contract: owner grants and protected source content', () => {
         method: 'POST',
         headers: delegatedHeaders(contentToken),
         body: JSON.stringify({
-          subjectId: 'person.synthetic-1',
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           byteStart: 6,
           byteEnd: 11,
@@ -217,7 +220,6 @@ describe('Contract: owner grants and protected source content', () => {
         method: 'POST',
         headers: delegatedHeaders(contentToken),
         body: JSON.stringify({
-          subjectId: 'person.synthetic-1',
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           byteStart: 0,
           byteEnd: 65_537,
@@ -235,7 +237,6 @@ describe('Contract: owner grants and protected source content', () => {
         method: 'POST',
         headers: delegatedHeaders(adminToken),
         body: JSON.stringify({
-          subjectId: 'person.synthetic-1',
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           byteStart: 0,
           byteEnd: 1,
@@ -249,7 +250,6 @@ describe('Contract: owner grants and protected source content', () => {
       {
         method: 'POST', headers: ownerHeaders(),
         body: JSON.stringify({
-          subjectId: 'person.synthetic-1',
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           byteStart: 0, byteEnd: 1,
         }),
@@ -257,12 +257,30 @@ describe('Contract: owner grants and protected source content', () => {
     )
     expect(ownerBypass.status).toBe(403)
 
-    const wrongSubject = await fetch(
+    const injectedSubject = await fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content`,
       {
         method: 'POST', headers: delegatedHeaders(contentToken),
         body: JSON.stringify({
           subjectId: 'person.synthetic-other',
+          consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+          byteStart: 0, byteEnd: 1,
+        }),
+      },
+    )
+    expect(injectedSubject.status).toBe(400)
+    await expect(injectedSubject.json()).resolves.toMatchObject({
+      error: 'source_content_request_invalid',
+    })
+
+    const otherSubjectToken = await issue(
+      'content-client-other-subject', ['source_content.read'], 'person.synthetic-other',
+    )
+    const wrongSubject = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content`,
+      {
+        method: 'POST', headers: delegatedHeaders(otherSubjectToken),
+        body: JSON.stringify({
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           byteStart: 0, byteEnd: 1,
         }),
@@ -323,8 +341,116 @@ describe('Contract: owner grants and protected source content', () => {
     })).status).toBe(403)
   })
 
+  it('admits only purpose and channel values that a delegated principal can represent', async () => {
+    const base = {
+      ...grantInput('person.synthetic-boundaries'),
+      purpose: 'p'.repeat(64),
+      channel: 'c'.repeat(64),
+    }
+    const accepted = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/access-grants`,
+      {
+        method: 'POST',
+        headers: ownerHeaders('46464646-4646-4646-8646-464646464646'),
+        body: JSON.stringify(base),
+      },
+    )
+    expect(accepted.status).toBe(201)
+
+    for (const [key, body] of [
+      ['47474747-4747-4747-8747-474747474747', { ...base, purpose: 'p'.repeat(65) }],
+      ['48484848-4848-4848-8848-484848484848', { ...base, channel: 'c'.repeat(65) }],
+    ] as const) {
+      const response = await fetch(
+        `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/access-grants`,
+        {
+          method: 'POST', headers: ownerHeaders(key), body: JSON.stringify(body),
+        },
+      )
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({ error: 'access_grant_invalid' })
+    }
+  })
+
+  it('rejects malformed consent evidence structurally across grant, read, and search routes', async () => {
+    const invalidConsent = { state: 'recorded', evidenceId: 'invalid evidence' }
+    const unknownResourceId = '49494949-4949-4949-8949-494949494949'
+    const grant = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${unknownResourceId}/access-grants`,
+      {
+        method: 'POST',
+        headers: ownerHeaders('50505050-5050-4050-8050-505050505050'),
+        body: JSON.stringify({ ...grantInput(), consent: invalidConsent }),
+      },
+    )
+    expect(grant.status).toBe(400)
+    await expect(grant.json()).resolves.toMatchObject({ error: 'access_grant_invalid' })
+
+    const read = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content`,
+      {
+        method: 'POST',
+        headers: delegatedHeaders(contentToken),
+        body: JSON.stringify({
+          consent: invalidConsent,
+          byteStart: 0,
+          byteEnd: 1,
+        }),
+      },
+    )
+    expect(read.status).toBe(400)
+    await expect(read.json()).resolves.toMatchObject({
+      error: 'source_content_request_invalid',
+    })
+
+    const search = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
+      {
+        method: 'POST',
+        headers: delegatedHeaders(searchToken),
+        body: JSON.stringify({
+          consent: invalidConsent,
+          query: 'first',
+          matchMode: 'exact_utf8',
+          maxMatches: 1,
+          contextBytes: 0,
+        }),
+      },
+    )
+    expect(search.status).toBe(400)
+    await expect(search.json()).resolves.toMatchObject({
+      error: 'source_content_search_request_invalid',
+    })
+
+    const injectedSubject = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
+      {
+        method: 'POST',
+        headers: delegatedHeaders(searchToken),
+        body: JSON.stringify({
+          subjectId: 'person.synthetic-other',
+          consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+          query: 'first',
+          matchMode: 'exact_utf8',
+          maxMatches: 1,
+          contextBytes: 0,
+        }),
+      },
+    )
+    expect(injectedSubject.status).toBe(400)
+    await expect(injectedSubject.json()).resolves.toMatchObject({
+      error: 'source_content_search_request_invalid',
+    })
+  })
+
   it('keeps search authority separate, returns evidence, and revokes it without revoking read', async () => {
     const subjectId = 'person.synthetic-search'
+    const subjectReadToken = await issue(
+      'content-client-search-subject', ['source_content.read'], subjectId,
+    )
+    const subjectSearchToken = await issue(
+      'search-client-search-subject', ['source_content.search'], subjectId,
+    )
     const readGrant = ReceiptSchema.parse(await (await fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/access-grants`,
       {
@@ -349,9 +475,8 @@ describe('Contract: owner grants and protected source content', () => {
     const search = () => fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
       {
-        method: 'POST', headers: delegatedHeaders(searchToken),
+        method: 'POST', headers: delegatedHeaders(subjectSearchToken),
         body: JSON.stringify({
-          subjectId,
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           query: 'CAFÉ', matchMode: 'ascii_case_insensitive',
           maxMatches: 20, contextBytes: 2,
@@ -367,9 +492,8 @@ describe('Contract: owner grants and protected source content', () => {
     const resultResponse = await fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
       {
-        method: 'POST', headers: delegatedHeaders(searchToken),
+        method: 'POST', headers: delegatedHeaders(subjectSearchToken),
         body: JSON.stringify({
-          subjectId,
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           query: 'café', matchMode: 'exact_utf8', maxMatches: 20, contextBytes: 2,
         }),
@@ -381,12 +505,30 @@ describe('Contract: owner grants and protected source content', () => {
       matches: [{ matchByteStart: 6, matchByteEnd: 11, text: 't|café|f' }],
     })
 
+    const otherSubjectSearchToken = await issue(
+      'search-client-other-subject', ['source_content.search'], 'person.synthetic-other',
+    )
+    const crossSubject = await fetch(
+      `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
+      {
+        method: 'POST',
+        headers: delegatedHeaders(otherSubjectSearchToken),
+        body: JSON.stringify({
+          consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+          query: 'café', matchMode: 'exact_utf8', maxMatches: 20, contextBytes: 2,
+        }),
+      },
+    )
+    expect(crossSubject.status).toBe(404)
+    await expect(crossSubject.json()).resolves.toMatchObject({
+      error: 'source_content_unavailable',
+    })
+
     const wrongRoute = await fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
       {
-        method: 'POST', headers: delegatedHeaders(contentToken),
+        method: 'POST', headers: delegatedHeaders(subjectReadToken),
         body: JSON.stringify({
-          subjectId,
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           query: 'café', matchMode: 'exact_utf8', maxMatches: 20, contextBytes: 2,
         }),
@@ -407,9 +549,8 @@ describe('Contract: owner grants and protected source content', () => {
     const deniedSearch = await fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content/search`,
       {
-        method: 'POST', headers: delegatedHeaders(searchToken),
+        method: 'POST', headers: delegatedHeaders(subjectSearchToken),
         body: JSON.stringify({
-          subjectId,
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           query: 'first', matchMode: 'exact_utf8', maxMatches: 20, contextBytes: 0,
         }),
@@ -420,9 +561,8 @@ describe('Contract: owner grants and protected source content', () => {
     const read = await fetch(
       `${gw.baseUrl}/api/v1/source-resources/${target.resourceId}/content`,
       {
-        method: 'POST', headers: delegatedHeaders(contentToken),
+        method: 'POST', headers: delegatedHeaders(subjectReadToken),
         body: JSON.stringify({
-          subjectId,
           consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
           byteStart: 0, byteEnd: 5,
         }),
@@ -455,12 +595,16 @@ describe('Contract: owner grants and protected source content', () => {
     }
   }
 
-  async function issue(delegateId: string, operations: readonly string[]): Promise<string> {
+  async function issue(
+    delegateId: string,
+    operations: readonly string[],
+    subjectId?: string,
+  ): Promise<string> {
     const response = await fetch(`${gw.baseUrl}/api/v1/auth/delegations`, {
       method: 'POST',
       headers: ownerHeaders(),
       body: JSON.stringify({
-        delegateId, workspaceId, profileId: PROFILE_ID,
+        delegateId, workspaceId, profileId: PROFILE_ID, subjectId,
         purpose: 'customer_support', channel: 'web.primary', operations,
       }),
     })

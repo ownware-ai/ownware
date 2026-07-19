@@ -61,11 +61,6 @@ export class ComposioCompletionListener implements ConnectionCompletionListener 
         case 'ACTIVE':
           return {
             status: 'ready',
-            completedMetadata: {
-              composioConnectedAccountId: account.id,
-              composioAuthConfigId: account.auth_config.id,
-              composioToolkitSlug: account.toolkit.slug,
-            },
             // First-class vendor identity so the resolver at execute-time
             // never needs to dig into metadata. `account.id` is Composio's
             // unambiguous pointer; `account.user_id` is the value frozen
@@ -78,11 +73,10 @@ export class ComposioCompletionListener implements ConnectionCompletionListener 
               : {}),
           }
         case 'FAILED': {
-          const reason =
-            (account.status_reason && account.status_reason.length > 0)
-              ? account.status_reason
-              : 'Composio reported the connection as failed. Please reconnect.'
-          return { status: 'failed', errorReason: reason }
+          return {
+            status: 'failed',
+            errorReason: 'Composio reported the connection as failed. Please reconnect.',
+          }
         }
         case 'EXPIRED':
           return {
@@ -128,7 +122,7 @@ function mapClientErrorToResult(err: unknown): ConnectionCheckResult {
   if (err instanceof ConnectorValidationError) {
     return {
       status: 'failed',
-      errorReason: err.message,
+      errorReason: 'Composio rejected the connection status check. Please reconnect.',
     }
   }
   // Unknown — let the poller's generic catch handle it.

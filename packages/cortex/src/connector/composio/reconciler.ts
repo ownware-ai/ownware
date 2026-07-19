@@ -314,10 +314,10 @@ export class ComposioReconciler {
           // Tolerance exceeded — escalate. Local row becomes `failed`
           // so the next assembler pass shows the connector as needing
           // reauthorization in the agent prompt too.
-          this.connections.markFailed({
-            connectionId: row.connectionId,
-            reason: 'Vendor no longer reports this connection. Please reconnect.',
-          })
+          this.connections.markUnhealthy(
+            row.connectionId,
+            'Vendor no longer reports this connection. Please reconnect.',
+          )
           this.staleSince.delete(row.connectionId)
           this.statusBus.emit({
             connectorId: row.connectorId,
@@ -362,10 +362,10 @@ export class ComposioReconciler {
         // Vendor explicitly rejects this row — flip local state to
         // failed (so the assembler stops handing the agent a ready
         // tool) and emit auth_error so the client shows "Reauthorize".
-        this.connections.markFailed({
-          connectionId: row.connectionId,
-          reason: `Vendor reports status ${vendorStatus}. Please reconnect.`,
-        })
+        this.connections.markUnhealthy(
+          row.connectionId,
+          `Vendor reports status ${vendorStatus}. Please reconnect.`,
+        )
         this.staleSince.delete(row.connectionId)
         this.statusBus.emit({
           connectorId: row.connectorId,

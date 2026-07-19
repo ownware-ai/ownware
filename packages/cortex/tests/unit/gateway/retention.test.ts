@@ -105,6 +105,10 @@ describe('agent_events retention', () => {
     expect(state.getMessages(thread.id)).toHaveLength(1)
     // Raw events for this thread are gone.
     expect(state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID })).toEqual([])
+    // Retention removes replay bytes, not cursor identity. A later turn
+    // must continue after the pruned high-water instead of reusing seq 1.
+    expect(state.getAgentEventMaxSeq(thread.id, ROOT_AGENT_ID)).toBe(3)
+    expect(state.eventIngestor.ingestParentEvent(thread.id, textEvent('later-turn'))).toBe(4)
   })
 
   it('prunes a stalled active thread (status=active, no root events in the window)', () => {

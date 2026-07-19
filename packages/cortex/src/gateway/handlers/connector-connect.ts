@@ -49,6 +49,11 @@ import type { ConnectorRegistry } from '../../connector/registry.js'
 import type { ConnectorConnectionsStore } from '../../connector/connections/store.js'
 import type { ConnectionCompletionManager } from '../../connector/completion/manager.js'
 import type { ComposioClient } from '../../connector/composio/client.js'
+import {
+  connectionSessionHandle,
+  type ConnectionSessionMaterial,
+  type ConnectionSessionVault,
+} from '../../connector/connections/session-vault.js'
 import { ConnectorError } from '../../connector/errors.js'
 import {
   ConnectConnectorResponseSchema,
@@ -68,6 +73,7 @@ export interface ConnectorConnectHandlersDeps {
   readonly registry: ConnectorRegistry
   readonly connections: ConnectorConnectionsStore
   readonly completionManager: ConnectionCompletionManager
+  readonly connectionSessions: ConnectionSessionVault
   /**
    * When set, enables the Composio branch of the dispatcher. When unset
    * (no COMPOSIO_API_KEY), a composio connector id hitting this handler
@@ -271,19 +277,67 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
     // Idempotency: return the existing live row if there is one.
     const existing = deps.connections.findActive(connectorId, COMPOSIO_SOURCE, entityId)
     if (existing) {
-      const metaUrl = typeof existing.metadata?.['authorizationUrl'] === 'string'
-        ? (existing.metadata['authorizationUrl'] as string)
-        : null
-      sendValidated(res, {
-        kind: 'composio_oauth',
-        connectionId: existing.connectionId,
-        status: existing.status,
-        authorizationUrl: metaUrl,
-        expiresAt: existing.expiresAt,
-        authConfigId: existing.authConfigId,
-        reused: true,
-      })
-      return
+      const handle = connectionSessionHandle(existing.metadata)
+      if (existing.status === 'ready') {
+        if (handle !== null) {
+          try {
+            await deps.connectionSessions.remove(handle)
+            deps.connections.markReady({ connectionId: existing.connectionId })
+          } catch {
+            sendError(res, 500, 'The completed connection session could not be safely cleared.')
+            return
+          }
+        }
+        sendValidated(res, {
+          kind: 'composio_oauth',
+          connectionId: existing.connectionId,
+          status: existing.status,
+          authorizationUrl: null,
+          expiresAt: existing.expiresAt,
+          authConfigId: existing.authConfigId,
+          reused: true,
+        })
+        return
+      }
+
+      let session: ConnectionSessionMaterial | null = null
+      if (handle !== null) {
+        try {
+          session = await deps.connectionSessions.read(handle, {
+            connectionId: existing.connectionId,
+            connectorId: existing.connectorId,
+            source: existing.source,
+            entityId: existing.entityId,
+          })
+        } catch {
+          sendError(res, 500, 'The pending connection session could not be safely inspected.')
+          return
+        }
+      }
+      if (session !== null) {
+        sendValidated(res, {
+          kind: 'composio_oauth',
+          connectionId: existing.connectionId,
+          status: existing.status,
+          authorizationUrl: session.authorizationUrl,
+          expiresAt: existing.expiresAt,
+          authConfigId: existing.authConfigId,
+          reused: true,
+        })
+        return
+      }
+      if (handle !== null) {
+        try {
+          await deps.connectionSessions.remove(handle)
+        } catch {
+          sendError(res, 500, 'The unavailable connection session could not be safely cleared.')
+          return
+        }
+      }
+      deps.connections.markExpired(
+        existing.connectionId,
+        'Connection setup session is unavailable. Please retry.',
+      )
     }
 
     // No-auth short-circuit (2026-05-27). When the toolkit has
@@ -348,11 +402,12 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
       // config lookup failed" reads as their problem (which it is),
       // not ours. Prevents the client's dialog from showing a generic
       // "we broke it" feel for an upstream issue.
-      if (err instanceof ConnectorError) {
-        sendError(res, 502, `Composio couldn’t return an auth config for "${connectorId}": ${err.message}`, err.code)
-        return
-      }
-      sendError(res, 502, `Composio couldn’t return an auth config for "${connectorId}": ${describe(err)}`)
+      sendError(
+        res,
+        502,
+        `Composio couldn’t return an auth config for "${connectorId}". Please retry or check its provider setup.`,
+        err instanceof ConnectorError ? err.code : undefined,
+      )
       return
     }
 
@@ -375,18 +430,24 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
       // no. Frame the failure as Composio's verdict so the client's
       // dialog can offer the right recovery path (open Composio's
       // dashboard to fix the auth_config) instead of "try again."
-      if (err instanceof ConnectorError) {
-        sendError(res, 502, `Composio rejected the connection for "${connectorId}": ${err.message}`, err.code)
-        return
-      }
-      sendError(res, 502, `Composio rejected the connection for "${connectorId}": ${describe(err)}`)
+      sendError(
+        res,
+        502,
+        `Composio couldn’t start the connection for "${connectorId}". Please retry or check its provider setup.`,
+        err instanceof ConnectorError ? err.code : undefined,
+      )
       return
     }
 
+    const now = Date.now()
     const expiresAtMs = Date.parse(link.expires_at)
     const expiresAt = Number.isFinite(expiresAtMs)
-      ? expiresAtMs
-      : Date.now() + DEFAULT_LINK_TTL_MS
+      ? Math.min(expiresAtMs, now + DEFAULT_LINK_TTL_MS)
+      : now + DEFAULT_LINK_TTL_MS
+    if (expiresAt <= now) {
+      sendError(res, 502, 'Composio returned an expired connection session. Please retry.')
+      return
+    }
 
     // Persist pending row.
     //
@@ -400,13 +461,28 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
     //     createConnectionLink. This is what Composio's record will
     //     store. If their API ever wants user_id back, we send THIS
     //     frozen value, never the live entity_id (which can migrate).
-    // Defensive try/catch — `upsertPending` is engineered to never
-    // throw for the common retry-after-failure path (it atomically
-    // replaces stuck rows; see store.ts notes on the 2026-05-26 fix).
+    // Defensive try/catch — `upsertPending` preserves an existing live
+    // tuple so its encrypted session handle cannot be orphaned.
     // But ANY future SQLite constraint addition could surface as an
     // uncaught throw here. Catch it explicitly so the user sees a
     // gateway-attributed error message rather than "Composio said:
     // UNIQUE constraint failed: …" lying about whose system broke.
+    let sessionHandle: string
+    try {
+      sessionHandle = await deps.connectionSessions.create({
+        connectionId: link.connected_account_id,
+        connectorId,
+        source: COMPOSIO_SOURCE,
+        entityId,
+        authorizationUrl: link.redirect_url,
+        linkToken: link.link_token,
+        expiresAt,
+      })
+    } catch {
+      sendError(res, 500, 'Failed to protect the pending connection session.')
+      return
+    }
+
     let row
     try {
       row = deps.connections.upsertPending({
@@ -418,32 +494,75 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
         authConfigId,
         vendorAccountId: link.connected_account_id,
         vendorUserId: entityId,
-        metadata: {
-          authorizationUrl: link.redirect_url,
-          linkToken: link.link_token,
-          userId: entityId,
-        },
+        metadata: { sessionHandle },
       })
-    } catch (err) {
+    } catch {
+      try {
+        await deps.connectionSessions.remove(sessionHandle)
+      } catch {
+        sendError(
+          res,
+          500,
+          'The failed connection session could not be safely cleared.',
+        )
+        return
+      }
       sendError(
         res,
         500,
-        `Failed to persist the pending connection for "${connectorId}": ${describe(err)}`,
+        `Failed to persist the pending connection for "${connectorId}".`,
       )
+      return
+    }
+
+    // A concurrent request may have completed the tuple between the
+    // initial live-row check and this upsert. The store preserves that
+    // ready row; its newly-created continuation session is not referenced
+    // and must be removed immediately.
+    if (row.connectionId !== link.connected_account_id || row.status === 'ready') {
+      try {
+        await deps.connectionSessions.remove(sessionHandle)
+      } catch {
+        sendError(res, 500, 'The unused connection session could not be safely cleared.')
+        return
+      }
+      sendValidated(res, {
+        kind: 'composio_oauth',
+        connectionId: row.connectionId,
+        status: row.status,
+        authorizationUrl: null,
+        expiresAt: row.expiresAt,
+        authConfigId: row.authConfigId,
+        reused: true,
+      })
       return
     }
 
     // Dispatch for polling.
     try {
       deps.completionManager.dispatch(row.connectionId)
-    } catch (err) {
+    } catch {
       // The dispatch manager throws if no listener is registered for the
       // source. This is a programmer error at boot time, but we surface
       // it honestly rather than leaving a pending row without a poller.
+      try {
+        await deps.connectionSessions.remove(sessionHandle)
+        deps.connections.markFailed({
+          connectionId: row.connectionId,
+          reason: 'Connection completion is temporarily unavailable. Please retry.',
+        })
+      } catch {
+        sendError(
+          res,
+          500,
+          'Pending connection created, but its session could not be safely cleared.',
+        )
+        return
+      }
       sendError(
         res,
         500,
-        `Pending connection created but no poller is registered for source "${COMPOSIO_SOURCE}": ${describe(err)}`,
+        'Connection completion is temporarily unavailable. Please retry.',
       )
       return
     }
@@ -463,14 +582,6 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
     /** POST /api/v1/connectors/:id/connect */
     connect,
   }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 // Re-export for convenience

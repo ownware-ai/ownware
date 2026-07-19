@@ -33,6 +33,7 @@ import type { LoomEvent, ContentBlock, ZoneDecision } from '@ownware/loom'
 import { ZONE_LEVEL_NAMES } from '@ownware/loom'
 import type { GatewayState } from './state.js'
 import type { ThreadMessage, ToolCallRecord, SubAgentRecord, PermissionRecord, CredentialRecord, AttachmentMeta, MessagePart } from './types.js'
+import { projectPermissionEvidenceEvent } from './event-ingestor.js'
 import type { TurnInterruptedEvent } from './events.js'
 import { trace, traceEnabled } from './trace.js'
 import type { PendingReconciles } from './pending-reconcile.js'
@@ -487,6 +488,12 @@ export class SessionRunner {
           }
         }
 
+        // Loom keeps the exact model-authored input only long enough to bind
+        // and execute the approval. Every Cortex evidence surface receives the
+        // same content-free projection: durable events, live owner streams,
+        // debug timeline and hydrated messages must never retain that input.
+        const evidenceEvent = projectPermissionEvidenceEvent(enriched)
+
         // ── Persist to SQLite + fan out to EventBus ──────────────
         // Skip transient recoverable errors — they're retry noise.
         const isRecoverableError = event.type === 'error' &&
@@ -511,7 +518,7 @@ export class SessionRunner {
             })
           }
           try {
-            run.lastSeq = this.state.eventIngestor.ingestParentEvent(threadId, enriched)
+            run.lastSeq = this.state.eventIngestor.ingestParentEvent(threadId, evidenceEvent)
           } catch (err) {
             trace('runner-ingest-fail', threadId, 'root', event.type, {
               err: err instanceof Error ? err.message : String(err),
@@ -531,7 +538,7 @@ export class SessionRunner {
         }
 
         // ── Legacy in-memory debug log ───────────────────────────
-        this.state.logEvent(threadId, event)
+        this.state.logEvent(threadId, evidenceEvent)
 
         // Track most recent turnIndex across event shapes.
         if (typeof (event as { turnIndex?: number }).turnIndex === 'number') {
@@ -539,7 +546,7 @@ export class SessionRunner {
         }
 
         // ── Accumulate messages for thread history ────────────────
-        this.accumulateEvent(event, enriched, acc, run, saveMessage, generateMsgId)
+        this.accumulateEvent(evidenceEvent, evidenceEvent, acc, run, saveMessage, generateMsgId)
 
         result = await events.next()
       }
@@ -924,6 +931,8 @@ export class SessionRunner {
           requestId: string
           toolName: string
           input?: Record<string, unknown>
+          inputSummary?: string
+          operationHash?: string
           reason: string
           zoneLevel?: number
           zoneName?: string
@@ -935,6 +944,8 @@ export class SessionRunner {
           requestId: permReq.requestId,
           toolName: permReq.toolName,
           input: permReq.input,
+          inputSummary: permReq.inputSummary,
+          operationHash: permReq.operationHash,
           reason: permReq.reason,
           decision: 'pending',
           zoneLevel: permReq.zoneLevel,

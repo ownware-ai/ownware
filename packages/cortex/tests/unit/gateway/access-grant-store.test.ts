@@ -13,6 +13,9 @@ import {
 } from '../../../src/gateway/access-grant-store.js'
 import { SourceJobStore } from '../../../src/gateway/source-job-store.js'
 import { SourceStore } from '../../../src/gateway/source-store.js'
+import { SourceDataViewStore } from '../../../src/gateway/source-data-view-store.js'
+import { csvDataViewOrdinalId } from '../../../src/gateway/csv-data-view.js'
+import type { PreparedCsvDataViewArtifact } from '../../../src/gateway/source-byte-store.js'
 
 let dir: string
 let database: CortexDatabase
@@ -607,6 +610,36 @@ describe('AccessGrantStore', () => {
     ).get()).toEqual({ count: 0 })
   })
 
+  it.each([
+    ['the live source revision advances',
+      'UPDATE runtime_sources SET revision = revision + 1 WHERE source_id = ?'],
+    ['the live classification changes',
+      "UPDATE runtime_sources SET classification = 'confidential' WHERE source_id = ?"],
+    ['the live authority changes',
+      "UPDATE runtime_sources SET authority = 'source_of_record' WHERE source_id = ?"],
+    ['the live audience policy changes',
+      "UPDATE runtime_sources SET audience_policy_ref = 'audience.changed' WHERE source_id = ?"],
+    ['the live sensitivity policy changes',
+      "UPDATE runtime_sources SET sensitivity_policy_ref = 'sensitivity.changed' WHERE source_id = ?"],
+    ['the live purpose policy changes',
+      "UPDATE runtime_sources SET purpose_policy_ref = 'purpose.changed' WHERE source_id = ?"],
+    ['the live retention policy changes',
+      "UPDATE runtime_sources SET retention_policy_ref = 'retention.changed' WHERE source_id = ?"],
+    ['the live freshness policy changes',
+      "UPDATE runtime_sources SET freshness_policy_ref = 'freshness.changed' WHERE source_id = ?"],
+  ])('withholds the prepared-text target when %s', (_label, mutation) => {
+    const target = seedPreparedTextResource()
+    expect(grants.getPreparedTextReadTargetScoped(
+      'workspace.test', 'assistant', target.resourceId,
+    )).not.toBeNull()
+
+    database.rawMainHandle.prepare(mutation).run(target.sourceId)
+
+    expect(grants.getPreparedTextReadTargetScoped(
+      'workspace.test', 'assistant', target.resourceId,
+    )).toBeNull()
+  })
+
   it('rolls back source-specific creation when grant insertion fails', () => {
     const target = seedPreparedTextResource()
     const bounded = new AccessGrantStore(database.rawMainHandle, 1)
@@ -626,6 +659,158 @@ describe('AccessGrantStore', () => {
       ttlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,
       issuedBy: 'owner.synthetic',
     }, 101)).toThrowError(expect.objectContaining({
+      code: 'access_grant_limit_exceeded',
+    }))
+    expect(database.rawMainHandle.prepare(
+      'SELECT COUNT(*) AS count FROM access_grants',
+    ).get()).toEqual({ count: 1 })
+  })
+
+  it('atomically creates only an observe Data View query fence over exact manifest IDs', () => {
+    const target = seedDataView()
+
+    const created = grants.createDataViewQueryGrant({
+      workspaceId: 'workspace.test',
+      profileId: 'assistant',
+      subjectId: 'person.synthetic-1',
+      purpose: 'customer_support',
+      channel: 'web.primary',
+      dataViewId: target.dataViewId,
+      fieldIds: [target.fieldIds[1]!, target.fieldIds[0]!],
+      rowIds: [target.rowIds[1]!, target.rowIds[0]!],
+      consent: { state: 'recorded', evidenceId: 'consent.synthetic-1' },
+      ttlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,
+      issuedBy: 'owner.synthetic',
+      secret: 'data-view-grant-secret-canary',
+      rawCells: ['data-view-cell-canary'],
+    } as Parameters<AccessGrantStore['createDataViewQueryGrant']>[0], 100)
+
+    expect(created).toMatchObject({
+      workspaceId: 'workspace.test',
+      profileId: 'assistant',
+      resourceKind: 'source_data_view',
+      resourceId: target.dataViewId,
+      operation: 'source_data_views.query',
+      fieldScope: { mode: 'list', ids: [...target.fieldIds].sort() },
+      rowScope: { mode: 'list', ids: [...target.rowIds].sort() },
+      autonomyCeiling: 'observe',
+      effectiveAt: 100,
+      expiresAt: 60_100,
+      issuedBy: 'owner.synthetic',
+    })
+    const persisted = JSON.stringify(database.rawMainHandle.prepare(`
+      SELECT * FROM access_grant_revisions WHERE grant_id = ?
+    `).get(created.grantId))
+    expect(persisted).not.toContain('data-view-grant-secret-canary')
+    expect(persisted).not.toContain('data-view-cell-canary')
+  })
+
+  it('rejects empty, duplicate, over-limit and unknown Data View identities without a grant', () => {
+    const target = seedDataView()
+    const base = dataViewGrantInput(target)
+    const invalid = [
+      { ...base, fieldIds: [] },
+      { ...base, rowIds: [] },
+      { ...base, fieldIds: [target.fieldIds[0]!, target.fieldIds[0]!] },
+      { ...base, rowIds: [target.rowIds[0]!, target.rowIds[0]!] },
+      { ...base, fieldIds: Array(257).fill(target.fieldIds[0]!) },
+      { ...base, rowIds: Array.from({ length: 257 }, (_, ordinal) =>
+        csvDataViewOrdinalId('row', target.sourceVersionId, ordinal)) },
+      { ...base, fieldIds: ['field.00000000000000000000000000000000'] },
+      { ...base, rowIds: ['row.00000000000000000000000000000000'] },
+    ]
+
+    for (const input of invalid) {
+      expect(() => grants.createDataViewQueryGrant(input, 100)).toThrowError(
+        expect.objectContaining({ code: 'access_grant_invalid' }),
+      )
+    }
+    expect(database.rawMainHandle.prepare(
+      'SELECT COUNT(*) AS count FROM access_grants',
+    ).get()).toEqual({ count: 0 })
+  })
+
+  it.each([
+    ['wrong workspace', (target: ReturnType<typeof seedDataView>) => ({
+      input: { ...dataViewGrantInput(target), workspaceId: 'workspace.other' },
+    })],
+    ['wrong profile', (target: ReturnType<typeof seedDataView>) => ({
+      input: { ...dataViewGrantInput(target), profileId: 'other' },
+    })],
+    ['unknown view', (target: ReturnType<typeof seedDataView>) => ({
+      input: {
+        ...dataViewGrantInput(target),
+        dataViewId: '99999999-9999-4999-8999-999999999999',
+      },
+    })],
+    ['stale view', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: "UPDATE source_data_views SET freshness = 'stale', stale_at = 99 " +
+        'WHERE data_view_id = ?',
+    })],
+    ['deleting source', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: "UPDATE runtime_sources SET deletion_state = 'frozen' WHERE source_id = ?",
+      sqlId: target.sourceId,
+    })],
+    ['source revision drift', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: 'UPDATE runtime_sources SET revision = revision + 1 WHERE source_id = ?',
+      sqlId: target.sourceId,
+    })],
+    ['source policy drift', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: "UPDATE runtime_sources SET purpose_policy_ref = 'purpose.changed' " +
+        'WHERE source_id = ?',
+      sqlId: target.sourceId,
+    })],
+    ['source classification drift', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: "UPDATE runtime_sources SET classification = 'restricted' WHERE source_id = ?",
+      sqlId: target.sourceId,
+    })],
+    ['private locator substitution', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: "UPDATE source_data_views SET private_object_key = 'sources/" +
+        "99999999-9999-4999-8999-999999999999/versions/" +
+        `${target.sourceVersionId}/data-views/${target.dataViewId}.json' ` +
+        'WHERE data_view_id = ?',
+    })],
+    ['corrupt manifest fields', (target: ReturnType<typeof seedDataView>) => ({
+      input: dataViewGrantInput(target),
+      sql: `UPDATE source_data_views SET fields_json = '[
+        {"fieldId":"field.00000000000000000000000000000000","ordinal":0,"label":"name"},
+        {"fieldId":"field.11111111111111111111111111111111","ordinal":1,"label":"formula"}
+      ]' WHERE data_view_id = ?`,
+    })],
+  ] as const)('keeps a %s unavailable to Data View grant admission', (_label, arrange) => {
+    const target = seedDataView()
+    const setup = arrange(target)
+    if ('sql' in setup) {
+      database.rawMainHandle.prepare(setup.sql).run(
+        'sqlId' in setup ? setup.sqlId : target.dataViewId,
+      )
+    }
+
+    expect(() => grants.createDataViewQueryGrant(setup.input, 100)).toThrowError(
+      expect.objectContaining({ code: 'access_grant_resource_unavailable' }),
+    )
+    expect(database.rawMainHandle.prepare(
+      'SELECT COUNT(*) AS count FROM access_grants',
+    ).get()).toEqual({ count: 0 })
+  })
+
+  it('rolls back Data View admission when grant insertion is refused', () => {
+    const target = seedDataView()
+    const bounded = new AccessGrantStore(database.rawMainHandle, 1)
+    bounded.createImmediate({
+      ...immediateGrantInput(),
+      ttlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,
+    }, 100)
+
+    expect(() => bounded.createDataViewQueryGrant(
+      dataViewGrantInput(target), 101,
+    )).toThrowError(expect.objectContaining({
       code: 'access_grant_limit_exceeded',
     }))
     expect(database.rawMainHandle.prepare(
@@ -687,7 +872,106 @@ describe('AccessGrantStore', () => {
     )).toBe('finished')
     return { sourceId: source.sourceId, resourceId: claim.resourceId! }
   }
+
+  function seedDataView(): {
+    readonly sourceId: string
+    readonly sourceVersionId: string
+    readonly dataViewId: string
+    readonly fieldIds: readonly [string, string]
+    readonly rowIds: readonly [string, string]
+  } {
+    const sourceId = '33333333-3333-4333-8333-333333333333'
+    const sourceVersionId = '44444444-4444-4444-8444-444444444444'
+    const sourceChecksum = `sha256:${'c'.repeat(64)}`
+    database.rawMainHandle.prepare(`
+      INSERT INTO runtime_sources (
+        source_id, workspace_id, profile_id, kind, label, classification,
+        authority, audience_policy_ref, sensitivity_policy_ref,
+        purpose_policy_ref, retention_policy_ref, freshness_policy_ref,
+        revision, current_version_id, registration_state, inspection_state,
+        preparation_state, access_state, freshness_state, conflict_state,
+        deletion_state, created_at, updated_at
+      ) VALUES (
+        ?, 'workspace.test', 'assistant', 'structured_export', 'Synthetic CSV',
+        'internal', 'supporting_reference', 'audience.test', 'sensitivity.test',
+        'purpose.test', 'retention.test', 'freshness.test', 1, ?, 'registered',
+        'complete', 'not_requested', 'available', 'fresh', 'none', 'active', 10, 10
+      )
+    `).run(sourceId, sourceVersionId)
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_versions (
+        source_version_id, source_id, checksum, verified_media_type, byte_count,
+        object_key, inspection_state, preparation_state, created_at
+      ) VALUES (?, ?, ?, 'text/plain', 32, ?, 'complete', 'not_requested', 10)
+    `).run(
+      sourceVersionId,
+      sourceId,
+      sourceChecksum,
+      `sources/${sourceId}/versions/${sourceVersionId}/original`,
+    )
+    const views = new SourceDataViewStore(database.rawMainHandle)
+    const job = views.enqueue({
+      workspaceId: 'workspace.test',
+      profileId: 'assistant',
+      sourceId,
+      sourceVersionId,
+    }, 20)
+    const claim = views.claimNext('data-view-grant-test', 30)!
+    for (const checkpoint of [1, 2, 3]) {
+      expect(views.advanceCheckpoint(
+        job.jobId, claim.claimToken, checkpoint - 1, checkpoint, 30 + checkpoint,
+      )).toBe('advanced')
+    }
+    const fieldIds = [
+      csvDataViewOrdinalId('field', sourceVersionId, 0),
+      csvDataViewOrdinalId('field', sourceVersionId, 1),
+    ] as const
+    const rowIds = [
+      csvDataViewOrdinalId('row', sourceVersionId, 0),
+      csvDataViewOrdinalId('row', sourceVersionId, 1),
+    ] as const
+    const artifact: PreparedCsvDataViewArtifact = {
+      privateObjectKey:
+        `sources/${sourceId}/versions/${sourceVersionId}/data-views/${claim.dataViewId}.json`,
+      manifest: {
+        dataViewId: claim.dataViewId,
+        implementationVersion: 'csv_data_view.v1',
+        sourceVersionId,
+        sourceChecksum,
+        artifactChecksum: `sha256:${'d'.repeat(64)}`,
+        artifactByteCount: 128,
+        fieldCount: 2,
+        rowCount: 2,
+        fields: [
+          { fieldId: fieldIds[0], ordinal: 0, label: 'name' },
+          { fieldId: fieldIds[1], ordinal: 1, label: 'formula' },
+        ],
+      },
+    }
+    expect(views.publish(job.jobId, claim.claimToken, artifact, 40)).toBe('finished')
+    return { sourceId, sourceVersionId, dataViewId: claim.dataViewId, fieldIds, rowIds }
+  }
 })
+
+function dataViewGrantInput(target: {
+  readonly dataViewId: string
+  readonly fieldIds: readonly string[]
+  readonly rowIds: readonly string[]
+}) {
+  return {
+    workspaceId: 'workspace.test',
+    profileId: 'assistant',
+    subjectId: 'person.synthetic-1',
+    purpose: 'customer_support',
+    channel: 'web.primary',
+    dataViewId: target.dataViewId,
+    fieldIds: target.fieldIds,
+    rowIds: target.rowIds,
+    consent: { state: 'not_required' } as const,
+    ttlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,
+    issuedBy: 'owner.synthetic',
+  }
+}
 
 function grantInput(): CreateAccessGrantInput {
   return {

@@ -78,6 +78,7 @@ describe('SourceUploadStore refresh fencing', () => {
       SELECT byte_reservation_released_at FROM source_upload_sessions WHERE upload_id = ?
     `).get(initial.uploadId)).toEqual({ byte_reservation_released_at: 22 })
     const resourceId = prepareCurrentVersion(versionA, 23)
+    const dataViewId = prepareCurrentDataView(versionA, 23)
 
     const refresh = createUpload(24)
     expect(privateFence(refresh.uploadId)).toEqual({
@@ -99,6 +100,9 @@ describe('SourceUploadStore refresh fencing', () => {
     expect(database.rawMainHandle.prepare(`
       SELECT freshness, stale_at FROM source_derived_resources WHERE resource_id = ?
     `).get(resourceId)).toEqual({ freshness: 'stale', stale_at: 26 })
+    expect(database.rawMainHandle.prepare(`
+      SELECT freshness, stale_at FROM source_data_views WHERE data_view_id = ?
+    `).get(dataViewId)).toEqual({ freshness: 'stale', stale_at: 26 })
   })
 
   it('rolls back the version and lifecycle reset when the source CAS write fails', () => {
@@ -106,6 +110,7 @@ describe('SourceUploadStore refresh fencing', () => {
     const versionA = uploads.beginCompletion(initial.uploadId, 21)
     uploads.finishCompletion(initial.uploadId, versionInput(versionA, 'a'), 22)
     const resourceId = prepareCurrentVersion(versionA, 23)
+    const dataViewId = prepareCurrentDataView(versionA, 23)
     const refresh = createUpload(24)
     const versionB = uploads.beginCompletion(refresh.uploadId, 25)
     database.rawMainHandle.exec(`
@@ -130,6 +135,9 @@ describe('SourceUploadStore refresh fencing', () => {
     expect(database.rawMainHandle.prepare(`
       SELECT freshness, stale_at FROM source_derived_resources WHERE resource_id = ?
     `).get(resourceId)).toEqual({ freshness: 'current', stale_at: null })
+    expect(database.rawMainHandle.prepare(`
+      SELECT freshness, stale_at FROM source_data_views WHERE data_view_id = ?
+    `).get(dataViewId)).toEqual({ freshness: 'current', stale_at: null })
     expect(database.rawMainHandle.prepare(`
       SELECT byte_reservation_released_at FROM source_upload_sessions WHERE upload_id = ?
     `).get(refresh.uploadId)).toEqual({ byte_reservation_released_at: null })
@@ -177,6 +185,50 @@ describe('SourceUploadStore refresh fencing', () => {
       SELECT revision, current_version_id, inspection_state, preparation_state
       FROM runtime_sources WHERE source_id = ?
     `).get(sourceId)
+  }
+
+  function prepareCurrentDataView(versionId: string, now: number): string {
+    const jobId = '11111111-1111-4111-8111-111111111111'
+    const dataViewId = '22222222-2222-4222-8222-222222222222'
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_data_view_jobs (
+        job_id, data_view_id, workspace_id, profile_id, source_id,
+        source_version_id, implementation_version, source_revision,
+        state, attempt, max_attempts, checkpoint, outcome_code,
+        created_at, updated_at, terminal_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, 'csv_data_view.v1', 2,
+        'succeeded', 1, 3, 4, 'preparation_complete', ?, ?, ?
+      )
+    `).run(
+      jobId, dataViewId, WORKSPACE_ID, PROFILE_ID, sourceId, versionId,
+      now, now, now,
+    )
+    database.rawMainHandle.prepare(`
+      INSERT INTO source_data_views (
+        data_view_id, job_id, workspace_id, profile_id, source_id,
+        source_version_id, implementation_version, source_revision,
+        source_checksum, artifact_checksum, artifact_byte_count,
+        private_object_key, field_count, row_count, fields_json,
+        classification, authority, audience_policy_ref,
+        sensitivity_policy_ref, purpose_policy_ref, retention_policy_ref,
+        freshness_policy_ref, freshness, created_at, stale_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, 'csv_data_view.v1', 2,
+        ?, ?, 16, ?, 1, 1, ?,
+        'internal', 'supporting_reference', 'audience.test',
+        'sensitivity.test', 'purpose.test', 'retention.test',
+        'freshness.test', 'current', ?, NULL
+      )
+    `).run(
+      dataViewId, jobId, WORKSPACE_ID, PROFILE_ID, sourceId, versionId,
+      `sha256:${'a'.repeat(64)}`,
+      `sha256:${'b'.repeat(64)}`,
+      `sources/${sourceId}/versions/${versionId}/data-views/${dataViewId}.json`,
+      JSON.stringify([{ fieldId: 'field.synthetic', ordinal: 0, label: 'name' }]),
+      now,
+    )
+    return dataViewId
   }
 
   function prepareCurrentVersion(versionId: string, now: number): string {

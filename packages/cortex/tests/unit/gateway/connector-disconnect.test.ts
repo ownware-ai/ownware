@@ -27,7 +27,10 @@ import { ConnectorConnectionsStore } from '../../../src/connector/connections/st
 import { createConnectorStatusBus } from '../../../src/connector/status-bus.js'
 import { ConnectorRegistry } from '../../../src/connector/registry.js'
 import { ProfileRegistry } from '../../../src/profile/registry.js'
-import { createConnectorDisconnectHandlers } from '../../../src/gateway/handlers/connector-disconnect.js'
+import {
+  createConnectorDisconnectHandlers,
+  type ConnectorDisconnectHandlersDeps,
+} from '../../../src/gateway/handlers/connector-disconnect.js'
 import type { ConnectorSourceProvider } from '../../../src/connector/registry.js'
 import type { Connector } from '../../../src/connector/schema.js'
 import { makeCanonicalConnectorId } from '../../../src/connector/schema.js'
@@ -35,11 +38,25 @@ import { makeCanonicalConnectorId } from '../../../src/connector/schema.js'
 let tmpDir: string
 let db: CortexDatabase
 let connections: ConnectorConnectionsStore
+let cancelCompletion: ReturnType<typeof vi.fn>
+let removeSession: ReturnType<typeof vi.fn>
+
+function makeDisconnectHandlers(
+  deps: Omit<ConnectorDisconnectHandlersDeps, 'completionManager' | 'connectionSessions'>,
+) {
+  return createConnectorDisconnectHandlers({
+    ...deps,
+    completionManager: { cancel: cancelCompletion },
+    connectionSessions: { remove: removeSession },
+  })
+}
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'cortex-disconnect-'))
   db = new CortexDatabase(join(tmpDir, 'main.db'), join(tmpDir, 'fx.db'))
   connections = new ConnectorConnectionsStore(db.rawMainHandle)
+  cancelCompletion = vi.fn()
+  removeSession = vi.fn().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -106,7 +123,7 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
     const events: unknown[] = []
     statusBus.subscribe((e) => { events.push(e) })
 
-    const handlers = createConnectorDisconnectHandlers({
+    const handlers = makeDisconnectHandlers({
       registry,
       connections,
       statusBus,
@@ -121,10 +138,12 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
 
     expect(captured.status).toBe(204)
     expect(vendorDelete).toHaveBeenCalledWith('conn-1')
+    expect(cancelCompletion).toHaveBeenCalledWith('conn-1')
 
     const after = connections.findByConnectionId('conn-1')
     expect(after?.status).toBe('expired')
     expect(after?.errorReason).toBe('Revoked by user')
+    expect(after?.terminalCause).toBe('revoked')
 
     expect(events).toHaveLength(1)
     const ev = events[0] as { connectorId: string; status: string }
@@ -137,7 +156,7 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
     registry.addSource(composioProviderWith([fakeConnector('slack', 'composio')]))
 
     const vendorDelete = vi.fn()
-    const handlers = createConnectorDisconnectHandlers({
+    const handlers = makeDisconnectHandlers({
       registry,
       connections,
       statusBus: createConnectorStatusBus(),
@@ -169,7 +188,7 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
     connections.markReady({ connectionId: 'conn-2' })
 
     const vendorDelete = vi.fn().mockRejectedValue(new Error('boom'))
-    const handlers = createConnectorDisconnectHandlers({
+    const handlers = makeDisconnectHandlers({
       registry,
       connections,
       statusBus: createConnectorStatusBus(),
@@ -180,11 +199,50 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
     const { res, captured } = mockRes()
     await handlers.disconnect(mockReq(), res, { id: 'notion' })
     expect(captured.status).toBe(200)
-    expect(captured.body).toMatchObject({ partial: true, vendorError: 'boom' })
+    expect(captured.body).toMatchObject({
+      partial: true,
+      vendorError: 'Composio could not confirm revocation.',
+    })
+    expect(JSON.stringify(captured.body)).not.toContain('boom')
 
     const after = connections.findByConnectionId('conn-2')
     expect(after?.status).toBe('expired')
-    expect(after?.errorReason ?? '').toContain('boom')
+    expect(after?.errorReason).toBe('Revoked by user (provider revocation unconfirmed)')
+    expect(after?.terminalCause).toBe('revocation_unconfirmed')
+  })
+
+  it('pending session cleanup must be verified before local metadata is cleared', async () => {
+    const registry = new ConnectorRegistry(new ProfileRegistry())
+    registry.addSource(composioProviderWith([fakeConnector('linear', 'composio')]))
+    const sessionHandle = 'connection-session.123e4567-e89b-42d3-a456-426614174000'
+    connections.upsertPending({
+      connectionId: 'conn-pending',
+      connectorId: 'linear',
+      source: 'composio',
+      entityId: 'cortex-default-user',
+      metadata: { sessionHandle },
+    })
+    removeSession.mockRejectedValueOnce(new Error('disk unavailable'))
+    const vendorDelete = vi.fn()
+    const handlers = makeDisconnectHandlers({
+      registry,
+      connections,
+      statusBus: createConnectorStatusBus(),
+      entityId: 'cortex-default-user',
+      composio: { client: { deleteConnectedAccount: vendorDelete } as never },
+    })
+
+    const { res, captured } = mockRes()
+    await handlers.disconnect(mockReq(), res, { id: 'linear' })
+
+    expect(captured.status).toBe(500)
+    expect(cancelCompletion).toHaveBeenCalledWith('conn-pending')
+    expect(removeSession).toHaveBeenCalledWith(sessionHandle)
+    expect(vendorDelete).not.toHaveBeenCalled()
+    expect(connections.findByConnectionId('conn-pending')).toMatchObject({
+      status: 'pending',
+      metadata: { sessionHandle },
+    })
   })
 
   it('builtin: 400 with honest "can\'t disconnect builtins" message', async () => {
@@ -195,7 +253,7 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
     const builtin = list.find((c) => c.source === 'builtin')
     expect(builtin).toBeDefined()
 
-    const handlers = createConnectorDisconnectHandlers({
+    const handlers = makeDisconnectHandlers({
       registry,
       connections,
       statusBus: createConnectorStatusBus(),
@@ -208,7 +266,7 @@ describe('DELETE /api/v1/connectors/:id/connect', () => {
 
   it('unknown connector id: 404', async () => {
     const registry = new ConnectorRegistry(new ProfileRegistry())
-    const handlers = createConnectorDisconnectHandlers({
+    const handlers = makeDisconnectHandlers({
       registry,
       connections,
       statusBus: createConnectorStatusBus(),

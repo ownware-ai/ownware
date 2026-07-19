@@ -6,15 +6,19 @@ import { z } from 'zod'
 import { SourceByteStore } from '../../../src/gateway/source-byte-store.js'
 import { SourceJobStore } from '../../../src/gateway/source-job-store.js'
 import { SourceJobWorker } from '../../../src/gateway/source-job-worker.js'
+import { SourceDataViewStore } from '../../../src/gateway/source-data-view-store.js'
 import { createTestGateway, type TestGateway } from '../harness/index.js'
 
 const JobSchema = z.object({
   jobId: z.string().uuid(),
   sourceId: z.string().uuid(),
   sourceVersionId: z.string().uuid(),
-  operation: z.enum(['inspect_format', 'extract_text']),
-  implementationVersion: z.enum(['inspect_format.v1', 'text_extraction.v1']),
+  operation: z.enum(['inspect_format', 'extract_text', 'prepare_data_view']),
+  implementationVersion: z.enum([
+    'inspect_format.v1', 'text_extraction.v1', 'csv_data_view.v1',
+  ]),
   resourceId: z.string().uuid().nullable(),
+  dataViewId: z.string().uuid().nullable(),
   state: z.enum([
     'queued', 'running', 'waiting_for_resource', 'cancel_requested',
     'succeeded', 'partial', 'failed', 'cancelled',
@@ -51,6 +55,35 @@ const ResourceSchema = z.object({
   retentionPolicyRef: z.string(),
   freshnessPolicyRef: z.string(),
   coverage: z.literal('complete'),
+  freshness: z.enum(['current', 'stale']),
+  createdAt: z.number().int(),
+  staleAt: z.number().int().nullable(),
+}).strict()
+
+const DataViewSchema = z.object({
+  dataViewId: z.string().uuid(),
+  jobId: z.string().uuid(),
+  sourceId: z.string().uuid(),
+  sourceVersionId: z.string().uuid(),
+  implementationVersion: z.literal('csv_data_view.v1'),
+  sourceRevision: z.number().int().positive(),
+  sourceChecksum: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  artifactChecksum: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  artifactByteCount: z.number().int().positive(),
+  fieldCount: z.number().int().min(1).max(256),
+  rowCount: z.number().int().min(0).max(100_000),
+  fields: z.array(z.object({
+    fieldId: z.string().regex(/^field\.[0-9a-f]{32}$/),
+    ordinal: z.number().int().min(0).max(255),
+    label: z.string(),
+  }).strict()).min(1).max(256),
+  classification: z.enum(['public', 'internal', 'confidential', 'restricted']),
+  authority: z.enum(['source_of_record', 'supporting_reference', 'example']),
+  audiencePolicyRef: z.string(),
+  sensitivityPolicyRef: z.string(),
+  purposePolicyRef: z.string(),
+  retentionPolicyRef: z.string(),
+  freshnessPolicyRef: z.string(),
   freshness: z.enum(['current', 'stale']),
   createdAt: z.number().int(),
   staleAt: z.number().int().nullable(),
@@ -272,6 +305,182 @@ describe('Contract: scoped source jobs', () => {
     expect(deniedResource.status).toBe(403)
     await expect(deniedResource.json()).resolves.toMatchObject({
       error: 'principal_operation_denied',
+    })
+  })
+
+  it('prepares strict CSV through the unified job contract without exposing cells', async () => {
+    const structuredSourceId = await registerSource(
+      '30303030-abab-4030-8030-303030303030',
+      'Structured Data View target',
+      'supporting_reference',
+      'structured_export',
+    )
+    const csv = Buffer.from('name,formula\nAda,=2+2\n')
+    const structuredVersionId = await uploadVersion(
+      csv,
+      '31313131-abab-4131-8131-313131313131',
+      structuredSourceId,
+    )
+    await inspectVersion(
+      structuredSourceId,
+      structuredVersionId,
+      '32323232-abab-4232-8232-323232323232',
+    )
+    const create = () => createWithToken(
+      token,
+      `/api/v1/sources/${structuredSourceId}/versions/${structuredVersionId}/preparations`,
+      '33333333-abab-4333-8333-333333333333',
+      { operation: 'prepare_data_view' },
+    )
+    const createdResponse = await create()
+    expect(createdResponse.status).toBe(202)
+    const createdRaw = await createdResponse.text()
+    const created = JobSchema.parse(JSON.parse(createdRaw))
+    expect(created).toMatchObject({
+      sourceId: structuredSourceId,
+      sourceVersionId: structuredVersionId,
+      operation: 'prepare_data_view',
+      implementationVersion: 'csv_data_view.v1',
+      resourceId: null,
+      dataViewId: null,
+      state: 'queued',
+    })
+    const replay = await create()
+    expect(replay.status).toBe(202)
+    expect(replay.headers.get('idempotency-replayed')).toBe('true')
+    expect(JobSchema.parse(await replay.json())).toEqual(created)
+
+    await runWorker()
+    const completedResponse = await fetch(
+      `${gw.baseUrl}/api/v1/source-jobs/${created.jobId}`,
+      { headers: auth() },
+    )
+    const completedRaw = await completedResponse.text()
+    const completed = JobSchema.parse(JSON.parse(completedRaw))
+    expect(completed).toMatchObject({
+      state: 'succeeded',
+      outcomeCode: 'preparation_complete',
+      resourceId: null,
+      dataViewId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    for (const privateValue of [
+      gw.tmpDir, 'privateObjectKey', 'data-views/', 'Ada', '=2+2', 'rows', 'values',
+    ]) {
+      expect(createdRaw).not.toContain(privateValue)
+      expect(completedRaw).not.toContain(privateValue)
+    }
+
+    const manifestResponse = await fetch(
+      `${gw.baseUrl}/api/v1/source-data-views/${completed.dataViewId}`,
+      { headers: auth() },
+    )
+    expect(manifestResponse.status).toBe(200)
+    expect(manifestResponse.headers.get('cache-control')).toBe('no-store')
+    const manifestRaw = await manifestResponse.text()
+    expect(DataViewSchema.parse(JSON.parse(manifestRaw))).toMatchObject({
+      dataViewId: completed.dataViewId,
+      jobId: completed.jobId,
+      sourceId: structuredSourceId,
+      sourceVersionId: structuredVersionId,
+      implementationVersion: 'csv_data_view.v1',
+      fieldCount: 2,
+      rowCount: 1,
+      fields: [
+        { ordinal: 0, label: 'name' },
+        { ordinal: 1, label: 'formula' },
+      ],
+      classification: 'internal',
+      authority: 'supporting_reference',
+      freshness: 'current',
+      staleAt: null,
+    })
+    for (const privateValue of [
+      gw.tmpDir, 'privateObjectKey', 'private_object_key', 'data-views/',
+      'Ada', '=2+2', 'rows', 'values',
+    ]) expect(manifestRaw).not.toContain(privateValue)
+
+    const preparationOnly = await issueWithOperations('data-view-preparation-only', [
+      'source_preparations.create',
+    ])
+    const deniedManifest = await fetch(
+      `${gw.baseUrl}/api/v1/source-data-views/${completed.dataViewId}`,
+      { headers: { authorization: `Bearer ${preparationOnly}` } },
+    )
+    expect(deniedManifest.status).toBe(403)
+    await expect(deniedManifest.json()).resolves.toMatchObject({
+      error: 'principal_operation_denied',
+    })
+
+    const invalidManifestRequest = await fetch(
+      `${gw.baseUrl}/api/v1/source-data-views/${completed.dataViewId}?include=rows`,
+      { headers: auth() },
+    )
+    expect(invalidManifestRequest.status).toBe(400)
+    await expect(invalidManifestRequest.json()).resolves.toMatchObject({
+      error: 'source_data_view_request_invalid',
+    })
+
+    await uploadVersion(
+      Buffer.from('name,formula\nGrace,plain\n'),
+      '39393939-abab-4939-8939-393939393939',
+      structuredSourceId,
+    )
+    await expect((await fetch(
+      `${gw.baseUrl}/api/v1/source-data-views/${completed.dataViewId}`,
+      { headers: auth() },
+    )).json()).resolves.toMatchObject({
+      freshness: 'stale', staleAt: expect.any(Number),
+    })
+
+    const wrongKind = await createWithToken(
+      token,
+      `/api/v1/sources/${sourceId}/versions/${secondVersionId}/preparations`,
+      '34343434-abab-4434-8434-343434343434',
+      { operation: 'prepare_data_view' },
+    )
+    expect(wrongKind.status).toBe(422)
+    await expect(wrongKind.json()).resolves.toMatchObject({
+      error: 'source_data_view_kind_unsupported',
+    })
+
+    const cancellationSourceId = await registerSource(
+      '35353535-abab-4535-8535-353535353535',
+      'Cancellable Data View target',
+      'supporting_reference',
+      'structured_export',
+    )
+    const cancellationVersionId = await uploadVersion(
+      Buffer.from('name\nGrace\n'),
+      '36363636-abab-4636-8636-363636363636',
+      cancellationSourceId,
+    )
+    await inspectVersion(
+      cancellationSourceId,
+      cancellationVersionId,
+      '37373737-abab-4737-8737-373737373737',
+    )
+    const cancellable = JobSchema.parse(await (await createWithToken(
+      token,
+      `/api/v1/sources/${cancellationSourceId}/versions/${cancellationVersionId}/preparations`,
+      '38383838-abab-4838-8838-383838383838',
+      { operation: 'prepare_data_view' },
+    )).json())
+    const cancellation = await fetch(
+      `${gw.baseUrl}/api/v1/source-jobs/${cancellable.jobId}/cancel`,
+      { method: 'POST', headers: auth({ 'content-type': 'application/json' }), body: '{}' },
+    )
+    expect(cancellation.status).toBe(202)
+    expect(JobSchema.extend({
+      cancellation: z.literal('requested'),
+    }).parse(await cancellation.json())).toMatchObject({
+      state: 'cancel_requested', dataViewId: null,
+    })
+    await runWorker()
+    await expect((await fetch(
+      `${gw.baseUrl}/api/v1/source-jobs/${cancellable.jobId}`,
+      { headers: auth() },
+    )).json()).resolves.toMatchObject({
+      state: 'cancelled', outcomeCode: 'cancelled', dataViewId: null,
     })
   })
 
@@ -497,6 +706,12 @@ describe('Contract: scoped source jobs', () => {
       },
     )
     const existing = JobSchema.parse(await created.json())
+    const dataViewJobId = gw.state.rawDbHandle.prepare(`
+      SELECT job_id FROM source_data_view_jobs ORDER BY created_at ASC LIMIT 1
+    `).pluck().get() as string
+    const dataViewId = gw.state.rawDbHandle.prepare(`
+      SELECT data_view_id FROM source_data_views ORDER BY created_at ASC LIMIT 1
+    `).pluck().get() as string
     const resourceId = gw.state.rawDbHandle.prepare(`
       SELECT resource_id FROM source_derived_resources WHERE source_id = ?
     `).pluck().get(sourceId) as string
@@ -509,21 +724,32 @@ describe('Contract: scoped source jobs', () => {
     ]
 
     for (const deniedToken of deniedTokens) {
-      for (const [method, path, body] of [
-        ['GET', `/api/v1/source-jobs/${existing.jobId}`, undefined],
-        ['POST', `/api/v1/source-jobs/${existing.jobId}/cancel`, '{}'],
-      ] as const) {
-        const response = await fetch(`${gw.baseUrl}${path}`, {
-          method,
-          headers: {
-            authorization: `Bearer ${deniedToken}`,
-            ...(body ? { 'content-type': 'application/json' } : {}),
-          },
-          ...(body ? { body } : {}),
-        })
-        expect(response.status).toBe(404)
-        await expect(response.json()).resolves.toMatchObject({ error: 'source_job_not_found' })
+      for (const jobId of [existing.jobId, dataViewJobId]) {
+        for (const [method, path, body] of [
+          ['GET', `/api/v1/source-jobs/${jobId}`, undefined],
+          ['POST', `/api/v1/source-jobs/${jobId}/cancel`, '{}'],
+        ] as const) {
+          const response = await fetch(`${gw.baseUrl}${path}`, {
+            method,
+            headers: {
+              authorization: `Bearer ${deniedToken}`,
+              ...(body ? { 'content-type': 'application/json' } : {}),
+            },
+            ...(body ? { body } : {}),
+          })
+          expect(response.status).toBe(404)
+          await expect(response.json()).resolves.toMatchObject({ error: 'source_job_not_found' })
+        }
       }
+
+      const dataView = await fetch(
+        `${gw.baseUrl}/api/v1/source-data-views/${dataViewId}`,
+        { headers: { authorization: `Bearer ${deniedToken}` } },
+      )
+      expect(dataView.status).toBe(404)
+      await expect(dataView.json()).resolves.toMatchObject({
+        error: 'source_data_view_not_found',
+      })
 
       const resource = await fetch(`${gw.baseUrl}/api/v1/source-resources/${resourceId}`, {
         headers: { authorization: `Bearer ${deniedToken}` },
@@ -566,6 +792,7 @@ describe('Contract: scoped source jobs', () => {
         'sources.register', 'source_uploads.create', 'source_uploads.write',
         'source_uploads.complete', 'source_jobs.create', 'source_jobs.read',
         'source_jobs.cancel', 'source_preparations.create', 'source_resources.read',
+        'source_data_views.read',
       ],
     })
     return (issued.body as { token: string }).token
@@ -606,6 +833,7 @@ describe('Contract: scoped source jobs', () => {
     idempotencyKey = '80808080-abab-4808-8808-808080808080',
     label = 'Inspection target',
     authority: 'supporting_reference' | 'excluded' = 'supporting_reference',
+    kind: 'file' | 'structured_export' = 'file',
   ): Promise<string> {
     const response = await fetch(`${gw.baseUrl}/api/v1/sources`, {
       method: 'POST',
@@ -614,7 +842,7 @@ describe('Contract: scoped source jobs', () => {
         'idempotency-key': idempotencyKey,
       }),
       body: JSON.stringify({
-        kind: 'file',
+        kind,
         label,
         classification: 'internal',
         authority,
@@ -645,6 +873,7 @@ describe('Contract: scoped source jobs', () => {
         filename: 'synthetic.txt',
       }),
     })
+    expect(created.status, await created.clone().text()).toBe(201)
     const uploadId = (await created.json() as { uploadId: string }).uploadId
     const written = await fetch(`${gw.baseUrl}/api/v1/source-uploads/${uploadId}`, {
       method: 'PATCH',
@@ -687,6 +916,7 @@ describe('Contract: scoped source jobs', () => {
       new SourceJobStore(gw.state.rawDbHandle),
       new SourceByteStore(join(gw.tmpDir, 'data', 'source-storage')),
       { workerId: 'public-contract-worker' },
+      new SourceDataViewStore(gw.state.rawDbHandle),
     ).runAvailable()
   }
 })

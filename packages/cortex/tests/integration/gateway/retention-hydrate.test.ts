@@ -129,6 +129,7 @@ describe('Retention → Hydrate E2E', () => {
       messages: Array<{ role: string; content: string; tools?: unknown[]; subAgents?: unknown[]; permissions?: unknown[]; thinking?: string }>
       runningAgentId: string | null
       maxSeq: number
+      lastClosedTurnEndSeq: number
     }
 
     // Thread metadata survives.
@@ -136,8 +137,11 @@ describe('Retention → Hydrate E2E', () => {
     expect(hydrate.thread.status).toBe('completed')
     // No live runner on a terminal pruned thread.
     expect(hydrate.runningAgentId).toBeNull()
-    // No raw events left, so maxSeq is 0.
-    expect(hydrate.maxSeq).toBe(0)
+    // Replay rows are gone, but the durable cursor position remains.
+    expect(hydrate.maxSeq).toBe(3)
+    // A later live reopen starts after the pruned range instead of
+    // handing the SSE endpoint an already-expired zero cursor.
+    expect(hydrate.lastClosedTurnEndSeq).toBe(3)
 
     // Messages — every rich field must be intact.
     expect(hydrate.messages).toHaveLength(2)
@@ -148,7 +152,19 @@ describe('Retention → Hydrate E2E', () => {
     expect(asst.subAgents).toHaveLength(1)
     expect(asst.permissions).toHaveLength(1)
 
-    // ── 4. SSE on a terminal pruned thread replays then tails ─────────
+    // ── 4. An explicit pruned cursor fails truthfully ─────────────────
+    const expiredRes = await fetch(
+      `${gw.baseUrl}/api/v1/threads/${thread.id}/agents/root/events?since=0`,
+      { headers: { Authorization: `Bearer ${gw.token}` } },
+    )
+    expect(expiredRes.status).toBe(410)
+    expect(await expiredRes.json()).toMatchObject({
+      error: 'cursor_expired',
+      category: 'not_found',
+      earliestRetainedCursor: null,
+    })
+
+    // ── 5. SSE on a terminal pruned thread defaults to the safe tail ──
     //
     // Post-2026-04-22 stream audit (CRITICAL-1 fix): the ROOT agent
     // SSE is the backing socket for a live chat tab and must stay open

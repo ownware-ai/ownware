@@ -7,7 +7,12 @@ import {
 import {
   AccessGrantEvaluator,
   type AccessEvaluationContext,
+  type AccessEvaluation,
 } from './access-grant-evaluator.js'
+import {
+  EvidenceSearchCache,
+  type EvidenceSearchCacheKey,
+} from './evidence-search-cache.js'
 import type {
   ProtectedSourceReadHardFloor,
   ProtectedSourceReadPolicyContext,
@@ -78,6 +83,7 @@ export class ProtectedSourceSearchService {
     private readonly grants: AccessGrantStore,
     private readonly evaluator: AccessGrantEvaluator,
     private readonly bytes: SourceByteStore,
+    private readonly cache: EvidenceSearchCache,
     private readonly evaluateHardFloor: ProtectedSourceReadHardFloor,
     private readonly clock: () => number = Date.now,
   ) {}
@@ -85,7 +91,31 @@ export class ProtectedSourceSearchService {
   async search(input: ProtectedSourceSearchInput): Promise<ProtectedSourceSearchResult> {
     validateSearch(input)
     const before = this.lookup(input)
-    if (!before || !this.isAllowed(input, before, this.clock())) throw unavailable()
+    const beforeAuthorization = before
+      ? this.authorize(input, before, this.clock()) : null
+    if (!before || !beforeAuthorization) throw unavailable()
+    const key = cacheKey(input, before, beforeAuthorization)
+    const candidate = this.cache.get(key)
+    if (candidate) {
+      try {
+        await this.bytes.verifyPlacedUtf8({
+          objectKey: before.objectKey,
+          expectedByteCount: before.expectedByteCount,
+          expectedChecksum: before.expectedChecksum,
+        })
+      } catch (error) {
+        if (error instanceof SourceByteStoreError && error.code === 'inspection_timeout') {
+          throw new ProtectedSourceSearchError('protected_source_search_timed_out')
+        }
+        throw unavailable()
+      }
+      const after = this.lookup(input)
+      const afterAuthorization = after
+        ? this.authorize(input, after, this.clock()) : null
+      if (!after || !afterAuthorization || !sameTarget(before, after) ||
+          !sameAuthorization(beforeAuthorization, afterAuthorization)) throw unavailable()
+      return candidate
+    }
 
     let result: Awaited<ReturnType<SourceByteStore['searchPlacedUtf8']>>
     try {
@@ -110,15 +140,17 @@ export class ProtectedSourceSearchService {
 
     const after = this.lookup(input)
     const observedAt = this.clock()
-    if (!after || !sameTarget(before, after) ||
-        !this.isAllowed(input, after, observedAt)) throw unavailable()
+    const afterAuthorization = after
+      ? this.authorize(input, after, observedAt) : null
+    if (!after || !afterAuthorization || !sameTarget(before, after) ||
+        !sameAuthorization(beforeAuthorization, afterAuthorization)) throw unavailable()
 
     const matches = result.matches.map((match) => ({
       evidenceId: evidenceId(after, match.byteStart, match.byteEnd,
         match.matchByteStart, match.matchByteEnd),
       ...match,
     }))
-    return {
+    const output: ProtectedSourceSearchResult = {
       resourceId: after.resourceId,
       sourceId: after.sourceId,
       sourceVersionId: after.sourceVersionId,
@@ -135,6 +167,8 @@ export class ProtectedSourceSearchService {
       totalByteCount: after.expectedByteCount,
       observedAt,
     }
+    this.cache.put(key, output)
+    return output
   }
 
   private lookup(input: ProtectedSourceSearchInput): PreparedTextReadTarget | null {
@@ -147,18 +181,18 @@ export class ProtectedSourceSearchService {
     }
   }
 
-  private isAllowed(
+  private authorize(
     input: ProtectedSourceSearchInput,
     target: PreparedTextReadTarget,
     now: number,
-  ): boolean {
+  ): AllowedAccessEvaluation | null {
     let hardFloor: AccessEvaluationContext['hardFloor']
     try {
       hardFloor = this.evaluateHardFloor(policyContext(input, target))
     } catch {
-      return false
+      return null
     }
-    return this.evaluator.evaluate({
+    const evaluation = this.evaluator.evaluate({
       workspaceId: input.workspaceId,
       profileId: input.profileId,
       subjectId: input.subjectId,
@@ -173,8 +207,57 @@ export class ProtectedSourceSearchService {
       autonomy: 'observe',
       permissionMode: input.permissionMode,
       hardFloor,
-    }, now).decision === 'allow'
+    }, now)
+    return evaluation.decision === 'allow' ? evaluation : null
   }
+}
+
+type AllowedAccessEvaluation = Extract<AccessEvaluation, { readonly decision: 'allow' }>
+
+function cacheKey(
+  input: ProtectedSourceSearchInput,
+  target: PreparedTextReadTarget,
+  authorization: AllowedAccessEvaluation,
+): EvidenceSearchCacheKey {
+  return {
+    grantId: authorization.grantId,
+    grantRevision: authorization.grantRevision,
+    grantExpiresAt: authorization.expiresAt,
+    evaluatorVersion: authorization.evaluatorVersion,
+    workspaceId: input.workspaceId,
+    profileId: input.profileId,
+    subjectId: input.subjectId,
+    purpose: input.purpose,
+    channel: input.channel,
+    consent: input.consent,
+    permissionMode: input.permissionMode,
+    operation: 'source_content.search',
+    resourceId: target.resourceId,
+    sourceId: target.sourceId,
+    sourceVersionId: target.sourceVersionId,
+    sourceRevision: target.sourceRevision,
+    sourceChecksum: target.expectedChecksum,
+    resourceChecksum: target.expectedChecksum,
+    preparationJobId: target.jobId,
+    objectKey: target.objectKey,
+    expectedByteCount: target.expectedByteCount,
+    classification: target.classification,
+    authority: target.authority,
+    audiencePolicyRef: target.audiencePolicyRef,
+    sensitivityPolicyRef: target.sensitivityPolicyRef,
+    purposePolicyRef: target.purposePolicyRef,
+    retentionPolicyRef: target.retentionPolicyRef,
+    freshnessPolicyRef: target.freshnessPolicyRef,
+    query: input.query,
+    matchMode: input.matchMode,
+    maxMatches: input.maxMatches,
+    contextBytes: input.contextBytes,
+  }
+}
+
+function sameAuthorization(a: AllowedAccessEvaluation, b: AllowedAccessEvaluation): boolean {
+  return a.evaluatorVersion === b.evaluatorVersion && a.grantId === b.grantId &&
+    a.grantRevision === b.grantRevision && a.expiresAt === b.expiresAt
 }
 
 function validateSearch(input: ProtectedSourceSearchInput): void {

@@ -33,10 +33,12 @@ import {
 import type { SourceQuotaLimits } from '../source-quota-policy.js'
 import {
   ACCESS_GRANT_MAX_ACTIVE_PER_SCOPE,
+  ACCESS_GRANT_MAX_SCOPE_IDS,
   ACCESS_GRANT_MAX_TTL_SECONDS,
   ACCESS_GRANT_MIN_TTL_SECONDS,
 } from '../access-grant-store.js'
 import {
+  CSV_DATA_VIEW_ARTIFACT_MAX_BYTES,
   SOURCE_UTF8_MAX_FULL_BYTES,
   SOURCE_UTF8_RANGE_MAX_BYTES,
   SOURCE_UTF8_SEARCH_MAX_CONTEXT_BYTES,
@@ -45,9 +47,25 @@ import {
   SOURCE_UTF8_SEARCH_TIMEOUT_MS,
 } from '../source-byte-store.js'
 import { ACCESS_GRANT_LIST_MAX_LIMIT } from './access-grants.js'
+import { CONNECTION_LIST_MAX_LIMIT } from './connection-inventory.js'
+import {
+  CSV_DATA_VIEW_MAX_BYTES,
+  CSV_DATA_VIEW_MAX_CELL_BYTES,
+  CSV_DATA_VIEW_MAX_CELLS,
+  CSV_DATA_VIEW_MAX_FIELDS,
+  CSV_DATA_VIEW_MAX_ROWS,
+  CSV_DATA_VIEW_TIMEOUT_MS,
+} from '../csv-data-view.js'
+import {
+  CSV_DATA_VIEW_SELECTION_MAX_FIELDS,
+  CSV_DATA_VIEW_SELECTION_MAX_RESULT_BYTES,
+  CSV_DATA_VIEW_SELECTION_TIMEOUT_MS,
+} from '../csv-data-view-selection.js'
+import { PROTECTED_DATA_VIEW_SELECTION_MAX_ROWS } from '../protected-data-view-selection.js'
+import { SOURCE_DATA_VIEW_JOB_MAX_ATTEMPTS } from '../source-data-view-store.js'
 
 const PUBLIC_CAPABILITIES = [
-  { id: 'access_grants.create', version: 2 },
+  { id: 'access_grants.create', version: 3 },
   { id: 'access_grants.list', version: 1 },
   { id: 'access_grants.read', version: 1 },
   { id: 'access_grants.revoke', version: 1 },
@@ -58,10 +76,11 @@ const PUBLIC_CAPABILITIES = [
   { id: 'candidates.rollback', version: 1 },
   { id: 'candidates.stage', version: 1 },
   { id: 'candidates.validate', version: 1 },
-  { id: 'gateway.capabilities', version: 5 },
+  { id: 'connections.list', version: 1 },
+  { id: 'gateway.capabilities', version: 10 },
   { id: 'gateway.health', version: 1 },
   { id: 'models.list', version: 1 },
-  { id: 'principals.issue', version: 1 },
+  { id: 'principals.issue', version: 3 },
   { id: 'principals.revoke', version: 1 },
   { id: 'profiles.deployment.read', version: 1 },
   { id: 'profiles.list', version: 1 },
@@ -78,14 +97,16 @@ const PUBLIC_CAPABILITIES = [
   { id: 'source_deletions.read', version: 1 },
   { id: 'source_deletions.retry', version: 1 },
   { id: 'source_uploads.complete', version: 2 },
-  { id: 'source_uploads.create', version: 2 },
+  { id: 'source_uploads.create', version: 3 },
   { id: 'source_uploads.write', version: 1 },
-  { id: 'source_jobs.cancel', version: 1 },
+  { id: 'source_jobs.cancel', version: 2 },
   { id: 'source_jobs.create', version: 2 },
-  { id: 'source_jobs.read', version: 2 },
-  { id: 'source_preparations.create', version: 2 },
-  { id: 'source_content.read', version: 1 },
-  { id: 'source_content.search', version: 1 },
+  { id: 'source_jobs.read', version: 3 },
+  { id: 'source_preparations.create', version: 3 },
+  { id: 'source_content.read', version: 2 },
+  { id: 'source_content.search', version: 2 },
+  { id: 'source_data_views.query', version: 1 },
+  { id: 'source_data_views.read', version: 1 },
   { id: 'source_resources.read', version: 1 },
   { id: 'source_versions.read', version: 1 },
   { id: 'sources.list', version: 1 },
@@ -102,7 +123,7 @@ export function createCapabilitiesHandler(
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.24.0',
+        revision: '0.29.0',
       },
       capabilities: PUBLIC_CAPABILITIES,
       limits: {
@@ -119,11 +140,13 @@ export function createCapabilitiesHandler(
           maxFilenameCharacters: ATTACHMENT_MAX_FILENAME_CHARS,
         },
         sourceList: { maxPageSize: SOURCE_LIST_MAX_LIMIT },
+        connectionList: { maxPageSize: CONNECTION_LIST_MAX_LIMIT },
         sourceUpload: {
           maxDecodedBytes: SOURCE_UPLOAD_MAX_BYTES,
           maxChunkBytes: SOURCE_UPLOAD_MAX_CHUNK_BYTES,
           maxChunks: SOURCE_UPLOAD_MAX_CHUNKS,
           sessionTtlSeconds: SOURCE_UPLOAD_TTL_MS / 1000,
+          supportedSourceKinds: ['file', 'text', 'structured_export'],
           supportedMediaTypes: ['text/plain', 'application/pdf'],
         },
         sourceInspection: {
@@ -136,6 +159,24 @@ export function createCapabilitiesHandler(
           perAttemptTimeoutMs: SOURCE_PREPARATION_TIMEOUT_MS,
           maxAttempts: SOURCE_JOB_MAX_ATTEMPTS,
           maxResourcesPerJob: SOURCE_PREPARATION_MAX_RESOURCES,
+        },
+        sourceDataView: {
+          supportedFormats: ['strict_utf8_csv'],
+          maxSourceBytes: CSV_DATA_VIEW_MAX_BYTES,
+          maxArtifactBytes: CSV_DATA_VIEW_ARTIFACT_MAX_BYTES,
+          maxFields: CSV_DATA_VIEW_MAX_FIELDS,
+          maxRows: CSV_DATA_VIEW_MAX_ROWS,
+          maxCellBytes: CSV_DATA_VIEW_MAX_CELL_BYTES,
+          maxCells: CSV_DATA_VIEW_MAX_CELLS,
+          perAttemptTimeoutMs: CSV_DATA_VIEW_TIMEOUT_MS,
+          maxAttempts: SOURCE_DATA_VIEW_JOB_MAX_ATTEMPTS,
+          maxQueryFields: CSV_DATA_VIEW_SELECTION_MAX_FIELDS,
+          maxQueryRows: PROTECTED_DATA_VIEW_SELECTION_MAX_ROWS,
+          maxQueryCells:
+            CSV_DATA_VIEW_SELECTION_MAX_FIELDS * PROTECTED_DATA_VIEW_SELECTION_MAX_ROWS,
+          maxQueryResultBytes: CSV_DATA_VIEW_SELECTION_MAX_RESULT_BYTES,
+          queryTimeoutMs: CSV_DATA_VIEW_SELECTION_TIMEOUT_MS,
+          maxGrantScopeIds: ACCESS_GRANT_MAX_SCOPE_IDS,
         },
         accessGrants: {
           minTtlSeconds: ACCESS_GRANT_MIN_TTL_SECONDS,

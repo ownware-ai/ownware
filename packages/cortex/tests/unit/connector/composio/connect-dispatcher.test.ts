@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -16,11 +16,19 @@ import { ServerResponse } from 'node:http'
 import type { IncomingMessage } from 'node:http'
 import { CortexDatabase } from '../../../../src/gateway/db/database.js'
 import { ConnectorConnectionsStore } from '../../../../src/connector/connections/store.js'
-import { ConnectionCompletionManager } from '../../../../src/connector/completion/manager.js'
+import { CredentialVault } from '../../../../src/connector/credentials/vault.js'
+import { ConnectionSessionVault } from '../../../../src/connector/connections/session-vault.js'
+import {
+  ConnectionCompletionManager,
+  type ConnectionCompletionManagerOptions,
+} from '../../../../src/connector/completion/manager.js'
 import { ConnectorStatusBus } from '../../../../src/connector/status-bus.js'
 import { ComposioClient, type ComposioConnectionLink, type ComposioAuthConfig } from '../../../../src/connector/composio/client.js'
 import { ComposioCompletionListener } from '../../../../src/connector/composio/listener.js'
-import { createConnectorConnectHandlers } from '../../../../src/gateway/handlers/connector-connect.js'
+import {
+  createConnectorConnectHandlers,
+  type ConnectorConnectHandlersDeps,
+} from '../../../../src/gateway/handlers/connector-connect.js'
 import type { ConnectorRegistry } from '../../../../src/connector/registry.js'
 import type { Connector } from '../../../../src/connector/schema.js'
 
@@ -87,15 +95,35 @@ let db: CortexDatabase
 let connections: ConnectorConnectionsStore
 let statusBus: ConnectorStatusBus
 let completionManager: ConnectionCompletionManager
+let connectionSessions: ConnectionSessionVault
+
+function makeConnectHandlers(
+  deps: Omit<ConnectorConnectHandlersDeps, 'connectionSessions'>,
+) {
+  return createConnectorConnectHandlers({ ...deps, connectionSessions })
+}
+
+function makeCompletionManager(
+  pollerConfig: NonNullable<ConnectionCompletionManagerOptions['pollerConfig']> = {},
+) {
+  return new ConnectionCompletionManager(connections, statusBus, {
+    pollerConfig,
+    beforeTerminal: async ({ metadata }) => {
+      const handle = metadata?.['sessionHandle']
+      if (typeof handle === 'string') await connectionSessions.remove(handle)
+    },
+  })
+}
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'cortex-connect-'))
   db = new CortexDatabase(join(tmpDir, 'main.db'), join(tmpDir, 'fx.db'))
   connections = new ConnectorConnectionsStore(db.rawMainHandle)
   statusBus = new ConnectorStatusBus()
-  completionManager = new ConnectionCompletionManager(connections, statusBus, {
-    pollerConfig: { initialDelayMs: 60_000 },
-  })
+  connectionSessions = new ConnectionSessionVault(
+    new CredentialVault(join(tmpDir, 'connection-sessions')),
+  )
+  completionManager = makeCompletionManager({ initialDelayMs: 60_000 })
 })
 
 afterEach(() => {
@@ -111,7 +139,8 @@ describe('POST /connectors/:id/connect — Composio', () => {
       id: 'ac_1', is_composio_managed: true, toolkit: { slug: 'github', logo: '' }, status: 'ENABLED',
     } as unknown as ComposioAuthConfig
     const link: ComposioConnectionLink = {
-      link_token: 'lt', redirect_url: 'https://auth.example/url',
+      link_token: 'pcc17-link-secret-never-persist',
+      redirect_url: 'https://auth.example/url?pcc17-session-secret=1',
       expires_at: new Date(Date.now() + 300_000).toISOString(),
       connected_account_id: 'ca_new',
     }
@@ -125,10 +154,10 @@ describe('POST /connectors/:id/connect — Composio', () => {
     })
     completionManager.registerListener(new ComposioCompletionListener({ client }))
 
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('github')]),
       connections, completionManager,
-      composio: { client, defaultUserId: 'u_default' },
+      composio: { client, defaultUserId: 'pcc17-install-id-never-metadata' },
     })
 
     const res = makeRes()
@@ -138,14 +167,44 @@ describe('POST /connectors/:id/connect — Composio', () => {
     expect(p).toMatchObject({
       connectionId: 'ca_new',
       status: 'pending',
-      authorizationUrl: 'https://auth.example/url',
+      authorizationUrl: 'https://auth.example/url?pcc17-session-secret=1',
       authConfigId: 'ac_1',
       reused: false,
     })
     const row = connections.findByConnectionId('ca_new')
     expect(row?.authConfigId).toBe('ac_1')
     expect(row?.status).toBe('pending')
-    expect(row?.metadata).toMatchObject({ authorizationUrl: 'https://auth.example/url' })
+    const raw = db.rawMainHandle.prepare(
+      'SELECT metadata_json FROM connector_connections WHERE connection_id = ?',
+    ).get('ca_new') as { metadata_json: string | null }
+    expect(raw.metadata_json).not.toContain('pcc17-link-secret-never-persist')
+    expect(raw.metadata_json).not.toContain('pcc17-install-id-never-metadata')
+    expect(raw.metadata_json).not.toContain('pcc17-session-secret')
+    expect(raw.metadata_json).not.toContain('linkToken')
+    expect(raw.metadata_json).not.toContain('userId')
+    const sessionHandle = row?.metadata?.sessionHandle
+    expect(sessionHandle).toMatch(/^connection-session\./)
+    await expect(connectionSessions.read(sessionHandle!, {
+      connectionId: 'ca_new',
+      connectorId: 'github',
+      source: 'composio',
+      entityId: 'pcc17-install-id-never-metadata',
+    })).resolves.toMatchObject({
+      authorizationUrl: link.redirect_url,
+      linkToken: link.link_token,
+    })
+    const encrypted = readFileSync(
+      join(tmpDir, 'connection-sessions', `${sessionHandle}.json`),
+      'utf8',
+    )
+    expect(encrypted).toMatch(/^v2:/)
+    for (const canary of [
+      'pcc17-link-secret-never-persist',
+      'pcc17-install-id-never-metadata',
+      'pcc17-session-secret',
+    ]) {
+      expect(encrypted).not.toContain(canary)
+    }
     completionManager.cancel('ca_new')
   })
 
@@ -174,7 +233,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
     })
     completionManager.registerListener(new ComposioCompletionListener({ client }))
 
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('jira')]),
       connections, completionManager,
       composio: { client, defaultUserId: 'u_default' },
@@ -220,7 +279,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
     })
     completionManager.registerListener(new ComposioCompletionListener({ client }))
 
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('gmail')]),
       connections, completionManager,
       composio: { client, defaultUserId: 'u_default' },
@@ -238,7 +297,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
     const client = stubComposioClient({
       listAuthConfigs: vi.fn(async () => ({ items: [] })),
     })
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('obscure-app')]),
       connections, completionManager,
       composio: { client, defaultUserId: 'u' },
@@ -252,16 +311,27 @@ describe('POST /connectors/:id/connect — Composio', () => {
   })
 
   it('scenario 3: re-click while pending → existing row reused (idempotent)', async () => {
+    const expiresAt = Date.now() + 60_000
+    const sessionHandle = await connectionSessions.create({
+      connectionId: 'ca_old',
+      connectorId: 'github',
+      source: 'composio',
+      entityId: 'u',
+      authorizationUrl: 'https://prior/url',
+      linkToken: 'opaque-test-link-token',
+      expiresAt,
+    })
     const existing = connections.upsertPending({
       connectionId: 'ca_old', connectorId: 'github', source: 'composio',
       entityId: 'u',
+      expiresAt,
       authConfigId: 'ac_old',
-      metadata: { authorizationUrl: 'https://prior/url' },
+      metadata: { sessionHandle },
     })
     const client = stubComposioClient({
       listAuthConfigs: vi.fn(), createConnectionLink: vi.fn(),
     })
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('github')]),
       connections, completionManager,
       composio: { client, defaultUserId: 'u' },
@@ -278,6 +348,61 @@ describe('POST /connectors/:id/connect — Composio', () => {
     })
     expect(client.listAuthConfigs).not.toHaveBeenCalled()
     expect(client.createConnectionLink).not.toHaveBeenCalled()
+  })
+
+  it('concurrent starts preserve one referenced encrypted session without orphaning the loser', async () => {
+    const authConfig = {
+      id: 'ac_race', is_composio_managed: true,
+      toolkit: { slug: 'github', logo: '' }, status: 'ENABLED',
+    } as unknown as ComposioAuthConfig
+    let releaseBoth!: () => void
+    const bothEntered = new Promise<void>((resolve) => { releaseBoth = resolve })
+    let listCalls = 0
+    let linkCalls = 0
+    const client = stubComposioClient({
+      listAuthConfigs: vi.fn(async () => {
+        listCalls += 1
+        if (listCalls === 2) releaseBoth()
+        await bothEntered
+        return { items: [authConfig] }
+      }),
+      createConnectionLink: vi.fn(async () => {
+        linkCalls += 1
+        return {
+          link_token: `synthetic-race-token-${linkCalls}`,
+          redirect_url: `https://auth.example/race/${linkCalls}`,
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          connected_account_id: `ca_race_${linkCalls}`,
+        }
+      }),
+      getConnectedAccount: vi.fn(async (connectionId: string) => ({
+        id: connectionId,
+        toolkit: { slug: 'github' },
+        auth_config: { id: 'ac_race', is_composio_managed: true },
+        status: 'INITIATED',
+      })),
+    })
+    completionManager.registerListener(new ComposioCompletionListener({ client }))
+    const handlers = makeConnectHandlers({
+      registry: stubRegistry([composioConnector('github')]),
+      connections,
+      completionManager,
+      composio: { client, defaultUserId: 'synthetic-user' },
+    })
+    const first = makeRes()
+    const second = makeRes()
+
+    await Promise.all([
+      handlers.connect(makeReq({}), first, { id: 'github' }),
+      handlers.connect(makeReq({}), second, { id: 'github' }),
+    ])
+
+    expect(first.body.status).toBe(200)
+    expect(second.body.status).toBe(200)
+    expect(linkCalls).toBe(2)
+    expect(connections.findPending()).toHaveLength(1)
+    expect(readdirSync(join(tmpDir, 'connection-sessions'))).toHaveLength(1)
+    completionManager.cancelAll()
   })
 
   it('scenario 5: Composio returns ACTIVE → row marked ready, SSE event fires', async () => {
@@ -299,12 +424,12 @@ describe('POST /connectors/:id/connect — Composio', () => {
     })
 
     // Use fast poller so `register` fires quickly.
-    const manager = new ConnectionCompletionManager(connections, statusBus, {
-      pollerConfig: { initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1, maxDurationMs: 5000 },
+    const manager = makeCompletionManager({
+      initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1, maxDurationMs: 5000,
     })
     manager.registerListener(new ComposioCompletionListener({ client }))
 
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('slack')]),
       connections, completionManager: manager,
       composio: { client, defaultUserId: 'u' },
@@ -312,11 +437,16 @@ describe('POST /connectors/:id/connect — Composio', () => {
     const res = makeRes()
     await handlers.connect(makeReq({}), res, { id: 'slack' })
     expect(res.body.status).toBe(200)
+    const sessionHandle = connections.findByConnectionId('ca_active')?.metadata?.sessionHandle
 
     // Wait for poller to tick.
     await new Promise(r => setTimeout(r, 50))
     const row = connections.findByConnectionId('ca_active')
     expect(row?.status).toBe('ready')
+    expect(row?.metadata).toBeNull()
+    expect(existsSync(
+      join(tmpDir, 'connection-sessions', `${sessionHandle}.json`),
+    )).toBe(false)
     expect(events.length).toBeGreaterThan(0)
     manager.cancelAll()
   })
@@ -335,26 +465,31 @@ describe('POST /connectors/:id/connect — Composio', () => {
         auth_config: { id: 'ac_e', is_composio_managed: true }, status: 'EXPIRED',
       })),
     })
-    const manager = new ConnectionCompletionManager(connections, statusBus, {
-      pollerConfig: { initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1, maxDurationMs: 5000 },
+    const manager = makeCompletionManager({
+      initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1, maxDurationMs: 5000,
     })
     manager.registerListener(new ComposioCompletionListener({ client }))
 
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('notion')]),
       connections, completionManager: manager,
       composio: { client, defaultUserId: 'u' },
     })
     await handlers.connect(makeReq({}), makeRes(), { id: 'notion' })
+    const sessionHandle = connections.findByConnectionId('ca_exp')?.metadata?.sessionHandle
     await new Promise(r => setTimeout(r, 50))
     const row = connections.findByConnectionId('ca_exp')
     expect(row?.status).toBe('failed')
+    expect(row?.metadata).toBeNull()
+    expect(existsSync(
+      join(tmpDir, 'connection-sessions', `${sessionHandle}.json`),
+    )).toBe(false)
     expect(row?.errorReason).toMatch(/reconnect/i)
     manager.cancelAll()
   })
 
   it('scenario 7 (boot-without-key): when composio dep absent, composio id → 501 not_configured', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('github')]),
       connections, completionManager,
       // composio: undefined
@@ -366,12 +501,12 @@ describe('POST /connectors/:id/connect — Composio', () => {
     expect(p.error).toBe('composio_not_configured')
   })
 
-  it('scenario 8: Composio schema drift → ConnectorVendorError surfaces as 502', async () => {
+  it('scenario 8: Composio schema drift → safe 502 without raw vendor detail', async () => {
     // Stub raw fetch at the client level by making listAuthConfigs reject.
     const client = stubComposioClient({
       listAuthConfigs: vi.fn(async () => { throw new (await import('../../../../src/connector/errors.js')).ConnectorVendorError('schema drift', { source: 'composio' }) }),
     })
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([composioConnector('github')]),
       connections, completionManager,
       composio: { client, defaultUserId: 'u' },
@@ -380,11 +515,12 @@ describe('POST /connectors/:id/connect — Composio', () => {
     await handlers.connect(makeReq({}), res, { id: 'github' })
     expect(res.body.status).toBe(502)
     const p = res.body.payload as Record<string, unknown>
-    expect(String(p.message)).toMatch(/schema drift/)
+    expect(String(p.message)).toMatch(/couldn’t return an auth config/i)
+    expect(String(p.message)).not.toContain('schema drift')
   })
 
   it('builtin connector → 400 builtin_no_connect', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([{
         id: 'read_file', name: 'read_file', description: '', source: 'builtin',
         category: 'filesystem', auth: { mode: 'none' }, status: 'ready', toolNames: ['read_file'],
@@ -408,7 +544,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
   // explicitly asserted in the dedicated regression test further down.
 
   it('mcp connector with auth.mode=none → 200 { kind: "mcp_none", status: "ready" }', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([{
         id: 'io.github.user/foo',
         canonicalId: 'mcp:io.github.user/foo',
@@ -425,7 +561,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
   })
 
   it('mcp connector with auth.mode=oauth → 200 { kind: "mcp_oauth", startEndpoint }', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([{
         id: 'notion-server',
         canonicalId: 'mcp:notion-server',
@@ -447,7 +583,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
   })
 
   it('mcp connector with auth.mode=api_key → 200 { kind: "mcp_api_key", required, saveEndpoint }', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([{
         id: 'github',
         canonicalId: 'mcp:github',
@@ -479,7 +615,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
   })
 
   it('user-registered MCP connector goes through the same dispatcher (Phase 16: source unified to mcp)', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([{
         id: 'my-local-server',
         canonicalId: 'mcp:my-local-server',
@@ -511,7 +647,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
       },
     ]
     for (const { auth } of cases) {
-      const handlers = createConnectorConnectHandlers({
+      const handlers = makeConnectHandlers({
         registry: stubRegistry([{
           id: 'srv', canonicalId: 'mcp:srv', logicalKey: 'srv', name: 'srv', description: '',
           source: 'mcp', category: 'mcp', auth, status: 'needs_setup', toolNames: null,
@@ -528,7 +664,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
 
   it('every dispatcher response parses against the public Zod schema', async () => {
     const { ConnectConnectorResponseSchema } = await import('../../../../src/connector/schema.js')
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([
         { id: 'a', canonicalId: 'mcp:a', logicalKey: 'a', name: 'a', description: '', source: 'mcp',
           category: 'mcp', auth: { mode: 'none' }, status: 'ready', toolNames: null },
@@ -555,7 +691,7 @@ describe('POST /connectors/:id/connect — Composio', () => {
   })
 
   it('unknown connector id → 404', async () => {
-    const handlers = createConnectorConnectHandlers({
+    const handlers = makeConnectHandlers({
       registry: stubRegistry([]),
       connections, completionManager,
     })
@@ -579,8 +715,8 @@ describe('scenario 4: persistent network drop → listener keeps returning pendi
         throw new ConnectorNetworkError('down', { source: 'composio' })
       }),
     })
-    const manager = new ConnectionCompletionManager(connections, statusBus, {
-      pollerConfig: { initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1, maxDurationMs: 20 },
+    const manager = makeCompletionManager({
+      initialDelayMs: 1, backoffMultiplier: 1, maxDelayMs: 1, maxDurationMs: 20,
     })
     manager.registerListener(new ComposioCompletionListener({ client }))
 

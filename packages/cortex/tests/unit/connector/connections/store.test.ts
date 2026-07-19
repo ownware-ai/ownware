@@ -29,13 +29,17 @@ afterEach(() => {
 })
 
 describe('ConnectorConnectionsStore', () => {
+  const sessionMetadata = {
+    sessionHandle: 'connection-session.11111111-1111-4111-8111-111111111111',
+  } as const
+
   it('upsertPending creates a pending row with timestamps', () => {
     const row = store.upsertPending({
       connectionId: 'conn_1',
       connectorId: 'notion',
       source: 'composio',
       entityId: 'user_a',
-      metadata: { redirectUrl: 'https://example.com/cb' },
+      metadata: sessionMetadata,
     })
     expect(row.status).toBe('pending')
     expect(row.connectorId).toBe('notion')
@@ -43,7 +47,7 @@ describe('ConnectorConnectionsStore', () => {
     expect(row.entityId).toBe('user_a')
     expect(row.initiatedAt).toBeGreaterThan(0)
     expect(row.completedAt).toBeNull()
-    expect(row.metadata).toEqual({ redirectUrl: 'https://example.com/cb' })
+    expect(row.metadata).toEqual(sessionMetadata)
   })
 
   it('upsertPending is idempotent on the same connection_id', () => {
@@ -54,21 +58,17 @@ describe('ConnectorConnectionsStore', () => {
     expect(all).toHaveLength(1)
   })
 
-  it('second pending for same (connector,source,entity) REPLACES the stuck pending row', () => {
-    // 2026-05-26 behavior change: pre-fix, this threw
-    // `SQLITE_CONSTRAINT_UNIQUE` because the new connection_id didn't
-    // satisfy the `(connector_id, source, entity_id)` unique index.
-    // Users hit this when an OAuth window closed mid-flow — the
-    // pending row sat forever and every retry surfaced a raw
-    // database error. New behavior: the second upsertPending atomically
-    // replaces the stuck pending row with a fresh attempt.
-    store.upsertPending({ connectionId: 'c1', connectorId: 'slack', source: 'composio', entityId: 'u' })
+  it('second pending for the same tuple reuses the durable live attempt', () => {
+    store.upsertPending({
+      connectionId: 'c1', connectorId: 'slack', source: 'composio', entityId: 'u',
+      metadata: sessionMetadata,
+    })
     const retry = store.upsertPending({ connectionId: 'c2', connectorId: 'slack', source: 'composio', entityId: 'u' })
-    expect(retry.connectionId).toBe('c2')
+    expect(retry.connectionId).toBe('c1')
     expect(retry.status).toBe('pending')
-    // The old c1 row is gone — only c2 should remain for this tuple.
-    expect(store.findByConnectionId('c1')).toBeNull()
-    expect(store.findByConnectionId('c2')?.connectionId).toBe('c2')
+    expect(retry.metadata).toEqual(sessionMetadata)
+    expect(store.findByConnectionId('c1')).not.toBeNull()
+    expect(store.findByConnectionId('c2')).toBeNull()
   })
 
   it('second pending after a terminal (failed) row COEXISTS — failed history is preserved, fresh attempt succeeds', () => {
@@ -117,13 +117,12 @@ describe('ConnectorConnectionsStore', () => {
     expect(store.findActive('slack', 'composio', 'u')?.connectionId).toBe('c2')
   })
 
-  it('mixed history (expired + pending) → REPLACE only the live pending, leave expired intact', () => {
+  it('mixed history (expired + pending) preserves both durable rows', () => {
     // Real-world case from 2026-05-26: a user had ONE expired row +
     // ONE pending row for the same tuple. A naive "find any row by
     // tuple, delete it" could pick the harmless expired row and miss
-    // the actual conflict, leaving the unique constraint to still
-    // fire on insert. This guards against that regression by asserting
-    // the live pending row is the one removed.
+    // the actual conflict. This guards both the unique constraint and the
+    // encrypted-session ownership rule by reusing the live pending row.
     store.upsertPending({
       connectionId: 'expired-old',
       connectorId: 'gmail',
@@ -145,21 +144,23 @@ describe('ConnectorConnectionsStore', () => {
       source: 'composio',
       entityId: 'u',
     })
-    expect(retry.connectionId).toBe('pending-new')
+    expect(retry.connectionId).toBe('pending-mid')
     expect(retry.status).toBe('pending')
     // Expired row UNTOUCHED — that's history.
     const expired = store.findByConnectionId('expired-old')
     expect(expired).not.toBeNull()
     expect(expired!.status).toBe('expired')
-    // The previous pending row is GONE — it was the actual conflict.
-    expect(store.findByConnectionId('pending-mid')).toBeNull()
-    // The new attempt is the live row.
-    expect(store.findActive('gmail', 'composio', 'u')?.connectionId).toBe('pending-new')
+    expect(store.findByConnectionId('pending-mid')).not.toBeNull()
+    expect(store.findByConnectionId('pending-new')).toBeNull()
+    expect(store.findActive('gmail', 'composio', 'u')?.connectionId).toBe('pending-mid')
   })
 
   it('second upsertPending against an ALREADY-READY row reuses the ready row (never destroys a working connection)', () => {
-    store.upsertPending({ connectionId: 'c1', connectorId: 'slack', source: 'composio', entityId: 'u' })
-    store.markReady({ connectionId: 'c1', metadata: { accessToken: 'tok' } })
+    store.upsertPending({
+      connectionId: 'c1', connectorId: 'slack', source: 'composio', entityId: 'u',
+      metadata: sessionMetadata,
+    })
+    store.markReady({ connectionId: 'c1' })
     const result = store.upsertPending({
       connectionId: 'c2',
       connectorId: 'slack',
@@ -169,29 +170,76 @@ describe('ConnectorConnectionsStore', () => {
     // Returned row is the original `ready` c1, NOT a fresh c2.
     expect(result.connectionId).toBe('c1')
     expect(result.status).toBe('ready')
-    // c2 was never inserted; c1's metadata is intact.
+    // c2 was never inserted; terminal c1 contains no session metadata.
     expect(store.findByConnectionId('c2')).toBeNull()
-    expect(result.metadata).toMatchObject({ accessToken: 'tok' })
+    expect(result.metadata).toBeNull()
   })
 
-  it('markReady transitions and preserves completedAt; is idempotent', () => {
-    store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    const r1 = store.markReady({ connectionId: 'c', metadata: { accessToken: 'tok' } })
+  it('markReady clears session metadata, preserves completedAt, and is idempotent', () => {
+    store.upsertPending({
+      connectionId: 'c', connectorId: 'x', source: 'composio',
+      entityId: 'cortex-default-user', metadata: sessionMetadata,
+    })
+    const r1 = store.markReady({ connectionId: 'c', vendorAccountId: 'vendor-c' })
     expect(r1.status).toBe('ready')
+    expect(r1.transitioned).toBe(true)
     expect(r1.completedAt).not.toBeNull()
-    expect(r1.metadata).toMatchObject({ accessToken: 'tok' })
+    expect(r1.metadata).toBeNull()
+    expect(r1.vendorAccountId).toBe('vendor-c')
 
     const t1 = r1.completedAt!
-    const r2 = store.markReady({ connectionId: 'c', metadata: { scopes: ['read'] } })
+    const r2 = store.markReady({ connectionId: 'c', vendorUserId: 'vendor-user' })
+    expect(r2.transitioned).toBe(false)
     expect(r2.completedAt).toBe(t1)
-    expect(r2.metadata).toMatchObject({ accessToken: 'tok', scopes: ['read'] })
+    expect(r2.metadata).toBeNull()
+    expect(r2.vendorAccountId).toBe('vendor-c')
+    expect(r2.vendorUserId).toBe('vendor-user')
   })
 
   it('markFailed records reason', () => {
-    store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
+    store.upsertPending({
+      connectionId: 'c', connectorId: 'x', source: 'composio',
+      entityId: 'cortex-default-user', metadata: sessionMetadata,
+    })
     const r = store.markFailed({ connectionId: 'c', reason: 'bad creds' })
     expect(r.status).toBe('failed')
+    expect(r.transitioned).toBe(true)
     expect(r.errorReason).toBe('bad creds')
+    expect(r.metadata).toBeNull()
+  })
+
+  it('late completion cannot resurrect a revoked, expired, or failed row', () => {
+    for (const [id, terminal] of [
+      ['revoked', 'revoked'], ['expired', 'expired'], ['failed', 'failed'],
+    ] as const) {
+      store.upsertPending({
+        connectionId: id, connectorId: id, source: 'composio',
+        entityId: 'cortex-default-user', metadata: sessionMetadata,
+      })
+      if (terminal === 'revoked') store.markRevoked(id, 'owner revoked')
+      if (terminal === 'expired') store.markExpired(id, 'timed out')
+      if (terminal === 'failed') store.markFailed({ connectionId: id, reason: 'denied' })
+
+      expect(store.markReady({ connectionId: id }).transitioned).toBe(false)
+      expect(store.markFailed({ connectionId: id, reason: 'late failure' }).transitioned)
+        .toBe(false)
+      expect(store.markExpired(id, 'late expiry')?.transitioned).toBe(false)
+      expect(store.findByConnectionId(id)?.status)
+        .toBe(terminal === 'revoked' ? 'expired' : terminal)
+      expect(store.findByConnectionId(id)?.metadata).toBeNull()
+    }
+  })
+
+  it('reconciliation can demote a ready row without reopening completion CAS', () => {
+    store.upsertPending({
+      connectionId: 'ready', connectorId: 'x', source: 'composio',
+      entityId: 'cortex-default-user', metadata: sessionMetadata,
+    })
+    store.markReady({ connectionId: 'ready' })
+    const result = store.markUnhealthy('ready', 'Vendor disabled the account.')
+    expect(result?.transitioned).toBe(true)
+    expect(result).toMatchObject({ status: 'failed', metadata: null })
+    expect(store.markReady({ connectionId: 'ready' }).transitioned).toBe(false)
   })
 
   it('markFailed on unknown connection throws', () => {

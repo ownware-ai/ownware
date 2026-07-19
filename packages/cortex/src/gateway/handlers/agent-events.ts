@@ -200,13 +200,42 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     }
 
     // Parse ?since=N — exclusive cursor, default 0 (start from beginning).
-    // Tolerant parse: any garbage collapses to 0 rather than erroring,
-    // because a client reconnect is already a stressful moment — we
-    // don't want to 400 the modal over a malformed resume query.
+    // A malformed reconnect cursor must not silently restart the stream
+    // from zero: that can duplicate already-observed tool and permission
+    // events while hiding the client's recovery error.
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
     const sinceParam = url.searchParams.get('since')
-    const since = sinceParam && /^\d+$/.test(sinceParam) ? parseInt(sinceParam, 10) : 0
+    if (sinceParam !== null && !/^\d+$/.test(sinceParam)) {
+      sendError(res, 400, 'Thread cursor must be a non-negative integer', 'cursor_invalid', 'invalid_request')
+      return
+    }
+    const requestedSince = sinceParam === null ? null : Number.parseInt(sinceParam, 10)
+    if (requestedSince !== null && !Number.isSafeInteger(requestedSince)) {
+      sendError(res, 400, 'Thread cursor is outside the supported integer range', 'cursor_invalid', 'invalid_request')
+      return
+    }
     const maxSeqAtStart = state.getAgentEventMaxSeq(threadId, agentId)
+    const firstRetained = state.getAgentEventMinSeq(threadId, agentId, -1)
+    const earliestRetainedCursor = firstRetained === null
+      ? (maxSeqAtStart === 0 ? 0 : null)
+      : firstRetained - 1
+    if (requestedSince !== null && requestedSince > maxSeqAtStart) {
+      sendError(res, 409, 'Cursor is ahead of this thread stream', 'cursor_ahead', 'invalid_request', {
+        streamHighWaterCursor: maxSeqAtStart,
+      })
+      return
+    }
+    if (requestedSince !== null &&
+        (earliestRetainedCursor === null || requestedSince < earliestRetainedCursor)) {
+      sendError(res, 410, 'Requested thread cursor is no longer retained', 'cursor_expired', 'not_found', {
+        earliestRetainedCursor,
+      })
+      return
+    }
+    // Cursor-less legacy consumers start at the earliest available
+    // position. A fully pruned stream safely tails from its durable
+    // high-water rather than pretending the deleted rows were replayed.
+    const since = requestedSince ?? earliestRetainedCursor ?? maxSeqAtStart
 
     // ── 1. Subscribe FIRST ─────────────────────────────────────────────
     //
@@ -528,7 +557,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
           await enqueueWrite('error', {
             type: 'error',
             code: 'stream_error',
-            message: err instanceof Error ? err.message : String(err),
+            message: 'Event stream failed',
             recoverable: false,
             turnIndex: -1,
           })

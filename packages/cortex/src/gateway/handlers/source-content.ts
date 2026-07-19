@@ -2,6 +2,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
+  ACCESS_GRANT_OPAQUE_ID_PATTERN,
+} from '../access-grant-store.js'
+import {
   ProtectedSourceReadError,
   type ProtectedSourceReadService,
 } from '../protected-source-read.js'
@@ -17,24 +20,22 @@ import { readJSON, sendError, sendJSON } from '../router.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const BodySchema = z.object({
-  subjectId: z.string().min(1).max(128),
   consent: z.discriminatedUnion('state', [
     z.object({ state: z.literal('not_required') }).strict(),
     z.object({
       state: z.literal('recorded'),
-      evidenceId: z.string().min(1).max(128),
+      evidenceId: z.string().regex(ACCESS_GRANT_OPAQUE_ID_PATTERN),
     }).strict(),
   ]),
   byteStart: z.number().int().nonnegative(),
   byteEnd: z.number().int().positive(),
 }).strict()
 const SearchBodySchema = z.object({
-  subjectId: z.string().min(1).max(128),
   consent: z.discriminatedUnion('state', [
     z.object({ state: z.literal('not_required') }).strict(),
     z.object({
       state: z.literal('recorded'),
-      evidenceId: z.string().min(1).max(128),
+      evidenceId: z.string().regex(ACCESS_GRANT_OPAQUE_ID_PATTERN),
     }).strict(),
   ]),
   query: z.string().min(1).max(128),
@@ -52,8 +53,8 @@ export function createReadSourceContentHandler(
 ) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const principal = getRequestPrincipal(req)
-    if (principal?.kind !== 'delegated') {
-      sendError(res, 403, 'A scoped principal is required for protected content.',
+    if (principal?.kind !== 'delegated' || !principal.subjectId) {
+      sendError(res, 403, 'A subject-bound scoped principal is required for protected content.',
         'source_content_scoped_principal_required', 'auth')
       return
     }
@@ -70,7 +71,7 @@ export function createReadSourceContentHandler(
         purpose: principal.purpose,
         channel: principal.channel ?? null,
         resourceId,
-        subjectId: parsed.data.subjectId,
+        subjectId: principal.subjectId,
         consent: parsed.data.consent,
         permissionMode: 'auto',
         byteStart: parsed.data.byteStart,
@@ -99,8 +100,8 @@ export function createSearchSourceContentHandler(
 ) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const principal = getRequestPrincipal(req)
-    if (principal?.kind !== 'delegated') {
-      sendError(res, 403, 'A scoped principal is required for protected content.',
+    if (principal?.kind !== 'delegated' || !principal.subjectId) {
+      sendError(res, 403, 'A subject-bound scoped principal is required for protected content.',
         'source_content_scoped_principal_required', 'auth')
       return
     }
@@ -116,7 +117,7 @@ export function createSearchSourceContentHandler(
         purpose: principal.purpose,
         channel: principal.channel ?? null,
         resourceId,
-        subjectId: parsed.data.subjectId,
+        subjectId: principal.subjectId,
         consent: parsed.data.consent,
         permissionMode: 'auto',
         query: parsed.data.query,

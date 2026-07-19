@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { OwnwareGateway } from '../../../src/gateway/server.js'
 import { SourceJobStore, SOURCE_JOB_LEASE_MS } from '../../../src/gateway/source-job-store.js'
+import { SourceDataViewStore } from '../../../src/gateway/source-data-view-store.js'
 import { SourceStore } from '../../../src/gateway/source-store.js'
 import { createTestGateway } from '../../framework/harness/gateway.js'
 
@@ -368,6 +369,86 @@ describe('source job across a real Gateway restart', () => {
       SELECT kind, freshness, byte_count FROM source_derived_resources WHERE job_id = ?
     `).get(job.jobId)).toEqual({
       kind: 'text_extraction', freshness: 'current', byte_count: bytes.length,
+    })
+  }, 20_000)
+
+  it('resumes queued Data View preparation through the combined worker after restart', async () => {
+    const gateway = await createTestGateway({
+      disableAuth: false,
+      disableSourceWorker: true,
+    })
+    cleanupDir = gateway.tmpDir
+    const workspaceId = gateway.state.createWorkspace(
+      gateway.tmpDir,
+      'Data View preparation restart',
+    ).id
+    const source = new SourceStore(gateway.state.rawDbHandle).create({
+      workspaceId,
+      profileId: 'mini',
+      kind: 'structured_export',
+      label: 'Synthetic CSV restart source',
+      classification: 'internal',
+      authority: 'supporting_reference',
+      audiencePolicyRef: 'audience.test',
+      sensitivityPolicyRef: 'sensitivity.test',
+      purposePolicyRef: 'purpose.test',
+      retentionPolicyRef: 'retention.test',
+      freshnessPolicyRef: 'freshness.test',
+    })
+    const csv = Buffer.from('name,formula\nAda,=2+2')
+    const objectKey = `sources/${source.sourceId}/versions/${WORKER_VERSION_ID}/original`
+    const objectPath = join(gateway.tmpDir, 'data', 'source-storage', objectKey)
+    await mkdir(dirname(objectPath), { recursive: true, mode: 0o700 })
+    await writeFile(objectPath, csv, { mode: 0o600 })
+    const checksum = `sha256:${createHash('sha256').update(csv).digest('hex')}`
+    gateway.state.rawDbHandle.prepare(`
+      INSERT INTO source_versions (
+        source_version_id, source_id, checksum, verified_media_type,
+        byte_count, object_key, inspection_state, preparation_state, created_at
+      ) VALUES (?, ?, ?, 'text/plain', ?, ?, 'complete', 'not_requested', ?)
+    `).run(
+      WORKER_VERSION_ID, source.sourceId, checksum, csv.length, objectKey, Date.now(),
+    )
+    gateway.state.rawDbHandle.prepare(`
+      UPDATE runtime_sources SET registration_state = 'registered',
+        current_version_id = ?, inspection_state = 'complete',
+        freshness_state = 'fresh', updated_at = ? WHERE source_id = ?
+    `).run(WORKER_VERSION_ID, Date.now(), source.sourceId)
+    const job = new SourceDataViewStore(gateway.state.rawDbHandle).enqueue({
+      workspaceId,
+      profileId: 'mini',
+      sourceId: source.sourceId,
+      sourceVersionId: WORKER_VERSION_ID,
+    })
+    await gateway.stop({ cleanup: false })
+
+    restarted = new OwnwareGateway({
+      port: 0,
+      profilesDir: join(cleanupDir, 'profiles'),
+      dataDir: join(cleanupDir, 'data'),
+      dbPath: join(cleanupDir, 'test.db'),
+      tls: false,
+      disableAuth: false,
+    })
+    await restarted.start()
+    const restartedViews = new SourceDataViewStore(restarted.state.rawDbHandle)
+    await waitFor(() => restartedViews.getJobScoped(
+      job.jobId, workspaceId, 'mini',
+    )?.state === 'succeeded')
+
+    const completed = restartedViews.getJobScoped(job.jobId, workspaceId, 'mini')!
+    expect(completed).toMatchObject({
+      state: 'succeeded', attempt: 1, checkpoint: 4,
+      outcomeCode: 'preparation_complete',
+      dataViewId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })
+    expect(restartedViews.getViewScoped(
+      completed.dataViewId!, workspaceId, 'mini',
+    )).toMatchObject({
+      sourceVersionId: WORKER_VERSION_ID,
+      fieldCount: 2,
+      rowCount: 1,
+      freshness: 'current',
     })
   }, 20_000)
 })
