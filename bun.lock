@@ -10,7 +10,7 @@
     },
     "adapters/shuttle": {
       "name": "@ownware/shuttle",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bin": {
         "ownware-channel": "./dist/channels/bin.js",
       },
@@ -26,7 +26,7 @@
     },
     "examples/custom-client": {
       "name": "ownware-custom-client",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "ownware": "workspace:*",
       },
@@ -40,7 +40,7 @@
     },
     "packages/client": {
       "name": "@ownware/client",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "devDependencies": {
         "@ownware/cortex": "workspace:*",
         "@ownware/loom": "workspace:*",
@@ -51,7 +51,7 @@
     },
     "packages/cortex": {
       "name": "@ownware/cortex",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bin": {
         "ownware": "./dist/cli.js",
       },
@@ -96,7 +96,7 @@
     },
     "packages/loom": {
       "name": "@ownware/loom",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bin": {
         "loom": "./dist/cli.js",
       },
@@ -118,7 +118,7 @@
     },
     "packages/ownware": {
       "name": "ownware",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "bin": {
         "ownware": "./dist/cli.js",
       },
@@ -132,7 +132,7 @@
     },
     "packages/react": {
       "name": "@ownware/react",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@ownware/client": "workspace:*",
         "@ownware/ui": "workspace:*",

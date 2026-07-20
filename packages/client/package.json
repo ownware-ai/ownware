@@ -1,6 +1,6 @@
 {
   "name": "@ownware/client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Ownware client SDK — drive your agent over the gateway wire contract (HTTP + SSE) from Node or the browser. Zero dependencies; fetch + ReadableStream only.",
   "type": "module",
   "main": "./dist/index.js",

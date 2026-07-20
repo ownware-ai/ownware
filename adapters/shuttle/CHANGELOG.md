@@ -1,5 +1,25 @@
 # @ownware/shuttle
 
+## 0.4.0
+
+### Minor Changes
+
+- 98fa75d: Make the production WhatsApp Cloud API text flow restart-safe: durably own and
+  deduplicate inbound WAMIDs before webhook acknowledgement, preserve customer
+  thread bindings, fence Gateway runs, journal per-chunk outbound attempts,
+  reconcile Meta delivery statuses, preserve unknown send outcomes without blind
+  resend, and add explicit operator-controlled human handoff commands.
+
+### Patch Changes
+
+- Updated dependencies [00d263f]
+- Updated dependencies [00d263f]
+- Updated dependencies [00d263f]
+- Updated dependencies [98fa75d]
+- Updated dependencies [00d263f]
+- Updated dependencies [00d263f]
+  - @ownware/client@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
