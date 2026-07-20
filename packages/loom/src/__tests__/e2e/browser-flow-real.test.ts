@@ -221,7 +221,10 @@ describe.skipIf(!CAN_RUN)('browser tools — real Chrome (B1+B2 mechanics)', () 
   let fixture: { server: Server; baseUrl: string }
 
   beforeAll(async () => {
-    chrome = await launchChrome({ headless: true })
+    chrome = await launchChrome({
+      headless: true,
+      noSandbox: process.platform === 'linux',
+    })
     ctx = makeToolContext(chrome.cdpUrl)
     fixture = await startFixtureServer()
   }, 30_000)
