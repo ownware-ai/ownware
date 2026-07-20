@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+### Minor Changes
+
+- 00d263f: Keep configured safety rules and host permission checks authoritative when `permissionMode` is `auto`; the mode now supplies only the default decision.
+
 ## 0.3.0
 
 ## 0.2.0

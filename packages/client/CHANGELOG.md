@@ -1,5 +1,28 @@
 # @ownware/client
 
+## 0.4.0
+
+### Minor Changes
+
+- 00d263f: Publish a bounded owner-only connection inventory with provider-neutral status,
+  fixed recovery guidance, opaque Ownware identities, and an explicit
+  separate-grant requirement.
+- 00d263f: Add subject-bound delegated principals and an owner-granted, field- and row-scoped Data View query contract with bounded verified cell selection.
+- 00d263f: Bind protected source read and search subjects to verified delegated principals and remove subject selection from their request bodies.
+
+### Patch Changes
+
+- 00d263f: Define protected-search `observedAt` as evidence-snapshot creation time and clarify that repeated searches may retain it without making it authorization, cache, response-time, or freshness proof.
+- 00d263f: Correct the documented source-upload signature, publish the complete grant and
+  protected-content SDK surface, and add executable public source-lifecycle proof
+  ownership.
+- 98fa75d: Bind delegated-created conversation threads to a digest of the verified
+  delegate, workspace, profile, subject, purpose and channel context. Mismatched
+  or unbound continuation now denies before mutation. The same binding protects
+  run snapshots, event streams, permission decisions and cancellation, while
+  delegated runs receive no legacy unscoped identity, profile memory, AGENTS.md
+  fallback or memory-proposal tool.
+
 ## 0.3.0
 
 ### Minor Changes

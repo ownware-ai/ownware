@@ -1,5 +1,34 @@
 # @ownware/cortex
 
+## 0.4.0
+
+### Minor Changes
+
+- 00d263f: Publish a bounded owner-only connection inventory with provider-neutral status,
+  fixed recovery guidance, opaque Ownware identities, and an explicit
+  separate-grant requirement.
+- 98fa75d: Make the production WhatsApp Cloud API text flow restart-safe: durably own and
+  deduplicate inbound WAMIDs before webhook acknowledgement, preserve customer
+  thread bindings, fence Gateway runs, journal per-chunk outbound attempts,
+  reconcile Meta delivery statuses, preserve unknown send outcomes without blind
+  resend, and add explicit operator-controlled human handoff commands.
+- 98fa75d: Bind delegated-created conversation threads to a digest of the verified
+  delegate, workspace, profile, subject, purpose and channel context. Mismatched
+  or unbound continuation now denies before mutation. The same binding protects
+  run snapshots, event streams, permission decisions and cancellation, while
+  delegated runs receive no legacy unscoped identity, profile memory, AGENTS.md
+  fallback or memory-proposal tool.
+- 00d263f: Add subject-bound delegated principals and an owner-granted, field- and row-scoped Data View query contract with bounded verified cell selection.
+- 00d263f: Bind protected source read and search subjects to verified delegated principals and remove subject selection from their request bodies.
+
+### Patch Changes
+
+- 00d263f: Protect short-lived connection continuation material in an encrypted,
+  scope-bound vault; redact legacy metadata; verify terminal cleanup; and prevent
+  late completion results from resurrecting revoked connections.
+- Updated dependencies [00d263f]
+  - @ownware/loom@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
