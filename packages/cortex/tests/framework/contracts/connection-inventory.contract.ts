@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { InstallIdentity } from '../../../src/identity/install-identity.js'
 import { createTestGateway, type TestGateway } from '../harness/index.js'
@@ -38,7 +38,7 @@ describe('Contract: owner connection inventory', () => {
         profileId: 'mini',
         purpose: 'connection_administration',
         channel: 'web.primary',
-        operations: ['connections.list', 'connections.start'],
+        operations: ['connections.list'],
       }),
     })
     expect(delegation.status).toBe(201)
@@ -125,152 +125,19 @@ describe('Contract: owner connection inventory', () => {
     }
   })
 
-  it('rejects unauthenticated, delegated and auth-disabled connection start before mutation', async () => {
-    const request = (baseUrl: string, headers: Record<string, string> = {}) => fetch(
-      `${baseUrl}/api/v1/connections`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': '11111111-1111-4111-8111-111111111111',
-          ...headers,
-        },
-        body: JSON.stringify({ capabilityId: 'mail' }),
-      },
-    )
-
-    expect((await request(gateway.baseUrl)).status).toBe(401)
-
-    const delegated = await request(gateway.baseUrl, {
-      Authorization: `Bearer ${delegatedToken}`,
+  it('does not publish connection start or public-id disconnect mutations', async () => {
+    const start = await fetch(`${gateway.baseUrl}/api/v1/connections`, {
+      method: 'POST',
+      headers: ownerHeaders(gateway),
+      body: JSON.stringify({ capabilityId: 'mail' }),
     })
-    expect(delegated.status).toBe(403)
-    await expect(delegated.json()).resolves.toMatchObject({ error: 'owner_required' })
+    expect(start.status).toBe(404)
 
-    const before = gateway.gateway.connectorConnections.listInventory(
-      InstallIdentity.resolve().id,
-      { limit: 100 },
+    const disconnect = await fetch(
+      `${gateway.baseUrl}/api/v1/connections/11111111-1111-4111-8111-111111111111`,
+      { method: 'DELETE', headers: ownerHeaders(gateway) },
     )
-    expect(before.items).toHaveLength(6)
-
-    const local = await createTestGateway({ disableAuth: true })
-    try {
-      const authDisabled = await request(local.baseUrl)
-      expect(authDisabled.status).toBe(409)
-      await expect(authDisabled.json()).resolves.toMatchObject({ error: 'auth_required' })
-      expect(local.gateway.connectorConnections.listInventory(
-        InstallIdentity.resolve().id,
-        { limit: 100 },
-      ).items).toHaveLength(0)
-    } finally {
-      await local.stop()
-    }
-  })
-
-  it('starts one provider-neutral connection and replays without a second provider effect', async () => {
-    const originalFetch = globalThis.fetch
-    let providerStarts = 0
-    vi.stubEnv('COMPOSIO_API_KEY', 'synthetic-provider-key')
-    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
-      const url = new URL(typeof input === 'string' || input instanceof URL
-        ? input.toString()
-        : input.url)
-      if (url.origin !== 'https://backend.composio.dev') {
-        return originalFetch(input, init)
-      }
-      const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      })
-      if (url.pathname === '/api/v3/toolkits') return json({ items: [{
-        slug: 'mail', name: 'Mail', is_local_toolkit: false, deprecated: false,
-        meta: {},
-      }] })
-      if (url.pathname === '/api/v3/auth/session/info') {
-        return json({ project: { name: 'synthetic-project', org: { name: 'synthetic-org' } } })
-      }
-      if (url.pathname === '/api/v3/auth_configs') return json({ items: [{
-        id: 'auth-config-canary', toolkit: { slug: 'mail', logo: '' },
-        is_composio_managed: true, status: 'ENABLED',
-      }] })
-      if (url.pathname === '/api/v3/connected_accounts/link') {
-        providerStarts += 1
-        return json({
-          link_token: 'link-token-canary',
-          redirect_url: 'https://provider.invalid/continue?secret=continuation-canary',
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-          connected_account_id: 'vendor-account-canary',
-        }, 201)
-      }
-      if (url.pathname === '/api/v3/connected_accounts/vendor-account-canary') {
-        return json({
-          id: 'vendor-account-canary', toolkit: { slug: 'mail' },
-          auth_config: { id: 'auth-config-canary' }, status: 'INITIATED',
-        })
-      }
-      return json({ items: [] })
-    })
-
-    const local = await createTestGateway({ disableAuth: false })
-    try {
-      const key = '22222222-2222-4222-8222-222222222222'
-      const start = () => originalFetch(`${local.baseUrl}/api/v1/connections`, {
-        method: 'POST',
-        headers: { ...ownerHeaders(local), 'Idempotency-Key': key },
-        body: JSON.stringify({ capabilityId: 'mail' }),
-      })
-      const firstResponse = await start()
-      expect(firstResponse.status).toBe(201)
-      expect(firstResponse.headers.get('cache-control')).toBe('no-store')
-      const firstRaw = await firstResponse.text()
-      const first = z.object({
-        connectionId: z.string().uuid(),
-        mutation: z.literal('started'),
-        status: z.literal('pending'),
-        acceptedAt: z.number().int().nonnegative(),
-        continuation: z.object({
-          kind: z.literal('browser'),
-          url: z.literal('https://provider.invalid/continue?secret=continuation-canary'),
-          expiresAt: z.number().int().positive(),
-        }).strict(),
-        accessPolicy: z.literal('separate_grant_required'),
-      }).strict().parse(JSON.parse(firstRaw))
-      expect(firstRaw).not.toContain('vendor-account-canary')
-      expect(firstRaw).not.toContain('auth-config-canary')
-      expect(firstRaw).not.toContain('link-token-canary')
-
-      const inventoryResponse = await originalFetch(`${local.baseUrl}/api/v1/connections`, {
-        headers: ownerHeaders(local),
-      })
-      const inventory = ConnectionListSchema.parse(await inventoryResponse.json())
-      expect(inventory.items).toEqual([
-        expect.objectContaining({
-          connectionId: first.connectionId,
-          capabilityId: 'mail',
-          status: 'pending',
-          recovery: 'complete_connection',
-        }),
-      ])
-
-      const replayResponse = await start()
-      expect(replayResponse.status).toBe(201)
-      expect(replayResponse.headers.get('idempotency-replayed')).toBe('true')
-      expect(await replayResponse.json()).toEqual(first)
-      expect(providerStarts).toBe(1)
-
-      const conflict = await originalFetch(`${local.baseUrl}/api/v1/connections`, {
-        method: 'POST',
-        headers: { ...ownerHeaders(local), 'Idempotency-Key': key },
-        body: JSON.stringify({ capabilityId: 'calendar' }),
-      })
-      expect(conflict.status).toBe(409)
-      await expect(conflict.json()).resolves.toMatchObject({ error: 'idempotency_conflict' })
-      expect(providerStarts).toBe(1)
-    } finally {
-      await local.stop()
-      vi.unstubAllGlobals()
-      vi.unstubAllEnvs()
-    }
+    expect(disconnect.status).toBe(404)
   })
 
   it.each([

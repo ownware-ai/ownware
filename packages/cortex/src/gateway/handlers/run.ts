@@ -174,13 +174,18 @@ class RunStartError extends Error {
 }
 
 import { normalizeModelId, pickRunnableDefaultModel } from '../catalog/models/index.js'
-import { authorizePrincipalScope, getRequestPrincipal } from '../auth/scoped-principal.js'
+import {
+  authorizePrincipalScope,
+  getRequestPrincipal,
+  type RuntimePrincipal,
+} from '../auth/scoped-principal.js'
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
   type RunIdempotencyStore,
   type RunStartSnapshot,
 } from '../idempotency.js'
+import { ThreadPrincipalBindingStore } from '../thread-principal-binding.js'
 import { ProfileRunNotAcceptingError, type GatewayRunStore } from '../run-store.js'
 import type { CandidateStore } from '../candidate-store.js'
 import type { CandidateProfileResolver } from '../../profile/candidate-activation.js'
@@ -254,9 +259,9 @@ export interface RunHandlerDeps {
    */
   readonly pendingReconciles?: PendingReconciles
   /**
-   * Memory system (shared across all sessions in the gateway). When
-   * provided, each new session is assembled with `options.memory =
-   * { system, threadId }` so:
+   * Legacy owner memory system (shared across owner/internal sessions in the
+   * gateway). When provided, an owner/internal session is assembled with
+   * `options.memory = { system, threadId }` so:
    *   - Top-N ranked memories from `ownware.db` are prepended to the
    *     system prompt instead of static AGENTS.md content.
    *   - The user identity layer (always-loaded "About you" facts)
@@ -264,8 +269,11 @@ export interface RunHandlerDeps {
    *   - When `profile.memory.autoLearn` is on, the agent receives
    *     the `remember` tool bound to (profileId, threadId).
    *
-   * Omitted in tests that don't need the memory feature; the
-   * assembler then falls back to its pre-feature AGENTS.md path.
+   * Delegated sessions explicitly disable this entire unscoped legacy surface;
+   * they never receive database memory, global identity, AGENTS.md fallback,
+   * or the legacy remember tool.
+   * Omitted in tests that don't need the memory feature; owner/internal
+   * assembly then falls back to its pre-feature AGENTS.md path.
    */
   readonly memorySystem?: MemorySystem
   /**
@@ -313,6 +321,21 @@ export function createRunHandlers(
   runner: SessionRunner,
   deps: RunHandlerDeps = {},
 ) {
+  const threadPrincipalBindings = new ThreadPrincipalBindingStore(state.rawDbHandle)
+
+  function delegatedThreadAccessAllowed(
+    principal: RuntimePrincipal | undefined,
+    threadId: string,
+    profileId: string,
+    workspaceId: string | undefined,
+  ): boolean {
+    if (principal?.kind !== 'delegated') return true
+    const thread = state.getThread(threadId)
+    return thread !== undefined &&
+      thread.profileId === profileId &&
+      thread.workspaceId === workspaceId &&
+      threadPrincipalBindings.allows(threadId, principalContinuityKey(principal))
+  }
 
   // POST /api/v1/run — thin HTTP wrapper; the run-start core is
   // startProfileRun (shared with the scheduler).
@@ -402,9 +425,32 @@ export function createRunHandlers(
       return
     }
 
-    const fence = idempotencyKey !== undefined && principal !== undefined && deps.idempotencyStore
+    // Bind the actual existing thread before touching idempotency state or
+    // reporting liveness. Body workspace/profile values are desired targets,
+    // not proof that the referenced thread belongs to that authority.
+    if (body.threadId && !delegatedThreadAccessAllowed(
+      principal,
+      body.threadId,
+      body.profileId ?? 'example',
+      body.workspaceId,
+    )) {
+      sendError(
+        res,
+        403,
+        'Delegated principal does not allow this thread',
+        'principal_scope_denied',
+        'auth',
+      )
+      return
+    }
+
+    // Loopback-without-auth is the install owner, not an authority-free caller.
+    // Its exact run retries need the same durable fence as an authenticated
+    // owner; otherwise webhook adapters can duplicate a run after losing the
+    // first HTTP response.
+    const fence = idempotencyKey !== undefined && deps.idempotencyStore
       ? {
-          principalKey: principalContinuityKey(principal),
+          principalKey: principal ? principalContinuityKey(principal) : 'owner',
           operation: 'runs.start' as const,
           key: idempotencyKey,
         }
@@ -446,7 +492,7 @@ export function createRunHandlers(
     }
 
     try {
-      const result = await startProfileRun(body, preparedAttachments)
+      const result = await startProfileRun(body, preparedAttachments, principal)
       const snapshot: RunStartSnapshot = {
         runId: result.runId,
         threadId: result.threadId,
@@ -492,6 +538,7 @@ export function createRunHandlers(
   async function startProfileRun(
     params: RunRequest,
     preflightAttachments?: PreparedAttachmentBatch,
+    principal?: RuntimePrincipal,
   ): Promise<RunStartResult> {
     const body = params
     const profileId = body.profileId ?? 'example'
@@ -524,8 +571,6 @@ export function createRunHandlers(
           throw new RunStartError(410, `Workspace path no longer exists: ${ws.path}`)
         }
         workspacePath = ws.path
-        state.touchWorkspace(workspaceId)
-        state.updateWorkspace(workspaceId, { lastProfileId: profileId })
       }
 
       // 1. Get or create thread
@@ -536,6 +581,18 @@ export function createRunHandlers(
         if (!thread) {
           throw new RunStartError(404, `Thread "${threadId}" not found`)
         }
+        if (!delegatedThreadAccessAllowed(
+          principal,
+          threadId,
+          profileId,
+          workspaceId,
+        )) {
+          throw new RunStartError(
+            403,
+            'Delegated principal does not allow this thread',
+            'principal_scope_denied',
+          )
+        }
         session = state.getSession(threadId)
         if (!workspacePath && thread.workspaceId) {
           const ws = state.getWorkspace(thread.workspaceId)
@@ -544,8 +601,35 @@ export function createRunHandlers(
       }
 
       if (!threadId) {
-        const thread = state.createThread(profileId, undefined, workspaceId)
-        threadId = thread.id
+        if (principal?.kind === 'delegated') {
+          try {
+            const thread = state.rawDbHandle.transaction(() => {
+              const created = state.createThread(profileId, undefined, workspaceId)
+              if (!threadPrincipalBindings.bind(
+                created.id,
+                principalContinuityKey(principal),
+              )) {
+                throw new Error('thread principal binding conflict')
+              }
+              return created
+            })()
+            threadId = thread.id
+          } catch {
+            throw new RunStartError(
+              500,
+              'Thread authority could not be established safely.',
+              'thread_authority_unavailable',
+            )
+          }
+        } else {
+          const thread = state.createThread(profileId, undefined, workspaceId)
+          threadId = thread.id
+        }
+      }
+
+      if (workspaceId) {
+        state.touchWorkspace(workspaceId)
+        state.updateWorkspace(workspaceId, { lastProfileId: profileId })
       }
 
       // 2. Resolve modelString unconditionally.
@@ -650,12 +734,17 @@ export function createRunHandlers(
         }
       }
 
+      const profileToAssemble = effectiveModel !== profile.config.model
+        ? { ...profile, config: { ...profile.config, model: effectiveModel } }
+        : profile
+      const memoryAssembly = principal?.kind === 'delegated'
+        ? { memory: { disabled: true as const } }
+        : deps.memorySystem !== undefined
+          ? { memory: { system: deps.memorySystem, threadId: threadId! } }
+          : {}
+
       // 3. Create session if needed (new thread or no cached session)
       if (!session) {
-        const profileToAssemble = effectiveModel !== profile.config.model
-          ? { ...profile, config: { ...profile.config, model: effectiveModel } }
-          : profile
-
         // 3a. Per-thread credential runtime + HITL. Built BEFORE
         // assembleAgent so the system prompt can name the .env-imported
         // credentials on the very first turn. Values stay in the vault
@@ -786,9 +875,7 @@ export function createRunHandlers(
             },
           },
           workspacePath: workspacePath ?? null,
-          ...(deps.memorySystem !== undefined
-            ? { memory: { system: deps.memorySystem, threadId: threadId! } }
-            : {}),
+          ...memoryAssembly,
           // F4.b: route MCPManager state transitions onto the status
           // bus so transport closures hit the connector SSE channel
           // without waiting for the next tool call to probe the dead
@@ -1784,7 +1871,12 @@ export function createRunHandlers(
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    })) {
+    }) || !delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
       sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
       return
     }
@@ -1895,7 +1987,12 @@ export function createRunHandlers(
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    })) {
+    }) || !delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
       sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
       return
     }
@@ -1999,7 +2096,12 @@ export function createRunHandlers(
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    })) {
+    }) || !delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
       sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
       return
     }

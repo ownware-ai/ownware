@@ -53,7 +53,7 @@ describe('migration 077 public connection inventory identity', () => {
     expect(rows.every((row) => row.public_connection_id !== row.connection_id)).toBe(true)
     expect(db.pragma('foreign_key_check')).toEqual([])
     expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
-    expect(db.pragma('user_version', { simple: true })).toBe(77)
+    expect(db.pragma('user_version', { simple: true })).toBe(MIGRATIONS.at(-1)!.version)
     expect(auditMigrations(MIGRATIONS)).toEqual([])
     db.close()
   })

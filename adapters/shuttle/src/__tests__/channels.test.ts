@@ -7,6 +7,7 @@ import { validateChannelConfig, type ChannelConfig } from '../channels/config.js
 import { ChannelRunner, type RunnableShuttle } from '../channels/runner.js'
 import { runChannelCli, channelAdd } from '../channels/cli.js'
 import { InMemoryPairingStore } from '../pairing.js'
+import { InMemoryWhatsAppDeliveryStore } from '../whatsapp/delivery-store.js'
 import type { GatewayClient, RunInput, RunStreamEvent, StreamReplyOptions } from '../gateway-client.js'
 
 const tgConfig = (id: string, enabled = true): ChannelConfig => ({
@@ -23,6 +24,12 @@ describe('validateChannelConfig', () => {
     expect(validateChannelConfig({ ...tgConfig('t1'), credentials: {} })).toMatch(/token/)
     expect(validateChannelConfig({ ...tgConfig('t1'), profileId: '' })).toMatch(/profileId/)
     expect(validateChannelConfig({ ...tgConfig('t1'), channel: 'nope' as never })).toMatch(/unknown channel/)
+    expect(validateChannelConfig({
+      id: 'wa1',
+      channel: 'whatsapp',
+      profileId: 'acme',
+      credentials: { accessToken: 'token', phoneNumberId: 'pid' },
+    })).toMatch(/appSecret/)
   })
 })
 
@@ -211,6 +218,17 @@ describe('runChannelCli', () => {
     expect((await store.get('telegram-acme'))?.line).toEqual({ dm: 'open' })
   })
 
+  it('enables WhatsApp handoff only through the explicit on-request policy', async () => {
+    const store = new InMemoryChannelStore()
+    await runChannelCli([
+      'add', 'whatsapp', '--profile', 'acme',
+      '--access-token', 'token', '--phone-number-id', 'pid',
+      '--app-secret', 'secret', '--verify-token', 'verify',
+      '--line', 'business', '--handoff', 'on-request',
+    ], store)
+    expect((await store.get('whatsapp-acme'))?.line).toEqual({ dm: 'open', handoff: 'on-request' })
+  })
+
   it('add rejects a missing credential', async () => {
     const store = new InMemoryChannelStore()
     await expect(runChannelCli(['add', 'telegram', '--profile', 'acme'], store)).rejects.toThrow(/token/)
@@ -243,5 +261,50 @@ describe('runChannelCli', () => {
   it('approve without a pairing store fails loudly', async () => {
     const store = new InMemoryChannelStore()
     await expect(runChannelCli(['approve', 'telegram', 'X'], store)).rejects.toThrow(/pairing store/)
+  })
+
+  it('lists, accepts and resumes an explicit WhatsApp handoff', async () => {
+    const store = new InMemoryChannelStore()
+    const delivery = new InMemoryWhatsAppDeliveryStore()
+    const inbound = delivery.enqueue({
+      channelId: 'whatsapp-acme',
+      phoneNumberId: 'PID',
+      inboundId: 'wamid.H',
+      from: '15550001111',
+      text: '/human',
+    }).record
+    delivery.claim(inbound.key)
+    const handoff = delivery.requestHandoff(inbound.key)
+
+    expect(await runChannelCli(['handoff', 'list'], store, { whatsappDelivery: delivery }))
+      .toContain(handoff.requestId)
+    expect(await runChannelCli(['handoff', 'accept', handoff.requestId], store, { whatsappDelivery: delivery }))
+      .toContain('agent remains paused')
+    expect(await runChannelCli(['handoff', 'resume', handoff.requestId], store, { whatsappDelivery: delivery }))
+      .toContain('only future messages')
+  })
+
+  it('shows truthful WhatsApp delivery states without customer text', async () => {
+    const store = new InMemoryChannelStore()
+    const delivery = new InMemoryWhatsAppDeliveryStore()
+    const inbound = delivery.enqueue({
+      channelId: 'whatsapp-acme',
+      phoneNumberId: 'PID',
+      inboundId: 'wamid.UNKNOWN',
+      from: '15550001111',
+      text: 'PRIVATE CUSTOMER ORDER',
+    }).record
+    delivery.claim(inbound.key)
+    const attempt = delivery.prepareAttempt(inbound.key, inbound.from, 'PRIVATE REPLY')
+    delivery.markAttemptUnknown(inbound.key, attempt.attemptId, 'transport_error')
+    delivery.finishFailure(inbound.key)
+
+    const output = await runChannelCli(['delivery', 'list'], store, { whatsappDelivery: delivery })
+    expect(output).toContain('wamid.UNKNOWN')
+    expect(output).toContain('delivery_unknown')
+    expect(output).toContain('transport_error')
+    expect(output).not.toContain('PRIVATE CUSTOMER ORDER')
+    expect(output).not.toContain('PRIVATE REPLY')
+    expect(output).not.toContain('15550001111')
   })
 })

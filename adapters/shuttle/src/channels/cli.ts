@@ -13,8 +13,9 @@
 
 import { isChannelKind, validateChannelConfig, type ChannelConfig, type ChannelKind } from './config.js'
 import type { ChannelStore } from './store.js'
-import type { DmPolicy, LinePolicy } from '../gate.js'
+import type { DmPolicy, HandoffPolicy, LinePolicy } from '../gate.js'
 import type { PairingStore } from '../pairing.js'
+import type { WhatsAppDeliveryStore } from '../whatsapp/delivery-store.js'
 
 /** CLI flag → credential key, per channel. */
 const FLAG_TO_CRED: Record<ChannelKind, Record<string, string>> = {
@@ -92,7 +93,7 @@ function parseFlags(argv: string[]): { positionals: string[]; flags: Record<stri
 }
 
 function buildLine(flags: Record<string, string>): LinePolicy | undefined {
-  const line: { dm?: DmPolicy; group?: 'mention' | 'all' | 'off' } = {}
+  const line: { dm?: DmPolicy; group?: 'mention' | 'all' | 'off'; handoff?: HandoffPolicy } = {}
   const preset = flags['line'] // convenience: business → dm open, personal → dm pairing
   if (preset === 'business') line.dm = 'open'
   else if (preset === 'personal') line.dm = 'pairing'
@@ -100,6 +101,10 @@ function buildLine(flags: Record<string, string>): LinePolicy | undefined {
   if (dm === 'open' || dm === 'pairing' || dm === 'allowlist') line.dm = dm
   const group = flags['group']
   if (group === 'mention' || group === 'all' || group === 'off') line.group = group
+  const handoff = flags['handoff']
+  if (handoff === 'off' || handoff === 'on-request' || handoff === 'on-signal') {
+    line.handoff = handoff
+  }
   return Object.keys(line).length > 0 ? line : undefined
 }
 
@@ -109,10 +114,12 @@ export interface ChannelCliDeps {
    * store — `approve` runs in a separate process from the runner).
    */
   readonly pairing?: PairingStore
+  /** Durable WhatsApp state shared with the webhook host. */
+  readonly whatsappDelivery?: WhatsAppDeliveryStore
 }
 
 /**
- * Dispatch a `channel` subcommand (add/list/remove/approve). Returns text
+ * Dispatch a `channel` subcommand (add/list/remove/approve/handoff). Returns text
  * output. `start` is handled by the bin (it runs the long-lived
  * ChannelRunner).
  */
@@ -169,5 +176,49 @@ export async function runChannelCli(argv: string[], store: ChannelStore, deps: C
       : '✗ code not recognized — expired, already used, or mistyped'
   }
 
-  throw new Error(`unknown subcommand: ${sub ?? '(none)'} — expected add | list | remove | approve | start`)
+  if (sub === 'handoff') {
+    if (!deps.whatsappDelivery) throw new Error('handoff: durable WhatsApp delivery store is not configured')
+    const action = positionals[0]
+    if (action === 'list') {
+      const rows = deps.whatsappDelivery.listHandoffs(positionals[1])
+      if (rows.length === 0) return '(no active WhatsApp handoffs)'
+      return rows.map((row) =>
+        `${row.requestId}  ${row.state.padEnd(9)}  ${row.channelId}  customer ${row.customer}`,
+      ).join('\n')
+    }
+    const requestId = positionals[1]
+    if ((action === 'accept' || action === 'resume') && !requestId) {
+      throw new Error(`usage: ownware channel handoff ${action} <request-id>`)
+    }
+    if (action === 'accept') {
+      const updated = deps.whatsappDelivery.acceptHandoff(requestId!)
+      return `✓ accepted WhatsApp handoff ${updated.requestId}; the agent remains paused for this customer`
+    }
+    if (action === 'resume') {
+      const updated = deps.whatsappDelivery.resumeHandoff(requestId!)
+      return `✓ resumed WhatsApp automation after handoff ${updated.requestId}; only future messages reach the agent`
+    }
+    throw new Error('usage: ownware channel handoff <list [channel-id]|accept <request-id>|resume <request-id>>')
+  }
+
+  if (sub === 'delivery') {
+    if (!deps.whatsappDelivery) throw new Error('delivery: durable WhatsApp delivery store is not configured')
+    if (positionals[0] !== 'list') {
+      throw new Error('usage: ownware channel delivery list [channel-id]')
+    }
+    const rows = deps.whatsappDelivery.listInbounds(positionals[1])
+    if (rows.length === 0) return '(no WhatsApp delivery records)'
+    return rows.map((row) => {
+      const attempts = row.attempts.length === 0
+        ? 'no outbound attempt'
+        : row.attempts.map((attempt) =>
+          `${attempt.chunk}:${attempt.state}${attempt.outcomeCode ? `(${attempt.outcomeCode})` : ''}`,
+        ).join(', ')
+      return `${row.inboundId}  ${row.state.padEnd(18)}  ${row.channelId}  ${attempts}`
+    }).join('\n')
+  }
+
+  throw new Error(
+    `unknown subcommand: ${sub ?? '(none)'} — expected add | list | remove | approve | handoff | delivery | start`,
+  )
 }

@@ -108,7 +108,7 @@ describe('public subject-bound source-search lifecycle', () => {
     const negotiation = await delegated.capabilities({
       requiredMajor: 1,
       requiredCapabilities: {
-        'gateway.capabilities': 10,
+        'gateway.capabilities': 11,
         'principals.issue': 3,
         'sources.register': 2,
         'source_uploads.create': 3,
@@ -127,7 +127,7 @@ describe('public subject-bound source-search lifecycle', () => {
     })
     expect(negotiation).toMatchObject({
       status: 'available',
-      contract: { name: 'ownware.gateway', major: 1, revision: '0.29.0' },
+      contract: { name: 'ownware.gateway', major: 1, revision: '0.30.0' },
       limits: {
         sourceSearch: {
           maxScanBytes: 16 * 1024 * 1024,

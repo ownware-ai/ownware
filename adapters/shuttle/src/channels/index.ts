@@ -35,3 +35,14 @@ export { channelAdd, channelList, channelRemove, runChannelCli } from './cli.js'
 
 export type { PairingStore, FilePairingStoreOptions } from '../pairing.js'
 export { FilePairingStore, InMemoryPairingStore, PairingRateLimitError } from '../pairing.js'
+
+export type {
+  WhatsAppDeliveryStore,
+  WhatsAppHandoff,
+  FileWhatsAppDeliveryStoreOptions,
+} from '../whatsapp/delivery-store.js'
+export {
+  FileWhatsAppDeliveryStore,
+  InMemoryWhatsAppDeliveryStore,
+  WhatsAppDeliveryThreadMap,
+} from '../whatsapp/delivery-store.js'

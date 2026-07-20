@@ -77,6 +77,36 @@ describe('Contract: immutable run snapshots', () => {
     })
   })
 
+  it('fences an exact loopback-owner retry even when authentication is disabled', async () => {
+    await gateway.stop()
+    gateway = await createTestGateway({
+      disableAuth: true,
+      profiles: [{ name: 'snapshot-test', model: 'snapshottest:model', tools: { preset: 'none' } }],
+    })
+    const key = '45454545-4545-4545-8545-454545454545'
+    const start = () => fetch(`${gateway.baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': key,
+      },
+      body: JSON.stringify({ profileId: 'snapshot-test', prompt: 'one provider event' }),
+    })
+
+    const first = await start()
+    expect(first.status).toBe(200)
+    const firstBody = z.object({ runId: z.string().uuid(), threadId: z.string() })
+      .passthrough().parse(await first.json())
+
+    const replay = await start()
+    expect(replay.status).toBe(200)
+    expect(replay.headers.get('idempotency-replayed')).toBe('true')
+    await expect(replay.json()).resolves.toMatchObject({
+      runId: firstBody.runId,
+      threadId: firstBody.threadId,
+    })
+  })
+
   it('gives two turns on one thread distinct run IDs and event bounds', async () => {
     const start = async (input: Record<string, unknown>, key: string) => {
       const response = await fetch(`${gateway.baseUrl}/api/v1/run`, {

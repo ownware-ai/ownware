@@ -162,6 +162,58 @@ a test plan per slice, `BUGS.md` ledgers) is in
 
 ---
 
+## Generality, semantic proof and extension cost (non-negotiable)
+
+Never infer a general capability from passing examples. Before implementing or
+accepting a detector, evaluator, abstraction, safety rule or platform feature,
+prove that its mechanism establishes the meaning claimed for it and remains
+honest outside the cases already imagined.
+
+- **State the semantic claim first.** Say exactly what the software promises to
+  know, prevent or cause. Then name the observable event, state transition or
+  authoritative source that proves it. A correlated proxy is not the fact.
+- **Code the invariant, not the examples.** A list of known words, tool names,
+  providers or cases is not a general rule. Search for the property shared by
+  all valid cases and test counterexamples that share the surface pattern but
+  not the meaning.
+- **Treat heuristics as signals, never proof.** Regexes, keyword scans, scores
+  and model judgments may triage or warn. They cannot establish safety,
+  permission, intent, completion or absence of an effect unless the product
+  explicitly presents them as uncertain signals.
+- **Test the open world.** Define behavior for a new tool, provider, state,
+  schema variant and malformed input that did not exist when the code was
+  written. Unknown cases fail honestly; they never become success through a
+  default branch.
+- **Calculate extension cost.** Record what must be coded, configured, tested
+  and operated for every new case. If each extension needs bespoke core edits,
+  simulators or assertions, the feature is not generally supported; it is a
+  catalogue with a continuing integration tax.
+- **Prefer leverage over enumeration.** Extend through one stable contract or
+  authoritative seam when the cases truly share semantics. Do not create a
+  framework merely to hide repeated special cases behind a common name.
+- **Distinguish structural validity from truth.** A valid type, opaque ID,
+  signed claim, boolean flag or provider self-attestation proves only that the
+  value has the expected form or issuer—not that the real-world condition is
+  true. Verify at the authority that owns the condition.
+- **Observe effects where they occur.** Claims about actions must come from the
+  enforcement/effect boundary or resulting durable state, not from prose that
+  says an action was or was not performed.
+- **Declare the support envelope.** Name supported and unsupported cases,
+  expected false positives/negatives, residual risk and fallback behavior.
+  Narrow honest capability is better than fake generality.
+- **Attack the claim before deepening the implementation.** Write at least one
+  adversarial counterexample that would fool the proposed mechanism. If it
+  succeeds, redesign the mechanism or narrow the claim before adding queues,
+  retries, persistence, public contracts or more tests around it.
+
+Examples: text containing “cannot” does not prove refusal; an identifier named
+`evidenceRef` does not prove the evidence exists or is valid; a provider saying
+`isolated: true` does not prove isolation; and one handwritten adapter per tool
+does not make every tool supported. In each case, either observe the
+authoritative fact or describe the result as the limited signal it really is.
+
+---
+
 ## Where knowledge lives (so you read the right thing)
 
 > `.catalyst/` is the owner's **private** planning tree (gitignored) — it is not

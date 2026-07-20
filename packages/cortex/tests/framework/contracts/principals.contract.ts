@@ -102,7 +102,6 @@ describe('Contract: delegated principals', () => {
     }, IssueSchema)
     expect(issued.status).toBe(201)
     expect(issued.body.principal.subjectId).toBe('customer_42')
-
     const extraAuthority = await gw.client.post('/api/v1/auth/delegations', {
       delegateId: 'browser-session-query',
       workspaceId,
@@ -167,16 +166,119 @@ describe('Contract: delegated principals', () => {
     expect(gw.state.listThreads().total).toBe(before)
   })
 
+  it('binds delegated thread continuity to the verified authority context', async () => {
+    const issue = async (delegateId: string, subjectId: string) => {
+      const response = await gw.client.post('/api/v1/auth/delegations', {
+        delegateId,
+        workspaceId,
+        profileId: 'mini',
+        subjectId,
+        purpose: 'customer-support',
+        channel: 'web',
+        operations: [
+          'runs.start', 'runs.snapshot', 'runs.events', 'runs.resume', 'runs.abort',
+        ],
+      }, IssueSchema)
+      expect(response.status).toBe(201)
+      return response.body.token
+    }
+    const subjectAToken = await issue('browser-session-a', 'customer_a')
+    const subjectBToken = await issue('browser-session-b', 'customer_b')
+
+    const start = await fetch(`${gw.baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${subjectAToken}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
+      body: JSON.stringify({ profileId: 'mini', workspaceId, prompt: 'subject A turn' }),
+    })
+    expect(start.status).toBe(200)
+    const started = z.object({ runId: z.string().uuid(), threadId: z.string() })
+      .passthrough().parse(await start.json())
+
+    const ownSnapshot = await fetch(`${gw.baseUrl}/api/v1/runs/${started.runId}`, {
+      headers: { Authorization: `Bearer ${subjectAToken}` },
+    })
+    expect(ownSnapshot.status).toBe(200)
+
+    const deadline = Date.now() + 5_000
+    while (gw.runner.isRunning(started.threadId) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    expect(gw.runner.isRunning(started.threadId)).toBe(false)
+    const beforeMessages = gw.state.getMessages(started.threadId).length
+
+    const denied = await fetch(`${gw.baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${subjectBToken}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      },
+      body: JSON.stringify({
+        profileId: 'mini', workspaceId, threadId: started.threadId, prompt: 'subject B turn',
+      }),
+    })
+    expect(denied.status).toBe(403)
+    expect(ErrorSchema.parse(await denied.json()).error).toBe('principal_scope_denied')
+    expect(gw.state.getMessages(started.threadId)).toHaveLength(beforeMessages)
+
+    for (const request of [
+      fetch(`${gw.baseUrl}/api/v1/runs/${started.runId}`, {
+        headers: { Authorization: `Bearer ${subjectBToken}` },
+      }),
+      fetch(`${gw.baseUrl}/api/v1/runs/${started.runId}/events?since=0`, {
+        headers: { Authorization: `Bearer ${subjectBToken}` },
+      }),
+      fetch(`${gw.baseUrl}/api/v1/runs/${started.runId}/permissions/missing/decision`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${subjectBToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ decision: 'deny', operationHash: '0'.repeat(64) }),
+      }),
+      fetch(`${gw.baseUrl}/api/v1/runs/${started.runId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${subjectBToken}` },
+      }),
+    ]) {
+      const response = await request
+      expect(response.status).toBe(403)
+      expect(ErrorSchema.parse(await response.json()).error).toBe('principal_scope_denied')
+    }
+  })
+
   it('allows scoped events while blocking delegated legacy bulk resume and cross-scope access', async () => {
-    const owned = gw.state.createThread('mini', undefined, workspaceId)
+    const started = await fetch(`${gw.baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      },
+      body: JSON.stringify({ profileId: 'mini', workspaceId, prompt: 'bound event stream' }),
+    })
+    expect(started.status).toBe(200)
+    const owned = z.object({ threadId: z.string() }).passthrough().parse(await started.json())
     const stream = await fetch(
-      `${gw.baseUrl}/api/v1/threads/${owned.id}/agents/root/events?since=0`,
+      `${gw.baseUrl}/api/v1/threads/${owned.threadId}/agents/root/events?since=0`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
     expect(stream.status).toBe(200)
     await stream.body?.cancel()
 
-    const resume = await fetch(`${gw.baseUrl}/api/v1/threads/${owned.id}/resume`, {
+    const unboundOwnerThread = gw.state.createThread('mini', undefined, workspaceId)
+    const unbound = await fetch(
+      `${gw.baseUrl}/api/v1/threads/${unboundOwnerThread.id}/agents/root/events?since=0`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(unbound.status).toBe(403)
+    expect(ErrorSchema.parse(await unbound.json()).error).toBe('principal_scope_denied')
+
+    const resume = await fetch(`${gw.baseUrl}/api/v1/threads/${owned.threadId}/resume`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -187,7 +289,7 @@ describe('Contract: delegated principals', () => {
     expect(resume.status).toBe(403)
     expect(ErrorSchema.parse(await resume.json()).error).toBe('principal_operation_denied')
 
-    const abort = await fetch(`${gw.baseUrl}/api/v1/threads/${owned.id}/abort`, {
+    const abort = await fetch(`${gw.baseUrl}/api/v1/threads/${owned.threadId}/abort`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     })

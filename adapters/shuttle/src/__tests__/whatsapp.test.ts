@@ -88,7 +88,7 @@ describe('WhatsAppApi.sendText', () => {
     const api = new WhatsAppApi({ accessToken: 'TOK', phoneNumberId: 'PID', fetch: fakeGraph(record) })
     const r = await api.sendText('15550001111', 'hi there')
     expect(r.id).toBe('wamid.OUT')
-    expect(record[0]?.url).toBe('https://graph.facebook.com/v20.0/PID/messages')
+    expect(record[0]?.url).toBe('https://graph.facebook.com/v24.0/PID/messages')
     expect(record[0]?.body).toEqual({ messaging_product: 'whatsapp', to: '15550001111', type: 'text', text: { body: 'hi there' } })
   })
 })

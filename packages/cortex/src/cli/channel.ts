@@ -4,7 +4,7 @@
  * `ownware` bin:
  *
  *   ownware channel add slack --profile assistant --bot-token … --app-token …
- *   ownware channel list | remove <id> | approve <channel> <code> | start
+ *   ownware channel list | remove <id> | approve <channel> <code> | handoff | delivery | start
  *
  * Channels live in `@ownware/shuttle` — a *client* of the gateway, not part
  * of the kernel — so this is a soft link: the module is imported at
@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs'
 export interface ShuttleChannelsModule {
   FileChannelStore: new (opts: { dir: string; secret?: string }) => unknown
   FilePairingStore: new (opts: { file: string }) => unknown
+  FileWhatsAppDeliveryStore?: new (opts: { dir: string; secret?: string }) => unknown
   ChannelRunner: new (
     store: unknown,
     opts: { gatewayUrl?: string; gatewayToken?: string; pairing?: unknown },
@@ -38,12 +39,17 @@ export interface ShuttleChannelsModule {
       gatewayToken?: string
       pairing?: unknown
       publicBaseUrl?: string
+      whatsappDelivery?: unknown
     },
   ) => {
     start(opts?: { port?: number; host?: string }): Promise<{ port: number | null; paths: string[] }>
     stop(): Promise<void>
   }
-  runChannelCli(argv: string[], store: unknown, deps?: { pairing?: unknown }): Promise<string>
+  runChannelCli(
+    argv: string[],
+    store: unknown,
+    deps?: { pairing?: unknown; whatsappDelivery?: unknown },
+  ): Promise<string>
 }
 
 /** Webhook-host listen/exposure settings from the environment. */
@@ -78,12 +84,15 @@ export async function loadShuttleChannels(): Promise<ShuttleChannelsModule | nul
 export function buildChannelStores(
   mod: ShuttleChannelsModule,
   dataDir: string,
-): { store: unknown; pairing: unknown } {
+): { store: unknown; pairing: unknown; whatsappDelivery?: unknown } {
   const dir = process.env.OWNWARE_CHANNELS_DIR ?? join(dataDir, 'channels')
   const secret = process.env.OWNWARE_CHANNEL_SECRET
   const store = new mod.FileChannelStore({ dir, ...(secret ? { secret } : {}) })
   const pairing = new mod.FilePairingStore({ file: join(dir, 'pairing.json') })
-  return { store, pairing }
+  const whatsappDelivery = mod.FileWhatsAppDeliveryStore
+    ? new mod.FileWhatsAppDeliveryStore({ dir, ...(secret ? { secret } : {}) })
+    : undefined
+  return { store, pairing, ...(whatsappDelivery ? { whatsappDelivery } : {}) }
 }
 
 export function resolveDataDir(): string {
@@ -110,7 +119,7 @@ export async function channelCommand(argv: string[]): Promise<void> {
   }
 
   const dataDir = resolveDataDir()
-  const { store, pairing } = buildChannelStores(mod, dataDir)
+  const { store, pairing, whatsappDelivery } = buildChannelStores(mod, dataDir)
 
   if (argv[0] === 'start') {
     let gatewayUrl: string | undefined
@@ -161,5 +170,8 @@ export async function channelCommand(argv: string[]): Promise<void> {
     return
   }
 
-  console.log(await mod.runChannelCli(argv, store, { pairing }))
+  console.log(await mod.runChannelCli(argv, store, {
+    pairing,
+    ...(whatsappDelivery ? { whatsappDelivery } : {}),
+  }))
 }

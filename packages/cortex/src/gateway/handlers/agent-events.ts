@@ -39,6 +39,8 @@ import { ROOT_AGENT_ID } from '../event-bus.js'
 import { trace, traceEnabled } from '../trace.js'
 import { authorizePrincipalScope, getRequestPrincipal } from '../auth/scoped-principal.js'
 import type { GatewayRunStore } from '../run-store.js'
+import { principalContinuityKey } from '../idempotency.js'
+import { ThreadPrincipalBindingStore } from '../thread-principal-binding.js'
 import type {
   StreamStartEvent,
   StreamReplayCompleteEvent,
@@ -170,6 +172,20 @@ function toStreamShutdownEvent(
 }
 
 export function createAgentEventHandlers(state: GatewayState, runStore?: GatewayRunStore) {
+  const threadPrincipalBindings = new ThreadPrincipalBindingStore(state.rawDbHandle)
+
+  function delegatedThreadAccessAllowed(
+    req: IncomingMessage,
+    threadId: string,
+    profileId: string,
+    workspaceId: string | undefined,
+  ): boolean {
+    const principal = getRequestPrincipal(req)
+    if (principal?.kind !== 'delegated') return true
+    return authorizePrincipalScope(req, { workspaceId, profileId }) &&
+      threadPrincipalBindings.allows(threadId, principalContinuityKey(principal))
+  }
+
   /**
    * GET /api/v1/threads/:threadId/agents/:agentId/events
    *
@@ -194,7 +210,13 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
         !authorizePrincipalScope(req, {
           workspaceId: thread.workspaceId ?? undefined,
           profileId: thread.profileId,
-        })) {
+        }) ||
+        !delegatedThreadAccessAllowed(
+          req,
+          threadId,
+          thread.profileId,
+          thread.workspaceId ?? undefined,
+        )) {
       sendError(res, 403, 'Delegated principal does not allow this event stream', 'principal_scope_denied', 'auth')
       return
     }
@@ -585,7 +607,12 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    })) {
+    }) || !delegatedThreadAccessAllowed(
+      req,
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
       sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
       return
     }

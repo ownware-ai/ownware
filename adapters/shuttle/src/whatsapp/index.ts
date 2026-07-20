@@ -17,10 +17,25 @@
  *   // POST inbound: await wa.handleInbound(body, { rawBody, signature })
  */
 
-export { WhatsAppApi } from './api.js'
+export { WhatsAppApi, WhatsAppSendError } from './api.js'
 export type { WhatsAppApiOptions } from './api.js'
 export { WhatsAppTransport } from './transport.js'
+export type { WhatsAppSendObserver } from './transport.js'
 export { parseWhatsAppWebhook, verifyWhatsAppSignature, verifyWebhookChallenge } from './message.js'
 export type { WhatsAppWebhookBody } from './message.js'
 export { WhatsAppShuttle } from './shuttle.js'
 export type { WhatsAppShuttleOptions, WhatsAppInboundOptions } from './shuttle.js'
+export {
+  InMemoryWhatsAppDeliveryStore,
+  FileWhatsAppDeliveryStore,
+  WhatsAppDeliveryThreadMap,
+  deterministicRunKey,
+} from './delivery-store.js'
+export type {
+  WhatsAppDeliveryStore,
+  WhatsAppInboundRecord,
+  WhatsAppDeliveryAttempt,
+  WhatsAppHandoff,
+  WhatsAppProviderStatus,
+  FileWhatsAppDeliveryStoreOptions,
+} from './delivery-store.js'

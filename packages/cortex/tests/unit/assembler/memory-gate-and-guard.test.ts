@@ -70,6 +70,22 @@ describe('assembleAgent: memory.enabled gate (F-01)', () => {
     const agent = await assembleAgent(profile)
     expect(systemPromptToText(agent.systemPrompt)).not.toContain(AGENTS_SENTINEL)
   })
+
+  it('explicitly disables every legacy memory surface for an unscoped caller', async () => {
+    const { dir } = track(await createTempProfile({
+      'agent.json': JSON.stringify({
+        name: 'unscoped-memory-off',
+        memory: { autoLearn: true },
+      }),
+      'SOUL.md': '# Scoped caller\n',
+      'AGENTS.md': `# Memory\n\n${AGENTS_SENTINEL}\n`,
+    }))
+    const profile = await loadProfile(dir)
+    const agent = await assembleAgent(profile, { memory: { disabled: true } })
+    expect(systemPromptToText(agent.systemPrompt)).not.toContain(AGENTS_SENTINEL)
+    expect(agent.tools.map((tool) => tool.name)).not.toContain('remember')
+  })
+
 })
 
 describe('assembleAgent: unsupported-field guard is wired (F-04/05/06/08/20)', () => {

@@ -215,8 +215,8 @@ export class ShuttleAdapter {
       case 'drop':
         return null
       case 'defer_to_human':
-        // A person takes over this thread; the agent stays silent. SH8 fleshes
-        // out notification/ack.
+        // A channel-specific, authoritative handoff owner takes over this
+        // thread; the base adapter's only safe action is to stay silent.
         return null
       case 'canned_reply': {
         const id = await this.deps.transport.sendText(msg.target, disposition.text)
@@ -248,11 +248,14 @@ export class ShuttleAdapter {
   private async runAndDeliver(msg: ShuttleMessage): Promise<DeliveryResult> {
     const key = this.keyFor(msg)
 
-    const existing = await this.deps.threads.get(key)
+    const existing = msg.gatewayThreadId !== undefined
+      ? msg.gatewayThreadId ?? undefined
+      : await this.deps.threads.get(key)
     const { threadId } = await this.deps.gateway.run({
       profileId: this.config.profileId,
       prompt: msg.text,
       ...(existing ? { threadId: existing } : {}),
+      ...(msg.runIdempotencyKey ? { idempotencyKey: msg.runIdempotencyKey } : {}),
     })
     await this.deps.threads.set(key, threadId)
 

@@ -4116,4 +4116,22 @@ export const MIGRATIONS: Migration[] = [
         WHERE public_connection_id IS NOT NULL;
     `,
   },
+  {
+    version: 78,
+    name: '078_delegated_thread_principal_bindings',
+    sql: `
+      -- Threads contain conversation history and live Sessions may retain
+      -- assembled context. Bind delegated-created threads to the exact
+      -- verified authority continuity context before later turns.
+      CREATE TABLE thread_principal_bindings (
+        thread_id                TEXT    PRIMARY KEY
+          REFERENCES threads(id) ON DELETE CASCADE,
+        principal_scope_digest   TEXT    NOT NULL CHECK (
+          length(principal_scope_digest) = 64
+          AND principal_scope_digest NOT GLOB '*[^0-9a-f]*'
+        ),
+        created_at               INTEGER NOT NULL
+      );
+    `,
+  },
 ]

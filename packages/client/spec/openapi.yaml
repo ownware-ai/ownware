@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.29.0
+  version: 0.30.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -1132,6 +1132,10 @@ paths:
     post:
       operationId: run
       summary: Start a run. Returns immediately; stream the reply over SSE.
+      description: >
+        A delegated principal may continue only a thread already bound to the
+        same verified delegate, workspace, profile, subject, purpose and
+        channel context. A mismatch or unbound thread is denied before mutation.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -1209,6 +1213,9 @@ paths:
     get:
       operationId: runSnapshot
       summary: Read one immutable run's bounded durable lifecycle snapshot.
+      description: >
+        Delegated access requires the run's thread to remain bound to the same
+        verified authority context that created it.
       parameters:
         - name: runId
           in: path
@@ -1228,6 +1235,9 @@ paths:
     get:
       operationId: runEvents
       summary: Replay and tail only one immutable run's root-agent event interval.
+      description: >
+        Delegated access requires the run's thread to remain bound to the same
+        verified authority context that created it.
       parameters:
         - name: runId
           in: path

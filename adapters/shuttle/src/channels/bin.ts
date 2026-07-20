@@ -13,6 +13,7 @@ import { runChannelCli } from './cli.js'
 import { ChannelRunner } from './runner.js'
 import { ChannelWebhookHost } from './webhook-host.js'
 import { FilePairingStore } from '../pairing.js'
+import { FileWhatsAppDeliveryStore } from '../whatsapp/delivery-store.js'
 
 /** The gateway's persisted bearer token (`<dataDir>/gateway-token`, slice 4)
  *  — the product path when auth is on. `--token` / env stay as overrides. */
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
   // One pairing file shared by the runner (mints codes) and `approve`
   // (redeems them from a separate, short-lived process).
   const pairing = new FilePairingStore({ file: join(dir, 'pairing.json') })
+  const whatsappDelivery = new FileWhatsAppDeliveryStore({ dir, ...(secret ? { secret } : {}) })
 
   if (argv[0] === 'start') {
     let gatewayUrl: string | undefined
@@ -57,6 +59,7 @@ async function main(): Promise<void> {
       ...(gatewayUrl ? { gatewayUrl } : {}),
       ...(gatewayToken ? { gatewayToken } : {}),
       pairing,
+      whatsappDelivery,
       ...(publicBaseUrl ? { publicBaseUrl } : {}),
     })
     const webhookPort = process.env['OWNWARE_WEBHOOK_PORT']
@@ -81,7 +84,7 @@ async function main(): Promise<void> {
     return
   }
 
-  const out = await runChannelCli(argv, store, { pairing })
+  const out = await runChannelCli(argv, store, { pairing, whatsappDelivery })
   // eslint-disable-next-line no-console
   console.log(out)
 }

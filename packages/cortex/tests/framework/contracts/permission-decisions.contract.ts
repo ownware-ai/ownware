@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { HumanInTheLoop, type LoomEvent, type Session } from '@ownware/loom'
 import { createTestGateway, type TestGateway } from '../harness/gateway.js'
+import type { DelegatedPrincipal } from '../../../src/gateway/auth/scoped-principal.js'
+import { principalContinuityKey } from '../../../src/gateway/idempotency.js'
+import { ThreadPrincipalBindingStore } from '../../../src/gateway/thread-principal-binding.js'
 
 describe('Contract: exact run permission decisions', () => {
   let gateway: TestGateway
@@ -79,7 +82,12 @@ describe('Contract: exact run permission decisions', () => {
       }),
     })
     expect(delegation.status).toBe(201)
-    const delegatedToken = (await delegation.json() as { token: string }).token
+    const issued = await delegation.json() as { token: string; principal: DelegatedPrincipal }
+    const delegatedToken = issued.token
+    expect(new ThreadPrincipalBindingStore(gateway.state.rawDbHandle).bind(
+      thread.id,
+      principalContinuityKey(issued.principal),
+    )).toBe(true)
 
     const publicEvents = await fetch(`${gateway.baseUrl}/api/v1/runs/${run.runId}/events`, {
       headers: { authorization: `Bearer ${delegatedToken}` },

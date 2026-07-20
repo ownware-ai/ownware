@@ -238,7 +238,9 @@ export interface AssembleOptions {
    *      memory_search / memory_forget` to avoid the agent seeing
    *      two memory tool surfaces.
    *
-   * Omitted → behaviour is identical to the pre-memory-system code
+   * `{ disabled: true }` → no database memory, global identity, AGENTS.md
+   * fallback or memory tool. Omitted → behaviour is identical to the
+   * pre-memory-system code
    * path: AGENTS.md content is used verbatim; no remember tool is
    * exposed; the user_identity table is ignored. This is the safe
    * default for tests that don't exercise the memory feature and
@@ -247,6 +249,13 @@ export interface AssembleOptions {
   readonly memory?: {
     readonly system: MemorySystem
     readonly threadId: string
+  } | {
+    /**
+     * Explicit security posture for a caller with no scoped-memory authority.
+     * Unlike omission, this suppresses the AGENTS.md compatibility fallback,
+     * global identity, and `remember` tool too.
+     */
+    readonly disabled: true
   }
   /**
    * Connector status bus the gateway wires to the unified
@@ -1049,6 +1058,15 @@ function resolveMemoryContext(
 ): MemoryContext | null {
   const wired = options.memory
   if (!wired) return null
+
+  if ('disabled' in wired) {
+    return {
+      identityFragment: null,
+      memoryFragment: null,
+      injectRememberTool: false,
+      rememberTool: null,
+    }
+  }
 
   const profileId = profile.config.name
   const memoryCfg = profile.config.memory

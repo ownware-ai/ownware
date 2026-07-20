@@ -17,6 +17,8 @@ You usually don't install this package directly — the
 ownware channel add slack --profile assistant --bot-token xoxb-… --app-token xapp-…
 ownware channel start slack
 ownware channel list | remove | approve       # manage channels + pair people
+ownware channel handoff list                  # WhatsApp human-takeover requests
+ownware channel delivery list                 # truthful WhatsApp effect states
 ```
 
 ## Or standalone
@@ -44,6 +46,12 @@ Per-channel entry points: `@ownware/shuttle/slack`, `/telegram`,
   strangers by default.
 - **One thread per person per channel** — conversation continuity is
   the adapter's job, not the user's.
+- **Provider receipts stay truthful.** WhatsApp WAMIDs, thread bindings and
+  outbound chunk attempts survive restart; accepted, delivered, failed and
+  unknown are distinct states, and unknown sends are not blindly repeated.
+- **Handoff is explicit.** `/human` creates a durable WhatsApp request; a local
+  operator accepts/resumes it with `ownware channel handoff …` while answering
+  through the connected Business app/provider inbox.
 
 Part of the [Ownware](https://github.com/ownware-ai/ownware) monorepo
 (`adapters/shuttle`). Apache-2.0.

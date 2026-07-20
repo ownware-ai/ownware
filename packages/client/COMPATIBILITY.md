@@ -35,6 +35,7 @@ older capability rather than inventing a value.
 | `0.27.0` | Subject-bound delegated principals plus owner-admitted exact Data View field/row fences and bounded protected cell selection with verified current lineage. |
 | `0.28.0` | Protected source reads and searches derive their subject only from a signed, persisted subject-bound principal; request bodies can no longer select a grant subject. |
 | `0.29.0` | Owner-only provider-neutral connection inventory with Ownware-owned opaque identities, fixed recovery truth, revoked/legacy-history exclusion and an explicit separate-grant requirement. |
+| `0.30.0` | Durable delegated-thread authority binding across continuation, snapshots, event streams, exact permission decisions and cancellation, with legacy unscoped memory disabled for delegated runs. |
 
 Compatibility rules:
 
@@ -47,11 +48,11 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.29.0`,
-  `gateway.capabilities` is version 10, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.30.0`,
+  `gateway.capabilities` is version 11, `connections.list` is version 1,
   `principals.issue` is version 3,
-  `runs.start` is version 4,
-  `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 2,
+  `runs.start` is version 5,
+  `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 3,
   and `candidates.validate`, `candidates.stage`, `candidates.activate` and
   `candidates.rollback` are version 1.
   `profiles.pause` and `profiles.resume` are also version 1 and require a UUID
@@ -60,6 +61,12 @@ Compatibility rules:
   `candidates.list` and `candidates.delete` are version 1.
   `runs.attachments` is version 1 and requires a separately declared delegated
   operation plus the negotiated count/decoded-byte/filename limits.
+  Delegated-created threads are durably bound to the verified delegate,
+  workspace, profile, subject, purpose and channel context. Continuation,
+  snapshots, event streams, exact permission decisions and cancellation deny
+  an unbound or mismatched thread before mutation. Delegated runs receive no
+  legacy unscoped database memory, global identity, AGENTS.md fallback or
+  remember tool.
   `connections.list` requires authenticated Gateway mode and the install-owner
   bearer; delegated tokens remain denied even if they advertise the operation.
   It is install-global, accepts only bounded limit/opaque-cursor pagination, and

@@ -69,6 +69,14 @@ export interface ShuttleMessage {
   readonly userId?: string
   /** Was the agent @mentioned? (gates group/channel responses under `mention`). */
   readonly isMention?: boolean
+  /**
+   * UUID fencing one exact provider event at the Gateway run boundary.
+   * Channel adapters set this only when the provider supplies a stable event
+   * identity; it is not inferred from message text or participant identity.
+   */
+  readonly runIdempotencyKey?: string
+  /** Frozen Gateway thread input paired with runIdempotencyKey; null means create. */
+  readonly gatewayThreadId?: string | null
 }
 
 /**

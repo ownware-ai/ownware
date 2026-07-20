@@ -81,7 +81,7 @@ export interface Pcc04PublicOperationOwner {
  * capability/delegation prerequisites used by the two release journeys.
  */
 export const PCC04_PUBLIC_OPERATIONS: readonly Pcc04PublicOperationOwner[] = [
-  { operationId: 'capabilities', capabilityId: 'gateway.capabilities', capabilityVersion: 10, sdkMethod: 'capabilities', journey: 'prerequisite', proofId: 'client.source-capability-negotiation' },
+  { operationId: 'capabilities', capabilityId: 'gateway.capabilities', capabilityVersion: 11, sdkMethod: 'capabilities', journey: 'prerequisite', proofId: 'client.source-capability-negotiation' },
   { operationId: 'issueDelegation', capabilityId: 'principals.issue', capabilityVersion: 3, sdkMethod: 'issueDelegation', journey: 'prerequisite', proofId: 'client.subject-bound-delegation' },
   { operationId: 'registerSource', capabilityId: 'sources.register', capabilityVersion: 2, sdkMethod: 'registerSource', journey: 'shared', proofId: 'client.text-and-data-view-lifecycle' },
   { operationId: 'listSources', capabilityId: 'sources.list', capabilityVersion: 1, sdkMethod: 'sources', journey: 'shared', proofId: 'contract.source-registration' },

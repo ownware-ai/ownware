@@ -15,7 +15,7 @@ import type { LinePolicy } from '../gate.js'
 import type { PairingStore } from '../pairing.js'
 import type { GatewayClient } from '../gateway-client.js'
 import { WhatsAppApi } from './api.js'
-import { WhatsAppTransport } from './transport.js'
+import { WhatsAppTransport, type WhatsAppSendObserver } from './transport.js'
 import { parseWhatsAppWebhook, verifyWhatsAppSignature, verifyWebhookChallenge, type WhatsAppWebhookBody } from './message.js'
 
 export interface WhatsAppShuttleOptions {
@@ -41,11 +41,18 @@ export interface WhatsAppInboundOptions {
   readonly rawBody?: string
   /** The `X-Hub-Signature-256` header. */
   readonly signature?: string
+  /** Durable provider-effect observer used by ChannelWebhookHost. */
+  readonly sendObserver?: WhatsAppSendObserver
+  /** UUID derived from this webhook's WAMID. Valid only for one text message. */
+  readonly runIdempotencyKey?: string
+  /** Frozen Gateway thread input stored with this inbound WAMID. */
+  readonly gatewayThreadId?: string | null
 }
 
 export class WhatsAppShuttle {
   private readonly adapter: ShuttleAdapter
   private readonly appSecret: string | undefined
+  private readonly transport: WhatsAppTransport
 
   constructor(opts: WhatsAppShuttleOptions) {
     const api = new WhatsAppApi({
@@ -64,10 +71,11 @@ export class WhatsAppShuttle {
       ...(opts.line ? { line: opts.line } : {}),
       ...(opts.debounce ? { debounce: opts.debounce } : {}),
     }
+    this.transport = new WhatsAppTransport(api)
     const deps: ShuttleDeps = {
       gateway: opts.gateway,
       threads: opts.threads ?? new InMemoryThreadMap(),
-      transport: new WhatsAppTransport(api),
+      transport: this.transport,
       ...(opts.pairing ? { pairing: opts.pairing } : {}),
     }
     this.adapter = new ShuttleAdapter(config, deps)
@@ -84,12 +92,27 @@ export class WhatsAppShuttle {
         throw new Error('invalid WhatsApp signature')
       }
     }
-    const results: DeliveryResult[] = []
-    for (const msg of parseWhatsAppWebhook(body)) {
-      const r = await this.adapter.handle(msg)
-      if (r) results.push(r)
+    const messages = parseWhatsAppWebhook(body)
+    if (opts.runIdempotencyKey && messages.length !== 1) {
+      throw new Error('runIdempotencyKey requires exactly one WhatsApp text message')
     }
-    return results
+    return this.transport.withObserver(opts.sendObserver, async () => {
+      const results: DeliveryResult[] = []
+      for (const msg of messages) {
+        const r = await this.adapter.handle({
+          ...msg,
+          ...(opts.runIdempotencyKey ? { runIdempotencyKey: opts.runIdempotencyKey } : {}),
+          ...(opts.gatewayThreadId !== undefined ? { gatewayThreadId: opts.gatewayThreadId } : {}),
+        })
+        if (r) results.push(r)
+      }
+      return results
+    })
+  }
+
+  /** Send channel-owned protocol text (for example a handoff acknowledgement). */
+  async sendText(target: string, text: string, observer?: WhatsAppSendObserver): Promise<string | undefined> {
+    return this.transport.withObserver(observer, () => this.transport.sendText(target, text))
   }
 
   /** GET webhook verification handshake — echo the challenge when the token matches. */

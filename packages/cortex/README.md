@@ -63,7 +63,7 @@ ownware serve                       # gateway + channels, one process
 | Talk | `ownware run <profile> "<prompt>"` · `ownware <profile> "<prompt>"` |
 | Serve | `ownware serve` |
 | Keys | `ownware key add · list · remove` |
-| Channels | `ownware channel add · list · remove · approve · start` |
+| Channels | `ownware channel add · list · remove · approve · handoff · delivery · start` |
 | Schedules | `ownware schedule add · list · remove · runs` |
 
 `ownware help` prints the full list. **Full reference:** [`docs/reference/cli.md`](../../docs/reference/cli.md).

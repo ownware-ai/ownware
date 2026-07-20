@@ -30,12 +30,21 @@ import type { PairingStore } from '../pairing.js'
 import { WhatsAppShuttle } from '../whatsapp/shuttle.js'
 import { SmsShuttle } from '../sms/shuttle.js'
 import { verifyWhatsAppSignature, type WhatsAppWebhookBody } from '../whatsapp/message.js'
+import {
+  InMemoryWhatsAppDeliveryStore,
+  WhatsAppDeliveryThreadMap,
+  type WhatsAppDeliveryStore,
+  type WhatsAppProviderStatus,
+} from '../whatsapp/delivery-store.js'
+import type { WhatsAppSendObserver } from '../whatsapp/transport.js'
 import { validateTwilioSignature } from '../sms/message.js'
 import type { ChannelConfig } from './config.js'
 import type { ChannelStore } from './store.js'
+import { sessionKey } from '../session-key.js'
 
 const MAX_BODY_BYTES = 1024 * 1024 // 1 MiB — provider webhooks are far smaller
-const DEDUP_CAPACITY = 5000 // in-memory LRU; durable dedup arrives with the channel-job store (CC1)
+const DEDUP_CAPACITY = 5000 // SMS only; WhatsApp WAMIDs use the durable provider-specific store.
+const WHATSAPP_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
 export type WebhookInstance =
   | { readonly kind: 'whatsapp'; readonly config: ChannelConfig; readonly shuttle: WhatsAppShuttle }
@@ -44,14 +53,22 @@ export type WebhookInstance =
 export type WebhookShuttleFactory = (
   config: ChannelConfig,
   gateway: GatewayClient,
-  deps: { readonly pairing?: PairingStore; readonly fetch?: typeof fetch },
+  deps: {
+    readonly pairing?: PairingStore
+    readonly fetch?: typeof fetch
+    readonly whatsappDelivery?: WhatsAppDeliveryStore
+  },
 ) => WebhookInstance | null
 
 /** Default factory: the webhook-driven channels. Self-driving kinds return null. */
 export function defaultWebhookFactory(
   config: ChannelConfig,
   gateway: GatewayClient,
-  deps: { readonly pairing?: PairingStore; readonly fetch?: typeof fetch } = {},
+  deps: {
+    readonly pairing?: PairingStore
+    readonly fetch?: typeof fetch
+    readonly whatsappDelivery?: WhatsAppDeliveryStore
+  } = {},
 ): WebhookInstance | null {
   const cred = (key: string): string => {
     const v = config.credentials[key]
@@ -60,16 +77,18 @@ export function defaultWebhookFactory(
   }
   switch (config.channel) {
     case 'whatsapp': {
-      const appSecret = config.credentials['appSecret']
       return {
         kind: 'whatsapp',
         config,
         shuttle: new WhatsAppShuttle({
           accessToken: cred('accessToken'),
           phoneNumberId: cred('phoneNumberId'),
+          appSecret: cred('appSecret'),
           profileId: config.profileId,
           gateway,
-          ...(appSecret ? { appSecret } : {}),
+          ...(deps.whatsappDelivery
+            ? { threads: new WhatsAppDeliveryThreadMap(deps.whatsappDelivery) }
+            : {}),
           ...(config.line ? { line: config.line } : {}),
           ...(deps.pairing ? { pairing: deps.pairing } : {}),
           ...(deps.fetch ? { fetch: deps.fetch } : {}),
@@ -168,6 +187,8 @@ export interface WebhookHostOptions {
   /** Injectable outbound fetch for provider APIs (tests). */
   readonly fetch?: typeof fetch
   readonly factory?: WebhookShuttleFactory
+  /** Durable WhatsApp WAMID/delivery/handoff owner. File-backed in real CLIs. */
+  readonly whatsappDelivery?: WhatsAppDeliveryStore
   /** Diagnostics sink. Default: console.error. Never receives secrets. */
   readonly log?: (line: string) => void
 }
@@ -190,12 +211,16 @@ export class ChannelWebhookHost {
   private readonly instances = new Map<string, WebhookInstance>()
   private readonly gateway: GatewayClient
   private readonly factory: WebhookShuttleFactory
-  private readonly seen = new SeenIds()
+  private readonly smsSeen = new SeenIds()
+  private readonly whatsappDelivery: WhatsAppDeliveryStore
   private readonly inFlight = new Set<Promise<unknown>>()
+  /** Per-customer chain: preserves turn order and prevents two first messages creating two threads. */
+  private readonly whatsappQueues = new Map<string, Promise<void>>()
   private readonly log: (line: string) => void
   private server: Server | null = null
   private listen: Required<WebhookHostStartOptions> = { port: 3012, host: '127.0.0.1' }
   private boundPort: number | null = null
+  private recovered = false
 
   constructor(
     private readonly store: ChannelStore,
@@ -208,6 +233,7 @@ export class ChannelWebhookHost {
         ...(opts.gatewayToken ? { token: opts.gatewayToken } : {}),
       })
     this.factory = opts.factory ?? defaultWebhookFactory
+    this.whatsappDelivery = opts.whatsappDelivery ?? new InMemoryWhatsAppDeliveryStore()
     this.log = opts.log ?? ((line): void => console.error(line))
   }
 
@@ -234,8 +260,28 @@ export class ChannelWebhookHost {
       const instance = this.factory(config, this.gateway, {
         ...(this.opts.pairing ? { pairing: this.opts.pairing } : {}),
         ...(this.opts.fetch ? { fetch: this.opts.fetch } : {}),
+        whatsappDelivery: this.whatsappDelivery,
       })
       if (instance) this.instances.set(id, instance)
+    }
+
+    if (!this.recovered) {
+      const pruned = this.whatsappDelivery.pruneTerminal(Date.now() - WHATSAPP_TERMINAL_RETENTION_MS)
+      const recovery = this.whatsappDelivery.recover()
+      this.recovered = true
+      if (pruned > 0) this.log(`[webhook] WhatsApp retention: pruned ${pruned} terminal receipt(s)`)
+      if (recovery.requeued > 0 || recovery.unknown > 0 || recovery.replied > 0) {
+        this.log(
+          `[webhook] WhatsApp recovery: ${recovery.requeued} requeued, ` +
+            `${recovery.unknown} unknown, ${recovery.replied} already accepted`,
+        )
+      }
+    }
+    for (const [id, instance] of this.instances) {
+      if (instance.kind !== 'whatsapp') continue
+      for (const record of this.whatsappDelivery.queued(id)) {
+        this.scheduleWhatsApp(instance, record.key, record.from)
+      }
     }
 
     if (this.instances.size > 0 && !this.server) await this.startServer()
@@ -298,6 +344,20 @@ export class ChannelWebhookHost {
     })
     this.inFlight.add(p)
     void p.finally(() => this.inFlight.delete(p))
+  }
+
+  private scheduleWhatsApp(
+    instance: Extract<WebhookInstance, { kind: 'whatsapp' }>,
+    key: string,
+    customer: string,
+  ): void {
+    const queueKey = `${instance.config.id}\0${customer}`
+    const previous = this.whatsappQueues.get(queueKey) ?? Promise.resolve()
+    const work = previous.catch(() => {}).then(() => this.dispatchWhatsApp(instance, key))
+    this.whatsappQueues.set(queueKey, work)
+    this.track(work.finally(() => {
+      if (this.whatsappQueues.get(queueKey) === work) this.whatsappQueues.delete(queueKey)
+    }))
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -371,19 +431,159 @@ export class ChannelWebhookHost {
       this.log(`[webhook] ${instance.config.id}: unparseable Meta payload — dropped`)
       return respond(res, 200, 'ok')
     }
+    if (body.object !== 'whatsapp_business_account') {
+      this.log(`[webhook] ${instance.config.id}: non-WhatsApp webhook object — dropped`)
+      return respond(res, 200, 'ok')
+    }
 
     const phoneNumberId = instance.config.credentials['phoneNumberId'] ?? ''
-    const filtered = filterWhatsAppInbound(body, phoneNumberId, (wamid) => this.seen.has(wamid))
-    // Mark seen BEFORE the async dispatch so a concurrent re-delivery dedups.
-    for (const wamid of filtered.ids) this.seen.add(wamid)
+    const filtered = filterWhatsAppInbound(
+      body,
+      phoneNumberId,
+      (wamid) => this.whatsappDelivery.hasInbound(instance.config.id, wamid),
+    )
     if (filtered.droppedMismatch > 0) {
       this.log(
         `[webhook] ${instance.config.id}: dropped ${filtered.droppedMismatch} message(s) for a different phone_number_id`,
       )
     }
 
-    respond(res, 200, 'ok') // answer Meta immediately; the agent runs async
-    this.track(instance.shuttle.handleInbound(filtered.body))
+    const queued: Array<{ readonly key: string; readonly customer: string }> = []
+    for (const entry of filtered.body.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        const value = change.value
+        if (change.field !== 'messages' || value?.messaging_product !== 'whatsapp') continue
+        if (!value || (value.metadata?.phone_number_id !== undefined && value.metadata.phone_number_id !== phoneNumberId)) {
+          continue
+        }
+        for (const status of value.statuses ?? []) {
+          if (!status.id || !isWhatsAppProviderStatus(status.status)) continue
+          const code = status.errors?.[0]?.code
+          this.whatsappDelivery.recordStatus(
+            status.id,
+            status.status,
+            code === undefined ? '' : `meta_${code}`,
+            parseProviderTimestamp(status.timestamp),
+          )
+        }
+        for (const message of value.messages ?? []) {
+          if (message.type !== 'text' || !message.from || !message.text?.body?.trim()) continue
+          if (!message.id) {
+            this.log(`[webhook] ${instance.config.id}: text message without WAMID — dropped`)
+            continue
+          }
+          const accepted = this.whatsappDelivery.enqueue({
+            channelId: instance.config.id,
+            phoneNumberId,
+            inboundId: message.id,
+            from: message.from,
+            text: message.text.body,
+          })
+          if (accepted.added) queued.push({ key: accepted.record.key, customer: accepted.record.from })
+        }
+      }
+    }
+
+    // Durable ownership is established above. Meta can now stop retrying while
+    // the run and outbound delivery proceed asynchronously.
+    respond(res, 200, 'ok')
+    for (const item of queued) this.scheduleWhatsApp(instance, item.key, item.customer)
+  }
+
+  private async dispatchWhatsApp(
+    instance: Extract<WebhookInstance, { kind: 'whatsapp' }>,
+    key: string,
+  ): Promise<void> {
+    const record = this.whatsappDelivery.claim(key)
+    if (!record || record.text === null) return
+
+    const observer: WhatsAppSendObserver = {
+      prepare: (target, text) => this.whatsappDelivery.prepareAttempt(key, target, text).attemptId,
+      accepted: (attemptId, providerMessageId) => {
+        this.whatsappDelivery.markAttemptAccepted(key, attemptId, providerMessageId)
+      },
+      rejected: (attemptId, code) => {
+        this.whatsappDelivery.markAttemptRejected(key, attemptId, code)
+      },
+      unknown: (attemptId, code) => {
+        this.whatsappDelivery.markAttemptUnknown(key, attemptId, code)
+      },
+    }
+
+    if (record.text.trim() === '/human') {
+      if (instance.config.line?.handoff !== 'on-request') {
+        try {
+          await instance.shuttle.sendText(
+            record.from,
+            'Human takeover is not configured for this line. Please contact the business through its published support route.',
+            observer,
+          )
+          this.whatsappDelivery.finishReply(key)
+        } catch {
+          this.whatsappDelivery.finishFailure(key)
+        }
+        return
+      }
+      const handoff = this.whatsappDelivery.requestHandoff(key)
+      try {
+        await instance.shuttle.sendText(
+          record.from,
+          'I’ve asked a person to take over. They have not accepted yet; you can keep using this chat when they do.',
+          observer,
+        )
+      } catch {
+        this.whatsappDelivery.finishFailure(key)
+      }
+      this.log(`[webhook] ${instance.config.id}: human handoff requested (${handoff.requestId})`)
+      return
+    }
+
+    if (this.whatsappDelivery.handoffFor(record.channelId, record.from)) {
+      this.whatsappDelivery.deferToHuman(key)
+      return
+    }
+
+    const body: WhatsAppWebhookBody = {
+      object: 'whatsapp_business_account',
+      entry: [{
+        changes: [{
+          field: 'messages',
+          value: {
+            messaging_product: 'whatsapp',
+            metadata: { phone_number_id: record.phoneNumberId },
+            messages: [{
+              from: record.from,
+              id: record.inboundId,
+              type: 'text',
+              text: { body: record.text },
+            }],
+          },
+        }],
+      }],
+    }
+    const stableRun = this.whatsappDelivery.bindRunThread(
+      key,
+      this.whatsappDelivery.getThread(sessionKey({
+        profile: instance.config.profileId,
+        channel: 'whatsapp',
+        chatType: 'dm',
+        chatId: record.from,
+      })) ?? null,
+    )
+    try {
+      await instance.shuttle.handleInbound(body, {
+        runIdempotencyKey: record.runIdempotencyKey,
+        gatewayThreadId: stableRun.runThreadId,
+        sendObserver: observer,
+      })
+      this.whatsappDelivery.finishReply(key)
+    } catch (error) {
+      this.whatsappDelivery.finishFailure(key)
+      this.log(
+        `[webhook] ${instance.config.id}: inbound ${record.inboundId} failed ` +
+          `(${error instanceof Error ? error.name : 'unknown_error'})`,
+      )
+    }
   }
 
   private async smsInbound(
@@ -408,13 +608,26 @@ export class ChannelWebhookHost {
 
     const sid = params['MessageSid']
     if (sid) {
-      if (this.seen.has(sid)) return respondTwiml(res)
-      this.seen.add(sid)
+      if (this.smsSeen.has(sid)) return respondTwiml(res)
+      this.smsSeen.add(sid)
     }
 
     respondTwiml(res) // reply goes out via the REST API, not the webhook response
     this.track(instance.shuttle.handleInbound(params))
   }
+}
+
+function isWhatsAppProviderStatus(value: string | undefined): value is WhatsAppProviderStatus {
+  return value === 'sent' || value === 'delivered' || value === 'read' ||
+    value === 'failed' || value === 'deleted'
+}
+
+function parseProviderTimestamp(value: string | undefined): number {
+  if (value && /^\d+$/.test(value)) {
+    const millis = Number(value) * 1000
+    if (Number.isSafeInteger(millis) && millis >= 0) return millis
+  }
+  return Date.now()
 }
 
 function respond(res: ServerResponse, status: number, text: string): void {

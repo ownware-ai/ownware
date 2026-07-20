@@ -188,7 +188,7 @@ ${c.bold}SERVE & REACH IT EVERYWHERE${c.reset}
   ownware key add <provider> [value]                  Save a provider API key (encrypted vault)
   ownware key list | remove <provider>
   ownware channel add <kind> --profile <id> …         Connect Slack/Telegram/Discord/WhatsApp/SMS
-  ownware channel list | remove | approve | start
+  ownware channel list | remove | approve | handoff | delivery | start
   ownware schedule add --profile <id> …               Proactive runs ("messages you every morning")
   ownware schedule list | remove <id> | runs <id>
 

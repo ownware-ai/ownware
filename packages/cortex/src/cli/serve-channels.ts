@@ -48,7 +48,7 @@ export async function bootChannels(opts: BootChannelsOptions): Promise<InProcess
   const mod = await (opts.loader ?? loadShuttleChannels)()
   if (!mod) return null
 
-  const { store, pairing } = buildChannelStores(mod, opts.dataDir)
+  const { store, pairing, whatsappDelivery } = buildChannelStores(mod, opts.dataDir)
   const runner = new mod.ChannelRunner(store, {
     gatewayUrl: opts.gatewayUrl,
     // In-process: the gateway's own token. On loopback auth is off and the
@@ -70,6 +70,7 @@ export async function bootChannels(opts: BootChannelsOptions): Promise<InProcess
       gatewayUrl: opts.gatewayUrl,
       gatewayToken: opts.gateway.token,
       pairing,
+      ...(whatsappDelivery ? { whatsappDelivery } : {}),
       ...(publicBaseUrl ? { publicBaseUrl } : {}),
     })
     const mounted = await instance.start({

@@ -33,7 +33,7 @@ ownware serve                     # serve it   (gateway + channels, one process)
 | **Talk** | `ownware run <profile> "<prompt>"` · `ownware <profile> "<prompt>"` |
 | **Serve** | `ownware serve` |
 | **Keys** | `ownware key add · list · remove` |
-| **Channels** | `ownware channel add · list · remove · approve · start` |
+| **Channels** | `ownware channel add · list · remove · approve · handoff · delivery · start` |
 | **Schedules** | `ownware schedule add · list · remove · runs` |
 | **Help & version** | `ownware help` · `ownware --help` · `ownware version` · `ownware --version` |
 
@@ -181,13 +181,19 @@ ownware channel add <kind> --profile <id> [credentials…] [--line business|pers
 ownware channel list
 ownware channel remove <id>
 ownware channel approve <channel> <code>     # pair an unknown sender
+ownware channel handoff list [channel-id]    # active WhatsApp takeovers
+ownware channel handoff accept <request-id>
+ownware channel handoff resume <request-id>
+ownware channel delivery list [channel-id]   # accepted/delivered/failed/unknown
 ownware channel start [--gateway <url>] [--token <bearer>]
 ```
 
 `--line business|personal` is a shortcut for the underlying access policy. For finer
 control set it directly: `--dm open|pairing|allowlist` (how unknown DMs are handled) and
 `--group mention|all|off` (whether the agent answers in group chats). `--id <custom-id>`
-names the channel instance.
+names the channel instance. WhatsApp `/human` takeover is enabled only with
+`--handoff on-request`, and only when the operator has a real connected Business
+app/provider inbox in which to answer.
 
 **Credential flags per channel:**
 
@@ -203,6 +209,14 @@ names the channel instance.
 ownware channel add slack --profile sales --bot-token xoxb-… --app-token xapp-…
 ownware serve      # boots the channel in-process — message the bot
 ```
+
+For WhatsApp, the exact customer command `/human` creates a durable takeover
+request. `accept` keeps the agent paused while the operator answers in the
+connected WhatsApp Business app/provider inbox. `resume` returns only future
+messages to automation; it never replays messages received during the handoff.
+`delivery list` shows stable message IDs and effect states but never customer
+text, credentials, headers, or full provider responses. There is deliberately
+no generic retry command: an `unknown` send may already be customer-visible.
 
 > **Pairing.** Unknown senders are held until approved — your agent doesn't talk to
 > strangers by default. Approve with `ownware channel approve <channel> <code>`.

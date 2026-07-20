@@ -19,6 +19,15 @@ export interface WhatsAppWebhookBody {
           readonly type?: string
           readonly text?: { readonly body?: string }
         }>
+        readonly statuses?: ReadonlyArray<{
+          readonly id?: string
+          readonly status?: string
+          readonly timestamp?: string
+          readonly errors?: ReadonlyArray<{
+            readonly code?: number
+            readonly title?: string
+          }>
+        }>
       }
       readonly field?: string
     }>

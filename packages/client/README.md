@@ -83,6 +83,11 @@ stream each returned `runId` independently. Reconnect a dropped stream by
 passing the highest `seq` you saw as `{ since }`. Invalid, earlier-run,
 ahead-of-run and expired cursors fail explicitly instead of replaying from zero;
 `runSnapshot(runId).earliestRetainedCursor` reports the current safe floor.
+For delegated callers, continuation and every run-scoped read or action require
+the thread's durable authority binding to match the verified delegate,
+workspace, profile, subject, purpose and channel context. Unbound or mismatched
+threads fail before mutation. Delegated runs also receive none of the runtime's
+legacy unscoped identity, database memory, AGENTS.md fallback or remember tool.
 When a profile uses immutable candidates, both `run()` and `runSnapshot()`
 carry the candidate identity pinned before execution. A later activation does
 not rewrite an existing run; the next run rebuilds a cached thread when needed.

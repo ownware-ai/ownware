@@ -65,6 +65,44 @@ ownware serve
 
 **WhatsApp / SMS** are webhook-based, so the gateway must be reachable at a public HTTPS URL (a tunnel like cloudflared works) — see [Exposing the gateway](../gateway/exposing.md) and the per-channel checklist.
 
+### WhatsApp delivery and human takeover
+
+The supported production-shaped WhatsApp path is the official Cloud API for
+text messages. Configure all four webhook credentials; unsigned inbound traffic
+is not a supported mode:
+
+```bash
+ownware channel add whatsapp --profile support \
+  --access-token "$WA_ACCESS_TOKEN" \
+  --phone-number-id "$WA_PHONE_NUMBER_ID" \
+  --app-secret "$WA_APP_SECRET" \
+  --verify-token "$WA_VERIFY_TOKEN" \
+  --line business \
+  --handoff on-request
+```
+
+Ownware durably records each inbound WAMID before acknowledging Meta, preserves
+the customer’s Gateway thread across restarts, and records each outbound text
+chunk separately. The send response means **accepted by Meta**, not delivered;
+`sent`, `delivered`, `read`, and `failed` are reconciled from later status
+webhooks. A lost send response remains `unknown` and is never resent blindly.
+
+Human takeover is explicit rather than inferred from keywords or model prose.
+The exact customer command `/human` opens a request. A local operator inspects,
+accepts, and later resumes it:
+
+```bash
+ownware channel handoff list whatsapp-support
+ownware channel handoff accept <request-id>
+# answer the customer in the connected WhatsApp Business app/provider inbox
+ownware channel handoff resume <request-id>
+```
+
+The agent stays silent for that customer from request through acceptance, and
+only future messages return to automation after resume. This handoff claim is
+valid only when the operator actually has the connected Business app or provider
+inbox; Ownware does not invent a human reply surface.
+
 Fastest live test (~2 minutes) — Telegram:
 
 ```bash

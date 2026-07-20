@@ -26,7 +26,10 @@ export const REQUIRED_CREDENTIALS: Record<ChannelKind, readonly string[]> = {
   telegram: ['token'],
   slack: ['botToken', 'appToken'],
   discord: ['token'],
-  whatsapp: ['accessToken', 'phoneNumberId'],
+  // A public webhook without both values cannot authenticate Meta or complete
+  // the verification handshake. Treating them as optional made an unsigned
+  // production path look supported.
+  whatsapp: ['accessToken', 'phoneNumberId', 'appSecret', 'verifyToken'],
   sms: ['accountSid', 'authToken', 'from'],
 }
 
