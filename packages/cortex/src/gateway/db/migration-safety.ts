@@ -323,13 +323,35 @@ export function runMigrationsSafely(
   const verbose = process.env['OWNWARE_VERBOSE'] === '1' || currentVersion > 0
   try {
     for (const migration of pending) {
-      db.transaction(() => {
-        db.exec(migration.sql)
-        db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
-          migration.version,
-          migration.name,
-        )
-      })()
+      // A migration that rebuilds a foreign-key PARENT (SQLite cannot widen
+      // a CHECK in place) needs `foreign_keys = OFF` for its DROP of the
+      // referenced table — and that pragma is a no-op inside a transaction,
+      // so only this runner can grant it. The grant is narrow: enforcement
+      // returns before the next migration, and `foreign_key_check` runs
+      // INSIDE the transaction so a rebuild that broke referential
+      // integrity rolls back instead of committing.
+      const fkOff = migration.disableForeignKeys !== undefined
+      if (fkOff) db.pragma('foreign_keys = OFF')
+      try {
+        db.transaction(() => {
+          db.exec(migration.sql)
+          if (fkOff) {
+            const violations = db.pragma('foreign_key_check') as unknown[]
+            if (violations.length > 0) {
+              throw new Error(
+                `migration ${migration.name} left ${violations.length} foreign-key ` +
+                  `violation(s); rolling back`,
+              )
+            }
+          }
+          db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
+            migration.version,
+            migration.name,
+          )
+        })()
+      } finally {
+        if (fkOff) db.pragma('foreign_keys = ON')
+      }
       if (verbose) console.log(`  migration [main]: applied ${migration.name}`)
     }
     if (!verbose) {

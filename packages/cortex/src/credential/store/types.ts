@@ -63,7 +63,23 @@ import type {
 export interface DecryptedCredential {
   readonly metadata: Credential
   readonly value: string
+  /**
+   * Opaque revision of the encrypted value. Safe to compare internally; it
+   * reveals neither plaintext nor whether two separately encrypted values are
+   * equal. Changes only when the encrypted value rotates.
+   */
+  readonly valueRevision: string
 }
+
+export interface CredentialWriteCondition {
+  readonly valueRevision: string
+  readonly status: CredentialStatus
+}
+
+export type CredentialConditionalUpdateResult =
+  | { readonly kind: 'updated'; readonly credential: Credential }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'conflict' }
 
 /**
  * `list()` filter. All fields combine with AND. Omitted fields impose
@@ -91,6 +107,22 @@ export interface CredentialFilter {
 export interface CredentialSaveInput {
   readonly name: string
   readonly value: string
+  /**
+   * Override the derived hint.
+   *
+   * Backends default to `maskCredentialValue(value)` — the last four characters
+   * — which is right when `value` IS the secret. It is wrong when `value` is a
+   * structured payload: an OAuth token set encodes as JSON, whose tail is
+   * `..."}`, and those characters are outside `HintSchema`'s class, so the save
+   * would be rejected outright.
+   *
+   * Suppliers of this field take responsibility for it being render-safe AND
+   * honest. `encodeOAuthTokenSet()` in `credential/oauth-token.ts` is the
+   * intended producer; it derives the hint from the account identifier so the
+   * hint identifies the *connection* rather than pretending to be a tail of a
+   * secret that has no single form.
+   */
+  readonly hint?: string
   readonly category: CredentialCategory
   readonly authType: Credential['authType']
   readonly variableName?: string
@@ -122,6 +154,13 @@ export interface CredentialSaveInput {
 export interface CredentialUpdateInput {
   readonly name?: string
   readonly value?: string
+  /**
+   * Override the derived hint on a value rotation. Same contract as
+   * `CredentialSaveInput.hint`. Ignored unless `value` is also supplied —
+   * a hint that no longer corresponds to the stored value would be a lie the
+   * UI has no way to detect.
+   */
+  readonly hint?: string
   readonly tags?: readonly string[]
   readonly trust?: CredentialTrust
   readonly spendCap?: SpendCap | null
@@ -203,6 +242,17 @@ export interface CredentialBackend {
    * change).
    */
   update(id: string, input: CredentialUpdateInput): Promise<Credential | null>
+
+  /**
+   * Apply a patch only if the encrypted value revision and status still match
+   * the caller's atomic read. Used for OAuth rotation so a stale refresh can
+   * neither overwrite a newer token nor resurrect an operator-revoked row.
+   */
+  updateIfUnchanged(
+    id: string,
+    expected: CredentialWriteCondition,
+    input: CredentialUpdateInput,
+  ): Promise<CredentialConditionalUpdateResult>
 
   /**
    * Hard-delete the credential. Returns `true` if a row was removed,

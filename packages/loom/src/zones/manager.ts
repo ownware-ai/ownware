@@ -80,14 +80,10 @@ export class ZoneManager {
         sessionId: '',
       }
 
+      // `evaluate` records into the combination tracker itself, so this
+      // path must NOT record again — doing so would double-count every
+      // call and let a single tool call satisfy a two-trigger rule.
       const decision = this.evaluate(ctx)
-
-      // Record in combination tracker for future combo detection
-      this.combinations.record(
-        toolName,
-        decision.classification.level,
-        input,
-      )
 
       // Audit logging
       if (this.auditLog) {
@@ -143,6 +139,26 @@ export class ZoneManager {
       ctx.input,
       this.config.combinationRules,
     )
+
+    // Record AFTER checking (a combination is "this call, given what came
+    // before" — recording first would let one call match both triggers of
+    // a two-trigger rule) and BEFORE the early return below (a call that
+    // fired a rule still happened, and still belongs in the history).
+    //
+    // This is the only `record` call on any live path. Until 2026-07-25
+    // the sole caller was `asSafetyRule`, which nothing invokes — so the
+    // history was ALWAYS empty and `check` could never match. Every
+    // combination rule was unreachable even for a profile that explicitly
+    // opted in with `combinationRules: 'default-set'`, which is exactly
+    // the enterprise / legal / healthcare case the cortex schema names.
+    //
+    // Gated on there being rules at all: with the default `'none'` the
+    // history is never read, so recording would be pure waste — and it
+    // would retain tool inputs in memory for no reason.
+    if (this.config.combinationRules.length > 0) {
+      this.combinations.record(ctx.toolName, classification.level, ctx.input)
+    }
+
     if (comboBlock) {
       const decision: ZoneDecision = {
         classification,

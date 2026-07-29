@@ -11,7 +11,9 @@ import type {
   ProviderAdapter,
   ProviderChunk,
   ProviderFeature,
+  ProviderFetch,
   ProviderRequest,
+  ProviderTransportOptions,
   ToolDefinition,
 } from './types.js'
 import type { ModelPricing } from './pricing.js'
@@ -47,12 +49,26 @@ export class AnthropicProvider implements ProviderAdapter {
    */
   private readonly apiKeyProvider: (() => Promise<string>) | undefined
   private readonly dynamicBaseURL: string | undefined
+  /**
+   * Transport hooks forwarded to the SDK on BOTH construction paths — see the
+   * matching field on `OpenAIProvider`. Held pre-built so the static and
+   * dynamic paths cannot drift.
+   */
+  private readonly transport: {
+    fetch?: ProviderFetch
+    defaultHeaders?: Readonly<Record<string, string>>
+  }
 
   constructor(opts?: {
     apiKey?: string
     baseURL?: string
     apiKeyProvider?: () => Promise<string>
-  }) {
+  } & ProviderTransportOptions) {
+    this.transport = {
+      ...(opts?.fetch !== undefined ? { fetch: opts.fetch } : {}),
+      ...(opts?.defaultHeaders !== undefined ? { defaultHeaders: opts.defaultHeaders } : {}),
+    }
+
     if (opts?.apiKeyProvider) {
       this.staticClient = null
       this.apiKeyProvider = opts.apiKeyProvider
@@ -61,6 +77,7 @@ export class AnthropicProvider implements ProviderAdapter {
       this.staticClient = new Anthropic({
         apiKey: opts?.apiKey,
         baseURL: opts?.baseURL,
+        ...this.transport,
       })
       this.apiKeyProvider = undefined
       this.dynamicBaseURL = undefined
@@ -79,6 +96,7 @@ export class AnthropicProvider implements ProviderAdapter {
       return new Anthropic({
         apiKey,
         ...(this.dynamicBaseURL !== undefined ? { baseURL: this.dynamicBaseURL } : {}),
+        ...this.transport,
       })
     }
     return this.staticClient!

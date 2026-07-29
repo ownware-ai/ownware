@@ -10,12 +10,13 @@
     "packages/client",
     "packages/ui",
     "packages/react",
+    "packages/cli",
     "examples/quickstart",
     "examples/custom-client",
     "adapters/*"
   ],
   "scripts": {
-    "build": "bun run --filter='@ownware/loom' build && bun run --filter='@ownware/cortex' build && bun run --filter='ownware' build && bun run --filter='@ownware/client' build && bun run --filter='@ownware/ui' build && bun run --filter='@ownware/react' build && bun run --filter='@ownware/shuttle' build",
+    "build": "bun run --filter='@ownware/loom' build && bun run --filter='@ownware/cortex' build && bun run --filter='ownware' build && bun run --filter='@ownware/client' build && bun run --filter='@ownware/ui' build && bun run --filter='@ownware/react' build && bun run --filter='@ownware/shuttle' build && bun run --filter='@ownware/cli' build",
     "typecheck": "bun run --filter='*' typecheck",
     "test": "bun run --filter='*' test",
     "test:source-lifecycle": "node scripts/test-source-lifecycle.mjs",

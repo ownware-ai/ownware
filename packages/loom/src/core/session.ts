@@ -23,7 +23,12 @@ import { computeCostBreakdown } from '../metrics/index.js'
 import type { Tool, ToolCall } from '../tools/types.js'
 import type { ToolResultCache } from '../tools/result-cache.js'
 import type { PermissionMode } from '../permissions/types.js'
-import type { ProviderAdapter, ProviderRequest, ProviderUsage } from '../provider/types.js'
+import type {
+  ProviderAdapter,
+  ProviderCostBasis,
+  ProviderRequest,
+  ProviderUsage,
+} from '../provider/types.js'
 import type { CompactionManager } from '../compaction/manager.js'
 import { createCompactionManager } from '../compaction/manager.js'
 import type { CheckpointStore } from '../checkpoint/types.js'
@@ -408,7 +413,14 @@ export class Session {
     this.sessionId = opts.config.sessionId
     this.messages = opts.initialMessages ?? []
     this.turnCount = 0
-    this.totalUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUsd: 0 }
+    this.totalUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUsd: 0,
+      costBasis: null,
+    }
     this.abortController = new AbortController()
     this.createdAt = Date.now()
   }
@@ -515,6 +527,10 @@ export class Session {
     this.totalUsage.cacheReadTokens += result.totalUsage.cacheReadTokens
     this.totalUsage.cacheCreationTokens += result.totalUsage.cacheCreationTokens
     this.totalUsage.costUsd += result.totalUsage.costUsd
+    this.totalUsage.costBasis = mergeAggregateCostBasis(
+      this.totalUsage.costBasis,
+      result.totalUsage.costBasis ?? 'metered',
+    )
 
     // Refresh the exact baseline for the next pre-call context-size
     // check (used by `scheduleProactiveCompaction` below). Falls back
@@ -796,11 +812,22 @@ export class Session {
       // dropped: the side surface is text-only.
     }
 
-    const cost = providerUsage.reportedCostUsd ?? computeSideCallCost(provider, bareModel, providerUsage)
+    const costBasis = checkedProviderCostBasis(providerUsage.costBasis)
+    if (
+      costBasis !== 'metered'
+      && providerUsage.reportedCostUsd !== undefined
+    ) {
+      throw new Error('Provider usage reported conflicting billing semantics.')
+    }
+    const cost = costBasis === 'metered'
+      ? providerUsage.reportedCostUsd
+        ?? computeSideCallCost(provider, bareModel, providerUsage)
+      : 0
     const usage: TurnUsage = {
       ...providerUsage,
       model: opts.model,
       costUsd: cost,
+      ...(costBasis !== 'metered' ? { costBasis } : {}),
     }
 
     // Roll into session totals so the dashboard reflects every dollar.
@@ -809,6 +836,10 @@ export class Session {
     this.totalUsage.cacheReadTokens += usage.cacheReadTokens
     this.totalUsage.cacheCreationTokens += usage.cacheCreationTokens
     this.totalUsage.costUsd += usage.costUsd
+    this.totalUsage.costBasis = mergeAggregateCostBasis(
+      this.totalUsage.costBasis,
+      costBasis,
+    )
 
     // Refresh the exact-baseline snapshot used by the proactive
     // compaction scheduler. A side query doesn't add to the main
@@ -874,14 +905,20 @@ export class Session {
       ? this.config.model.slice(this.config.model.indexOf(':') + 1)
       : this.config.model
     const pricing = this.provider.getModelPricing(bareModel)
+    const costBasis = this.totalUsage.costBasis
     return computeCostBreakdown({
       totalUsd: this.totalUsage.costUsd,
+      ...(costBasis !== null && costBasis !== 'metered'
+        ? { costBasis }
+        : {}),
       turnCount: this.turnCount,
       inputTokens: this.totalUsage.inputTokens,
       outputTokens: this.totalUsage.outputTokens,
       cacheReadTokens: this.totalUsage.cacheReadTokens,
       cacheCreationTokens: this.totalUsage.cacheCreationTokens,
-      pricing,
+      pricing: costBasis === null || costBasis === 'metered'
+        ? pricing
+        : null,
     })
   }
 
@@ -914,7 +951,18 @@ export class Session {
       sessionId: this.sessionId,
       messages: [...this.messages],
       turnCount: this.turnCount,
-      totalUsage: { ...this.totalUsage, model: this.config.model },
+      totalUsage: {
+        inputTokens: this.totalUsage.inputTokens,
+        outputTokens: this.totalUsage.outputTokens,
+        cacheReadTokens: this.totalUsage.cacheReadTokens,
+        cacheCreationTokens: this.totalUsage.cacheCreationTokens,
+        costUsd: this.totalUsage.costUsd,
+        model: this.config.model,
+        ...(this.totalUsage.costBasis !== null
+          && this.totalUsage.costBasis !== 'metered'
+          ? { costBasis: this.totalUsage.costBasis }
+          : {}),
+      },
       createdAt: this.createdAt,
       updatedAt: Date.now(),
     }
@@ -930,6 +978,13 @@ export class Session {
       this.totalUsage.cacheReadTokens = state.totalUsage.cacheReadTokens
       this.totalUsage.cacheCreationTokens = state.totalUsage.cacheCreationTokens
       this.totalUsage.costUsd = state.totalUsage.costUsd ?? 0
+      const hasRecordedUsage = state.totalUsage.inputTokens > 0
+        || state.totalUsage.outputTokens > 0
+        || state.totalUsage.cacheReadTokens > 0
+        || state.totalUsage.cacheCreationTokens > 0
+        || state.totalUsage.costUsd > 0
+      this.totalUsage.costBasis = state.totalUsage.costBasis
+        ?? (hasRecordedUsage ? 'metered' : null)
     }
   }
 
@@ -1015,7 +1070,14 @@ export class Session {
     this.abort('system')
     this.messages = []
     this.turnCount = 0
-    this.totalUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUsd: 0 }
+    this.totalUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUsd: 0,
+      costBasis: null,
+    }
     this.permissionStore?.clear()
   }
 }
@@ -1058,6 +1120,27 @@ interface MutableUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
   costUsd: number
+  costBasis: ProviderCostBasis | null
+}
+
+function checkedProviderCostBasis(value: unknown): ProviderCostBasis {
+  if (
+    value === undefined
+    || value === 'metered'
+    || value === 'subscription_allowance'
+    || value === 'unknown'
+  ) {
+    return value ?? 'metered'
+  }
+  throw new Error('Provider usage reported an unknown billing basis.')
+}
+
+function mergeAggregateCostBasis(
+  current: ProviderCostBasis | null,
+  incoming: ProviderCostBasis,
+): ProviderCostBasis {
+  if (current === null || current === incoming) return incoming
+  return 'unknown'
 }
 
 /**

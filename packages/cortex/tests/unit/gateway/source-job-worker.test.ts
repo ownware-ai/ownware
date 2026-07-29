@@ -21,6 +21,7 @@ const WORKSPACE_ID = 'workspace-a'
 const PROFILE_ID = 'mini'
 const TEXT_VERSION_ID = '11111111-1111-4111-8111-111111111111'
 const PDF_VERSION_ID = '22222222-2222-4222-8222-222222222222'
+const DOCX_VERSION_ID = '33333333-3333-4333-8333-333333333333'
 
 describe('SourceJobWorker', () => {
   let dir: string
@@ -52,6 +53,21 @@ describe('SourceJobWorker', () => {
       versionId: PDF_VERSION_ID,
       mediaType: 'application/pdf' as const,
       bytes: Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n', 'ascii'),
+    },
+    {
+      // OOXML framing: ZIP local-file-header magic up front, an
+      // end-of-central-directory record in the tail — the same
+      // container-level rigor as the PDF case above.
+      name: 'OOXML ZIP framing',
+      versionId: DOCX_VERSION_ID,
+      mediaType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' as const,
+      bytes: Buffer.concat([
+        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+        Buffer.from('synthetic ooxml payload', 'ascii'),
+        Buffer.from([0x50, 0x4b, 0x05, 0x06]),
+        Buffer.alloc(18),
+      ]),
     },
   ])('completes $name without retaining content or a private locator', async ({
     versionId,
@@ -293,6 +309,21 @@ describe('SourceJobWorker', () => {
     })
     expect(JSON.stringify(jobs.getScoped(job.jobId, WORKSPACE_ID, PROFILE_ID)))
       .not.toContain(bytes.toString('hex'))
+  })
+
+  it('fails closed for an OOXML declaration whose bytes are not a ZIP container', async () => {
+    const bytes = Buffer.from('This is plain prose, not a ZIP archive.', 'utf8')
+    const target = await seedPlacedVersion(
+      DOCX_VERSION_ID,
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      bytes,
+    )
+    const job = enqueue(target.sourceId, DOCX_VERSION_ID)
+
+    expect(await realWorker().runAvailable(200)).toBe(1)
+    expect(jobs.getScoped(job.jobId, WORKSPACE_ID, PROFILE_ID)).toMatchObject({
+      state: 'failed', checkpoint: 1, outcomeCode: 'source_format_invalid',
+    })
   })
 
   it('fails closed when the private object is missing', async () => {
@@ -582,7 +613,7 @@ describe('SourceJobWorker', () => {
 
   async function seedPlacedVersion(
     versionId: string,
-    mediaType: 'text/plain' | 'application/pdf',
+    mediaType: SourceMediaType,
     bytes: Buffer,
   ): Promise<{ readonly sourceId: string; readonly objectKey: string }> {
     const source = new SourceStore(database.rawMainHandle).create({

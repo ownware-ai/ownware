@@ -9,11 +9,13 @@
  */
 
 import type { ModelPricing } from '../provider/pricing.js'
+import type { ProviderCostBasis } from '../provider/types.js'
 import type { CacheStats, CostBreakdown, TokenBreakdown } from './types.js'
 
 export interface CostBreakdownInputs {
   /** USD totals already accumulated by the loop. */
   readonly totalUsd: number
+  readonly costBasis?: ProviderCostBasis
   /** Number of completed turns. */
   readonly turnCount: number
   /** Raw input tokens billed at full input rate. */
@@ -54,6 +56,9 @@ export function computeCostBreakdown(input: CostBreakdownInputs): CostBreakdown 
 
   return {
     totalUsd: input.totalUsd,
+    ...(input.costBasis !== undefined
+      ? { costBasis: input.costBasis }
+      : {}),
     avgUsdPerTurn,
     turnCount: input.turnCount,
     tokens,

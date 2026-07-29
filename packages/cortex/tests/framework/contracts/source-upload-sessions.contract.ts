@@ -13,7 +13,12 @@ const UploadSessionSchema = z.object({
   offset: z.literal(0),
   expectedBytes: z.number().int().positive(),
   expectedChecksum: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-  declaredMediaType: z.enum(['text/plain', 'application/pdf']),
+  declaredMediaType: z.enum([
+    'text/plain',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ]),
   maxChunkBytes: z.literal(1024 * 1024),
   maxChunks: z.literal(64),
   expiresAt: z.number().int().positive(),
@@ -96,6 +101,87 @@ describe('Contract: source upload sessions', () => {
     expect(raw).not.toContain('guide.txt')
     expect(raw).not.toContain('storage')
     expect(raw).not.toContain('token')
+  })
+
+  it('accepts an OOXML declaration for a file source and refuses it for a text source', async () => {
+    // Office documents are how real businesses hold their material. Upload
+    // acceptance is framing-verified storage, never a preparation promise —
+    // extract_text still refuses non-text verified types with
+    // source_media_unsupported.
+    const bytes = Buffer.from('PK synthetic')
+    const body = {
+      expectedBytes: bytes.length,
+      expectedChecksum: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+      declaredMediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      filename: 'scope-guide.docx',
+    }
+    const fileSource = await fetch(`${gw.baseUrl}/api/v1/sources`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'idempotency-key': 'a1a1a1a1-abab-4a1a-8a1a-a1a1a1a1a1a1',
+      },
+      body: JSON.stringify({
+        kind: 'file',
+        label: 'OOXML upload target',
+        classification: 'internal',
+        authority: 'supporting_reference',
+        audiencePolicyRef: 'audience.support-team',
+        sensitivityPolicyRef: 'sensitivity.internal',
+        purposePolicyRef: 'purpose.customer-support',
+        retentionPolicyRef: 'retention.standard',
+        freshnessPolicyRef: 'freshness.monthly',
+      }),
+    })
+    const fileSourceId = (await fileSource.json() as { sourceId: string }).sourceId
+    const accepted = await fetch(`${gw.baseUrl}/api/v1/sources/${fileSourceId}/upload-sessions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'idempotency-key': 'a2a2a2a2-abab-4a2a-8a2a-a2a2a2a2a2a2',
+      },
+      body: JSON.stringify(body),
+    })
+    expect(accepted.status).toBe(201)
+    expect(UploadSessionSchema.parse(await accepted.json())).toMatchObject({
+      sourceId: fileSourceId,
+      declaredMediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
+
+    // A text/structured_export source still only takes text/plain: the kind
+    // constraint did not silently widen with the media enum.
+    const textSource = await fetch(`${gw.baseUrl}/api/v1/sources`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'idempotency-key': 'a3a3a3a3-abab-4a3a-8a3a-a3a3a3a3a3a3',
+      },
+      body: JSON.stringify({
+        kind: 'text',
+        label: 'Pasted text target',
+        classification: 'internal',
+        authority: 'supporting_reference',
+        audiencePolicyRef: 'audience.support-team',
+        sensitivityPolicyRef: 'sensitivity.internal',
+        purposePolicyRef: 'purpose.customer-support',
+        retentionPolicyRef: 'retention.standard',
+        freshnessPolicyRef: 'freshness.monthly',
+      }),
+    })
+    const textSourceId = (await textSource.json() as { sourceId: string }).sourceId
+    const refused = await fetch(`${gw.baseUrl}/api/v1/sources/${textSourceId}/upload-sessions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'idempotency-key': 'a4a4a4a4-abab-4a4a-8a4a-a4a4a4a4a4a4',
+      },
+      body: JSON.stringify(body),
+    })
+    expect(refused.status).toBe(409)
   })
 
   it('replays one declaration, conflicts on change, and keeps separate sessions separate', async () => {

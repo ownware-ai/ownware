@@ -1,3 +1,4 @@
+import { SOURCE_MEDIA_TYPES } from '../source-media.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { sendJSON } from '../router.js'
 import { MAX_BODY_SIZE } from '../router.js'
@@ -77,7 +78,7 @@ const PUBLIC_CAPABILITIES = [
   { id: 'candidates.stage', version: 1 },
   { id: 'candidates.validate', version: 1 },
   { id: 'connections.list', version: 1 },
-  { id: 'gateway.capabilities', version: 11 },
+  { id: 'gateway.capabilities', version: 12 },
   { id: 'gateway.health', version: 1 },
   { id: 'models.list', version: 1 },
   { id: 'principals.issue', version: 3 },
@@ -123,7 +124,7 @@ export function createCapabilitiesHandler(
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.30.0',
+        revision: '0.31.0',
       },
       capabilities: PUBLIC_CAPABILITIES,
       limits: {
@@ -147,7 +148,7 @@ export function createCapabilitiesHandler(
           maxChunks: SOURCE_UPLOAD_MAX_CHUNKS,
           sessionTtlSeconds: SOURCE_UPLOAD_TTL_MS / 1000,
           supportedSourceKinds: ['file', 'text', 'structured_export'],
-          supportedMediaTypes: ['text/plain', 'application/pdf'],
+          supportedMediaTypes: SOURCE_MEDIA_TYPES,
         },
         sourceInspection: {
           maxBytes: SOURCE_INSPECTION_MAX_BYTES,

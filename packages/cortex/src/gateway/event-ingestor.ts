@@ -27,6 +27,7 @@ import type { LoomEvent } from '@ownware/loom'
 import type { CortexDatabase } from './db/database.js'
 import type { EventBus } from './event-bus.js'
 import { ROOT_AGENT_ID } from './event-bus.js'
+import { redactEventForStorage } from './redact-event.js'
 import { trace, traceEnabled } from './trace.js'
 
 export interface IngestParams {
@@ -130,7 +131,25 @@ export class EventIngestor {
    * bad event, but still reports them).
    */
   ingest(params: IngestParams): number {
-    const evidenceEvent = projectPermissionEvidenceEvent(params.event)
+    // Two sanitizers compose at this choke point, BEFORE the durable
+    // write — so disk and live SSE carry byte-identical payloads and a
+    // `?since=N` replay can't hand back something the live stream had
+    // already sanitized:
+    //
+    //   1. projectPermissionEvidenceEvent — replaces permission.request
+    //      input with a content-free allowlisted projection.
+    //   2. redactEventForStorage — redacts secret-shaped values out of
+    //      tool-call arguments and results for every other event type.
+    //
+    // The `messages` table forks off a DIFFERENT path
+    // (`SessionRunner.accumulateEvent`) and is redacted at its own choke
+    // point. See `redact-event.ts` for the full store table.
+    //
+    // Returned by reference when there is nothing to redact, so the
+    // common event (text.delta) costs one switch.
+    const evidenceEvent = redactEventForStorage(
+      projectPermissionEvidenceEvent(params.event),
+    )
     // Decide which agent_id this event actually belongs to on disk.
     // The sub-agent generator in Loom yields its own agent.spawn and
     // agent.complete events — but the parent's UI expects to see the

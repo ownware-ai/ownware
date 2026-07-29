@@ -27,6 +27,7 @@ src/
 │   ├── types.ts          # ProviderAdapter interface
 │   ├── anthropic.ts      # Claude adapter
 │   ├── openai.ts         # GPT/O-series adapter
+│   ├── openai-responses.ts # Responses syntax/stream adapter (manual wiring)
 │   ├── google.ts         # Gemini adapter
 │   ├── registry.ts       # Provider resolution by name
 │   ├── router.ts         # Model string parsing + aliases

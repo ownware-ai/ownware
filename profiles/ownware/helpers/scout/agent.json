@@ -1,0 +1,101 @@
+{
+  "name": "scout",
+  "kind": "helper",
+  "description": "Fast read-only lookup. Answers one focused factual question from the web or local files — a definition, a current number, a quick 'how do I', a single source check. Runs on a fast model for speed. Use for quick facts; use researcher for anything that needs multiple sources or a full brief.",
+  "version": "0.1.0",
+  "tags": [
+    "helper",
+    "research",
+    "lookup",
+    "web",
+    "fast",
+    "read-only"
+  ],
+  "metadata": {
+    "icon": "zap",
+    "color": "slate",
+    "category": "Research Helpers",
+    "avatar": {
+      "bg": "#332611",
+      "fg": "#FBD98A",
+      "accent": "#F59E0B",
+      "symbol": "<path d=\"M34 12 L20 36 L31 36 L28 52 L44 26 L33 26 Z\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linejoin=\"round\" fill=\"none\"/>"
+    }
+  },
+  "model": "openai:gpt-5-nano",
+  "smallFastModel": "openai:gpt-5-nano",
+  "maxTokens": 16384,
+  "maxTurns": 12,
+  "tools": {
+    "preset": "none",
+    "allow": [
+      "web_search",
+      "web_fetch",
+      "readFile",
+      "listFiles",
+      "glob",
+      "grep"
+    ],
+    "deny": [],
+    "custom": [],
+    "mcp": {}
+  },
+  "memory": {
+    "enabled": true,
+    "sources": [
+      "AGENTS.md"
+    ],
+    "autoLearn": true,
+    "isolation": "shared"
+  },
+  "skills": {
+    "dirs": [
+      "skills/"
+    ],
+    "external": []
+  },
+  "context": {
+    "git": false,
+    "os": false,
+    "cwd": true,
+    "datetime": true,
+    "project": true,
+    "modelInfo": false,
+    "contextUsage": false
+  },
+  "security": {
+    "level": "standard",
+    "permissionMode": "ask",
+    "sandbox": {
+      "enabled": false,
+      "provider": "local"
+    },
+    "zones": {
+      "enabled": true,
+      "overrides": []
+    }
+  },
+  "execution": {
+    "mode": "foreground",
+    "timeout": "10m"
+  },
+  "criticalReminder": "FAST READ-ONLY LOOKUP: answer ONE focused question, then stop. Never edit files or change external state. If the answer is time-sensitive (a price, version, 'latest', date), cite the source and its date. If the question turns out to need multiple sources or a full brief, say so and recommend the parent route it to `researcher` instead of half-doing it. End with the answer and a one-line source.",
+  "subagents": [],
+  "compaction": {
+    "strategy": "truncate",
+    "trigger": {
+      "type": "fraction",
+      "threshold": 0.85
+    },
+    "retain": {
+      "type": "messages",
+      "count": 4
+    },
+    "toolResultDrop": {
+      "enabled": true
+    }
+  },
+  "checkpoint": {
+    "store": "file"
+  }
+}

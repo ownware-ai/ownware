@@ -1,0 +1,54 @@
+{
+  "name": "@ownware/cli",
+  "version": "0.1.0",
+  "description": "Ownware CLI — chat with your own agent in the terminal. Thin client of the Ownware gateway wire contract.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "ownware-cli": "./bin/ownware-cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:unit": "vitest run src/__tests__/unit",
+    "test:integration": "vitest run src/__tests__/integration",
+    "test:watch": "vitest",
+    "journeys": "node e2e/run.ts",
+    "journeys:list": "node e2e/run.ts --list",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.e2e.json",
+    "prepublishOnly": "bun run build && bun run test"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@opentui/core": "0.4.5",
+    "@ownware/client": "workspace:*",
+    "@ownware/cortex": "workspace:*",
+    "@ownware/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@ownware/loom": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "Apache-2.0"
+}

@@ -29,7 +29,7 @@
  */
 
 import forge from 'node-forge'
-import { X509Certificate, generateKeyPairSync } from 'node:crypto'
+import { X509Certificate, generateKeyPairSync, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -132,8 +132,21 @@ function generate(): GatewayTls {
 }
 
 function randomSerial(): string {
-  // 16 random bytes. The leading "00" keeps the high bit clear so the
-  // serial is parsed as a positive integer (some strict X.509 parsers
-  // reject negative serials).
-  return '00' + forge.util.bytesToHex(forge.random.getBytesSync(16))
+  return positiveDerSerial(randomBytes(16))
+}
+
+/**
+ * Encode a positive, non-zero, minimally padded DER INTEGER from entropy.
+ * A leading 00 is legal only when it prevents the first significant byte
+ * from being interpreted as negative.
+ */
+export function positiveDerSerial(bytes: Uint8Array): string {
+  if (bytes.length === 0) throw new Error('Certificate serial entropy is empty.')
+  let first = 0
+  while (first < bytes.length && bytes[first] === 0) first += 1
+  if (first === bytes.length) return '01'
+
+  const significant = Buffer.from(bytes.slice(first))
+  const hex = significant.toString('hex')
+  return (significant[0]! & 0x80) !== 0 ? `00${hex}` : hex
 }

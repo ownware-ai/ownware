@@ -25,6 +25,7 @@ import {
 } from '../../credential/bootstrap-providers.js'
 import type { GatewayCredentialResolver } from '../../credential/resolver.js'
 import type { CredentialInjector } from '../../credential/injector.js'
+import type { CredentialAuditLog } from '../../credential/audit.js'
 
 const KNOWN_PROVIDERS = LLM_PROVIDERS.map((d) => d.providerId)
 
@@ -39,7 +40,24 @@ export interface ProviderHandlerDeps {
   readonly store: CredentialStore
   readonly resolver: GatewayCredentialResolver
   readonly injector: CredentialInjector
+  /**
+   * Audit sink for security-relevant credential events.
+   *
+   * REQUIRED, not optional: `getProviderKeyFull` decrypts and returns a
+   * plaintext API key, which is the single most sensitive operation this handler
+   * performs. An un-audited plaintext read leaves no trace that a secret left
+   * the vault, so there is no way to answer "was this key exfiltrated?" after
+   * the fact. Making the dependency mandatory means the endpoint cannot be wired
+   * up without an audit trail.
+   */
+  readonly audit: CredentialAuditLog
 }
+
+/**
+ * Identifies the plaintext-key route in audit rows, so a reveal through this
+ * endpoint is distinguishable from one through `POST /credentials/:id/reveal`.
+ */
+const PLAINTEXT_KEY_ENDPOINT = 'GET /api/v1/providers/:provider/key'
 
 export function createProviderHandlers(deps: ProviderHandlerDeps) {
   const { store, resolver, injector } = deps
@@ -208,9 +226,33 @@ export function createProviderHandlers(deps: ProviderHandlerDeps) {
     }
     const decrypted = await store.decrypt(existing.id)
     if (decrypted === null) {
+      // A failed decrypt is itself security-relevant — it can mean a corrupted
+      // vault, a rotated master key, or a tampered row. Record it.
+      deps.audit.recordEvent({
+        credentialId: existing.id,
+        eventType: 'reveal',
+        outcome: 'error',
+        detail: { provider, reason: 'decrypt_returned_null', endpoint: PLAINTEXT_KEY_ENDPOINT },
+      })
       sendError(res, 500, `Failed to decrypt credential for "${provider}"`)
       return
     }
+
+    // Audit BEFORE responding. If the process dies mid-response the record must
+    // already exist — an audit trail that can be lost by a crash is not a trail.
+    deps.audit.recordEvent({
+      credentialId: existing.id,
+      eventType: 'reveal',
+      outcome: 'ok',
+      detail: {
+        provider,
+        endpoint: PLAINTEXT_KEY_ENDPOINT,
+        // Never the value, never a prefix of it. The hint is already a
+        // non-reversible display form stored alongside the credential.
+        keyHint: existing.hint,
+      },
+    })
+
     sendJSON(res, 200, { provider, key: decrypted.value })
   }
 

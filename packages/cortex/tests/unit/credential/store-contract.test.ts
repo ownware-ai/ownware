@@ -25,6 +25,7 @@
  *      divergence in a test failure, not a vague README mismatch.
  */
 
+import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   CredentialSchema,
@@ -35,11 +36,17 @@ import {
 } from '../../../src/credential/schema.js'
 import type {
   CredentialBackend,
+  CredentialConditionalUpdateResult,
   CredentialFilter,
   CredentialSaveInput,
   CredentialUpdateInput,
+  CredentialWriteCondition,
   DecryptedCredential,
 } from '../../../src/credential/store/types.js'
+
+function fakeValueRevision(value: string): string {
+  return createHash('sha256').update(`test-only:${value}`).digest('hex')
+}
 
 // ---------------------------------------------------------------------------
 // Reference fake — in-memory backend
@@ -177,6 +184,24 @@ class FakeMemoryBackend implements CredentialBackend {
     return next
   }
 
+  async updateIfUnchanged(
+    id: string,
+    expected: CredentialWriteCondition,
+    input: CredentialUpdateInput,
+  ): Promise<CredentialConditionalUpdateResult> {
+    const row = this.rows.get(id)
+    if (row === undefined) return { kind: 'missing' }
+    if (
+      fakeValueRevision(row.value) !== expected.valueRevision
+      || row.metadata.status !== expected.status
+    ) {
+      return { kind: 'conflict' }
+    }
+    const credential = await this.update(id, input)
+    if (credential === null) return { kind: 'missing' }
+    return { kind: 'updated', credential }
+  }
+
   async delete(id: string): Promise<boolean> {
     return this.rows.delete(id)
   }
@@ -184,7 +209,11 @@ class FakeMemoryBackend implements CredentialBackend {
   async decrypt(id: string): Promise<DecryptedCredential | null> {
     const row = this.rows.get(id)
     if (!row) return null
-    return { metadata: row.metadata, value: row.value }
+    return {
+      metadata: row.metadata,
+      value: row.value,
+      valueRevision: fakeValueRevision(row.value),
+    }
   }
 }
 

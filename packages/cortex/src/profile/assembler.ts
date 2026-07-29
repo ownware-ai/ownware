@@ -82,6 +82,7 @@ import { WebSearchToolProvider } from '../connector/providers/web-search-provide
 import type { ConnectorStatusBus } from '../connector/status-bus.js'
 import { attachMCPManagerToStatusBus } from '../connector/mcp/status-bridge.js'
 import { PROJECT_CHECKPOINTS_SUBDIR } from '../constants.js'
+import { ensureProjectDataDir } from '../project-data-dir.js'
 
 // ---------------------------------------------------------------------------
 // AssembledAgent — everything Loom needs
@@ -1637,6 +1638,19 @@ function createCheckpointStore(profile: LoadedProfile): CheckpointStore | null {
       return new MemoryCheckpointStore()
     case 'file': {
       const dir = cp.dir ?? PROJECT_CHECKPOINTS_SUBDIR
+      if (cp.dir === undefined) {
+        // The default lands in the customer's project. Make that
+        // directory git-invisible BEFORE anything writes a transcript
+        // into it (FINDINGS F11). An explicit `dir` is the profile
+        // author's choice and is left exactly as given.
+        try {
+          ensureProjectDataDir()
+        } catch {
+          // A read-only or unwritable project must not stop the agent
+          // from assembling; the checkpoint write will fail loudly on
+          // its own if the directory truly cannot be created.
+        }
+      }
       return new FileCheckpointStore(dir)
     }
     case 'postgres':

@@ -18,13 +18,14 @@ import {
 } from '../source-upload-store.js'
 import { SourceByteStore, SourceByteStoreError } from '../source-byte-store.js'
 import { SourceQuotaExceededError } from '../source-quota-policy.js'
+import { SOURCE_MEDIA_TYPES } from '../source-media.js'
 
 const SAFE_FILENAME = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029/\\]+$/u
 
 const UploadSessionInputSchema = z.object({
   expectedBytes: z.number().int().min(1).max(SOURCE_UPLOAD_MAX_BYTES),
   expectedChecksum: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-  declaredMediaType: z.enum(['text/plain', 'application/pdf']),
+  declaredMediaType: z.enum(SOURCE_MEDIA_TYPES),
   filename: z.string().trim().min(1).max(255).regex(SAFE_FILENAME),
 }).strict()
 

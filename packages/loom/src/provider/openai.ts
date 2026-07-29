@@ -10,7 +10,9 @@ import type {
   ProviderAdapter,
   ProviderChunk,
   ProviderFeature,
+  ProviderFetch,
   ProviderRequest,
+  ProviderTransportOptions,
   ProviderUsage,
   ToolDefinition,
 } from './types.js'
@@ -50,13 +52,44 @@ export class OpenAIProvider implements ProviderAdapter {
   private readonly apiKeyProvider: (() => Promise<string>) | undefined
   private readonly dynamicBaseURL: string | undefined
   private readonly dynamicOrganization: string | undefined
+  /**
+   * Transport hooks forwarded to the SDK on BOTH construction paths. Held as
+   * a pre-built spread so the static and dynamic paths cannot drift apart —
+   * a `fetch` honoured on one path but dropped on the other would mean the
+   * credential silently stops being attached the moment the gateway switches
+   * a provider from a static key to a resolver-backed one.
+   */
+  private readonly transport: {
+    fetch?: ProviderFetch
+    defaultHeaders?: Readonly<Record<string, string>>
+  }
+
+  /**
+   * The transport object narrowed to the SDK's own option type.
+   *
+   * `openai` declares its `Fetch` input as node-fetch's `RequestInfo`, which
+   * includes a structural `URLLike` that plain `URL` does not satisfy. That
+   * declaration is wider than what the SDK actually passes at runtime — always
+   * a `string` or a `URL`. `ProviderFetch` states the true runtime contract, so
+   * closure authors get an honest signature; this accessor absorbs the shim
+   * mismatch at the one boundary where it exists rather than leaking it into
+   * every caller's type.
+   */
+  private get sdkTransport(): Partial<ConstructorParameters<typeof OpenAI>[0]> {
+    return this.transport as Partial<ConstructorParameters<typeof OpenAI>[0]>
+  }
 
   constructor(opts?: {
     apiKey?: string
     baseURL?: string
     organization?: string
     apiKeyProvider?: () => Promise<string>
-  }) {
+  } & ProviderTransportOptions) {
+    this.transport = {
+      ...(opts?.fetch !== undefined ? { fetch: opts.fetch } : {}),
+      ...(opts?.defaultHeaders !== undefined ? { defaultHeaders: opts.defaultHeaders } : {}),
+    }
+
     if (opts?.apiKeyProvider) {
       this.staticClient = null
       this.apiKeyProvider = opts.apiKeyProvider
@@ -67,6 +100,7 @@ export class OpenAIProvider implements ProviderAdapter {
         apiKey: opts?.apiKey,
         baseURL: opts?.baseURL,
         organization: opts?.organization,
+        ...this.sdkTransport,
       })
       this.apiKeyProvider = undefined
       this.dynamicBaseURL = undefined
@@ -86,6 +120,7 @@ export class OpenAIProvider implements ProviderAdapter {
         apiKey,
         ...(this.dynamicBaseURL !== undefined ? { baseURL: this.dynamicBaseURL } : {}),
         ...(this.dynamicOrganization !== undefined ? { organization: this.dynamicOrganization } : {}),
+        ...this.sdkTransport,
       })
     }
     return this.staticClient!
@@ -711,9 +746,18 @@ function toOpenAITool(
  * Anthropic translator — duck-types the SDK's APIError shape so we don't
  * import SDK error classes here.
  */
-function translateOpenAIError(err: unknown): Error {
+export function translateOpenAIError(err: unknown): Error {
   if (err instanceof ProviderError) return err
   if (!(err instanceof Error)) return new ProviderError('Unknown error', 'openai')
+
+  // A custom transport may reject before any HTTP request exists (for
+  // example, credential resolution or a required account binding). The
+  // OpenAI SDK wraps fetch errors as APIConnectionError and retains the
+  // original error as `cause`. Preserve an engine ProviderError from that
+  // authority instead of replacing it with the misleading "Connection
+  // error." wrapper.
+  const cause = (err as Error & { cause?: unknown }).cause
+  if (cause instanceof ProviderError) return cause
 
   const shape = err as Error & {
     status?: unknown
@@ -774,7 +818,7 @@ function safeOpenAIStringify(x: unknown): string {
  * reasoning-token spend per tier. We skip `minimal` and `xhigh` — they're
  * opt-in extremes that callers should request explicitly via `effort`.
  */
-function mapBudgetToEffort(budgetTokens: number): 'low' | 'medium' | 'high' {
+export function mapBudgetToEffort(budgetTokens: number): 'low' | 'medium' | 'high' {
   if (budgetTokens <= 4096) return 'low'
   if (budgetTokens <= 16_384) return 'medium'
   return 'high'

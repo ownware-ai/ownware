@@ -35,12 +35,20 @@ import type { GatewayState } from './state.js'
 import type { ThreadMessage, ToolCallRecord, SubAgentRecord, PermissionRecord, CredentialRecord, AttachmentMeta, MessagePart } from './types.js'
 import { projectPermissionEvidenceEvent } from './event-ingestor.js'
 import type { TurnInterruptedEvent } from './events.js'
+import { redactEventForStorage, redactToolInput } from './redact-event.js'
 import { trace, traceEnabled } from './trace.js'
 import type { PendingReconciles } from './pending-reconcile.js'
 import type { ProfileRegistry } from '../profile/registry.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { reconcileSessionTools } from '../profile/reconcile.js'
 import type { GatewayRunStore } from './run-store.js'
+import {
+  ManagedExecutionRuntime,
+  RuntimeContractError,
+  RuntimeExecutionError,
+  createOwnwareRuntimeDriver,
+} from '../runtime/port.js'
+import { resolveRuntimeSelection } from '../runtime/selection.js'
 
 /**
  * Dependencies needed to perform turn-boundary reconcile. Optional on
@@ -304,8 +312,15 @@ export class SessionRunner {
   async drainAll(abortFirst = false): Promise<void> {
     if (abortFirst) {
       for (const [threadId] of this.runs) {
-        const session = this.state.getSession(threadId)
-        session?.abort('system')
+        const execution = this.state.getRuntime(threadId)?.execution
+        if (execution) {
+          void execution.cancel('system').catch((err) => {
+            console.error('[session-runner] shutdown cancellation failed:', err)
+          })
+        } else {
+          const session = this.state.getSession(threadId)
+          session?.abort('system')
+        }
       }
     }
     const promises = [...this.runs.values()].map(r => r.donePromise).filter(Boolean)
@@ -322,9 +337,24 @@ export class SessionRunner {
     const session = this.state.getSession(threadId)
     const runtime = this.state.getRuntime(threadId)
 
-    if (!session || !runtime) {
+    if (!runtime || (!runtime.execution && (!session || !runtime.hitl))) {
       run.status = 'error'
       return { status: 'error', turnCount: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, error: 'Missing session or runtime' }
+    }
+
+    // The absence of an explicit selection is the byte-compatible legacy
+    // path. It still crosses the same execution boundary as an external
+    // runtime, which keeps SessionRunner free of provider branches.
+    const execution = runtime.execution ?? new ManagedExecutionRuntime(
+      createOwnwareRuntimeDriver({
+        session: session!,
+        selection: resolveRuntimeSelection(),
+        answerPermission: ({ requestId, decision }) =>
+          runtime.hitl!.respond(requestId, decision === 'approve'),
+      }),
+    )
+    if (runtime.execution === undefined) {
+      this.state.setRuntime(threadId, { ...runtime, execution })
     }
 
     // Stash the done promise so drainAll can await it
@@ -332,7 +362,8 @@ export class SessionRunner {
     run.donePromise = new Promise<RunResult>(resolve => { resolveDone = resolve })
 
     // Wall-clock timeout enforcement (F-09). A positive `timeoutMs`
-    // arms a one-shot timer; on fire we call `session.abort('timeout')`
+    // arms a one-shot timer; on fire we request cancellation through the
+    // selected execution runtime
     // which propagates through the generator and lands in the catch
     // block below as `message === 'timeout'` → `status = 'aborted'`.
     //
@@ -343,11 +374,9 @@ export class SessionRunner {
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
     if (params.timeoutMs !== undefined && params.timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {
-        try {
-          session.abort('timeout')
-        } catch (err) {
+        void execution.cancel('timeout').catch((err) => {
           console.error('[session-runner] timeout abort failed:', err)
-        }
+        })
       }, params.timeoutMs)
     }
 
@@ -401,7 +430,8 @@ export class SessionRunner {
       // all reconciles behind this lock keeps the session's tool list
       // consistent with this tracker's managed snapshot.
       if (
-        this.reconcileDeps !== undefined
+        session !== undefined
+        && this.reconcileDeps !== undefined
         && this.reconcileDeps.pending.consume(threadId)
       ) {
         const deps = this.reconcileDeps
@@ -451,11 +481,11 @@ export class SessionRunner {
         }
       }
 
-      const events = session.submitMessage(params.prompt)
+      const events = execution.start({ prompt: params.prompt })
       let result = await events.next()
 
       while (!result.done) {
-        const event = result.value
+        const event = result.value.event
 
         trace('runner-recv', threadId, 'root', event.type)
 
@@ -483,7 +513,11 @@ export class SessionRunner {
               event.granted ? 'approve' : 'deny',
             )
           }
-          if (runtime.hitl.pendingCount === 0) {
+          if (
+            runtime.execution
+              ? !runtime.execution.hasPendingPermission(event.requestId)
+              : runtime.hitl?.pendingCount === 0
+          ) {
             this.runStore.markRunningAfterDecision(run.runId)
           }
         }
@@ -551,8 +585,17 @@ export class SessionRunner {
         result = await events.next()
       }
 
-      // Generator returned — loop completed successfully.
-      run.status = 'completed'
+      // A clean generator return is not automatically success. External
+      // runtimes can authoritatively finish as interrupted; preserving that
+      // distinction keeps an acknowledged cancel from becoming a green run.
+      if (result.value.outcome === 'cancelled') {
+        run.status = 'aborted'
+        interruptReason = result.value.reason === 'timeout'
+          ? 'timeout'
+          : 'aborted'
+      } else {
+        run.status = 'completed'
+      }
 
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -573,7 +616,9 @@ export class SessionRunner {
           this.state.eventIngestor.ingestParentEvent(threadId, {
             type: 'error',
             message,
-            code: 'run_error',
+            code: err instanceof RuntimeContractError || err instanceof RuntimeExecutionError
+              ? err.code
+              : 'run_error',
             recoverable: false,
           } as LoomEvent)
         } catch { /* best effort */ }
@@ -584,6 +629,27 @@ export class SessionRunner {
       if (timeoutHandle !== null) {
         clearTimeout(timeoutHandle)
         timeoutHandle = null
+      }
+
+      // A runtime is responsible for processes or resources hidden behind
+      // its driver. Teardown is bounded and idempotent at the port. A timeout
+      // cannot be reported as a clean run because work may still exist.
+      const closeResult = await execution.close()
+      if (closeResult.status !== 'closed') {
+        run.status = 'error'
+        interruptReason = 'error'
+        try {
+          this.state.eventIngestor.ingestParentEvent(threadId, {
+            type: 'error',
+            message: closeResult.status === 'timed_out'
+              ? 'Runtime did not stop within the teardown deadline.'
+              : 'Runtime teardown failed.',
+            code: closeResult.status === 'timed_out'
+              ? 'runtime_close_timeout'
+              : 'runtime_close_failed',
+            recoverable: false,
+          } as LoomEvent)
+        } catch { /* best effort */ }
       }
 
       // Drop the lifecycle callback so any late sub-agent event can't
@@ -757,13 +823,25 @@ export class SessionRunner {
    * the same struct).
    */
   private accumulateEvent(
-    event: LoomEvent,
-    enrichedEvent: LoomEvent,
+    rawEvent: LoomEvent,
+    rawEnrichedEvent: LoomEvent,
     acc: TurnAccumulator,
     run: MutableRun,
     saveMessage: (msg: ThreadMessage) => void,
     generateMsgId: () => string,
   ): void {
+    // Redact secret-shaped argument values before anything reaches `acc`.
+    // This method is the single write path into the `messages` table —
+    // the store that `/hydrate`, `/messages`, `/data/export` and the
+    // markdown export all read, and the one retention NEVER prunes. Its
+    // call sites (the run loop, the sub-agent lifecycle callback, and
+    // the partial-turn flush) are all covered from here.
+    //
+    // `agent_events` forks off through `EventIngestor` and is redacted at
+    // its own choke point. See `redact-event.ts` for the store table.
+    const event = redactEventForStorage(rawEvent)
+    const enrichedEvent = redactEventForStorage(rawEnrichedEvent)
+
     switch (event.type) {
       case 'text.delta':
         acc.text += event.text
@@ -805,6 +883,23 @@ export class SessionRunner {
             // Malformed JSON — keep start.input as-is.
           }
         }
+
+        // Second redaction pass, on the REASSEMBLED arguments. The
+        // `args_delta` chunks were each redacted individually, but only
+        // with the JSON-structure-safe pattern subset, and only within
+        // their own chunk — so two failure modes survive to here:
+        //
+        //   1. A secret split across a chunk boundary matched no pattern
+        //      in either half, but is whole again after the join.
+        //   2. The four non-json-safe patterns (PEM blocks, connection
+        //      strings, `X_TOKEN=…` assignments, Heroku keys) are skipped
+        //      on fragments because replacing them would break parsing.
+        //      Here the JSON is already parsed, so rewriting a value is
+        //      structurally safe.
+        //
+        // This is the value that lands in `messages[].tools[].input`.
+        toolInput = redactToolInput(toolInput)
+
         acc.tools.push({
           toolCallId: event.toolCallId,
           name: event.toolName,
@@ -1355,7 +1450,13 @@ type MutableMessagePart =
   | { kind: 'permission'; requestId: string }
   | { kind: 'credential'; requestId: string }
 
-interface TurnAccumulator {
+/**
+ * Exported for tests only — `session-runner.ts` is not part of cortex's
+ * public API surface (it is absent from `src/index.ts`). The redaction
+ * seam in `accumulateEvent` guards the durable `messages` table, and a
+ * test cannot prove that seam without an accumulator to write into.
+ */
+export interface TurnAccumulator {
   text: string
   thinking: string
   tools: ToolCallRecord[]
@@ -1406,7 +1507,8 @@ interface TurnAccumulator {
   readonly spawnInputsByAgentId: Map<string, { task?: string; prompt?: string }>
 }
 
-function createAccumulator(): TurnAccumulator {
+/** @see TurnAccumulator — exported for tests only. */
+export function createAccumulator(): TurnAccumulator {
   return {
     text: '',
     thinking: '',

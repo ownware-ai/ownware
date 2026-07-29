@@ -50,6 +50,255 @@ export type {
   HooksConfig,
 } from './profile/schema.js'
 
+// Runtime selection — execution loop, model access route, capability evidence,
+// and immutable per-thread binding are separate concepts by construction.
+export {
+  RuntimeSelectionSchema,
+  CapabilityProvenanceSchema,
+  CapabilityAssessmentSchema,
+  RuntimePlanSchema,
+  ThreadRuntimeBindingSchema,
+  RuntimeBindingConflictError,
+  resolveRuntimeSelection,
+  createRuntimePlan,
+  capabilityFreshness,
+  bindThreadRuntime,
+} from './runtime/selection.js'
+export type {
+  RuntimeSelection,
+  CapabilityAssessment,
+  RuntimePlan,
+  CapabilityFreshness,
+  ThreadRuntimeBinding,
+} from './runtime/selection.js'
+
+// Experimental direct Responses access for Ownware's native loop. The
+// constructor accepts only the explicit direct selection and composes the
+// existing OAuth credential boundary with the engine's Responses adapter.
+export {
+  DirectOpenAIProviderConfigurationError,
+  createOpenAIDirectProvider,
+} from './runtime/openai-direct/provider.js'
+export type {
+  CreateOpenAIDirectProviderOptions,
+  DirectOpenAIAccountTransport,
+  DirectOpenAIProviderConfigurationErrorCode,
+  DirectOpenAITransportConfig,
+} from './runtime/openai-direct/provider.js'
+
+// Runtime execution port — native drivers translate behind this boundary;
+// gateway lifecycle code consumes only canonical events and control results.
+export {
+  ManagedExecutionRuntime,
+  RuntimeContractError,
+  RuntimeExecutionError,
+  createOwnwareRuntimeDriver,
+} from './runtime/port.js'
+export type {
+  ExecutionRuntime,
+  RuntimeDriver,
+  RuntimeDriverEvent,
+  RuntimeEventEnvelope,
+  RuntimeCompletion,
+  RuntimeStatus,
+  RuntimePhase,
+  RuntimeOutcome,
+  RuntimeConsequence,
+  RuntimeStartRequest,
+  RuntimePermissionDecision,
+  RuntimePermissionResult,
+  RuntimeCancelReason,
+  RuntimeCancelResult,
+  RuntimeCloseResult,
+  OwnwareRuntimeDriverOptions,
+} from './runtime/port.js'
+
+// Official Codex app-server process/protocol boundary. The client owns only
+// version negotiation, isolated configuration, JSONL correlation, and bounded
+// process lifecycle; runtime semantics stay behind RuntimeDriver.
+export {
+  CodexAppServerClient,
+  CodexAppServerError,
+  CodexProcessError,
+  SUPPORTED_CODEX_VERSION_RANGE,
+  parseCodexVersion,
+  probeCodexVersion,
+} from './runtime/codex/app-server-client.js'
+export type {
+  CodexAppServerStartOptions,
+  CodexChildProcess,
+  CodexDiagnostics,
+  CodexInbound,
+  CodexNotification,
+  CodexServerRequest,
+  CodexSpawnOptions,
+  CodexSpawnProcess,
+  ParsedCodexVersion,
+} from './runtime/codex/app-server-client.js'
+
+// Redacted account/login/model/quota projection over Codex-owned credentials.
+export {
+  CodexAccountService,
+  CodexAccountProtocolError,
+  CodexAccountUnavailableError,
+} from './runtime/codex/account.js'
+export {
+  CodexProfileMappingError,
+  CodexScopedToolAuthority,
+  prepareCodexProfileMapping,
+} from './runtime/codex/profile-mapping.js'
+export type {
+  BindCodexScopedToolAuthorityInput,
+  CodexApprovedSource,
+  CodexLocalImageAttachment,
+  CodexUnknownAttachment,
+  CodexProfileAttachment,
+  CodexProfileMappingInput,
+  CodexProfileCompatibilityStatus,
+  CodexProfileCompatibilityEntry,
+  CodexProfileLimitationSeverity,
+  CodexProfileLimitation,
+  CodexProfileCompatibilityReport,
+  CodexProfileCompatibilityDecision,
+  CodexTurnUserInput,
+  CodexProfileWireMapping,
+  CodexPreparedProfileMapping,
+  CodexProfileMappingErrorCode,
+} from './runtime/codex/profile-mapping.js'
+export {
+  CodexOfficialRunPlanError,
+  composeCodexOfficialRunPlan,
+} from './runtime/codex/official-run-plan.js'
+export type {
+  CodexOfficialRunPlan,
+  CodexOfficialRunPlanErrorCode,
+} from './runtime/codex/official-run-plan.js'
+export type {
+  CodexAccountRpc,
+  CodexAccountState,
+  CodexLoginState,
+  CodexLoginPresentation,
+  CodexModel,
+  CodexModelCatalog,
+  CodexQuotaState,
+  CodexRateLimitBucket,
+  CodexRateLimitWindow,
+  CodexAccountNotification,
+  CodexAccountNotificationResult,
+  CodexAccountProtocolErrorCode,
+  CodexAccountUnavailableErrorCode,
+} from './runtime/codex/account.js'
+
+// Official Codex run isolation, scoped Ownware tool bridge, and native
+// approval translation. These are kernel security boundaries; the engine remains
+// unaware of the external runtime.
+export {
+  CodexMcpBridgeError,
+  CodexMcpToolHub,
+} from './runtime/codex/mcp-tool-bridge.js'
+export type {
+  CodexEffectObservation,
+  CodexMcpDeliveryObservation,
+  CodexMcpDeliveryResult,
+  CodexMcpBridgeErrorCode,
+  CodexMcpInvocationReceipt,
+  CodexMcpRunHandle,
+  CodexMcpRunRegistration,
+  CodexMcpToolHubOptions,
+} from './runtime/codex/mcp-tool-bridge.js'
+export {
+  CodexRunIsolationError,
+  enforceCodexRuntimeIsolation,
+  materializeCodexRunHome,
+  prepareCodexSandboxPlan,
+} from './runtime/codex/run-isolation.js'
+export type {
+  CodexPreparedSandboxPlan,
+  CodexRequestClient,
+  CodexRuntimeIsolationInput,
+  CodexRuntimeIsolationProof,
+  CodexRunIsolationErrorCode,
+  CodexSandboxDecision,
+  CodexSandboxInput,
+  CodexSandboxLimitation,
+  CodexSandboxMode,
+  CodexSandboxPlan,
+  CodexSandboxReport,
+  MaterializeCodexRunHomeInput,
+  MaterializedCodexRunHome,
+} from './runtime/codex/run-isolation.js'
+export { CodexNativeApprovalBridge } from './runtime/codex/native-approval-bridge.js'
+export type {
+  CodexFileChangeContext,
+  CodexNativeApprovalBridgeOptions,
+  CodexNativeApprovalHandleResult,
+  CodexNativeApprovalReview,
+} from './runtime/codex/native-approval-bridge.js'
+export {
+  CodexThreadReferenceError,
+  advanceCodexThreadReference,
+  assertCodexThreadResume,
+  beginCodexThreadTurn,
+  completeCodexThreadTurn,
+  createCodexThreadReference,
+  observeCodexThreadConsequence,
+  parseCodexThreadReference,
+} from './runtime/codex/official-thread.js'
+export {
+  CodexThreadReferenceStore,
+  CodexThreadReferenceStoreError,
+} from './runtime/codex/thread-reference-store.js'
+export {
+  CodexThreadRecoveryError,
+  CodexThreadRecoveryService,
+} from './runtime/codex/thread-recovery.js'
+export {
+  CodexThreadLifecycleError,
+  CodexThreadLifecycleService,
+} from './runtime/codex/thread-lifecycle.js'
+export type {
+  CodexThreadReferenceStoreErrorCode,
+} from './runtime/codex/thread-reference-store.js'
+export type {
+  CodexThreadRecoveryClient,
+  CodexThreadRecoveryErrorCode,
+  CodexThreadRecoveryResult,
+  CodexThreadRecoveryServiceOptions,
+  CodexThreadRecoveryStatus,
+} from './runtime/codex/thread-recovery.js'
+export type {
+  CodexThreadInspection,
+  CodexThreadLifecycleClient,
+  CodexThreadLifecycleErrorCode,
+  CodexThreadLifecycleResult,
+} from './runtime/codex/thread-lifecycle.js'
+export {
+  CodexOfficialTurnBridge,
+  CodexTurnProtocolError,
+} from './runtime/codex/official-turn.js'
+export {
+  CodexOfficialRuntimeDriver,
+  CodexOfficialRuntimeDriverError,
+} from './runtime/codex/official-runtime-driver.js'
+export type {
+  CodexOfficialRuntimeClient,
+  CodexOfficialRuntimeDriverErrorCode,
+  CodexOfficialRuntimeDriverOptions,
+} from './runtime/codex/official-runtime-driver.js'
+export type {
+  CodexOfficialTurnBridgeOptions,
+  CodexTranslatedTurnEvent,
+  CodexTurnObservation,
+  CodexTurnProtocolErrorCode,
+} from './runtime/codex/official-turn.js'
+export type {
+  CodexTerminalTurnReference,
+  CodexActiveTurnReference,
+  CodexThreadReference,
+  CodexThreadReferenceErrorCode,
+  CodexThreadReferenceInput,
+} from './runtime/codex/official-thread.js'
+
 // Profile loader
 export { loadProfile } from './profile/loader.js'
 export type { LoadedProfile } from './profile/loader.js'

@@ -25,7 +25,7 @@
 import { OpenAIProvider } from './openai.js'
 import type { ModelPricing } from './pricing.js'
 import { isKimiModel, wrapKimiToolCallStream } from './quirks/kimi.js'
-import type { ProviderChunk, ProviderRequest } from './types.js'
+import type { ProviderChunk, ProviderRequest, ProviderTransportOptions } from './types.js'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
@@ -61,14 +61,21 @@ export class OpenRouterProvider extends OpenAIProvider {
   constructor(opts?: {
     apiKey?: string
     apiKeyProvider?: () => Promise<string>
-  }) {
+    /**
+     * Override the OpenRouter endpoint. Exists so the flow can be driven
+     * against a local fake in tests; production callers omit it.
+     */
+    baseURL?: string
+  } & ProviderTransportOptions) {
     super({
       // Underlying OpenAI SDK defaults to OPENAI_API_KEY when none is passed,
       // which is wrong for OpenRouter's endpoint. Fall back to the correct
       // env var explicitly so standalone (non-gateway) usage works.
       apiKey: opts?.apiKey ?? process.env.OPENROUTER_API_KEY,
       apiKeyProvider: opts?.apiKeyProvider,
-      baseURL: OPENROUTER_BASE_URL,
+      baseURL: opts?.baseURL ?? OPENROUTER_BASE_URL,
+      ...(opts?.fetch !== undefined ? { fetch: opts.fetch } : {}),
+      ...(opts?.defaultHeaders !== undefined ? { defaultHeaders: opts.defaultHeaders } : {}),
     })
   }
 

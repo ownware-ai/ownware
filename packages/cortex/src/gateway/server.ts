@@ -306,6 +306,13 @@ export function isLoopbackHost(host: string): boolean {
 // OwnwareGateway
 // ---------------------------------------------------------------------------
 
+/**
+ * How long a still-open connection may keep the gateway from shutting
+ * down before it is destroyed. Long enough for an in-flight response to
+ * finish writing, short enough that no customer waits on it.
+ */
+const SHUTDOWN_CONNECTION_GRACE_MS = 2_000
+
 export class OwnwareGateway {
   // http2.Http2SecureServer and http.Server both extend net.Server; we
   // only call .listen()/.close()/.on('error')/.address() on it, so the
@@ -1922,13 +1929,64 @@ export class OwnwareGateway {
       await this.accessLogger.close()
     }
 
-    // Close HTTP server
+    // Close HTTP server.
+    //
+    // `server.close()` only stops ACCEPTING connections — it then waits
+    // for every existing one to end on its own. A keep-alive socket
+    // (undici pools them) or a still-open SSE stream therefore blocks
+    // shutdown indefinitely. That is why an in-process gateway hung
+    // forever after a cancelled run while the same cancel over a
+    // separate process exited instantly (CLI FINDINGS F9): the client
+    // and the server were the same process, so nothing was ever going
+    // to close that socket.
+    //
+    // Open streams have already been told this is an intentional
+    // shutdown by `notifyShutdown()` above, so: drop idle sockets at
+    // once, give the rest a short grace period to finish writing, then
+    // destroy them. Shutdown is bounded either way.
     if (this.server) {
+      const server = this.server
+      // `closeIdleConnections` / `closeAllConnections` exist on
+      // `http.Server` (the plain-HTTP loopback path). The HTTP/2 secure
+      // server has no equivalent, so there we can only bound the wait —
+      // the remaining socket dies with the process. Envelope declared
+      // rather than pretended away.
+      const connectionApi = server as Partial<{
+        closeIdleConnections(): void
+        closeAllConnections(): void
+      }>
       await new Promise<void>((resolvePromise, reject) => {
-        this.server!.close(err => {
+        let settled = false
+        const finish = (err?: Error): void => {
+          if (settled) return
+          settled = true
+          if (force !== undefined) clearTimeout(force)
           if (err) reject(err)
           else resolvePromise()
+        }
+        let force: NodeJS.Timeout | undefined
+        server.close(err => {
+          finish(err ?? undefined)
         })
+        connectionApi.closeIdleConnections?.()
+        force = setTimeout(() => {
+          if (connectionApi.closeAllConnections !== undefined) {
+            console.warn(
+              '[ownware] shutdown: connections still open after ' +
+                `${SHUTDOWN_CONNECTION_GRACE_MS}ms — closing them`,
+            )
+            connectionApi.closeAllConnections()
+            return
+          }
+          console.warn(
+            '[ownware] shutdown: connections still open after ' +
+              `${SHUTDOWN_CONNECTION_GRACE_MS}ms and this server cannot ` +
+              'force-close them — continuing shutdown',
+          )
+          finish()
+        }, SHUTDOWN_CONNECTION_GRACE_MS)
+        // Never let the grace timer itself hold the process open.
+        force.unref()
       })
     }
 
@@ -2281,6 +2339,9 @@ export class OwnwareGateway {
       store: this.credentialStore,
       resolver: this.credentialResolver,
       injector: this.credentialInjector,
+      // Mandatory: GET /providers/:provider/key returns a plaintext API key and
+      // must leave an audit trail. See ProviderHandlerDeps.audit.
+      audit: this.credentialAudit,
     })
     const transcribe = createTranscribeHandlers({ store: this.credentialStore })
     const searchHandlers = createSearchHandlers(this.state, this.registry)
@@ -3080,9 +3141,40 @@ export class OwnwareGateway {
     this.router.get('/api/v1/app/version', appVersionHandler)
     this.router.get('/api/v1/connectivity', connectivityHandler)
 
-    // Debug
-    this.router.get('/api/v1/debug/events', debug.getEvents)
-    this.router.get('/api/v1/debug/events/:threadId/timeline', debug.getTimeline)
+    // ── Debug routes — OFF unless explicitly enabled ────────────────────
+    //
+    // SECURITY. These serve the `LoomEvent` log for a thread: every prompt,
+    // every tool call with its arguments, every tool result.
+    //
+    // Tool-call ARGUMENTS are redacted — `redact-event.ts` runs at the
+    // store write paths (`EventIngestor.ingest`,
+    // `SessionRunner.accumulateEvent`), so a secret-shaped value the model
+    // passed into a tool is stored as `[REDACTED:TYPE]`. Tool RESULTS are
+    // sanitized centrally by the engine tool executor.
+    //
+    // Previously they were registered unconditionally — so with gateway
+    // auth disabled any local process could read everything an agent had
+    // ever done, with no audit row (unlike the credential paths, which at
+    // least record one). Nothing in any shipped client calls these; they
+    // exist purely for developer inspection, so in a packaged build they
+    // are pure attack surface.
+    //
+    // NOT registered at all when disabled, rather than returning 403: a 404
+    // is indistinguishable from "this build has no such endpoint", so the
+    // surface isn't advertised to a scanner.
+    //
+    // Enable for local debugging with OWNWARE_ENABLE_DEBUG_ROUTES=1. Do not
+    // set it in a packaged build.
+    const debugRoutesEnabled = process.env['OWNWARE_ENABLE_DEBUG_ROUTES'] === '1'
+    if (debugRoutesEnabled) {
+      console.warn(
+        '[ownware] debug routes ENABLED (OWNWARE_ENABLE_DEBUG_ROUTES=1) — ' +
+          '/api/v1/debug/* serves raw event logs including tool-call ' +
+          'arguments. Never enable this in a shipped build.',
+      )
+      this.router.get('/api/v1/debug/events', debug.getEvents)
+      this.router.get('/api/v1/debug/events/:threadId/timeline', debug.getTimeline)
+    }
   }
 }
 

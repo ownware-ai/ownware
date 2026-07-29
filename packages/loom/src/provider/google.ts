@@ -11,6 +11,7 @@ import {
   type EnhancedGenerateContentResponse,
   type FunctionDeclaration,
   type Part,
+  type RequestOptions,
 } from '@google/generative-ai'
 import type { ModelPricing } from './pricing.js'
 import { getModelPricing } from './pricing.js'
@@ -19,9 +20,11 @@ import type {
   ProviderChunk,
   ProviderFeature,
   ProviderRequest,
+  ProviderTransportOptions,
   ProviderUsage,
   ToolDefinition,
 } from './types.js'
+import { ConfigError } from '../core/errors.js'
 import type { Message, ContentBlock } from '../messages/types.js'
 import { withStallGuard } from './stall-guard.js'
 import { LOOM_TRACE } from '../observability/debug-trace.js'
@@ -46,12 +49,46 @@ export class GoogleProvider implements ProviderAdapter {
   /** Dynamic resolver — see Anthropic / OpenAI providers for rationale. */
   private readonly apiKeyProvider: (() => Promise<string>) | undefined
   private defaultModel: string
+  /**
+   * Per-request options handed to `getGenerativeModel`. This SDK has no
+   * client-level HTTP hook, so `baseUrl` + `customHeaders` are the only
+   * transport seams it offers — see the envelope table on
+   * `ProviderTransportOptions`.
+   */
+  private readonly requestOptions: RequestOptions
 
   constructor(opts?: {
     apiKey?: string
     model?: string
+    baseURL?: string
     apiKeyProvider?: () => Promise<string>
-  }) {
+  } & ProviderTransportOptions) {
+    // Refuse what we cannot honour, at wiring time, before any request exists.
+    //
+    // `@google/generative-ai` exposes no way to replace the HTTP call. Accepting
+    // a `fetch` here and quietly ignoring it would send every Gemini request
+    // WITHOUT whatever that closure was carrying — most likely the credential
+    // itself — while the call still looks configured. That is a silent
+    // authentication failure, and the caller would have no way to detect it
+    // short of reading traffic. Failing loudly is the only honest option, and
+    // it fails at construction rather than mid-stream in front of a customer.
+    if (opts?.fetch !== undefined) {
+      throw new ConfigError(
+        'GoogleProvider cannot honour a custom `fetch`: @google/generative-ai exposes no ' +
+          'client-level HTTP hook. Use `defaultHeaders` for static per-connection metadata, ' +
+          'or `baseURL` to redirect the endpoint. A credential that must rotate per request ' +
+          'cannot currently be expressed for this provider.',
+        'fetch',
+      )
+    }
+
+    this.requestOptions = {
+      ...(opts?.baseURL !== undefined ? { baseUrl: opts.baseURL } : {}),
+      ...(opts?.defaultHeaders !== undefined
+        ? { customHeaders: { ...opts.defaultHeaders } }
+        : {}),
+    }
+
     if (opts?.apiKeyProvider) {
       this.staticClient = null
       this.apiKeyProvider = opts.apiKeyProvider
@@ -87,17 +124,20 @@ export class GoogleProvider implements ProviderAdapter {
       ? request.system
       : request.system.map(s => s.text).join('\n\n')
 
-    const model = client.getGenerativeModel({
-      model: request.model,
-      systemInstruction,
-      generationConfig: {
-        maxOutputTokens: request.maxTokens,
-        ...(request.temperature !== null && { temperature: request.temperature }),
+    const model = client.getGenerativeModel(
+      {
+        model: request.model,
+        systemInstruction,
+        generationConfig: {
+          maxOutputTokens: request.maxTokens,
+          ...(request.temperature !== null && { temperature: request.temperature }),
+        },
+        tools: request.tools.length > 0
+          ? [{ functionDeclarations: request.tools.map(toGeminiFunctionDeclaration) }]
+          : undefined,
       },
-      tools: request.tools.length > 0
-        ? [{ functionDeclarations: request.tools.map(toGeminiFunctionDeclaration) }]
-        : undefined,
-    })
+      this.requestOptions,
+    )
 
     const contents = toGeminiContents(request.messages)
     const streamResult = await model.generateContentStream({ contents })

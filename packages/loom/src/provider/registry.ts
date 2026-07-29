@@ -23,19 +23,36 @@ export const PROVIDER_ENV_HINTS: Readonly<Record<string, string>> = {
 const KEYLESS_HINT =
   `or run keyless with a local model: ${ollamaInstallHint()}, then use model "ollama:llama3.2"`
 
-/** One actionable sentence for a provider that isn't configured. */
+/**
+ * What went wrong, then the ways forward — one per line.
+ *
+ * This is the first thing many people ever see from the product, so it
+ * has to be scannable rather than merely complete: the single-paragraph
+ * version carried two alternatives, an install command, a URL and a
+ * pull command in one run-on sentence, and a first-time reader had to
+ * parse prose to find the one thing to type (CLI FINDINGS F2).
+ *
+ * When Ollama is already registered we say so instead of pitching an
+ * install — that is read off the registry, not assumed. We still cannot
+ * know WHICH models have been pulled, so the model name stays an
+ * example rather than a promise.
+ */
 function notConfiguredMessage(providerName: string): string {
   const envVar = PROVIDER_ENV_HINTS[providerName]
   const registered = [...providers.keys()]
-  const available =
-    registered.length > 0 ? ` Configured providers: ${registered.join(', ')}.` : ''
-  if (envVar) {
-    return (
-      `Provider "${providerName}" is not configured — set ${envVar}, ${KEYLESS_HINT}.` +
-      available
-    )
-  }
-  return `Unknown provider "${providerName}".${available} ${KEYLESS_HINT}.`
+  const lines: string[] = [
+    envVar
+      ? `Provider "${providerName}" is not configured.`
+      : `Unknown provider "${providerName}".`,
+  ]
+  if (envVar) lines.push(`  · set ${envVar} to use it`)
+  lines.push(
+    registered.includes('ollama')
+      ? '  · or run keyless against your local Ollama, e.g. model "ollama:llama3.2"'
+      : `  · ${KEYLESS_HINT}`,
+  )
+  if (registered.length > 0) lines.push(`  · configured right now: ${registered.join(', ')}`)
+  return lines.join('\n')
 }
 
 export function registerProvider(adapter: ProviderAdapter): void {

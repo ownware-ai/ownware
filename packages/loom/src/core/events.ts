@@ -62,6 +62,12 @@ export interface TurnUsage {
   readonly model: string
   readonly costUsd: number
   /**
+   * Billing meaning for `costUsd`. Absent means the legacy metered-API
+   * calculation. Subscription runtimes set `subscription_allowance` so a
+   * numeric accumulator placeholder is never presented as a $0 model price.
+   */
+  readonly costBasis?: 'metered' | 'subscription_allowance' | 'unknown'
+  /**
    * True when `costUsd` was computed via the Sonnet-tier fallback because
    * the model wasn't in Loom's pricing catalog. Consumers (status bars,
    * audit logs) should render the value as an estimate (e.g. `≈ $X.XXXX`)

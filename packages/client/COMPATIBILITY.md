@@ -36,6 +36,7 @@ older capability rather than inventing a value.
 | `0.28.0` | Protected source reads and searches derive their subject only from a signed, persisted subject-bound principal; request bodies can no longer select a grant subject. |
 | `0.29.0` | Owner-only provider-neutral connection inventory with Ownware-owned opaque identities, fixed recovery truth, revoked/legacy-history exclusion and an explicit separate-grant requirement. |
 | `0.30.0` | Durable delegated-thread authority binding across continuation, snapshots, event streams, exact permission decisions and cancellation, with legacy unscoped memory disabled for delegated runs. |
+| `0.31.0` | Source upload capability discovery admits verified DOCX/XLSX containers while preserving the separate, narrower preparation envelope. |
 
 Compatibility rules:
 
@@ -48,8 +49,8 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.30.0`,
-  `gateway.capabilities` is version 11, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.31.0`,
+  `gateway.capabilities` is version 12, `connections.list` is version 1,
   `principals.issue` is version 3,
   `runs.start` is version 5,
   `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 3,

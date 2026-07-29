@@ -22,6 +22,7 @@ import type {
 import type { ToolHookRegistry } from './hooks.js'
 import type { ToolExecutionConfig } from '../core/config.js'
 import { headTailTruncate } from '../messages/truncate.js'
+import { sanitizeToolResultText } from './builtins/output-sanitizer.js'
 import type { ToolResultCache } from './result-cache.js'
 
 // ---------------------------------------------------------------------------
@@ -203,6 +204,34 @@ export async function executeTool(
 
   // ── 5. Cap result size ───────────────────────────────────────────────
   result = capResultSize(result!, resolveMaxResultSize(tool, config), config)
+
+  // ── 5.5 Redact secrets from the result ───────────────────────────────
+  // @security This is the ONE place every tool result passes through, so
+  // it is where the module docstring's promise ("redacts secrets from
+  // tool output BEFORE it goes back to the model") is actually kept.
+  // Previously only `shell` and `filesystem` called the sanitizer
+  // themselves; an MCP, Composio or custom profile tool that returned a
+  // token handed it straight to the model, which then had it in provider
+  // requests, prompt caches, and its own replies.
+  //
+  // This enforces a policy the codebase already declares elsewhere: the
+  // credential context built for the system prompt is documented as
+  // "Names only, no values" (cortex `assembler.ts`). Credentials reach
+  // tools by injection, never by being handed back through the model.
+  //
+  // Parse-aware, because results are not free text — consumers parse
+  // several of them and schema-validate the outcome, often with a silent
+  // fallback on parse failure. `sanitizeToolResultText` redacts the
+  // parsed VALUES and re-serializes only when something changed, so a
+  // clean result is returned by reference and keeps its formatting.
+  //
+  // Runs AFTER the cap (a truncated result still gets scanned) and
+  // BEFORE the after-hooks (a hook sees what the model will see).
+  // Idempotent, so shell/filesystem double-sanitizing costs nothing.
+  const sanitizedContent = sanitizeToolResultText(result!.content)
+  if (sanitizedContent !== result!.content) {
+    result = { ...result!, content: sanitizedContent }
+  }
 
   // ── 6. After hooks ───────────────────────────────────────────────────
   if (hooks) {

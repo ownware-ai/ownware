@@ -44,6 +44,7 @@
 
 import type { OpaqueCredentialHandle } from '@ownware/loom'
 import type { GatewayCredentialResolver } from './resolver.js'
+import type { Credential } from './schema.js'
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -165,10 +166,19 @@ export class CredentialInjector {
    */
   async runWithCredential<T>(
     handle: OpaqueCredentialHandle,
-    fn: (value: string) => T | Promise<T>,
+    fn: (
+      value: string,
+      snapshot: {
+        readonly valueRevision: string
+        readonly metadata: Credential
+      },
+    ) => T | Promise<T>,
   ): Promise<T> {
     const resolved = await this.dereferenceOrThrow(handle)
-    return await fn(resolved.value)
+    return await fn(resolved.value, {
+      valueRevision: resolved.valueRevision,
+      metadata: resolved.metadata,
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -179,6 +189,8 @@ export class CredentialInjector {
     handle: OpaqueCredentialHandle,
   ): Promise<{
     readonly value: string
+    readonly valueRevision: string
+    readonly metadata: Credential
     readonly variableName: string
     readonly credentialId: string
   }> {
@@ -195,6 +207,8 @@ export class CredentialInjector {
     }
     return {
       value: resolved.value,
+      valueRevision: resolved.valueRevision,
+      metadata: resolved.metadata,
       variableName: resolved.variableName,
       credentialId: resolved.credentialId,
     }

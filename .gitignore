@@ -13,6 +13,13 @@ coverage/
 *.pem
 client_secret_*.json
 
+# Engine checkpoints written relative to the CWD: running the agent in a
+# project drops .ownware/checkpoints/*.json there, and those files contain
+# the full conversation `messages`. Ignoring them stops `git add -A` from
+# committing transcripts. (The real fix is to write them under the data
+# dir instead — CLI FINDINGS F11.)
+.ownware/
+
 # Local agent state / tool dirs — machine-local, never shared
 # (/memory/ is root-anchored: packages/*/src/memory/ is real source code)
 .claude/

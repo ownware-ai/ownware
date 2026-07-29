@@ -32,6 +32,19 @@ export interface Migration {
    * migration-safety.ts and MIGRATION-POLICY.md (R4, §4 expand→contract).
    */
   readonly destructive?: { readonly reason: string }
+  /**
+   * Set ONLY when this migration rebuilds a table that other tables
+   * reference by foreign key. Modern SQLite rewrites children's REFERENCES
+   * clauses on any parent rename (legacy_alter_table no longer prevents
+   * it), so the only safe rebuild is the documented order — CREATE new →
+   * copy → DROP old → RENAME new into place — and the DROP of a referenced
+   * parent requires `foreign_keys = OFF`, which is a no-op inside a
+   * transaction. The runner grants it for exactly this migration and runs
+   * `foreign_key_check` inside the transaction, so a rebuild that breaks
+   * referential integrity rolls back instead of committing. The required
+   * `reason` documents which parent is rebuilt and why.
+   */
+  readonly disableForeignKeys?: { readonly reason: string }
 }
 
 export const MIGRATIONS: Migration[] = [
@@ -4132,6 +4145,240 @@ export const MIGRATIONS: Migration[] = [
         ),
         created_at               INTEGER NOT NULL
       );
+    `,
+  },
+  {
+    version: 79,
+    name: '079_codex_thread_references',
+    sql: `
+      -- Safe continuity metadata for the optional official Codex runtime.
+      -- This is deliberately columnar: no JSON or free-form metadata field
+      -- can accidentally become a durable copy of credentials, prompts, or
+      -- provider output.
+      CREATE TABLE codex_thread_references (
+        local_thread_id          TEXT    PRIMARY KEY
+          REFERENCES threads(id) ON DELETE CASCADE,
+        remote_thread_id         TEXT    NOT NULL UNIQUE,
+        revision                 INTEGER NOT NULL CHECK (revision >= 0),
+        account_binding          TEXT    NOT NULL CHECK (
+          length(account_binding) = 76
+          AND substr(account_binding, 1, 12) = 'hmac-sha256:'
+          AND substr(account_binding, 13) NOT GLOB '*[^0-9a-f]*'
+        ),
+        model                    TEXT    NOT NULL,
+        model_provider           TEXT    NOT NULL,
+        profile_report_id        TEXT    NOT NULL,
+        sandbox_report_id        TEXT    NOT NULL,
+        bound_at                 TEXT    NOT NULL,
+        active_turn_id           TEXT,
+        active_started_at        TEXT,
+        active_consequence       TEXT CHECK (active_consequence IN (
+          'none_observed', 'output_observed', 'effect_possible',
+          'effect_confirmed'
+        )),
+        last_turn_id             TEXT,
+        last_turn_status         TEXT CHECK (last_turn_status IN (
+          'completed', 'interrupted', 'failed'
+        )),
+        last_turn_completed_at   TEXT,
+        last_turn_authority      TEXT CHECK (last_turn_authority IN (
+          'turn/completed', 'thread/read'
+        )),
+        recovery_state           TEXT    NOT NULL CHECK (recovery_state IN (
+          'ready', 'outcome_unknown'
+        )),
+        updated_at               INTEGER NOT NULL,
+        CHECK (
+          (
+            active_turn_id IS NULL
+            AND active_started_at IS NULL
+            AND active_consequence IS NULL
+          )
+          OR
+          (
+            active_turn_id IS NOT NULL
+            AND active_started_at IS NOT NULL
+            AND active_consequence IS NOT NULL
+          )
+        ),
+        CHECK (
+          (
+            last_turn_id IS NULL
+            AND last_turn_status IS NULL
+            AND last_turn_completed_at IS NULL
+            AND last_turn_authority IS NULL
+          )
+          OR
+          (
+            last_turn_id IS NOT NULL
+            AND last_turn_status IS NOT NULL
+            AND last_turn_completed_at IS NOT NULL
+            AND last_turn_authority IS NOT NULL
+          )
+        )
+      );
+    `,
+  },
+  {
+    version: 80,
+    name: '080_oauth_refresh_leases',
+    sql: `
+      -- Cross-process single-flight for rotating OAuth refresh tokens.
+      -- No token or provider payload is present: only an Ownware credential
+      -- id, opaque owner nonce, monotonic fence generation, and lease times.
+      CREATE TABLE oauth_refresh_leases (
+        credential_id  TEXT    PRIMARY KEY
+          REFERENCES credentials(id) ON DELETE CASCADE,
+        owner_id       TEXT    NOT NULL CHECK (
+          length(owner_id) BETWEEN 1 AND 128
+          AND owner_id NOT GLOB '*[^A-Za-z0-9._:-]*'
+        ),
+        generation     INTEGER NOT NULL CHECK (generation > 0),
+        expires_at     INTEGER NOT NULL CHECK (expires_at >= 0),
+        updated_at     INTEGER NOT NULL CHECK (updated_at >= 0),
+        CHECK (expires_at >= updated_at)
+      );
+
+      CREATE INDEX idx_oauth_refresh_leases_expiry
+        ON oauth_refresh_leases(expires_at);
+    `,
+  },
+  {
+    version: 81,
+    name: '081_ooxml_media_types',
+    destructive: {
+      reason:
+        'SQLite cannot widen the declared/verified media-type CHECKs in place, so both ' +
+        'tables are rebuilt in the documented order (CREATE new, copy every row forward ' +
+        'with explicit column lists, DROP old, RENAME new into place) inside one checked ' +
+        'transaction. Migration tests prove rows and foreign-key integrity survive; ' +
+        'nothing is intentionally discarded.',
+    },
+    disableForeignKeys: {
+      reason:
+        'source_versions is referenced by seven later tables and source_upload_sessions ' +
+        'by source_upload_chunks; dropping a referenced parent needs foreign_keys = OFF, ' +
+        'and foreign_key_check runs inside the transaction to prove the rebuild kept ' +
+        'every child reference intact.',
+    },
+    sql: `
+      -- Accept the two OOXML container types (Word/Excel) at source upload.
+      -- Office documents are how real businesses hold their material; the
+      -- upload door refusing them outright blocked whole intake journeys.
+      -- Upload acceptance stays SEPARATE from preparation capability:
+      -- extract_text still refuses every verified type except text/plain
+      -- with the typed source_media_unsupported.
+      CREATE TABLE source_upload_sessions_new (
+        upload_id             TEXT    PRIMARY KEY,
+        source_id             TEXT    NOT NULL REFERENCES runtime_sources(source_id),
+        workspace_id          TEXT    NOT NULL,
+        profile_id            TEXT    NOT NULL,
+        principal_key         TEXT    NOT NULL,
+        state                 TEXT    NOT NULL CHECK (state IN (
+          'open', 'completing', 'completed', 'expired', 'failed'
+        )),
+        expected_bytes        INTEGER NOT NULL CHECK (expected_bytes BETWEEN 1 AND 16777216),
+        expected_checksum     TEXT    NOT NULL CHECK (
+          expected_checksum GLOB 'sha256:[0-9a-f]*' AND length(expected_checksum) = 71
+        ),
+        declared_media_type   TEXT    NOT NULL CHECK (declared_media_type IN (
+          'text/plain', 'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )),
+        filename              TEXT    NOT NULL CHECK (length(filename) BETWEEN 1 AND 255),
+        durable_offset        INTEGER NOT NULL DEFAULT 0 CHECK (durable_offset >= 0),
+        chunk_count           INTEGER NOT NULL DEFAULT 0 CHECK (chunk_count BETWEEN 0 AND 64),
+        max_chunk_bytes       INTEGER NOT NULL DEFAULT 1048576 CHECK (max_chunk_bytes = 1048576),
+        max_chunks            INTEGER NOT NULL DEFAULT 64 CHECK (max_chunks = 64),
+        pending_version_id    TEXT,
+        completed_version_id  TEXT,
+        code                  TEXT,
+        expires_at            INTEGER NOT NULL,
+        created_at            INTEGER NOT NULL,
+        updated_at            INTEGER NOT NULL,
+        base_source_revision  INTEGER NOT NULL DEFAULT 1
+          CHECK (base_source_revision > 0),
+        base_current_version_id TEXT
+          CHECK (base_current_version_id IS NULL OR length(base_current_version_id) = 36),
+        byte_reservation_released_at INTEGER
+          CHECK (
+            byte_reservation_released_at IS NULL
+            OR byte_reservation_released_at >= created_at
+          ),
+        CHECK (length(upload_id) = 36),
+        CHECK (durable_offset <= expected_bytes),
+        CHECK (expires_at > created_at),
+        CHECK (updated_at >= created_at),
+        CHECK ((state = 'open' AND pending_version_id IS NULL AND completed_version_id IS NULL AND code IS NULL)
+          OR state != 'open')
+      );
+
+      INSERT INTO source_upload_sessions_new (
+        upload_id, source_id, workspace_id, profile_id, principal_key, state,
+        expected_bytes, expected_checksum, declared_media_type, filename,
+        durable_offset, chunk_count, max_chunk_bytes, max_chunks,
+        pending_version_id, completed_version_id, code, expires_at,
+        created_at, updated_at, base_source_revision, base_current_version_id,
+        byte_reservation_released_at
+      )
+      SELECT
+        upload_id, source_id, workspace_id, profile_id, principal_key, state,
+        expected_bytes, expected_checksum, declared_media_type, filename,
+        durable_offset, chunk_count, max_chunk_bytes, max_chunks,
+        pending_version_id, completed_version_id, code, expires_at,
+        created_at, updated_at, base_source_revision, base_current_version_id,
+        byte_reservation_released_at
+      FROM source_upload_sessions;
+
+      DROP TABLE source_upload_sessions;
+      ALTER TABLE source_upload_sessions_new RENAME TO source_upload_sessions;
+
+      CREATE INDEX idx_source_upload_sessions_scope
+        ON source_upload_sessions(workspace_id, profile_id, source_id, created_at DESC);
+      CREATE INDEX idx_source_upload_sessions_recovery
+        ON source_upload_sessions(state, expires_at, updated_at);
+
+      CREATE TABLE source_versions_new (
+        source_version_id   TEXT    PRIMARY KEY,
+        source_id           TEXT    NOT NULL REFERENCES runtime_sources(source_id),
+        checksum            TEXT    NOT NULL CHECK (
+          checksum GLOB 'sha256:[0-9a-f]*' AND length(checksum) = 71
+        ),
+        verified_media_type TEXT    NOT NULL CHECK (verified_media_type IN (
+          'text/plain', 'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )),
+        byte_count          INTEGER NOT NULL CHECK (byte_count BETWEEN 1 AND 16777216),
+        object_key          TEXT    NOT NULL UNIQUE,
+        inspection_state    TEXT    NOT NULL DEFAULT 'not_started' CHECK (
+          inspection_state IN ('not_started', 'queued', 'inspecting', 'complete', 'partial', 'failed')
+        ),
+        created_at          INTEGER NOT NULL,
+        preparation_state   TEXT    NOT NULL DEFAULT 'not_requested'
+          CHECK (preparation_state IN (
+            'not_requested', 'queued', 'preparing', 'ready', 'partial', 'failed'
+          )),
+        CHECK (length(source_version_id) = 36)
+      );
+
+      INSERT INTO source_versions_new (
+        source_version_id, source_id, checksum, verified_media_type,
+        byte_count, object_key, inspection_state, created_at, preparation_state
+      )
+      SELECT
+        source_version_id, source_id, checksum, verified_media_type,
+        byte_count, object_key, inspection_state, created_at, preparation_state
+      FROM source_versions;
+
+      DROP TABLE source_versions;
+      ALTER TABLE source_versions_new RENAME TO source_versions;
+
+      CREATE INDEX idx_source_versions_source
+        ON source_versions(source_id, created_at DESC, source_version_id DESC);
+      CREATE UNIQUE INDEX idx_source_versions_identity_source
+        ON source_versions(source_version_id, source_id);
     `,
   },
 ]

@@ -1,3 +1,4 @@
+import { OOXML_MEDIA_TYPES, type SourceMediaType } from './source-media.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { constants, createReadStream, createWriteStream } from 'node:fs'
 import { link, lstat, mkdir, open, rename, rm, stat, truncate } from 'node:fs/promises'
@@ -65,7 +66,7 @@ export interface ReceivedChunk {
 export interface InspectedSourceBytes {
   readonly byteCount: number
   readonly checksum: string
-  readonly verifiedMediaType: 'text/plain' | 'application/pdf'
+  readonly verifiedMediaType: SourceMediaType
 }
 
 export interface SourceInspectionLimits {
@@ -785,6 +786,18 @@ export class SourceByteStore {
     }
     if (declaredMediaType === 'application/pdf' &&
         (!prefix.equals(Buffer.from('%PDF-')) || !suffix.includes(Buffer.from('%%EOF')))) {
+      throw new SourceByteStoreError('format_invalid')
+    }
+    // OOXML (docx/xlsx) framing: a ZIP local-file-header magic at byte 0 and
+    // an end-of-central-directory record in the tail. Same honesty level as
+    // the PDF check above — container framing, not full parse — and shared
+    // by both OOXML types, so this verifies "matches the declared type's
+    // container", never which Office kind the bytes are (see source-media.ts).
+    // Declared false negative: a ZIP whose archive comment pushes the EOCD
+    // record out of the last kilobyte fails as format_invalid.
+    if (OOXML_MEDIA_TYPES.includes(declaredMediaType) &&
+        (!prefix.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) ||
+          !suffix.includes(Buffer.from([0x50, 0x4b, 0x05, 0x06])))) {
       throw new SourceByteStoreError('format_invalid')
     }
     return {

@@ -17,6 +17,7 @@
  */
 
 import type { ContextUsage } from '../context/types.js'
+import type { ProviderCostBasis } from '../provider/types.js'
 
 // ---------------------------------------------------------------------------
 // Tokens — raw counts as the provider reported them
@@ -80,8 +81,13 @@ export interface CacheStats {
 // ---------------------------------------------------------------------------
 
 export interface CostBreakdown {
-  /** Total USD spent across all turns this session. */
+  /**
+   * Total USD spent across all turns when `costBasis` is metered/absent.
+   * For subscription or unknown billing this remains a numeric accumulator
+   * placeholder and must be interpreted with `costBasis`.
+   */
   readonly totalUsd: number
+  readonly costBasis?: ProviderCostBasis
   /** Average USD per turn (`totalUsd / turnCount`). 0 when `turnCount === 0`. */
   readonly avgUsdPerTurn: number
   /** Number of completed turns this session. */

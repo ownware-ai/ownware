@@ -157,7 +157,15 @@ export type { SkillToolOptions } from './tools/builtins/skill.js'
 // shell + filesystem tool results already pass through it. Exported so
 // consumers (e.g. the gatherer profile) redact mined text with the same
 // maintained pattern set instead of a parallel regex.
-export { sanitizeOutput, containsSecrets } from './tools/builtins/output-sanitizer.js'
+// `sanitizeJsonFragment` is the structure-preserving variant, for text
+// that is a fragment of a JSON document (streamed tool-call arguments).
+export {
+  sanitizeOutput,
+  sanitizeJsonFragment,
+  sanitizeToolResultText,
+  redactSecretsDeep,
+  containsSecrets,
+} from './tools/builtins/output-sanitizer.js'
 export type { SanitizeResult } from './tools/builtins/output-sanitizer.js'
 
 // Context usage — engine-level token-budget measurement. Mirrors CC's
@@ -326,13 +334,17 @@ export type {
   ProviderChunk,
   ProviderRequest,
   ProviderUsage,
+  ProviderCostBasis,
   ProviderFeature,
+  ProviderFetch,
+  ProviderTransportOptions,
   ToolDefinition,
   JsonSchema,
 } from './provider/types.js'
 export { registerProvider, unregisterProvider, getProvider, resolveProvider, listProviders } from './provider/registry.js'
 export { AnthropicProvider } from './provider/anthropic.js'
 export { OpenAIProvider } from './provider/openai.js'
+export { OpenAIResponsesProvider } from './provider/openai-responses.js'
 export { GoogleProvider } from './provider/google.js'
 export { OpenRouterProvider } from './provider/openrouter.js'
 export { OllamaProvider, resolveOllamaHost, isOllamaReachable, ollamaInstallHint } from './provider/ollama.js'

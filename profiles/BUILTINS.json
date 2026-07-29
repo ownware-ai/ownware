@@ -3,10 +3,7 @@
   "comment": "Profiles classified as 'core' are auto-loaded as builtins (always active). Profiles classified as 'marketplace' are bundled into the binary but NOT auto-loaded — they appear in the Marketplace tab as 'Ownware Verified' entries the user installs explicitly. Per-profile private helpers live INSIDE each parent's helpers/ folder and are NOT listed here — they are folder-derived and only spawnable by their enclosing parent. Anything not listed defaults to 'core' for backward compatibility.",
   "core": [
     "ownware",
-    "ownware-code",
-    "explore",
-    "planner",
-    "verifier"
+    "ownware-code"
   ],
   "marketplace": [
     "ownware-law",

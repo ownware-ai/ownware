@@ -1,3 +1,4 @@
+import { isSourceMediaType, type SourceMediaType } from './source-media.js'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import type { RuntimePrincipal } from './auth/scoped-principal.js'
@@ -64,7 +65,7 @@ export interface SourceUploadSessionSnapshot {
   readonly offset: 0
   readonly expectedBytes: number
   readonly expectedChecksum: string
-  readonly declaredMediaType: 'text/plain' | 'application/pdf'
+  readonly declaredMediaType: SourceMediaType
   readonly maxChunkBytes: 1048576
   readonly maxChunks: 64
   readonly expiresAt: number
@@ -572,7 +573,7 @@ function validateSourceUploadSessionSnapshot(
       (row['expectedBytes'] as number) > 16 * 1024 * 1024 ||
       typeof row['expectedChecksum'] !== 'string' ||
       !/^sha256:[0-9a-f]{64}$/.test(row['expectedChecksum']) ||
-      !['text/plain', 'application/pdf'].includes(String(row['declaredMediaType'])) ||
+      !isSourceMediaType(String(row['declaredMediaType'])) ||
       row['maxChunkBytes'] !== 1024 * 1024 || row['maxChunks'] !== 64 ||
       !Number.isSafeInteger(row['expiresAt']) || !Number.isSafeInteger(row['createdAt']) ||
       (row['expiresAt'] as number) <= (row['createdAt'] as number)) {

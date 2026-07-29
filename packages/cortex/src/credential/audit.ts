@@ -39,6 +39,11 @@ export const CredentialAuditEventTypeSchema = z.enum([
   'resolve',
   'approval_granted',
   'approval_denied',
+  // OAuth lifecycle: a token rotation against the authorization server.
+  // `ok` = new access token stored; `denied` = the server refused the
+  // refresh (revoked/expired grant — credential flipped unhealthy);
+  // `error` = transport/unexpected failure (credential left as-is).
+  'refresh',
 ])
 export type CredentialAuditEventType = z.infer<typeof CredentialAuditEventTypeSchema>
 

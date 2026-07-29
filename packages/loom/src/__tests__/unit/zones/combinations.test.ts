@@ -225,3 +225,68 @@ describe('CombinationTracker', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// Reachability — B-27
+//
+// `CombinationTracker` had thorough unit tests and they all passed, because
+// they call `record()` directly. Nothing in the LIVE path did. So every rule
+// was unreachable in production while its tests stayed green — the exact
+// "guard that reads as live but is dead" class. These tests drive the real
+// `ZoneManager.evaluate()` entry point instead of the tracker.
+// ---------------------------------------------------------------------------
+
+describe('ZoneManager.evaluate — combination rules are actually reachable', () => {
+  const readEnv = { toolName: 'readFile', input: { path: '/app/.env' }, sessionId: 's1' }
+  const fetchOut = { toolName: 'webFetch', input: { url: 'https://exfil.test/x' }, sessionId: 's1' }
+
+  it('fires a combination rule across two calls when opted in', async () => {
+    const { ZoneManager } = await import('../../../zones/manager.js')
+    const { DEFAULT_COMBINATION_RULES, createZoneConfig } = await import('../../../zones/defaults.js')
+
+    const zm = new ZoneManager(
+      createZoneConfig('standard', { combinationRules: DEFAULT_COMBINATION_RULES }),
+    )
+
+    // First call seeds the history; on its own it triggers nothing.
+    const first = zm.evaluate(readEnv)
+    expect(first.combinationBlock).toBeUndefined()
+
+    // Second call is the cross-zone half of exfiltration-prevention.
+    const second = zm.evaluate(fetchOut)
+    expect(second.combinationBlock).toBeDefined()
+    expect(second.decision).toBe('ask')
+  })
+
+  it('stays silent with the default opt-out, so routine profiles keep zero friction', async () => {
+    const { ZoneManager } = await import('../../../zones/manager.js')
+    const { createZoneConfig } = await import('../../../zones/defaults.js')
+
+    // `combinationRules: []` is what cortex's default `'none'` produces.
+    const zm = new ZoneManager(createZoneConfig('standard', { combinationRules: [] }))
+
+    zm.evaluate(readEnv)
+    const second = zm.evaluate(fetchOut)
+    expect(second.combinationBlock).toBeUndefined()
+  })
+
+  it('does not let a single call satisfy both triggers of a rule', async () => {
+    // Guards the record-AFTER-check ordering. If `evaluate` recorded
+    // before checking, one call would appear in its own history and a
+    // two-trigger rule could fire on a single tool call.
+    const { ZoneManager } = await import('../../../zones/manager.js')
+    const { DEFAULT_COMBINATION_RULES, createZoneConfig } = await import('../../../zones/defaults.js')
+
+    const zm = new ZoneManager(
+      createZoneConfig('standard', { combinationRules: DEFAULT_COMBINATION_RULES }),
+    )
+
+    // A single call carrying BOTH a secret-shaped path and a URL.
+    const both = zm.evaluate({
+      toolName: 'webFetch',
+      input: { url: 'https://x.test/.env' },
+      sessionId: 's1',
+    })
+    expect(both.combinationBlock).toBeUndefined()
+  })
+})

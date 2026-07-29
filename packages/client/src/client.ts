@@ -32,6 +32,12 @@ export interface RunInput {
   readonly prompt: string
   readonly threadId?: string
   readonly model?: string
+  /**
+   * Workspace this run operates in (`POST /api/v1/workspaces` to
+   * create/list). Without it the run has no workspace boundary and the
+   * zone system escalates every file access to "outside workspace".
+   */
+  readonly workspaceId?: string
   /** Bounded one-turn data; never registered as reusable knowledge. */
   readonly attachments?: readonly RunAttachmentInput[]
   /** UUID reused only when retrying this exact logical run start. */
@@ -109,6 +115,13 @@ export interface GatewayEvent {
 
 export interface ResumeInput {
   readonly action: 'approve' | 'deny' | 'always' | 'answer' | 'allow_folder_session'
+  /**
+   * Grant scope when `action: 'always'`: `tool` (default — this exact
+   * tool, persisted) · `profile` (every tool for this profile) ·
+   * `session` (in-memory only). The gateway grants at the request's own
+   * zone level, never wider.
+   */
+  readonly scope?: 'session' | 'tool' | 'profile'
   /** Free-text reply when `action: 'answer'`. */
   readonly answer?: string
   /** Specific pending request (when multiple are outstanding). */
@@ -556,10 +569,24 @@ export interface ConnectionList {
   readonly accessPolicy: 'separate_grant_required'
 }
 
+/**
+ * Media types the gateway accepts at source upload. Acceptance means the
+ * bytes passed the type's framing verification and were stored — it is NOT
+ * a promise the runtime can prepare (text-extract) them: preparation
+ * refuses unsupported verified types with `source_media_unsupported`.
+ * Discover the live set from the capabilities advertisement
+ * (`supportedMediaTypes`) rather than assuming this union.
+ */
+export type SourceMediaType =
+  | 'text/plain'
+  | 'application/pdf'
+  | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
 export interface CreateSourceUploadSessionInput {
   readonly expectedBytes: number
   readonly expectedChecksum: string
-  readonly declaredMediaType: 'text/plain' | 'application/pdf'
+  readonly declaredMediaType: SourceMediaType
   readonly filename: string
   readonly idempotencyKey: string
 }
@@ -571,7 +598,7 @@ export interface SourceUploadSession {
   readonly offset: 0
   readonly expectedBytes: number
   readonly expectedChecksum: string
-  readonly declaredMediaType: 'text/plain' | 'application/pdf'
+  readonly declaredMediaType: SourceMediaType
   readonly maxChunkBytes: number
   readonly maxChunks: number
   readonly expiresAt: number
@@ -596,7 +623,7 @@ export interface SourceVersionManifest {
   readonly sourceVersionId: string
   readonly sourceId: string
   readonly checksum: string
-  readonly verifiedMediaType: 'text/plain' | 'application/pdf'
+  readonly verifiedMediaType: SourceMediaType
   readonly byteCount: number
   readonly inspection: SourceHealth['inspection']
   readonly createdAt: number
@@ -1652,6 +1679,7 @@ export class OwnwareClient implements GatewayClient {
     const body: Record<string, unknown> = { prompt: input.prompt, profileId: input.profileId }
     if (input.threadId) body['threadId'] = input.threadId
     if (input.model) body['model'] = input.model
+    if (input.workspaceId) body['workspaceId'] = input.workspaceId
     if (input.attachments) body['attachments'] = input.attachments
 
     const headers = this.headers(true)
@@ -1699,9 +1727,68 @@ export class OwnwareClient implements GatewayClient {
     }
   }
 
+  /**
+   * Live-tail ONE sub-agent's own event stream —
+   * `GET /threads/:threadId/agents/:agentId/events`. The parent stream
+   * carries only `agent.spawn`/`agent.complete`; a client that wants the
+   * child's live detail subscribes here. It uses the same
+   * `{type, seq, data}` framing as `events()`.
+   */
+  async *agentEvents(
+    threadId: string,
+    agentId: string,
+    opts: StreamReplyOptions = {},
+  ): AsyncIterable<GatewayEvent> {
+    const path = `/api/v1/threads/${encodeURIComponent(threadId)}/agents/${encodeURIComponent(agentId)}/events`
+    const url = `${this.base}${path}${opts.since === undefined ? '' : `?since=${opts.since}`}`
+    const init: RequestInit = { headers: this.headers(false) }
+    if (opts.signal) init.signal = opts.signal
+    const res = await this.doFetch(url, init)
+    if (!res.ok) throw await errorFromResponse(res)
+    if (!res.body) {
+      throw new OwnwareError({
+        message: 'Ownware stream response had no body',
+        status: res.status,
+        code: 'stream_body_missing',
+        category: 'network',
+      })
+    }
+    let lastSeq = opts.since ?? 0
+    for await (const frame of parseSseFrames(res.body)) {
+      const data =
+        frame.data !== null && typeof frame.data === 'object'
+          ? (frame.data as Record<string, unknown>)
+          : {}
+      const seq = typeof data['seq'] === 'number' ? (data['seq'] as number) : lastSeq
+      lastSeq = seq
+      const type = typeof data['type'] === 'string' ? (data['type'] as string) : frame.event
+      yield { type, seq, data }
+    }
+  }
+
+  /**
+   * One-shot JSON snapshot of a sub-agent's full event log —
+   * `GET /threads/:threadId/agents/:agentId/events/history`.
+   */
+  async agentEventHistory(
+    threadId: string,
+    agentId: string,
+  ): Promise<ReadonlyArray<{ seq: number; type: string; payload: Record<string, unknown> }>> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/threads/${encodeURIComponent(threadId)}/agents/${encodeURIComponent(agentId)}/events/history`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const body = (await res.json()) as {
+      events?: Array<{ seq: number; type: string; payload: Record<string, unknown> }>
+    }
+    return body.events ?? []
+  }
+
   /** Owner-only legacy pause response; public/delegated callers use decidePermission. */
   async resume(threadId: string, input: ResumeInput): Promise<void> {
     const body: Record<string, unknown> = { action: input.action }
+    if (input.scope !== undefined) body['scope'] = input.scope
     if (input.answer !== undefined) body['answer'] = input.answer
     if (input.requestId !== undefined) body['requestId'] = input.requestId
     if (input.grantPath !== undefined) body['grantPath'] = input.grantPath

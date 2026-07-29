@@ -472,6 +472,27 @@ import { OpenAIProvider, registerProvider } from '@ownware/loom'
 registerProvider(new OpenAIProvider({ baseURL: 'https://my-proxy.com/v1' }))
 ```
 
+**OpenAI Responses transport (manual wiring):**
+
+```ts
+import { OpenAIResponsesProvider, registerProvider } from '@ownware/loom'
+
+registerProvider(new OpenAIResponsesProvider({
+  apiKeyProvider: async () => resolveCurrentBearer(),
+  baseURL: 'https://api.openai.com/v1',
+}))
+```
+
+`OpenAIResponsesProvider` keeps the engine loop and translates the provider-neutral
+request into the Responses API shape. It is not auto-registered and does not
+choose an endpoint or authentication method. Its current declared envelope is
+text/image input, custom function calls and results, streaming text/refusals,
+usage, and one-turn reasoning summaries. Explicit cache markers, unknown
+provider options, hosted-provider tools, and replay of opaque reasoning state
+fail visibly instead of being ignored. Reasoning is rejected when tools are
+present so a tool effect cannot create a continuation the adapter cannot
+faithfully replay.
+
 **Your own provider:** implement the `ProviderAdapter` interface — its core is `async *stream(request): AsyncGenerator<ProviderChunk>`, plus `name`, `countTokens`, `supportsFeature`, `formatTools`, and `getModelPricing` — then `registerProvider(new MyProvider())`. Works with every feature in the library.
 
 **Fallback chain** — primary fails, secondary takes over mid-stream:

@@ -11,15 +11,20 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const tmp = mkdtempSync(join(tmpdir(), 'ownware-smoke-'))
 
 // Simulate keyless: strip every provider key for this process.
 for (const v of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_API_KEY', 'OPENROUTER_API_KEY', 'COMPOSIO_API_KEY']) {
   delete process.env[v]
 }
+// Module-level stores resolve OWNWARE_DATA_DIR lazily, independently of the
+// gateway's `dataDir` option. Set both to the same disposable directory before
+// importing any Ownware package so this smoke can never read or migrate the
+// operator's real ~/.ownware credential vault.
+process.env.OWNWARE_DATA_DIR = join(tmp, 'data')
 
 const { OwnwareGateway } = await import(join(root, 'packages/ownware/dist/index.js'))
 
-const tmp = mkdtempSync(join(tmpdir(), 'ownware-smoke-'))
 const gateway = new OwnwareGateway({
   port: 0,
   tls: false,

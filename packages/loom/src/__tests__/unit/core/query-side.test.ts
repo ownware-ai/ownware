@@ -205,6 +205,67 @@ describe('Session.querySide', () => {
     expect(after.costUsd).toBeCloseTo(before.costUsd + 0.0002, 8)
   })
 
+  it('does not invent metered API dollars for subscription-allowance usage', async () => {
+    mock.configureNext({
+      text: 'subscription reply',
+      usage: {
+        inputTokens: 100,
+        outputTokens: 50,
+        costBasis: 'subscription_allowance',
+      },
+    })
+    const session = makeSession()
+
+    const result = await session.querySide({
+      model: MOCK_MODEL,
+      prompt: 'p',
+    })
+
+    expect(result.usage).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 50,
+      costUsd: 0,
+      costBasis: 'subscription_allowance',
+    })
+    expect(session.getState().totalUsage).toMatchObject({
+      costUsd: 0,
+      costBasis: 'subscription_allowance',
+    })
+    await expect(session.getCostBreakdown()).resolves.toMatchObject({
+      totalUsd: 0,
+      costBasis: 'subscription_allowance',
+      cache: { savedUsd: null },
+    })
+  })
+
+  it('preserves an explicit subscription cost basis across checkpoint restore', async () => {
+    mock.configureNext({
+      text: 'subscription reply',
+      usage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        costBasis: 'subscription_allowance',
+      },
+    })
+    const original = makeSession()
+    await original.querySide({ model: MOCK_MODEL, prompt: 'p' })
+
+    const restored = makeSession()
+    restored.restore(original.getState())
+
+    expect(restored.getState().totalUsage).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      costUsd: 0,
+      costBasis: 'subscription_allowance',
+    })
+    await expect(restored.getCostBreakdown()).resolves.toMatchObject({
+      totalUsd: 0,
+      costBasis: 'subscription_allowance',
+      cache: { savedUsd: null },
+    })
+  })
+
   it('passes empty tool list to the provider (no tools allowed)', async () => {
     mock.configureNext({ text: 'ok' })
     const session = makeSession()

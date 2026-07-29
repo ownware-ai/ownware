@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { sanitizeOutput, containsSecrets } from '../../../tools/builtins/output-sanitizer.js'
+import { sanitizeOutput, sanitizeJsonFragment, containsSecrets } from '../../../tools/builtins/output-sanitizer.js'
 
 // ---------------------------------------------------------------------------
 // Secret redaction
@@ -176,5 +176,86 @@ describe('containsSecrets()', () => {
 
   it('returns false for normal text', () => {
     expect(containsSecrets('just normal text')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sanitizeJsonFragment()
+//
+// The whole reason this variant exists: a redaction inside a JSON document
+// must not break the document. `sanitizeOutput` CAN break it — that is not a
+// bug in `sanitizeOutput`, it is why callers holding JSON must use this one.
+// ---------------------------------------------------------------------------
+
+describe('sanitizeJsonFragment()', () => {
+  it('redacts a token-shaped secret inside a JSON string value', () => {
+    const json = JSON.stringify({ command: 'curl -H "x: sk-ant-' + 'a'.repeat(24) + '"' })
+    const { sanitized, redactedCount } = sanitizeJsonFragment(json)
+
+    expect(redactedCount).toBe(1)
+    expect(sanitized).toContain('[REDACTED:ANTHROPIC_KEY]')
+    expect(sanitized).not.toContain('sk-ant-aaaa')
+  })
+
+  it('keeps the document parseable after redacting', () => {
+    const original = { file_path: '/tmp/x.sh', content: 'export K=ghp_' + 'a'.repeat(36) }
+    const { sanitized } = sanitizeJsonFragment(JSON.stringify(original))
+
+    const reparsed = JSON.parse(sanitized) as typeof original
+    expect(reparsed.file_path).toBe('/tmp/x.sh')
+    expect(reparsed.content).toContain('[REDACTED:GITHUB_TOKEN]')
+  })
+
+  it.each([
+    ['shell export',   { command: 'export API_TOKEN=abcdefghij' }],
+    ['writeFile .env', { file_path: '/a/.env', content: 'DB_PASSWORD=hunter2xyz' }],
+    ['connection uri', { command: 'psql postgres://u:p@host/db' }],
+    ['trailing field', { a: 'X_SECRET=abcdefghij', b: 'keep me' }],
+  ])('skips patterns that would swallow the closing quote — %s', (_name, obj) => {
+    // Regression guard, and the entire reason this function exists.
+    // The assignment / connection-string patterns end with a greedy
+    // `['"]?` or `[^\s]+`, which eats the JSON string's own closing quote
+    // and everything after it:
+    //
+    //   {"a":"X_SECRET=abcdefghij","b":"keep me"}
+    //     → {"a":"X[REDACTED:SECRET_ASSIGNMENT],"b":"keep me"}
+    //
+    // Both sides are asserted so that the day someone "simplifies" this
+    // back to a single sanitizeOutput call, this test fails loudly.
+    const json = JSON.stringify(obj)
+
+    expect(() => JSON.parse(sanitizeOutput(json).sanitized)).toThrow()
+
+    const { sanitized } = sanitizeJsonFragment(json)
+    expect(() => JSON.parse(sanitized)).not.toThrow()
+    expect(JSON.parse(sanitized)).toEqual(obj)
+  })
+
+  it('every replacement is inert inside a JSON string value', () => {
+    // The safety argument in one assertion: `"` and `\` are the only
+    // characters that can end or escape a JSON string, and the
+    // replacement contains neither. `:` and braces are deliberately NOT
+    // checked — they are ordinary text inside a string literal.
+    for (const type of ['ANTHROPIC_KEY', 'GITHUB_TOKEN', 'SECRET_ASSIGNMENT']) {
+      const replacement = `[REDACTED:${type}]`
+      expect(replacement).not.toContain('"')
+      expect(replacement).not.toContain('\\')
+      expect(() => JSON.parse(JSON.stringify({ v: replacement }))).not.toThrow()
+    }
+  })
+
+  it('returns the input by reference when nothing matched', () => {
+    // Callers rely on identity to skip rebuilding the enclosing object.
+    const clean = '{"file_path":"/tmp/notes.md","content":"hello world"}'
+    expect(sanitizeJsonFragment(clean).sanitized).toBe(clean)
+    expect(sanitizeOutput(clean).sanitized).toBe(clean)
+  })
+
+  it('handles a partial JSON chunk mid-stream', () => {
+    // args_delta chunks are not valid JSON on their own.
+    const chunk = '{"command":"export TOKEN=xoxb-1234567890-abcdefghij'
+    const { sanitized, redactedCount } = sanitizeJsonFragment(chunk)
+    expect(redactedCount).toBe(1)
+    expect(sanitized).toContain('[REDACTED:SLACK_TOKEN]')
   })
 })

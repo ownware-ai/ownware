@@ -13,7 +13,12 @@
 
 import type { LoomEvent, SessionEndEvent, StopReason, TurnUsage } from './events.js'
 import type { LoomConfig } from './config.js'
-import type { ProviderAdapter, ProviderChunk, ProviderRequest } from '../provider/types.js'
+import type {
+  ProviderAdapter,
+  ProviderChunk,
+  ProviderCostBasis,
+  ProviderRequest,
+} from '../provider/types.js'
 import type { Message, AssistantMessage, ContentBlock, ToolUseBlock } from '../messages/types.js'
 import { extractToolCalls, createToolResultMessage } from '../messages/types.js'
 import type { ReminderInjector } from '../reminders/index.js'
@@ -278,6 +283,8 @@ interface MutableUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
   costUsd: number
+  /** `null` until the first provider-authoritative usage observation. */
+  costBasis: ProviderCostBasis | null
   /**
    * Sticky-OR across the whole session: once any turn was priced via
    * the Sonnet-tier fallback (uncatalogued model), the session's
@@ -349,7 +356,15 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
   const state: LoopState = {
     messages: [...params.messages],
     turnIndex: 0,
-    totalUsage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUsd: 0, isFallbackPricing: false },
+    totalUsage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUsd: 0,
+      costBasis: null,
+      isFallbackPricing: false,
+    },
     lastUsage: null,
     maxOutputTokensRecoveryCount: 0,
     rateLimitRetryCount: 0,
@@ -871,6 +886,10 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       state.totalUsage.cacheReadTokens += turnUsage.cacheReadTokens
       state.totalUsage.cacheCreationTokens += turnUsage.cacheCreationTokens
       state.totalUsage.costUsd += turnUsage.costUsd
+      state.totalUsage.costBasis = mergeCostBasis(
+        state.totalUsage.costBasis,
+        turnUsage.costBasis ?? 'metered',
+      )
       // Sticky-OR: once any turn fell back to Sonnet-tier pricing, the
       // whole session's `costUsd` is an estimate. BUG #24.
       if (turnUsage.isFallbackPricing === true) {
@@ -1396,16 +1415,28 @@ async function* streamModelResponse(
             // fallback path returns a flag so `TurnUsage.isFallbackPricing`
             // surfaces whether the number is estimated — the status bar
             // renders `≈ $` for estimated values (BUG #24).
-            const computed = chunk.usage.reportedCostUsd != null
-              ? { costUsd: chunk.usage.reportedCostUsd, isFallback: false }
-              : computeCost(
-                  provider,
-                  activeModel,
-                  chunk.usage.inputTokens,
-                  chunk.usage.outputTokens,
-                  chunk.usage.cacheReadTokens,
-                  chunk.usage.cacheCreationTokens,
-                )
+            const costBasis = checkedCostBasis(chunk.usage.costBasis)
+            if (
+              costBasis !== 'metered'
+              && chunk.usage.reportedCostUsd !== undefined
+            ) {
+              throw new ProviderError(
+                'Provider usage reported conflicting billing semantics.',
+                provider.name,
+              )
+            }
+            const computed = costBasis === 'metered'
+              ? chunk.usage.reportedCostUsd != null
+                ? { costUsd: chunk.usage.reportedCostUsd, isFallback: false }
+                : computeCost(
+                    provider,
+                    activeModel,
+                    chunk.usage.inputTokens,
+                    chunk.usage.outputTokens,
+                    chunk.usage.cacheReadTokens,
+                    chunk.usage.cacheCreationTokens,
+                  )
+              : { costUsd: 0, isFallback: false }
             usage = {
               inputTokens: chunk.usage.inputTokens,
               outputTokens: chunk.usage.outputTokens,
@@ -1413,6 +1444,7 @@ async function* streamModelResponse(
               cacheCreationTokens: chunk.usage.cacheCreationTokens,
               model: activeModel,
               costUsd: computed.costUsd,
+              ...(costBasis !== 'metered' ? { costBasis } : {}),
               // Only stamp the flag when true — keep events identical to
               // the pre-#24 wire shape for the common authoritative path
               // (back-compat for any external consumer parsing strictly).
@@ -2002,10 +2034,13 @@ function finalize(state: LoopState, reason: StopReason, model: string, sessionId
   // Pull the cumulative-fallback bit out so it lives behind the optional
   // `isFallbackPricing` field on `TurnUsage` — emitted only when true so
   // the common case keeps the pre-#24 wire shape exactly.
-  const { isFallbackPricing, ...counters } = state.totalUsage
+  const { isFallbackPricing, costBasis, ...counters } = state.totalUsage
   const totalUsage: TurnUsage = {
     ...counters,
     model,
+    ...(costBasis !== null && costBasis !== 'metered'
+      ? { costBasis }
+      : {}),
     ...(isFallbackPricing ? { isFallbackPricing: true } : {}),
   }
   return {
@@ -2025,6 +2060,29 @@ function finalize(state: LoopState, reason: StopReason, model: string, sessionId
       timestamp: Date.now(),
     },
   }
+}
+
+function checkedCostBasis(value: unknown): ProviderCostBasis {
+  if (
+    value === undefined
+    || value === 'metered'
+    || value === 'subscription_allowance'
+    || value === 'unknown'
+  ) {
+    return value ?? 'metered'
+  }
+  throw new ProviderError(
+    'Provider usage reported an unknown billing basis.',
+    'unknown',
+  )
+}
+
+function mergeCostBasis(
+  current: ProviderCostBasis | null,
+  incoming: ProviderCostBasis,
+): ProviderCostBasis {
+  if (current === null || current === incoming) return incoming
+  return 'unknown'
 }
 
 /**

@@ -20,6 +20,7 @@
  * so two concurrent renames on the same id can't lose a write.
  */
 
+import { createHash } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import {
   decrypt as decryptV2OrV1,
@@ -34,9 +35,11 @@ import {
 } from '../schema.js'
 import type {
   CredentialBackend,
+  CredentialConditionalUpdateResult,
   CredentialFilter,
   CredentialSaveInput,
   CredentialUpdateInput,
+  CredentialWriteCondition,
   DecryptedCredential,
 } from './types.js'
 
@@ -145,6 +148,10 @@ const INSERT_SQL = `
   )
 `
 
+function encryptedValueRevision(encryptedValue: string): string {
+  return createHash('sha256').update(encryptedValue).digest('hex')
+}
+
 // ---------------------------------------------------------------------------
 // Backend implementation
 // ---------------------------------------------------------------------------
@@ -218,7 +225,10 @@ export class DbCredentialBackend implements CredentialBackend {
       name: input.name,
       category: input.category,
       authType: input.authType,
-      hint: maskCredentialValue(input.value),
+      // Caller-supplied hint wins: `value` is not always the secret itself
+      // (an OAuth token set is a structured payload whose tail would not even
+      // pass HintSchema). See `CredentialSaveInput.hint`.
+      hint: input.hint ?? maskCredentialValue(input.value),
       trust: input.trust ?? 'medium',
       source: input.source,
       status: 'ready',
@@ -319,7 +329,30 @@ export class DbCredentialBackend implements CredentialBackend {
   // -------------------------------------------------------------------------
 
   async update(id: string, input: CredentialUpdateInput): Promise<Credential | null> {
-    if (!isCredentialId(id)) return null
+    const result = this.applyUpdate(id, input)
+    return result.kind === 'updated' ? result.credential : null
+  }
+
+  async updateIfUnchanged(
+    id: string,
+    expected: CredentialWriteCondition,
+    input: CredentialUpdateInput,
+  ): Promise<CredentialConditionalUpdateResult> {
+    if (
+      !/^[0-9a-f]{64}$/.test(expected.valueRevision)
+      || !['ready', 'expired', 'error', 'revoked'].includes(expected.status)
+    ) {
+      throw new Error('updateIfUnchanged: invalid write condition')
+    }
+    return this.applyUpdate(id, input, expected)
+  }
+
+  private applyUpdate(
+    id: string,
+    input: CredentialUpdateInput,
+    expected?: CredentialWriteCondition,
+  ): CredentialConditionalUpdateResult {
+    if (!isCredentialId(id)) return { kind: 'missing' }
     if (input.value !== undefined && input.value.length === 0) {
       throw new Error('update: value must be a non-empty string when provided')
     }
@@ -327,11 +360,20 @@ export class DbCredentialBackend implements CredentialBackend {
     // BEGIN IMMEDIATE so two concurrent rotations on the same id
     // serialise cleanly. better-sqlite3's transaction wrapper handles
     // commit/rollback semantics around the inner closure.
-    const txn = this.db.transaction((): Credential | null => {
+    const txn = this.db.transaction((): CredentialConditionalUpdateResult => {
       const existing = this.stmtGet.get(id) as CredentialRow | undefined
-      if (!existing) return null
+      if (!existing) return { kind: 'missing' }
 
       const current = rowToCredential(existing)
+      if (
+        expected !== undefined
+        && (
+          encryptedValueRevision(existing.encrypted_value) !== expected.valueRevision
+          || current.status !== expected.status
+        )
+      ) {
+        return { kind: 'conflict' }
+      }
       const next: Record<string, unknown> = { ...current }
 
       if (input.name !== undefined) next['name'] = input.name
@@ -361,7 +403,8 @@ export class DbCredentialBackend implements CredentialBackend {
       let encryptedValue = existing.encrypted_value
       if (input.value !== undefined) {
         encryptedValue = encryptV2(input.value)
-        next['hint'] = maskCredentialValue(input.value)
+        // Only honoured alongside a value rotation — see CredentialUpdateInput.hint.
+        next['hint'] = input.hint ?? maskCredentialValue(input.value)
         // Successful re-encrypt provisionally implies health — unless
         // the caller explicitly set a status in the same patch.
         if (input.status === undefined) next['status'] = 'ready'
@@ -403,7 +446,7 @@ export class DbCredentialBackend implements CredentialBackend {
         updated_at: validated.updatedAt,
       })
 
-      return validated
+      return { kind: 'updated', credential: validated }
     })
 
     return txn()
@@ -434,6 +477,10 @@ export class DbCredentialBackend implements CredentialBackend {
       // resolver translate into a typed error.
       return null
     }
-    return { metadata: rowToCredential(row), value }
+    return {
+      metadata: rowToCredential(row),
+      value,
+      valueRevision: encryptedValueRevision(row.encrypted_value),
+    }
   }
 }

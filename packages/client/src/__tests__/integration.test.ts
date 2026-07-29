@@ -73,7 +73,12 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
         maxChunks: 64,
         sessionTtlSeconds: 15 * 60,
         supportedSourceKinds: ['file', 'text', 'structured_export'],
-        supportedMediaTypes: ['text/plain', 'application/pdf'],
+        supportedMediaTypes: [
+          'text/plain',
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ],
       },
       sourceInspection: {
         maxBytes: 16 * 1024 * 1024,

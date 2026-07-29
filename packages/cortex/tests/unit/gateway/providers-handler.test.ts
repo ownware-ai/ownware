@@ -125,7 +125,7 @@ afterEach(() => {
 })
 
 async function callListProviders(): Promise<ProviderRow[]> {
-  const handlers = createProviderHandlers({ store, resolver, injector })
+  const handlers = createProviderHandlers({ store, resolver, injector, audit })
   const captured: CapturedResponse = {}
   await handlers.listProviders(fakeReq, fakeRes(captured))
   expect(captured.status).toBe(200)

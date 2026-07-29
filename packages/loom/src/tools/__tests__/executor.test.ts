@@ -667,3 +667,87 @@ describe('validateInput phase', () => {
     expect(result.result.metadata?.validation).toBeUndefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Central result sanitization
+//
+// Before this, only `shell` and `filesystem` sanitized themselves — every
+// other tool (MCP, Composio, custom profile tools) handed its result to
+// the model verbatim. `executeTool` is the ONE path every tool takes, so
+// it is where the module's promise is actually kept.
+// ---------------------------------------------------------------------------
+
+describe('executeTool — secret redaction on results', () => {
+  const FAKE_KEY = 'sk-ant-' + 'a'.repeat(28)
+
+  it('redacts a secret from ANY tool result, not just shell/filesystem', async () => {
+    const result = await executeTool({
+      tool: echoTool,
+      toolCall: createToolCall('echo', { message: `token is ${FAKE_KEY}` }),
+      context: createMockContext(),
+    })
+
+    expect(result.result.content).toContain('[REDACTED:ANTHROPIC_KEY]')
+    expect(result.result.content).not.toContain(FAKE_KEY)
+  })
+
+  it('keeps a JSON result parseable while redacting inside it', async () => {
+    // The discriminating case: SECRET_ASSIGNMENT swallows a JSON string's
+    // closing quote, so a naive string-level sanitize would produce
+    // unparseable output and consumers that JSON.parse the result (often
+    // with a silent catch) would lose the whole object.
+    const payload = JSON.stringify({ log: 'DB_PASSWORD=hunter2xyz', ok: true })
+    const result = await executeTool({
+      tool: echoTool,
+      toolCall: createToolCall('echo', { message: payload }),
+      context: createMockContext(),
+    })
+
+    const reparsed = JSON.parse(result.result.content) as { log: string; ok: boolean }
+    expect(reparsed.ok).toBe(true)
+    expect(reparsed.log).toContain('[REDACTED:SECRET_ASSIGNMENT]')
+    expect(result.result.content).not.toContain('hunter2xyz')
+  })
+
+  it('leaves a clean result byte-identical', async () => {
+    // No reflow, no re-serialization, no surprise formatting changes on
+    // the overwhelmingly common path.
+    const pretty = JSON.stringify({ items: [1, 2], ok: true }, null, 2)
+    const result = await executeTool({
+      tool: echoTool,
+      toolCall: createToolCall('echo', { message: pretty }),
+      context: createMockContext(),
+    })
+
+    expect(result.result.content).toBe(pretty)
+  })
+
+  it('sanitizes cached results too, not just fresh executions', async () => {
+    // The cache stores the RAW pre-cap result, so a cache hit skips the
+    // execute path entirely. If sanitization lived in the tool rather
+    // than the executor, a hit would serve the secret straight through.
+    const cache = new ToolResultCache()
+    const cachedTool = defineTool({
+      name: 'cached_echo',
+      description: 'echo with a cache key',
+      inputSchema: {
+        type: 'object',
+        properties: { message: { type: 'string', description: 'msg' } },
+        required: ['message'],
+      },
+      cacheKey: (input) => (input as { message: string }).message,
+      async execute(input) {
+        return { content: (input as { message: string }).message, isError: false }
+      },
+    })
+    const call = createToolCall('cached_echo', { message: `k ${FAKE_KEY}` })
+
+    const first = await executeTool({ tool: cachedTool, toolCall: call, context: createMockContext(), cache })
+    const second = await executeTool({ tool: cachedTool, toolCall: call, context: createMockContext(), cache })
+
+    expect(second.cacheHit).toBe(true)
+    expect(first.result.content).not.toContain(FAKE_KEY)
+    expect(second.result.content).not.toContain(FAKE_KEY)
+    expect(second.result.content).toContain('[REDACTED:ANTHROPIC_KEY]')
+  })
+})

@@ -129,9 +129,57 @@ export class GatewayCredentialResolver implements CredentialResolver {
       // not the audit log.
       throw new MissingCredentialError(variableName)
     }
+    return this.runGates(credential, variableName, ctx)
+  }
+
+  /**
+   * Resolve a credential by its **id** rather than its `variableName`.
+   *
+   * Exists because not every credential has a `variableName`: the schema
+   * requires one only for `api-key` and `bearer-token`, since that field is
+   * the env-var name used at an injection site. An OAuth credential is never
+   * injected as `KEY=value`, so it legitimately has none — and without this
+   * entry point such a credential could not be resolved at all, which is how
+   * the OAuth path came to read the store directly and skip every gate below.
+   *
+   * Identical gate sequence to `resolve()`. The only difference is the lookup.
+   */
+  async resolveById(
+    credentialId: string,
+    ctx: ResolveContext,
+  ): Promise<OpaqueCredentialHandle> {
+    const credential = await this.store.get(credentialId)
+    if (credential === null) {
+      throw new MissingCredentialError(credentialId)
+    }
+    return this.runGates(credential, credential.variableName ?? credential.id, ctx)
+  }
+
+  /**
+   * Every safety gate, applied to an already-located credential.
+   *
+   * Shared by both entry points so a credential resolved by id can never end
+   * up with fewer checks than one resolved by name. `label` is what appears in
+   * thrown errors — the `variableName` when there is one, the id otherwise.
+   */
+  private async runGates(
+    credential: Credential,
+    variableName: string,
+    ctx: ResolveContext,
+  ): Promise<OpaqueCredentialHandle> {
 
     // Status gate ------------------------------------------------------------
-    if (credential.status !== 'ready') {
+    //
+    // `expired` is recoverable for `oauth2` and terminal for everything else.
+    // An expired API key is dead — nothing we hold can renew it, so denying is
+    // the only honest answer. An expired OAuth credential is precisely what
+    // the refresh token exists for; denying it here would make renewal
+    // impossible and strand the person on a credential that could have healed
+    // itself. `revoked` and `error` still deny for every auth type, so a dead
+    // grant is stopped: the refresh path flips a refused grant to `revoked`,
+    // which this gate then catches on the very next call.
+    const expiredButRenewable = credential.status === 'expired' && credential.authType === 'oauth2'
+    if (credential.status !== 'ready' && !expiredButRenewable) {
       const reason: 'EXPIRED' | 'REVOKED' | 'ERROR' =
         credential.status === 'expired' ? 'EXPIRED'
           : credential.status === 'revoked' ? 'REVOKED'
@@ -151,7 +199,16 @@ export class GatewayCredentialResolver implements CredentialResolver {
 
     // Expiry gate (separate from the schema's status — `expiresAt` is
     // a hard wall the validate flow may not have caught yet) -----------------
-    if (credential.expiresAt !== undefined) {
+    //
+    // NOT applied to `oauth2`. For every other auth type `expiresAt` describes
+    // the credential itself, so an elapsed value means "dead, deny". For an
+    // OAuth credential it describes only the short-lived ACCESS TOKEN, which
+    // the refresh token exists to replace — an elapsed value there means
+    // "refresh now", and denying would make renewal impossible and strand the
+    // person on a credential that could have healed itself. The death of an
+    // OAuth grant is `status: 'revoked'`, which the status gate above already
+    // catches. `OAuthTokenManager` owns access-token expiry.
+    if (credential.authType !== 'oauth2' && credential.expiresAt !== undefined) {
       const expiresAt = Date.parse(credential.expiresAt)
       if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
         this.audit.recordEvent({
@@ -317,6 +374,8 @@ export class GatewayCredentialResolver implements CredentialResolver {
   // -------------------------------------------------------------------------
   async dereferenceHandle(handle: OpaqueCredentialHandle): Promise<{
     readonly value: string
+    readonly valueRevision: string
+    readonly metadata: Credential
     readonly variableName: string
     readonly category: Credential['category']
     readonly credentialId: string
@@ -332,6 +391,8 @@ export class GatewayCredentialResolver implements CredentialResolver {
     if (decrypted === null) return null
     return {
       value: decrypted.value,
+      valueRevision: decrypted.valueRevision,
+      metadata: decrypted.metadata,
       variableName: entry.variableName,
       category: entry.category,
       credentialId: entry.credentialId,

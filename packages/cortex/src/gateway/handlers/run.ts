@@ -1731,12 +1731,18 @@ export function createRunHandlers(
     }
 
     const { hitl, zoneManager } = runtime
+    const execution = runtime.execution
     const approved =
       body.action === 'approve' ||
       body.action === 'always' ||
       body.action === 'allow_folder_session'
 
-    if (hitl.pendingCount === 0) {
+    const hasExactPending = body.requestId !== undefined
+      ? execution?.hasPendingPermission(body.requestId)
+        ?? hitl?.hasPending(body.requestId)
+        ?? false
+      : (hitl?.pendingCount ?? 0) > 0
+    if (!hasExactPending) {
       sendError(res, 409, 'No pending permission request')
       return
     }
@@ -1779,10 +1785,23 @@ export function createRunHandlers(
     }
 
     if (body.requestId) {
-      hitl.respond(body.requestId, approved)
+      if (execution) {
+        const delivered = await execution.answerPermission({
+          requestId: body.requestId,
+          decision: approved ? 'approve' : 'deny',
+        })
+        if (delivered.status !== 'delivered') {
+          sendError(res, 409, 'Permission request became stale')
+          return
+        }
+      } else {
+        hitl!.respond(body.requestId, approved)
+      }
     } else {
-      if (approved) hitl.approveAll()
-      else hitl.denyAll()
+      // This compatibility endpoint historically allowed a bulk response for
+      // Native HITL. External runtimes expose exact request identities only.
+      if (approved) hitl!.approveAll()
+      else hitl!.denyAll()
     }
 
     // If "always" — grant a zone expansion and (optionally) persist it.
@@ -1852,7 +1871,9 @@ export function createRunHandlers(
       threadId,
       action: body.action,
       approved,
-      pendingCount: hitl.pendingCount,
+      pendingCount: execution
+        ? (execution.status().phase === 'waiting_permission' ? 1 : 0)
+        : hitl!.pendingCount,
     }))
   }
 
@@ -1900,7 +1921,13 @@ export function createRunHandlers(
     }
     const active = runner.get(snapshot.threadId)
     const runtime = state.getRuntime(snapshot.threadId)
-    if ((active && active.runId !== runId) || !runtime || !runtime.hitl.hasPending(requestId)) {
+    if (
+      (active && active.runId !== runId)
+      || !runtime
+      || !(runtime.execution?.hasPendingPermission(requestId)
+        ?? runtime.hitl?.hasPending(requestId)
+        ?? false)
+    ) {
       sendError(res, 409, 'Permission request is no longer live', 'permission_request_stale', 'invalid_request')
       return
     }
@@ -1914,12 +1941,28 @@ export function createRunHandlers(
       sendError(res, 409, 'Permission decision conflicted with current state', 'permission_decision_conflict', 'invalid_request')
       return
     }
-    const delivered = runtime.hitl.respond(requestId, parsed.data.decision === 'approve')
-    if (!delivered) {
+    const permissionResult = runtime.execution
+      ? await runtime.execution.answerPermission({
+          requestId,
+          decision: parsed.data.decision,
+        })
+      : {
+          status: runtime.hitl!.respond(
+            requestId,
+            parsed.data.decision === 'approve',
+          )
+            ? 'delivered'
+            : 'stale',
+        } as const
+    if (permissionResult.status !== 'delivered') {
       sendError(res, 409, 'Permission request became stale', 'permission_request_stale', 'invalid_request')
       return
     }
-    if (runtime.hitl.pendingCount === 0) {
+    if (
+      runtime.execution
+        ? runtime.execution.status().phase !== 'waiting_permission'
+        : runtime.hitl!.pendingCount === 0
+    ) {
       deps.runStore!.markRunningAfterDecision(runId)
     }
     sendJSON(res, 200, {
@@ -1932,16 +1975,27 @@ export function createRunHandlers(
 
   function signalCancellation(
     threadId: string,
-    session: Session,
+    session: Session | undefined,
     armWatchdog: boolean,
   ): void {
-    try {
-      session.abort('user')
-    } catch (err) {
-      console.error(
-        `[cancel] abort signal failed for thread ${threadId}; durable request remains pending:`,
-        err instanceof Error ? err.message : 'unknown error',
-      )
+    const execution = state.getRuntime(threadId)?.execution
+    if (execution) {
+      void execution.cancel('user').catch((err) => {
+        console.error(
+          `[cancel] runtime cancellation failed for thread ${threadId}; ` +
+            'durable request remains pending:',
+          err instanceof Error ? err.message : 'unknown error',
+        )
+      })
+    } else if (session) {
+      try {
+        session.abort('user')
+      } catch (err) {
+        console.error(
+          `[cancel] abort signal failed for thread ${threadId}; durable request remains pending:`,
+          err instanceof Error ? err.message : 'unknown error',
+        )
+      }
     }
 
     // An abort signal alone cannot wake an HITL Promise. Deny every
@@ -2012,8 +2066,9 @@ export function createRunHandlers(
       sendError(res, 409, 'Run is not active on this Gateway', 'run_not_active', 'invalid_request')
       return
     }
+    const activeRuntime = state.getRuntime(snapshot.threadId)
     const session = state.getSession(snapshot.threadId)
-    if (!session) {
+    if (!activeRuntime?.execution && !session) {
       sendError(res, 409, 'Run runtime is unavailable', 'run_runtime_unavailable', 'invalid_request')
       return
     }
@@ -2068,8 +2123,9 @@ export function createRunHandlers(
       sendError(res, 403, 'Delegated principal does not allow this thread', 'principal_scope_denied', 'auth')
       return
     }
+    const activeRuntime = state.getRuntime(threadId)
     const session = state.getSession(threadId)
-    if (!session) {
+    if (!activeRuntime?.execution && !session) {
       sendError(res, 404, `No active session for thread "${threadId}"`)
       return
     }

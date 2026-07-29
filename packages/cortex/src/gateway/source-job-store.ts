@@ -1,3 +1,4 @@
+import type { SourceMediaType } from './source-media.js'
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { SourceQuotaPolicy } from './source-quota-policy.js'
@@ -82,7 +83,7 @@ export interface ClaimedSourceInspectionTarget {
   readonly objectKey: string
   readonly expectedByteCount: number
   readonly expectedChecksum: string
-  readonly verifiedMediaType: 'text/plain' | 'application/pdf'
+  readonly verifiedMediaType: SourceMediaType
 }
 
 export interface SourceDerivedResource {
@@ -269,7 +270,7 @@ export class SourceJobStore {
         input.workspaceId,
         input.profileId,
       ) as {
-        verified_media_type: 'text/plain' | 'application/pdf'
+        verified_media_type: SourceMediaType
         inspection_state: string
         revision: number
         current_version_id: string | null
@@ -436,7 +437,7 @@ export class SourceJobStore {
       object_key: string
       byte_count: number
       checksum: string
-      verified_media_type: 'text/plain' | 'application/pdf'
+      verified_media_type: SourceMediaType
     } | undefined
     return row ? {
       objectKey: row.object_key,
@@ -464,7 +465,7 @@ export class SourceJobStore {
       object_key: string
       byte_count: number
       checksum: string
-      verified_media_type: 'text/plain' | 'application/pdf'
+      verified_media_type: SourceMediaType
     } | undefined
     return row ? {
       objectKey: row.object_key,

@@ -17,6 +17,7 @@ import { HumanInTheLoop, ZoneManager } from '@ownware/loom'
 import type { CredentialHITL } from '../credential/hitl.js'
 import type { ThreadCredentialRuntime } from '../credential/runtime.js'
 import type { HITLLike } from './hitl-registry.js'
+import type { ExecutionRuntime } from '../runtime/port.js'
 import type {
   Thread, ThreadMessage, Workspace, WorkspaceDetail,
   MCPServerRecord, DashboardStats,
@@ -28,6 +29,7 @@ import type {
 import { CortexDatabase } from './db/database.js'
 import { EventBus } from './event-bus.js'
 import { EventIngestor } from './event-ingestor.js'
+import { redactEventForStorage } from './redact-event.js'
 
 const MAX_EVENT_LOG_SIZE = 2000
 
@@ -38,8 +40,22 @@ export interface EventLogEntry {
 
 /** Runtime context for a thread's active session. */
 export interface ThreadRuntime {
-  readonly session: Session
-  readonly hitl: HumanInTheLoop
+  /**
+   * Present for the built-in Ownware loop. External executions deliberately
+   * omit it so the kernel cannot accidentally depend on engine internals.
+   */
+  readonly session?: Session
+  /**
+   * Provider-neutral execution boundary. Optional only for compatibility
+   * with callers that install a structural Session in tests; SessionRunner
+   * wraps those sessions with the default Ownware driver before iteration.
+   */
+  readonly execution?: ExecutionRuntime
+  /**
+   * Present only for the built-in Ownware loop. External runtime permissions
+   * are tracked and answered by `execution`.
+   */
+  readonly hitl?: HumanInTheLoop
   readonly zoneManager: ZoneManager | null
   /** Accessor for the last zone decision (used by SSE enricher). */
   readonly lastZoneDecision?: () => unknown
@@ -809,7 +825,10 @@ export class GatewayState {
       log = []
       this.eventLogs.set(threadId, log)
     }
-    log.push({ event, ts: Date.now() })
+    // This log is served verbatim by `/api/v1/debug/*`. Redact here — the
+    // single write path — rather than trusting every caller to hand us an
+    // already-clean event. See `redact-event.ts` for the store table.
+    log.push({ event: redactEventForStorage(event), ts: Date.now() })
     // Trim to max size
     if (log.length > MAX_EVENT_LOG_SIZE) {
       log.splice(0, log.length - MAX_EVENT_LOG_SIZE)

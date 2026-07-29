@@ -1604,8 +1604,10 @@ components:
               prefixItems:
                 - { const: text/plain }
                 - { const: application/pdf }
-              minItems: 2
-              maxItems: 2
+                - { const: application/vnd.openxmlformats-officedocument.wordprocessingml.document }
+                - { const: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet }
+              minItems: 4
+              maxItems: 4
           additionalProperties: false
         sourceInspection:
           type: object
@@ -1821,7 +1823,7 @@ components:
       properties:
         expectedBytes: { type: integer, minimum: 1, maximum: 16777216 }
         expectedChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
-        declaredMediaType: { type: string, enum: [text/plain, application/pdf] }
+        declaredMediaType: { type: string, enum: [text/plain, application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet] }
         filename: { type: string, minLength: 1, maxLength: 255, description: Untrusted basename label only. }
       additionalProperties: false
     SourceUploadSession:
@@ -1834,7 +1836,7 @@ components:
         offset: { type: integer, const: 0 }
         expectedBytes: { type: integer, minimum: 1, maximum: 16777216 }
         expectedChecksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
-        declaredMediaType: { type: string, enum: [text/plain, application/pdf] }
+        declaredMediaType: { type: string, enum: [text/plain, application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet] }
         maxChunkBytes: { type: integer, const: 1048576 }
         maxChunks: { type: integer, const: 64 }
         expiresAt: { type: integer, minimum: 0 }
@@ -1857,7 +1859,7 @@ components:
         sourceVersionId: { type: string, format: uuid }
         sourceId: { type: string, format: uuid }
         checksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
-        verifiedMediaType: { type: string, enum: [text/plain, application/pdf] }
+        verifiedMediaType: { type: string, enum: [text/plain, application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet] }
         byteCount: { type: integer, minimum: 1, maximum: 16777216 }
         inspection: { type: string, enum: [not_started, queued, inspecting, complete, partial, failed] }
         createdAt: { type: integer, minimum: 0 }
@@ -1869,7 +1871,7 @@ components:
         sourceVersionId: { type: string, format: uuid }
         sourceId: { type: string, format: uuid }
         checksum: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
-        verifiedMediaType: { type: string, enum: [text/plain, application/pdf] }
+        verifiedMediaType: { type: string, enum: [text/plain, application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet] }
         byteCount: { type: integer, minimum: 1, maximum: 16777216 }
         inspection: { const: not_started }
         createdAt: { type: integer, minimum: 0 }

@@ -1,3 +1,4 @@
+import type { SourceMediaType } from './source-media.js'
 import type {
   PrepareCsvDataViewArtifactInput,
   PreparedCsvDataViewArtifact,
@@ -28,7 +29,7 @@ export const SOURCE_PREPARATION_MAX_RESOURCES = 1 as const
 export interface SourceJobReader {
   inspectPlaced(
     objectKey: string,
-    declaredMediaType: 'text/plain' | 'application/pdf',
+    declaredMediaType: SourceMediaType,
     limits: SourceInspectionLimits,
   ): Promise<InspectedSourceBytes>
 }

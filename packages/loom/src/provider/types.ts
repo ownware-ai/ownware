@@ -165,6 +165,102 @@ export interface ProviderUsage {
    * since it reflects the exact route + discounts applied upstream.
    */
   readonly reportedCostUsd?: number
+  /**
+   * Meaning of the monetary surface for this response.
+   *
+   * Absent preserves the existing metered-provider behavior. A subscription
+   * route reports `subscription_allowance` so the engine retains token counts but
+   * does not apply an unrelated API-key pricing table. `unknown` likewise
+   * suppresses invented dollars while making the uncertainty explicit.
+   */
+  readonly costBasis?: ProviderCostBasis
+}
+
+export type ProviderCostBasis =
+  | 'metered'
+  | 'subscription_allowance'
+  | 'unknown'
+
+// ---------------------------------------------------------------------------
+// Transport options (shared adapter construction contract)
+// ---------------------------------------------------------------------------
+
+/**
+ * The HTTP entry point an adapter uses for model calls.
+ *
+ * Deliberately declared as the *widest* input the underlying SDKs accept
+ * (`string | URL | Request`) so one function value is assignable to every
+ * vendor SDK's own `Fetch` type without a cast at each call site.
+ */
+export type ProviderFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>
+
+/**
+ * Transport-level construction options shared by every adapter.
+ *
+ * These exist so a credential whose authority is not a bearer API key — an
+ * OAuth token needing rotation, a request that must carry an account
+ * identifier, a tenant-specific endpoint — can be expressed WITHOUT teaching
+ * the core loop about any particular provider. The closure owns the auth
+ * lifecycle; the adapter stays ignorant of it.
+ *
+ * ## Support envelope (read before relying on these)
+ *
+ * These options are NOT uniformly supported, because the vendor SDKs are not
+ * uniform. The envelope is declared here rather than discovered at runtime:
+ *
+ * | Adapter      | `fetch`                  | `defaultHeaders`          |
+ * |--------------|--------------------------|---------------------------|
+ * | `openai`     | yes (client option)      | yes (client option)       |
+ * | `openai-responses` | yes (client option) | yes (client option)      |
+ * | `openrouter` | yes (inherited)          | yes (inherited)           |
+ * | `anthropic`  | yes (client option)      | yes (client option)       |
+ * | `google`     | **no — throws**          | yes (per-request headers) |
+ * | `ollama`     | **no — not accepted**    | **no — not accepted**     |
+ *
+ * Two different refusals, both deliberate:
+ *
+ * - **`google` throws `ConfigError` at construction.** `@google/generative-ai`
+ *   exposes no client-level HTTP hook at any version we support — only
+ *   per-request `baseUrl` + `customHeaders`. Accepting a `fetch` and quietly
+ *   dropping it would send every request WITHOUT whatever that closure carried
+ *   (most likely the credential) while still looking configured: an
+ *   authentication failure disguised as a working call. It throws at wiring
+ *   time, before any request exists, rather than mid-stream in front of a
+ *   customer.
+ * - **`ollama` does not accept them in its constructor type at all**, so the
+ *   compiler rejects the call. That is stronger than a runtime throw and needs
+ *   no test to prove. Ollama is keyless local inference; a caller who genuinely
+ *   needs transport control should use `OpenAIProvider` with a `baseURL`.
+ *
+ * The rule behind both: an option an adapter cannot honour must fail visibly.
+ * Never accept-and-ignore.
+ */
+export interface ProviderTransportOptions {
+  /**
+   * Replaces the HTTP call used for every model request.
+   *
+   * The closure receives the fully-formed request the SDK intended to send and
+   * returns the response the SDK will parse. Everything between — token
+   * refresh, header injection, endpoint rewriting, retry accounting — is the
+   * closure's business and invisible to this package.
+   *
+   * It is called once per HTTP attempt, not once per `stream()`, so an SDK-level
+   * retry re-enters it. Any refresh performed inside MUST therefore be
+   * single-flight; concurrent streams share the closure.
+   */
+  readonly fetch?: ProviderFetch
+
+  /**
+   * Headers merged into every model request.
+   *
+   * Use for static per-connection metadata (an account or project identifier).
+   * Values that change per request, or that are secret and must be re-resolved,
+   * belong in `fetch` instead — headers fixed at construction cannot rotate.
+   */
+  readonly defaultHeaders?: Readonly<Record<string, string>>
 }
 
 // ---------------------------------------------------------------------------

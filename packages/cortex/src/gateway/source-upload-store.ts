@@ -1,3 +1,4 @@
+import type { SourceMediaType } from './source-media.js'
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import type { EvidenceSearchCache } from './evidence-search-cache.js'
@@ -15,7 +16,7 @@ export interface SourceUploadSession {
   readonly offset: 0
   readonly expectedBytes: number
   readonly expectedChecksum: string
-  readonly declaredMediaType: 'text/plain' | 'application/pdf'
+  readonly declaredMediaType: SourceMediaType
   readonly maxChunkBytes: typeof SOURCE_UPLOAD_MAX_CHUNK_BYTES
   readonly maxChunks: typeof SOURCE_UPLOAD_MAX_CHUNKS
   readonly expiresAt: number
@@ -81,7 +82,7 @@ export interface ScopedSourceUpload {
   readonly chunkCount: number
   readonly expectedBytes: number
   readonly expectedChecksum: string
-  readonly declaredMediaType: 'text/plain' | 'application/pdf'
+  readonly declaredMediaType: SourceMediaType
   readonly expiresAt: number
   readonly pendingVersionId: string | null
   readonly completedVersionId: string | null
@@ -110,7 +111,7 @@ export interface SourceVersionManifest {
   readonly sourceVersionId: string
   readonly sourceId: string
   readonly checksum: string
-  readonly verifiedMediaType: 'text/plain' | 'application/pdf'
+  readonly verifiedMediaType: SourceMediaType
   readonly byteCount: number
   readonly inspection: 'not_started' | 'queued' | 'inspecting' | 'complete' |
     'partial' | 'failed'
@@ -310,7 +311,7 @@ export class SourceUploadStore {
     input: {
       readonly versionId: string
       readonly checksum: string
-      readonly verifiedMediaType: 'text/plain' | 'application/pdf'
+      readonly verifiedMediaType: SourceMediaType
       readonly byteCount: number
       readonly objectKey: string
     },
@@ -414,7 +415,7 @@ export class SourceUploadStore {
       WHERE u.upload_id = ? AND u.state = 'completed'
     `).get(uploadId) as {
       source_version_id: string; source_id: string; checksum: string
-      verified_media_type: 'text/plain' | 'application/pdf'
+      verified_media_type: SourceMediaType
       byte_count: number; created_at: number
     } | undefined
     return row ? {
@@ -441,7 +442,7 @@ export class SourceUploadStore {
         AND s.workspace_id = ? AND s.profile_id = ?
     `).get(versionId, sourceId, workspaceId, profileId) as {
       source_version_id: string; source_id: string; checksum: string
-      verified_media_type: 'text/plain' | 'application/pdf'
+      verified_media_type: SourceMediaType
       byte_count: number
       inspection_state: 'not_started' | 'queued' | 'inspecting' | 'complete' |
         'partial' | 'failed'
