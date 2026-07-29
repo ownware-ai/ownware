@@ -4,8 +4,8 @@
  * The whole studio chat, in one tag: header (agent · live dot · model),
  * streaming thread (user rows + assistant replies with a caret), tool cards,
  * the amber approval card, and the composer. Built on useOwnwareAgent();
- * skinned by design-system-v2 tokens (namespaced --ow-*, so it can't clash
- * with the host app — override any of them to white-label).
+ * skinned by namespaced --ow-* tokens, so it cannot clash with the host app;
+ * override them to fit the host application.
  *
  *   <div style={{ height: 560 }}>
  *     <OwnwareChat baseUrl="http://localhost:4000" token={t} profileId="lawyer" />

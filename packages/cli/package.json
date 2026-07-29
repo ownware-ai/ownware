@@ -1,7 +1,23 @@
 {
   "name": "@ownware/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ownware CLI — chat with your own agent in the terminal. Thin client of the Ownware gateway wire contract.",
+  "keywords": [
+    "agent",
+    "ai",
+    "cli",
+    "terminal",
+    "ownware"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ownware-ai/ownware.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/ownware-ai/ownware#readme",
+  "bugs": {
+    "url": "https://github.com/ownware-ai/ownware/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

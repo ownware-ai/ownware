@@ -8,8 +8,8 @@
  * concrete version. So we drive `bun publish` per package here, in the order
  * each package's internal deps must already exist on npm.
  *
- * Order: loom & client have no internal deps → shuttle needs client →
- *        cortex needs loom (+ optional shuttle) → ownware needs cortex + loom.
+ * The public package list and dependency order live in release-packages.mjs,
+ * where tests prove coverage and topological ordering.
  *
  * Usage:
  *   node scripts/publish-packages.mjs            # real publish
@@ -19,18 +19,10 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PUBLISH_ORDER, publishTagForVersion } from './release-packages.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dryRun = process.argv.includes('--dry-run')
-
-// Publish order — each package's internal deps are published before it.
-const ORDER = [
-  'packages/loom',
-  'packages/client',
-  'adapters/shuttle',
-  'packages/cortex',
-  'packages/ownware',
-]
 
 /** Is this exact name@version already on npm? (idempotency guard) */
 function alreadyPublished(name, version) {
@@ -45,15 +37,16 @@ function alreadyPublished(name, version) {
   }
 }
 
-console.log(`\n▶ Publishing ${ORDER.length} packages${dryRun ? ' (DRY RUN)' : ''}\n`)
+console.log(`\n▶ Publishing ${PUBLISH_ORDER.length} packages${dryRun ? ' (DRY RUN)' : ''}\n`)
 
 let published = 0
 let skipped = 0
-for (const rel of ORDER) {
+for (const rel of PUBLISH_ORDER) {
   const dir = resolve(root, rel)
   const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8'))
   const { name, version } = pkg
-  console.log(`\n── ${name}@${version}  (${rel}) ─────────────────────────────`)
+  const tag = publishTagForVersion(version)
+  console.log(`\n── ${name}@${version}  (${rel}, tag: ${tag}) ─────────────────────────────`)
 
   // Skip versions already on npm so this script is safe to run on any push:
   // it publishes ONLY genuinely-new versions (e.g. right after a version bump),
@@ -64,7 +57,7 @@ for (const rel of ORDER) {
     continue
   }
 
-  const args = ['publish']
+  const args = ['publish', '--tag', tag]
   if (dryRun) args.push('--dry-run')
   execFileSync('bun', args, { cwd: dir, stdio: 'inherit' })
   published++

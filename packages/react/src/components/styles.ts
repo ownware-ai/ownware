@@ -1,11 +1,10 @@
 /**
  * Self-contained styles for <OwnwareChat>.
  *
- * Design-system-v2 (Carbon · Bone · Cobalt), the same skin as the Studio
- * screens (.catalyst/design-system-v2). Tokens are namespaced `--ow-*` so
- * they NEVER collide with the host app's CSS variables — that's what makes
- * the component safe to embed anywhere. Override any `--ow-*` on an ancestor
- * (or via the component's `style` prop) to white-label.
+ * Ownware's Carbon · Bone · Cobalt palette. Tokens are namespaced `--ow-*`
+ * so they never collide with the host app's CSS variables. Override any
+ * `--ow-*` on an ancestor (or through the component's `style` prop) to fit
+ * the host application.
  *
  * Dark is the default; `data-ow-theme="light"` flips it. Injected once.
  */

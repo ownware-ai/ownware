@@ -12,8 +12,8 @@
  *   a.send('hello')
  *   // a.messages · a.streaming · a.pendingApproval · a.approve() / a.deny()
  *
- * Headless: this returns state + actions. The <OwnwareChat> component (next)
- * renders it with the design-system-v2 skin.
+ * Headless: this returns state + actions. <OwnwareChat> renders the same
+ * contract as a ready-made component.
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'

@@ -4,12 +4,8 @@
  * Framework-agnostic types + reducer. Turns the gateway's raw event stream
  * into `ChatState` — the exact shape a UI renders: message rows, streaming
  * text, tool calls (each ready for its uiDescriptor card), and the approval
- * card. Zero runtime dependencies (mirrors @ownware/client). The React
- * binding (@ownware/react) and the vanilla <script> embed both sit on this.
- *
- * The state deliberately mirrors the Studio chat anatomy
- * (.catalyst/design-system-v2/studio): a thread of rows, an open streaming
- * assistant reply, tool cards, and a pending-approval slot.
+ * card. Zero runtime dependencies (mirrors @ownware/client). React and
+ * terminal clients can consume the same state model.
  */
 
 /**

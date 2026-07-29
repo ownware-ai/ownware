@@ -1,6 +1,5 @@
 /**
- * The Ownware terminal theme — the design-system tokens
- * (`.catalyst/design-system-v2/tokens.css`) ported to ANSI truecolor:
+ * The Ownware terminal theme, expressed as ANSI truecolor:
  *
  *   carbon  the ink   — dim/secondary text (#8C8B86 / #6E6D69)
  *   bone    the ground — primary text on dark (#F4F3F0)

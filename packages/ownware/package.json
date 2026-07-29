@@ -1,6 +1,6 @@
 {
   "name": "ownware",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Ownware — build your own agent, run it yourself, reach it everywhere. Umbrella package: one import for the quickstart surface.",
   "type": "module",
   "main": "./dist/index.js",

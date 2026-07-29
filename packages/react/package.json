@@ -1,7 +1,7 @@
 {
   "name": "@ownware/react",
-  "version": "0.1.2",
-  "description": "Ownware chat kit for React — useOwnwareAgent() drives a live agent (run + stream + resume) through the headless @ownware/ui reducer. Headless now; <OwnwareChat> component next.",
+  "version": "0.1.3",
+  "description": "Ownware chat kit for React — a headless live-agent hook plus drop-in chat and agent-workspace components.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

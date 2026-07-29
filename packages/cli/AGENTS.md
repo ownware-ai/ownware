@@ -116,9 +116,8 @@ the captured bytes through a terminal emulator to reconstruct the grid:
 - **Guardrail #4 is verified at the effect**, not claimed: the round
   stamps the real `~/.ownware/ownware.db` before and after and fails
   loudly if it moved.
-- Findings land in
-  `.catalyst/work/active/ownware-cli-2026-07-26/FINDINGS.md` (the
-  experience ledger) — `BUGS.md` stays for defects.
+- Experience findings belong in the owner's local findings ledger; code defects
+  remain separate.
 
 ## PR guidelines
 

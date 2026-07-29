@@ -3,7 +3,7 @@
  *
  *   ▌ ownware v0.3.0
  *   ▌ ownware-code · anthropic:claude-sonnet-4-6
- *   ▌ ~/tariq/ownware · 127.0.0.1:60565 (local)
+ *   ▌ ~/projects/ownware · 127.0.0.1:60565 (local)
  *
  * Cobalt bar (the one rented color), bone wordmark, carbon detail —
  * printed into ordinary scrollback before any renderer takes over, so

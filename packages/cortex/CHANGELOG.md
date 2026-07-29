@@ -1,5 +1,73 @@
 # @ownware/cortex
 
+## 0.4.0
+
+### Minor Changes
+
+- cfe469c: Accept DOCX and XLSX source uploads after verifying their ZIP-container
+  framing, publish the expanded upload envelope as Ownware Gateway capability
+  version 12 / contract revision 0.31.0, and expose the same closed media-type
+  union through the client and OpenAPI contract.
+
+  Upload acceptance remains narrower than document understanding: preparation
+  continues to refuse these formats with `source_media_unsupported` until a
+  bounded extractor is implemented.
+
+- cfe469c: Add the two core (auto-loaded) builtin profiles to the bundled `profiles/`
+  dir. `ownware` is the default assistant ("Ari", `openai:gpt-5.5`, scout/
+  researcher/general helpers, 8 everyday skills). `ownware-code` is a
+  full-stack coding agent with read/write/edit/search/shell tools, four helper
+  subagents (explore, planner, verifier, general), and ten skills (plan, review,
+  commit, create-pr, verify, debug-agent, security-review, simplify, stuck,
+  init). `profiles/BUILTINS.json` now classifies it as core; the helper profiles
+  live nested under the parent's `helpers/` folder per the manifest convention.
+- 00d263f: Publish a bounded owner-only connection inventory with provider-neutral status,
+  fixed recovery guidance, opaque Ownware identities, and an explicit
+  separate-grant requirement.
+- 98fa75d: Make the production WhatsApp Cloud API text flow restart-safe: durably own and
+  deduplicate inbound WAMIDs before webhook acknowledgement, preserve customer
+  thread bindings, fence Gateway runs, journal per-chunk outbound attempts,
+  reconcile Meta delivery statuses, preserve unknown send outcomes without blind
+  resend, and add explicit operator-controlled human handoff commands.
+- 98fa75d: Bind delegated-created conversation threads to a digest of the verified
+  delegate, workspace, profile, subject, purpose and channel context. Mismatched
+  or unbound continuation now denies before mutation. The same binding protects
+  run snapshots, event streams, permission decisions and cancellation, while
+  delegated runs receive no legacy unscoped identity, profile memory, AGENTS.md
+  fallback or memory-proposal tool.
+- cfe469c: Add a manually wired OpenAI Responses transport for Ownware-native agent loops.
+  It translates text, images, custom function calls/results, streaming terminal
+  snapshots, refusals, usage, cancellation, and route-provided credentials while
+  failing visibly for request and event shapes outside its declared envelope.
+
+  Add the Ownware kernel's strict experimental direct-route constructor over the existing
+  OAuth credential boundary. Subscription allowance remains distinct from
+  metered API pricing through turn events, session totals, metrics and
+  checkpoint restore.
+
+- 00d263f: Add subject-bound delegated principals and an owner-granted, field- and row-scoped Data View query contract with bounded verified cell selection.
+- cfe469c: Redact secret-shaped values out of tool-call arguments and results before any
+  gateway store keeps a copy: a new `redact-event` seam runs at both durable
+  write paths (`EventIngestor.ingest` for `agent_events`/SSE and
+  `SessionRunner.accumulateEvent` for the `messages` table), with a second pass
+  on reassembled streamed arguments at `tool.call.end`. The engine now
+  sanitizes every tool result centrally before the model sees it, the cross-zone
+  combination opt-in is fixed to actually take effect, the plaintext
+  `GET /providers/:provider/key` endpoint now requires an audit sink and records
+  every reveal, and the raw `/api/v1/debug/*` event routes are no longer
+  registered unless `OWNWARE_ENABLE_DEBUG_ROUTES=1` is set.
+- 00d263f: Bind protected source read and search subjects to verified delegated principals and remove subject selection from their request bodies.
+
+### Patch Changes
+
+- 00d263f: Protect short-lived connection continuation material in an encrypted,
+  scope-bound vault; redact legacy metadata; verify terminal cleanup; and prevent
+  late completion results from resurrecting revoked connections.
+- Updated dependencies [00d263f]
+- Updated dependencies [cfe469c]
+- Updated dependencies [cfe469c]
+  - @ownware/loom@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

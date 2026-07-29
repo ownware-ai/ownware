@@ -1,0 +1,52 @@
+# `@ownware/ui`
+
+Headless, framework-independent chat state for an Ownware gateway.
+
+It turns the gateway's raw event stream into renderable state: messages,
+streaming text, tool calls, approvals, model attribution, and honest error
+states. It has no runtime dependencies and does not perform network requests.
+
+## Install
+
+```bash
+npm install @ownware/ui @ownware/client
+```
+
+## Reduce a live event stream
+
+```ts
+import { OwnwareClient } from '@ownware/client'
+import { chatReducer, initialChatState } from '@ownware/ui'
+
+const client = new OwnwareClient({
+  baseUrl: 'http://127.0.0.1:4000',
+  token: process.env.OWNWARE_GATEWAY_TOKEN,
+})
+
+const run = await client.run({
+  profileId: 'assistant',
+  prompt: 'Summarize today’s work.',
+})
+
+let state = initialChatState()
+for await (const event of client.events(run.threadId)) {
+  state = chatReducer(state, event)
+  render(state)
+}
+```
+
+`chatReducer` is defensive about unknown additive event types. Tool descriptors
+control presentation only; permission decisions still go through the gateway's
+authoritative resume routes.
+
+## Main exports
+
+- `initialChatState()`
+- `chatReducer(state, event)`
+- `applyEvents(state, events)`
+- `addUserMessage(state, text)`
+- `describeToolCall(call, descriptor?)`
+- `BUILTIN_DESCRIPTORS`
+
+See the [Ownware repository](https://github.com/ownware-ai/ownware) for the
+gateway, client SDK, examples, and Apache-2.0 license.

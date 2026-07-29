@@ -29,7 +29,7 @@
     "ownware": "node packages/cortex/dist/cli.js",
     "changeset": "changeset",
     "release:status": "changeset status --verbose",
-    "test:release": "node --test scripts/sync-package-versions.test.mjs",
+    "test:release": "node --test scripts/sync-package-versions.test.mjs scripts/release-packages.test.mjs",
     "release:version": "changeset version && node scripts/sync-package-versions.mjs && bun install --lockfile-only",
     "release:publish": "bun run build && node scripts/publish-packages.mjs",
     "release:dry-run": "bun run build && node scripts/publish-packages.mjs --dry-run"

@@ -11,10 +11,10 @@ every release.
 bun run changeset                 # pick patch/minor/major + write a one-line summary
 
 # 2. When ready to cut a release:
-bun run release:version           # bumps all package versions + regenerates CHANGELOGs
+bun run release:version           # consumes pending changesets + regenerates CHANGELOGs
 git add -A && git commit -m "Release vX.Y.Z" && git push
 
-# 3. Publish to npm (all packages, right order, one command):
+# 3. Publish to npm (all public packages, right order, one command):
 bun run release:publish           # or release:dry-run to rehearse
 
 # 4. Confirm it's live:
@@ -25,13 +25,17 @@ The website (Cloudflare) is **not** part of this — see [The docs website](#the
 
 ---
 
-## Versioning strategy: semver, one version for the whole kit
+## Versioning strategy: semver, a fixed core plus independent clients
 
 The five published packages — `ownware`, `@ownware/loom`, `@ownware/cortex`,
 `@ownware/client`, `@ownware/shuttle` — are **version-locked**: they always share
 one version number and are released together, even if only one changed. They're a
 tightly-coupled kit; a user who has `ownware@0.3.0` should get `@ownware/cortex@0.3.0`.
 This is configured as a `fixed` group in `.changeset/config.json`.
+
+The public client-surface packages — `@ownware/ui`, `@ownware/react`, and
+`@ownware/cli` — version independently. They depend on the fixed core but do
+not force a core release for a renderer-only or terminal-only change.
 
 We follow [semantic versioning](https://semver.org):
 
@@ -52,10 +56,10 @@ edit version numbers manually.** Instead:
 1. With each change, you run `bun run changeset` and declare the *bump type*
    (patch/minor/major) and a human summary. This writes a small markdown file into
    `.changeset/` that you commit alongside your code.
-2. At release time, `bun run release:version` reads **all** the pending changeset
-   files, takes the **highest** bump among them (one `minor` + three `patch` → a
-   `minor`), computes the next version, and writes it into every package. The
-   changeset files are consumed (deleted) in the process.
+2. At release time, `bun run release:version` reads **all** pending changeset
+   files, takes the **highest** bump for the five-package fixed core, computes
+   independent bumps for the client-surface packages, and updates affected
+   manifests. The changeset files are consumed (deleted) in the process.
 
 So the version is *derived* from the changes, automatically. This is how Astro,
 Remix, Emotion, and most modern npm monorepos work.
@@ -83,33 +87,52 @@ packages.* The changelog is never a separate manual step at publish time.
 ## Publishing — one ordered pass, not package-by-package by hand
 
 You do **not** `cd` into each package and publish it manually. `bun run release:publish`
-runs `scripts/publish-packages.mjs`, which publishes all five **in dependency order**:
+runs `scripts/publish-packages.mjs`, which publishes every public package **in
+dependency order**:
 
 ```
-loom  →  client  →  shuttle  →  cortex  →  ownware
+loom ────────────────→ cortex ──→ ownware ──→ cli
+client ──→ react
+   │      ↑
+   ├────→ shuttle
+   └────────────────────────────→ cli
+ui ─────→ react ────────────────→ cli
 ```
 
 (each package's internal deps are already on npm before it publishes). It uses
 **`bun publish`**, not `npm publish` — because `bun` rewrites the `workspace:*`
-dependency ranges to the concrete version (`0.1.0`), while `npm publish` would ship
+dependency ranges to the concrete version (for example `0.4.0`), while `npm publish` would ship
 the literal `workspace:*` and break every install. This is verified: `bun run
-release:dry-run` packs all five and shows exactly what would ship, publishing nothing.
+release:dry-run` packs all eight and shows exactly what would ship, publishing nothing.
+
+The dependency-free `@ownware/ui` package intentionally publishes first. On its
+first publication, that verifies the account can create packages in the
+`@ownware` scope before any existing package version is changed.
 
 Publishing is **irreversible** — a published version can never be overwritten (only
 superseded by a higher one). Always `release:dry-run` first if unsure.
 
-## The first release (0.1.0) is manual
+Stable versions publish under npm's `latest` tag. Versions containing a
+prerelease suffix such as `0.4.0-beta.0` publish under `next`, so an experimental
+release cannot silently replace the default installation.
 
-The packages are already at `0.1.0`, so the *initial* publish is just: commit a clean
-tree, then `bun run release:publish`. Changesets takes over from `0.1.1` onward — the
-first time you run `bun run changeset` + `release:version`, it bumps off `0.1.0`.
+## First publication of a new package
+
+A package may first reach npm at a version later than `0.1.0`; its committed
+manifest and changelog remain authoritative. Commit a clean versioned tree, run
+the dry-run, then use the same ordered `release:publish` command. Never publish a
+workspace package by hand.
 
 ## Pre-publish checklist (every release)
 
 - [ ] `git status` clean — you publish the working tree's built `dist/`, so commit first.
 - [ ] `bun run build && bun run typecheck && bun run test && bun run smoke` all green.
-- [ ] `npm whoami` shows your account; you're a member of the `ownware` npm org
-      (`npm org ls ownware`).
+- [ ] `npm whoami` shows your account, and it has `read-write` access to an
+      existing scoped package (`npm access list collaborators @ownware/cortex`).
+      For first-time scoped names, also confirm org membership; a restricted
+      token may forbid `npm org ls ownware` even when package writes are allowed.
+- [ ] First-time package names (`@ownware/ui`, `@ownware/react`, `@ownware/cli`)
+      are available to that account.
 - [ ] `bun run release:dry-run` looks right (correct files, concrete dep versions).
 - [ ] Then `bun run release:publish`, then `npm i -g ownware && ownware --version`.
 

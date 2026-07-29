@@ -3,8 +3,8 @@
  *
  * `useOwnwareAgent()` is the headless brain: it drives a live agent (run +
  * stream + resume) through the @ownware/ui reducer and hands you state +
- * actions. Build your own UI on it, or use the forthcoming <OwnwareChat>
- * drop-in (design-system-v2 skin, uiDescriptor tool cards, approval card).
+ * actions. Build your own UI on it, or use the <OwnwareChat> drop-in with
+ * descriptor-driven tool cards and explicit approval handling.
  *
  * Re-exports the state types from @ownware/ui so consumers need one import.
  */

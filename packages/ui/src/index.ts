@@ -4,7 +4,7 @@
  * The framework-agnostic brain: a pure reducer that turns the gateway's SSE
  * event stream into `ChatState`. Feed it @ownware/client's `.events(threadId)`;
  * render the resulting state however you like. The React binding
- * (@ownware/react) and the vanilla <script> embed both build on this.
+ * (@ownware/react) and terminal clients build on the same state model.
  *
  *   import { OwnwareClient } from '@ownware/client'
  *   import { initialChatState, chatReducer } from '@ownware/ui'
