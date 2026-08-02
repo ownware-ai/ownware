@@ -24,7 +24,7 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
   async function listThreads(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
     const profileId = url.searchParams.get('profileId') ?? undefined
-    sendJSON(res, 200, state.listThreads(profileId))
+    sendJSON(res, 200, await state.listThreads(profileId))
   }
 
   // POST /api/v1/threads
@@ -34,27 +34,27 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
     const title = body?.title
     const workspaceId = body?.workspaceId
 
-    const thread = state.createThread(profileId, title ?? undefined, workspaceId ?? undefined)
+    const thread = await state.createThread(profileId, title ?? undefined, workspaceId ?? undefined)
     sendJSON(res, 201, thread)
   }
 
   // GET /api/v1/threads/:threadId
   async function getThread(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
     }
 
-    const messages = state.getMessages(threadId)
+    const messages = await state.getMessages(threadId)
     sendJSON(res, 200, { ...thread, messages })
   }
 
   // DELETE /api/v1/threads/:threadId
   async function deleteThread(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const threadId = params['threadId']!
-    const deleted = state.deleteThread(threadId)
+    const deleted = await state.deleteThread(threadId)
     if (!deleted) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -67,19 +67,19 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
   // GET /api/v1/threads/:threadId/messages
   async function getMessages(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
     }
 
-    sendJSON(res, 200, state.getMessages(threadId))
+    sendJSON(res, 200, await state.getMessages(threadId))
   }
 
   // PATCH /api/v1/threads/:threadId
   async function patchThread(req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -102,19 +102,19 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
     // run-input state (what the next /run should dispatch with).
     const { model: modelChange, ...rest } = parsed.data
     if (modelChange !== undefined && modelChange !== null) {
-      state.setThreadModel(threadId, modelChange)
+      await state.setThreadModel(threadId, modelChange)
     }
 
     const updated = Object.keys(rest).length > 0
-      ? state.updateThread(threadId, rest)
-      : state.getThread(threadId)
+      ? await state.updateThread(threadId, rest)
+      : await state.getThread(threadId)
     sendJSON(res, 200, updated)
   }
 
   // GET /api/v1/threads/:threadId/export?format=markdown|json
   async function exportThread(req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -122,7 +122,7 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
 
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
     const format = url.searchParams.get('format') ?? 'markdown'
-    const messages = state.getMessages(threadId)
+    const messages = await state.getMessages(threadId)
 
     if (format === 'json') {
       sendJSON(res, 200, { thread, messages })
@@ -217,22 +217,24 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
     params: Record<string, string>,
   ): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThreadAnywhere(threadId)
+    const thread = await state.getThreadAnywhere(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
     }
 
-    const messages = state.getMessages(threadId)
-    const agents = state.listAgentsForThread(threadId)
+    const messages = await state.getMessages(threadId)
+    const agents = await state.listAgentsForThread(threadId)
     const runningAgentId = deps.runner?.isRunning(threadId) ? ROOT_AGENT_ID : null
-    const maxSeq = state.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID)
-    const firstRetainedSeq = state.getAgentEventMinSeq(threadId, ROOT_AGENT_ID, -1)
+    const [maxSeq, firstRetainedSeq] = await Promise.all([
+      state.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID),
+      state.getAgentEventMinSeq(threadId, ROOT_AGENT_ID, -1),
+    ])
     const retainedCursorFloor = firstRetainedSeq === null
       ? maxSeq
       : Math.max(0, firstRetainedSeq - 1)
     const lastClosedTurnEndSeq = Math.max(
-      state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID),
+      await state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID),
       retainedCursorFloor,
     )
 

@@ -83,7 +83,7 @@ describe('Contract: exact Data View query grants', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({ disableAuth: false, disableSourceWorker: true })
-    workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Data View query contract').id
+    workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Data View query contract')).id
     target = await seedDataView()
   })
 

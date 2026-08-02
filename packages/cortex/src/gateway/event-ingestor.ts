@@ -5,7 +5,7 @@
  * onEvent hook) and every parent event (via the session runner) flows
  * through one function here. It does exactly two things, in this order:
  *
- *   1. Append to the SQLite `agent_events` table — the durable log.
+ *   1. Append through the selected storage repository — the durable log.
  *   2. Publish to the in-memory EventBus — the live fan-out to SSE.
  *
  * The ordering is load-bearing. Disk first means any live subscriber only
@@ -24,7 +24,7 @@
  */
 
 import type { LoomEvent } from '@ownware/loom'
-import type { CortexDatabase } from './db/database.js'
+import type { AgentEventRepository } from '../storage/core-repositories.js'
 import type { EventBus } from './event-bus.js'
 import { ROOT_AGENT_ID } from './event-bus.js'
 import { redactEventForStorage } from './redact-event.js'
@@ -116,21 +116,49 @@ export function projectPermissionEvidenceEvent(event: LoomEvent): LoomEvent {
 }
 
 export class EventIngestor {
+  private readonly streamTails = new Map<string, Promise<void>>()
+
   constructor(
-    private readonly db: CortexDatabase,
+    private readonly events: AgentEventRepository,
     private readonly bus: EventBus,
   ) {}
 
   /**
    * Ingest one event — durable write then (for main) live publish.
    *
-   * Returns the assigned seq so callers can log/trace. Throws if the DB
-   * write fails; callers should decide whether to abort the run or log
-   * and continue (the gateway currently swallows per-event errors inside
-   * the spawner hook to avoid killing an entire agent run over a single
-   * bad event, but still reports them).
+   * Returns the assigned seq so callers can log/trace. Throws if the durable
+   * write fails; production callers propagate that failure so a run cannot
+   * report success after losing an event.
    */
-  ingest(params: IngestParams): number {
+  ingest(params: IngestParams): Promise<number> {
+    const lifecycleRewrite = params.parentAgentId !== null &&
+      (params.event.type === 'agent.spawn' || params.event.type === 'agent.complete')
+    const streamAgentId = lifecycleRewrite ? params.parentAgentId! : params.agentId
+    const key = `${params.threadId}\0${streamAgentId}`
+    const predecessor = this.streamTails.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const tail = new Promise<void>((resolve) => { release = resolve })
+    this.streamTails.set(key, tail)
+
+    return (async () => {
+      await predecessor
+      try {
+        return await this.ingestExclusive(params)
+      } finally {
+        release()
+        if (this.streamTails.get(key) === tail) this.streamTails.delete(key)
+      }
+    })()
+  }
+
+  /** Await every append/publish already accepted by this ingestor. */
+  async drain(): Promise<void> {
+    while (this.streamTails.size > 0) {
+      await Promise.allSettled([...this.streamTails.values()])
+    }
+  }
+
+  private async ingestExclusive(params: IngestParams): Promise<number> {
     // Two sanitizers compose at this choke point, BEFORE the durable
     // write — so disk and live SSE carry byte-identical payloads and a
     // `?since=N` replay can't hand back something the live stream had
@@ -199,7 +227,7 @@ export class EventIngestor {
 
     let seq: number
     try {
-      seq = this.db.appendAgentEvent(appendParams)
+      seq = await this.events.append(appendParams)
     } catch (err) {
       if (isPermEvent && traceEnabled) {
         // eslint-disable-next-line no-console
@@ -253,7 +281,7 @@ export class EventIngestor {
    * don't have to spell out the full params object every time.
    */
 
-  ingestParentEvent(threadId: string, event: LoomEvent): number {
+  ingestParentEvent(threadId: string, event: LoomEvent): Promise<number> {
     return this.ingest({
       threadId,
       agentId: ROOT_AGENT_ID,
@@ -266,7 +294,7 @@ export class EventIngestor {
     threadId: string,
     subagentId: string,
     event: LoomEvent,
-  ): number {
+  ): Promise<number> {
     return this.ingest({
       threadId,
       agentId: subagentId,

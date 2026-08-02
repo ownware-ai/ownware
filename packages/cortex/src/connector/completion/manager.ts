@@ -13,7 +13,7 @@
  * status-bus, same client UI — different completion trigger.
  */
 
-import type { ConnectorConnectionsStore } from '../connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type { ConnectorStatusBus } from '../status-bus.js'
 import { ConnectionPoller, type PollerConfig } from './poller.js'
 import type {
@@ -31,7 +31,7 @@ export class ConnectionCompletionManager {
   readonly poller: ConnectionPoller
 
   constructor(
-    private readonly store: ConnectorConnectionsStore,
+    private readonly store: ConnectorConnectionsRepository,
     statusBus: ConnectorStatusBus,
     opts: ConnectionCompletionManagerOptions = {},
   ) {
@@ -76,8 +76,8 @@ export class ConnectionCompletionManager {
    * `store.upsertPending()` + `dispatch()` atomically from an
    * HTTP handler or source adapter.
    */
-  dispatch(connectionId: string): void {
-    const row = this.store.findByConnectionId(connectionId)
+  async dispatch(connectionId: string): Promise<void> {
+    const row = await this.store.findByConnectionId(connectionId)
     if (!row) {
       throw new Error(
         `ConnectionCompletionManager.dispatch: unknown connectionId "${connectionId}".`,
@@ -90,7 +90,7 @@ export class ConnectionCompletionManager {
           `Known sources: ${[...this.listeners.keys()].join(', ') || '(none)'}.`,
       )
     }
-    this.poller.register(connectionId, listener)
+    await this.poller.register(connectionId, listener)
   }
 
   /** Cancel polling for a single connection. Idempotent. */

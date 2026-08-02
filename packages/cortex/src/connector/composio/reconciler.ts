@@ -67,7 +67,7 @@
  */
 
 import type { ComposioClient } from './client.js'
-import type { ConnectorConnectionsStore } from '../connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type { ConnectorStatusBus } from '../status-bus.js'
 
 const COMPOSIO_SOURCE = 'composio'
@@ -105,7 +105,7 @@ const VENDOR_ACTIVE_STATUSES: ReadonlySet<string> = new Set([
 
 export interface ComposioReconcilerOptions {
   readonly client: ComposioClient
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   readonly statusBus: ConnectorStatusBus
   /** Composio user id for this install (the same value the resync handler uses). */
   readonly defaultUserId: string
@@ -141,7 +141,7 @@ export interface ReconcileTickResult {
 
 export class ComposioReconciler {
   private readonly client: ComposioClient
-  private readonly connections: ConnectorConnectionsStore
+  private readonly connections: ConnectorConnectionsRepository
   private readonly statusBus: ConnectorStatusBus
   private readonly defaultUserId: string
   private readonly intervalMs: number
@@ -237,7 +237,7 @@ export class ComposioReconciler {
     // Phase 1: snapshot the local `ready` rows. The reconciler only
     // checks ready rows — `pending` is the completion poller's job
     // and terminal rows (`failed`, `expired`) don't need re-checking.
-    const localReady = this.connections.listActiveByStatus(
+    const localReady = await this.connections.listActiveByStatus(
       COMPOSIO_SOURCE,
       'ready',
       this.defaultUserId,
@@ -301,7 +301,7 @@ export class ComposioReconciler {
         const firstMissAt = this.staleSince.get(row.connectionId)
         if (firstMissAt === undefined) {
           this.staleSince.set(row.connectionId, now)
-          this.statusBus.emit({
+          await this.statusBus.emitAndWait({
             connectorId: row.connectorId,
             source: COMPOSIO_SOURCE,
             status: 'stale',
@@ -314,12 +314,12 @@ export class ComposioReconciler {
           // Tolerance exceeded — escalate. Local row becomes `failed`
           // so the next assembler pass shows the connector as needing
           // reauthorization in the agent prompt too.
-          this.connections.markUnhealthy(
+          await this.connections.markUnhealthy(
             row.connectionId,
             'Vendor no longer reports this connection. Please reconnect.',
           )
           this.staleSince.delete(row.connectionId)
-          this.statusBus.emit({
+          await this.statusBus.emitAndWait({
             connectorId: row.connectorId,
             source: COMPOSIO_SOURCE,
             status: 'auth_error',
@@ -333,7 +333,7 @@ export class ComposioReconciler {
         // observer that joined since the first miss. The bus dedupes
         // no-op transitions (same status as cached), so this is a
         // cheap no-op except on the first observation.
-        this.statusBus.emit({
+        await this.statusBus.emitAndWait({
           connectorId: row.connectorId,
           source: COMPOSIO_SOURCE,
           status: 'stale',
@@ -346,9 +346,9 @@ export class ComposioReconciler {
         // Healthy. Touch the row's last_verified_at, drop any stale
         // tracking, and emit ready (the bus will no-op if we were
         // already on ready in the cache — which is the common case).
-        this.connections.touchVerified(row.connectionId, now)
+        await this.connections.touchVerified(row.connectionId, now)
         this.staleSince.delete(row.connectionId)
-        this.statusBus.emit({
+        await this.statusBus.emitAndWait({
           connectorId: row.connectorId,
           source: COMPOSIO_SOURCE,
           status: 'ready',
@@ -362,12 +362,12 @@ export class ComposioReconciler {
         // Vendor explicitly rejects this row — flip local state to
         // failed (so the assembler stops handing the agent a ready
         // tool) and emit auth_error so the client shows "Reauthorize".
-        this.connections.markUnhealthy(
+        await this.connections.markUnhealthy(
           row.connectionId,
           `Vendor reports status ${vendorStatus}. Please reconnect.`,
         )
         this.staleSince.delete(row.connectionId)
-        this.statusBus.emit({
+        await this.statusBus.emitAndWait({
           connectorId: row.connectorId,
           source: COMPOSIO_SOURCE,
           status: 'auth_error',

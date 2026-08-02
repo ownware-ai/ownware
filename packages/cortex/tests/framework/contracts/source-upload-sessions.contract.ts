@@ -32,7 +32,7 @@ describe('Contract: source upload sessions', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({ disableAuth: false })
-    const workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Upload session contract').id
+    const workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Upload session contract')).id
     const issued = await gw.client.post('/api/v1/auth/delegations', {
       delegateId: 'source-upload-client',
       workspaceId,
@@ -267,7 +267,7 @@ describe('Contract: source upload sessions', () => {
   })
 
   it('requires a scoped compatible source and discloses no cross-scope label', async () => {
-    const otherWorkspace = gw.state.createWorkspace(`${gw.tmpDir}/other-upload`, 'Other upload').id
+    const otherWorkspace = (await gw.state.createWorkspace(`${gw.tmpDir}/other-upload`, 'Other upload')).id
     const issued = await gw.client.post('/api/v1/auth/delegations', {
       delegateId: 'other-source-upload-client',
       workspaceId: otherWorkspace,

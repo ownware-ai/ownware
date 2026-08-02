@@ -41,14 +41,14 @@ function makeFakeState(initial: {
   }))
 
   const adapter: SyncMCPServersStateAdapter = {
-    getMCPServer(id) {
+    async getMCPServer(id) {
       return servers.get(id)
     },
-    createMCPServer(server) {
+    async createMCPServer(server) {
       servers.set(server.id, { id: server.id, registryId: null })
       return { id: server.id }
     },
-    assignServerToProfile(serverId, profileId) {
+    async assignServerToProfile(serverId, profileId) {
       // Idempotent: don't double-add the same pair.
       if (
         !assignments.some(
@@ -58,7 +58,7 @@ function makeFakeState(initial: {
         assignments.push({ serverId, profileId })
       }
     },
-    removeServerFromProfile(serverId, profileId) {
+    async removeServerFromProfile(serverId, profileId) {
       const idx = assignments.findIndex(
         a => a.serverId === serverId && a.profileId === profileId,
       )
@@ -66,7 +66,7 @@ function makeFakeState(initial: {
       assignments.splice(idx, 1)
       return true
     },
-    getServersForProfile(profileId) {
+    async getServersForProfile(profileId) {
       const ids = assignments
         .filter(a => a.profileId === profileId)
         .map(a => a.serverId)
@@ -77,7 +77,7 @@ function makeFakeState(initial: {
       }
       return out
     },
-    listMCPServers() {
+    async listMCPServers() {
       return {
         items: [...servers.values()].map(s => ({
           id: s.id,
@@ -85,7 +85,7 @@ function makeFakeState(initial: {
         })),
       }
     },
-    deleteMCPServer(id) {
+    async deleteMCPServer(id) {
       const had = servers.has(id)
       servers.delete(id)
       // Cascade: drop assignments that pointed at it.
@@ -115,9 +115,9 @@ const HTTP = (url: string) => ({ transport: 'http', url })
 // ---------------------------------------------------------------------------
 
 describe('reconcileMCPServers — Phase 1 (forward sync)', () => {
-  it('creates a server row + assignment for a fresh profile', () => {
+  it('creates a server row + assignment for a fresh profile', async () => {
     const { adapter, servers, assignments } = makeFakeState()
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO })],
       adapter,
     )
@@ -129,11 +129,11 @@ describe('reconcileMCPServers — Phase 1 (forward sync)', () => {
     expect(result.removedOrphanedServers).toBe(0)
   })
 
-  it('does not duplicate when the row already exists', () => {
+  it('does not duplicate when the row already exists', async () => {
     const { adapter, servers, assignments } = makeFakeState({
       servers: [{ id: 'paper', registryId: null }],
     })
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO })],
       adapter,
     )
@@ -142,21 +142,21 @@ describe('reconcileMCPServers — Phase 1 (forward sync)', () => {
     expect(assignments.length).toBe(1)
   })
 
-  it('handles streamable_http → http transport mapping', () => {
+  it('handles streamable_http → http transport mapping', async () => {
     const { adapter, servers } = makeFakeState()
-    reconcileMCPServers(
+    await reconcileMCPServers(
       [profile('coder', { 'foo': { transport: 'streamable_http', url: 'https://x/y' } })],
       adapter,
     )
     expect(servers.get('foo')).toBeDefined()
   })
 
-  it('skips profiles whose mcp is null (load failure sentinel)', () => {
+  it('skips profiles whose mcp is null (load failure sentinel)', async () => {
     const { adapter, servers, assignments } = makeFakeState({
       assignments: [{ serverId: 'paper', profileId: 'coder' }],
       servers: [{ id: 'paper', registryId: null }],
     })
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [{ id: 'coder', mcp: null }],
       adapter,
     )
@@ -169,7 +169,7 @@ describe('reconcileMCPServers — Phase 1 (forward sync)', () => {
 })
 
 describe('reconcileMCPServers — Phase 2a (stale assignments)', () => {
-  it('removes an assignment whose serverId is no longer in agent.json', () => {
+  it('removes an assignment whose serverId is no longer in agent.json', async () => {
     const { adapter, assignments } = makeFakeState({
       servers: [{ id: 'paper', registryId: null }, { id: 'old-server', registryId: null }],
       assignments: [
@@ -177,7 +177,7 @@ describe('reconcileMCPServers — Phase 2a (stale assignments)', () => {
         { serverId: 'old-server', profileId: 'coder' },
       ],
     })
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO })],
       adapter,
     )
@@ -186,18 +186,18 @@ describe('reconcileMCPServers — Phase 2a (stale assignments)', () => {
     expect(result.removalLog[0]).toContain("serverId='old-server'")
   })
 
-  it('does NOT touch assignments belonging to a profile that failed to load', () => {
+  it('does NOT touch assignments belonging to a profile that failed to load', async () => {
     const { adapter, assignments } = makeFakeState({
       servers: [{ id: 'paper', registryId: null }],
       assignments: [{ serverId: 'paper', profileId: 'coder' }],
     })
-    reconcileMCPServers([{ id: 'coder', mcp: null }], adapter)
+    await reconcileMCPServers([{ id: 'coder', mcp: null }], adapter)
     expect(assignments.length).toBe(1) // preserved
   })
 })
 
 describe('reconcileMCPServers — Phase 2b (orphaned servers)', () => {
-  it('removes an mcp_servers row when no profile references it', () => {
+  it('removes an mcp_servers row when no profile references it', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [
         { id: 'paper', registryId: null },
@@ -205,7 +205,7 @@ describe('reconcileMCPServers — Phase 2b (orphaned servers)', () => {
       ],
       assignments: [{ serverId: 'paper', profileId: 'coder' }],
     })
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO })],
       adapter,
     )
@@ -214,41 +214,41 @@ describe('reconcileMCPServers — Phase 2b (orphaned servers)', () => {
     expect(result.removedOrphanedServers).toBe(1)
   })
 
-  it('preserves orphaned rows with registry_id="custom" (user-registered)', () => {
+  it('preserves orphaned rows with registry_id="custom" (user-registered)', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [
         { id: 'my-tool-c4vrjq3w', registryId: 'custom' },
       ],
     })
-    const result = reconcileMCPServers([], adapter)
+    const result = await reconcileMCPServers([], adapter)
     expect(servers.has('my-tool-c4vrjq3w')).toBe(true)
     expect(result.removedOrphanedServers).toBe(0)
   })
 
-  it('preserves orphaned rows with registry_id="detected" (auto-detected)', () => {
+  it('preserves orphaned rows with registry_id="detected" (auto-detected)', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [
         { id: 'figma', registryId: 'detected' },
       ],
     })
-    const result = reconcileMCPServers([], adapter)
+    const result = await reconcileMCPServers([], adapter)
     expect(servers.has('figma')).toBe(true)
     expect(result.removedOrphanedServers).toBe(0)
   })
 
-  it('removes a row that was previously profile-referenced but isn\'t any more', () => {
+  it('removes a row that was previously profile-referenced but isn\'t any more', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [{ id: 'old-mcp', registryId: null }],
       assignments: [{ serverId: 'old-mcp', profileId: 'coder' }],
     })
     // Coder no longer declares old-mcp.
-    const result = reconcileMCPServers([profile('coder', {})], adapter)
+    const result = await reconcileMCPServers([profile('coder', {})], adapter)
     expect(servers.size).toBe(0)
     expect(result.removedAssignments).toBe(1)
     expect(result.removedOrphanedServers).toBe(1)
   })
 
-  it('does NOT delete a row that ANY profile still references', () => {
+  it('does NOT delete a row that ANY profile still references', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [{ id: 'shared', registryId: null }],
       assignments: [
@@ -257,7 +257,7 @@ describe('reconcileMCPServers — Phase 2b (orphaned servers)', () => {
       ],
     })
     // Coder dropped it, reviewer still has it.
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', {}), profile('reviewer', { 'shared': STDIO })],
       adapter,
     )
@@ -267,7 +267,7 @@ describe('reconcileMCPServers — Phase 2b (orphaned servers)', () => {
 })
 
 describe('reconcileMCPServers — telemetry', () => {
-  it('records every removal in removalLog with a clear reason', () => {
+  it('records every removal in removalLog with a clear reason', async () => {
     const { adapter } = makeFakeState({
       servers: [
         { id: 'orphaned', registryId: null },
@@ -278,7 +278,7 @@ describe('reconcileMCPServers — telemetry', () => {
         { serverId: 'paper', profileId: 'coder' },
       ],
     })
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO })],
       adapter,
     )
@@ -287,22 +287,22 @@ describe('reconcileMCPServers — telemetry', () => {
     expect(result.removalLog.some(line => line.includes('orphaned mcp_server'))).toBe(true)
   })
 
-  it('calls the logger.info callback for every removal', () => {
+  it('calls the logger.info callback for every removal', async () => {
     const { adapter } = makeFakeState({
       servers: [{ id: 'orphan', registryId: null }],
     })
     const lines: string[] = []
-    reconcileMCPServers([], adapter, { info: (m) => lines.push(m) })
+    await reconcileMCPServers([], adapter, { info: (m) => lines.push(m) })
     expect(lines.length).toBe(1)
     expect(lines[0]).toContain('orphaned mcp_server')
   })
 })
 
 describe('reconcileMCPServers — full lifecycle scenarios', () => {
-  it('end-to-end: add, remove, replace across two reconcile passes', () => {
+  it('end-to-end: add, remove, replace across two reconcile passes', async () => {
     const { adapter, servers, assignments } = makeFakeState()
     // Pass 1 — initial sync from a fresh DB.
-    reconcileMCPServers(
+    await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO, 'pencil': STDIO })],
       adapter,
     )
@@ -310,7 +310,7 @@ describe('reconcileMCPServers — full lifecycle scenarios', () => {
     expect(assignments.length).toBe(2)
 
     // Pass 2 — user removed pencil, added a new MCP.
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO, 'sequential-thinking': STDIO })],
       adapter,
     )
@@ -322,16 +322,16 @@ describe('reconcileMCPServers — full lifecycle scenarios', () => {
     expect(result.removedOrphanedServers).toBe(1)
   })
 
-  it('user-registered custom row survives even when never in any profile', () => {
+  it('user-registered custom row survives even when never in any profile', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [{ id: 'my-test-c4vrjq3w', registryId: 'custom' }],
     })
     // Run reconcile with no profiles at all.
-    reconcileMCPServers([], adapter)
+    await reconcileMCPServers([], adapter)
     expect(servers.has('my-test-c4vrjq3w')).toBe(true)
   })
 
-  it('mix: profile rows get reconciled, custom + detected stay', () => {
+  it('mix: profile rows get reconciled, custom + detected stay', async () => {
     const { adapter, servers } = makeFakeState({
       servers: [
         { id: 'orphan', registryId: null },           // delete
@@ -344,7 +344,7 @@ describe('reconcileMCPServers — full lifecycle scenarios', () => {
         { serverId: 'paper', profileId: 'coder' },
       ],
     })
-    const result = reconcileMCPServers(
+    const result = await reconcileMCPServers(
       [profile('coder', { 'paper': STDIO })],
       adapter,
     )
@@ -356,13 +356,13 @@ describe('reconcileMCPServers — full lifecycle scenarios', () => {
     expect(result.removedOrphanedServers).toBe(1)
   })
 
-  it('idempotent: running twice with the same input produces the same DB state', () => {
+  it('idempotent: running twice with the same input produces the same DB state', async () => {
     const { adapter, servers, assignments } = makeFakeState()
-    reconcileMCPServers([profile('coder', { 'paper': STDIO })], adapter)
+    await reconcileMCPServers([profile('coder', { 'paper': STDIO })], adapter)
     const after1Servers = [...servers.keys()].sort()
     const after1Assignments = [...assignments].map(a => `${a.profileId}:${a.serverId}`).sort()
 
-    reconcileMCPServers([profile('coder', { 'paper': STDIO })], adapter)
+    await reconcileMCPServers([profile('coder', { 'paper': STDIO })], adapter)
     const after2Servers = [...servers.keys()].sort()
     const after2Assignments = [...assignments].map(a => `${a.profileId}:${a.serverId}`).sort()
 

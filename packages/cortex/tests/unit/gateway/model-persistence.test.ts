@@ -37,13 +37,17 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-function asstMsg(model: string, content = 'hi'): ThreadMessage {
+function asstMsg(
+  model: string,
+  content = 'hi',
+  timestamp = new Date().toISOString(),
+): ThreadMessage {
   return {
     id: `msg_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
     role: 'assistant',
     content,
     model,
-    timestamp: new Date().toISOString(),
+    timestamp,
   }
 }
 
@@ -152,15 +156,15 @@ describe('Reload determinism — full simulated round-trip', () => {
 
     // Dispatch 1 — GPT
     db.setThreadModel(t.id, 'gpt-5.4')
-    db.addMessage(t.id, asstMsg('gpt-5.4'))
+    db.addMessage(t.id, asstMsg('gpt-5.4', 'hi', '2026-08-02T00:00:01.000Z'))
 
     // Dispatch 2 — Sonnet (user switched mid-conversation)
     db.setThreadModel(t.id, 'claude-sonnet-4-6')
-    db.addMessage(t.id, asstMsg('claude-sonnet-4-6'))
+    db.addMessage(t.id, asstMsg('claude-sonnet-4-6', 'hi', '2026-08-02T00:00:02.000Z'))
 
     // Dispatch 3 — Kimi (user switched again)
     db.setThreadModel(t.id, 'kimi-k-2.6')
-    db.addMessage(t.id, asstMsg('kimi-k-2.6'))
+    db.addMessage(t.id, asstMsg('kimi-k-2.6', 'hi', '2026-08-02T00:00:03.000Z'))
 
     // ── Simulate a "reload": close the handle, reopen the same files.
     db.close()

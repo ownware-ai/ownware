@@ -26,6 +26,7 @@ import type { LoomEvent } from '@ownware/loom'
 import { CortexDatabase } from '../../../src/gateway/db/database.js'
 import { EventBus, ROOT_AGENT_ID } from '../../../src/gateway/event-bus.js'
 import { EventIngestor } from '../../../src/gateway/event-ingestor.js'
+import { createSqliteCoreRepositoriesFromDatabase } from '../../../src/storage/sqlite-core-repositories.js'
 import {
   SessionRunner,
   createAccumulator,
@@ -58,9 +59,12 @@ function threadFixture(): string {
 // ---------------------------------------------------------------------------
 
 describe('EventIngestor.ingest — agent_events + EventBus', () => {
-  it('writes the redacted argument to disk AND publishes the same bytes live', () => {
+  it('writes the redacted argument to disk AND publishes the same bytes live', async () => {
     const bus = new EventBus()
-    const ingestor = new EventIngestor(db, bus)
+    const ingestor = new EventIngestor(
+      createSqliteCoreRepositoriesFromDatabase(db).events,
+      bus,
+    )
     const threadId = threadFixture()
 
     const published: LoomEvent[] = []
@@ -68,7 +72,7 @@ describe('EventIngestor.ingest — agent_events + EventBus', () => {
       published.push(entry.event)
     })
 
-    ingestor.ingestParentEvent(threadId, {
+    await ingestor.ingestParentEvent(threadId, {
       type: 'tool.call.start',
       toolCallId: 'call_1',
       toolName: 'shell',
@@ -103,7 +107,7 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 },
   } as unknown as LoomEvent
 
-  function runAccumulator(events: readonly LoomEvent[]): ThreadMessage[] {
+  async function runAccumulator(events: readonly LoomEvent[]): Promise<ThreadMessage[]> {
     // GatewayState is not needed for the accumulate path — every write
     // goes through the injected saveMessage callback.
     const runner = new SessionRunner({} as never)
@@ -118,14 +122,14 @@ describe('SessionRunner.accumulateEvent — messages', () => {
           enriched: LoomEvent,
           acc: ReturnType<typeof createAccumulator>,
           run: unknown,
-          saveMessage: (m: ThreadMessage) => void,
+          saveMessage: (m: ThreadMessage) => Promise<void>,
           genId: () => string,
-        ) => void
+        ) => Promise<void>
       }
     ).accumulateEvent.bind(runner)
 
     for (const event of events) {
-      call(
+      await call(
         event,
         event,
         acc,
@@ -137,15 +141,15 @@ describe('SessionRunner.accumulateEvent — messages', () => {
           outputTokens: 0,
           costUsd: 0,
         },
-        (m: ThreadMessage) => saved.push(m),
+        async (m: ThreadMessage) => { saved.push(m) },
         () => `msg_${++n}`,
       )
     }
     return saved
   }
 
-  it('redacts a non-streamed tool argument into the saved message', () => {
-    const saved = runAccumulator([
+  it('redacts a non-streamed tool argument into the saved message', async () => {
+    const saved = await runAccumulator([
       {
         type: 'tool.call.start',
         toolCallId: 'call_1',
@@ -169,7 +173,7 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     expect(JSON.stringify(saved)).toContain('[REDACTED:ANTHROPIC_KEY]')
   })
 
-  it('redacts a secret SPLIT ACROSS two args_delta chunks', () => {
+  it('redacts a secret SPLIT ACROSS two args_delta chunks', async () => {
     // The real gap the second redaction pass at tool.call.end closes.
     // Neither half matches a pattern on its own; the join does. This is
     // the common case for streaming-args providers, where
@@ -178,7 +182,7 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     const head = FAKE_KEY.slice(0, 14)
     const tail = FAKE_KEY.slice(14)
 
-    const saved = runAccumulator([
+    const saved = await runAccumulator([
       {
         type: 'tool.call.start',
         toolCallId: 'call_1',
@@ -215,13 +219,13 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     expect(serialized).toContain('[REDACTED:ANTHROPIC_KEY]')
   })
 
-  it('redacts the argument stored on a permission record', () => {
+  it('redacts the argument stored on a permission record', async () => {
     // A distinct path from the tool-call one: the permission branch reads
     // `enrichedEvent` and writes `messages[].permissions[].input`, which
     // the tool.call.end reassembly pass never touches. Mutation-testing
     // caught this — without it, deleting the redaction at the top of
     // accumulateEvent broke no test at all.
-    const saved = runAccumulator([
+    const saved = await runAccumulator([
       {
         type: 'permission.request',
         requestId: 'req_1',
@@ -246,7 +250,7 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     expect(JSON.stringify(perms)).toContain('[REDACTED:ANTHROPIC_KEY]')
   })
 
-  it('keeps streamed args parseable when the secret is assignment-shaped', () => {
+  it('keeps streamed args parseable when the secret is assignment-shaped', async () => {
     // Guards the choice of `sanitizeJsonFragment` over `sanitizeOutput`
     // for args_delta. The SECRET_ASSIGNMENT pattern eats the JSON
     // string's closing quote:
@@ -258,7 +262,7 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     // tool.call.start.input — `{}` for streaming providers. The user's
     // tool card then shows NO arguments at all. Assert the surviving
     // sibling field, because that is what proves the object was not lost.
-    const saved = runAccumulator([
+    const saved = await runAccumulator([
       {
         type: 'tool.call.start',
         toolCallId: 'call_1',
@@ -297,10 +301,10 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     expect(input['command']).not.toContain('abcdefghij')
   })
 
-  it('redacts a tool RESULT into messages[].tools[].output', () => {
+  it('redacts a tool RESULT into messages[].tools[].output', async () => {
     // B-38. The old engine path sanitized shell/filesystem results only; an MCP or
     // Composio tool that returns a token had it stored verbatim.
-    const saved = runAccumulator([
+    const saved = await runAccumulator([
       {
         type: 'tool.call.start',
         toolCallId: 'call_1',
@@ -330,11 +334,11 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     expect(parsed.ok).toBe(true)
   })
 
-  it('redacts the command on a security.block system message', () => {
+  it('redacts the command on a security.block system message', async () => {
     // This branch reads the unenriched `event`, and writes the raw
     // command into `tools[].input.command`. A command blocked for being
     // dangerous is MORE likely than average to carry a credential.
-    const saved = runAccumulator([
+    const saved = await runAccumulator([
       {
         type: 'security.block',
         toolName: 'shell',
@@ -350,10 +354,10 @@ describe('SessionRunner.accumulateEvent — messages', () => {
     expect(JSON.stringify(saved)).toContain('[REDACTED:ANTHROPIC_KEY]')
   })
 
-  it('leaves an ordinary writeFile argument intact and still parseable', () => {
+  it('leaves an ordinary writeFile argument intact and still parseable', async () => {
     // Guards the Design canvas replay, which reads exactly this field.
     const content = '<main class="grid">\n  <h1>Report</h1>\n</main>'
-    const saved = runAccumulator([
+    const saved = await runAccumulator([
       {
         type: 'tool.call.start',
         toolCallId: 'call_1',

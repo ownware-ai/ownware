@@ -17,9 +17,9 @@ describe('Contract: exact run permission decisions', () => {
   })
 
   it('decides only the matching run, request and operation hash once', async () => {
-    const workspace = gateway.state.createWorkspace(gateway.tmpDir, 'Exact permission contract')
-    const thread = gateway.state.createThread('mini', 'exact permission', workspace.id)
-    const run = gateway.gateway.runStore.create({
+    const workspace = await gateway.state.createWorkspace(gateway.tmpDir, 'Exact permission contract')
+    const thread = await gateway.state.createThread('mini', 'exact permission', workspace.id)
+    const run = await gateway.gateway.runStore.create({
       threadId: thread.id,
       workspaceId: workspace.id,
       profileId: 'mini',
@@ -27,8 +27,8 @@ describe('Contract: exact run permission decisions', () => {
       timeoutMs: 60_000,
       startSeq: 0,
     })
-    gateway.gateway.runStore.markRunning(run.runId)
-    gateway.gateway.runStore.markWaiting(run.runId)
+    await gateway.gateway.runStore.markRunning(run.runId)
+    await gateway.gateway.runStore.markWaiting(run.runId)
 
     const hitl = new HumanInTheLoop({ timeoutMs: 10_000 })
     hitl.onApprovalNeeded(() => { /* decision arrives through HTTP */ })
@@ -45,19 +45,19 @@ describe('Contract: exact run permission decisions', () => {
       hitl,
       zoneManager: null,
     })
-    const first = gateway.gateway.runStore.recordPermissionRequest({
+    const first = await gateway.gateway.runStore.recordPermissionRequest({
       runId: run.runId,
       requestId: 'permission_1',
       toolName: 'send_email',
       toolInput: { body: 'private body' },
     })
-    const second = gateway.gateway.runStore.recordPermissionRequest({
+    const second = await gateway.gateway.runStore.recordPermissionRequest({
       runId: run.runId,
       requestId: 'permission_2',
       toolName: 'delete_file',
       toolInput: { path: '/tmp/example' },
     })
-    gateway.state.eventIngestor.ingestParentEvent(thread.id, {
+    await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'permission.request',
       turnIndex: 0,
       requestId: first.requestId,
@@ -120,7 +120,7 @@ describe('Contract: exact run permission decisions', () => {
         body: JSON.stringify({ operationHash, decision }),
       })
 
-    const otherRun = gateway.gateway.runStore.create({
+    const otherRun = await gateway.gateway.runStore.create({
       threadId: thread.id,
       workspaceId: workspace.id,
       profileId: 'mini',
@@ -133,9 +133,9 @@ describe('Contract: exact run permission decisions', () => {
     await expect(wrongRun.json()).resolves.toMatchObject({ error: 'permission_request_not_found' })
     expect(hitl.hasPending(first.requestId)).toBe(true)
 
-    const otherWorkspace = gateway.state.createWorkspace(`${gateway.tmpDir}/other`, 'Other scope')
-    const otherThread = gateway.state.createThread('mini', 'wrong scope', otherWorkspace.id)
-    const wrongScopeRun = gateway.gateway.runStore.create({
+    const otherWorkspace = await gateway.state.createWorkspace(`${gateway.tmpDir}/other`, 'Other scope')
+    const otherThread = await gateway.state.createThread('mini', 'wrong scope', otherWorkspace.id)
+    const wrongScopeRun = await gateway.gateway.runStore.create({
       threadId: otherThread.id,
       workspaceId: otherWorkspace.id,
       profileId: 'mini',
@@ -143,7 +143,7 @@ describe('Contract: exact run permission decisions', () => {
       timeoutMs: 60_000,
       startSeq: 0,
     })
-    gateway.gateway.runStore.recordPermissionRequest({
+    await gateway.gateway.runStore.recordPermissionRequest({
       runId: wrongScopeRun.runId,
       requestId: 'permission_wrong_scope',
       toolName: 'send_email',
@@ -151,10 +151,10 @@ describe('Contract: exact run permission decisions', () => {
     })
     const wrongScope = await decide(
       'permission_wrong_scope',
-      gateway.gateway.runStore.getPermissionRequest(
+      (await gateway.gateway.runStore.getPermissionRequest(
         wrongScopeRun.runId,
         'permission_wrong_scope',
-      )!.operationHash,
+      ))!.operationHash,
       'approve',
       wrongScopeRun.runId,
     )
@@ -165,7 +165,7 @@ describe('Contract: exact run permission decisions', () => {
     expect(approved.status).toBe(200)
     await expect(firstDecision).resolves.toBe(true)
     expect(hitl.hasPending(second.requestId)).toBe(true)
-    expect(gateway.gateway.runStore.get(run.runId)?.status).toBe('waiting')
+    expect((await gateway.gateway.runStore.get(run.runId))?.status).toBe('waiting')
 
     const duplicate = await decide(first.requestId, first.operationHash, 'deny')
     expect(duplicate.status).toBe(409)
@@ -179,6 +179,6 @@ describe('Contract: exact run permission decisions', () => {
     const denied = await decide(second.requestId, second.operationHash, 'deny')
     expect(denied.status).toBe(200)
     await expect(secondDecision).resolves.toBe(false)
-    expect(gateway.gateway.runStore.get(run.runId)?.status).toBe('running')
+    expect((await gateway.gateway.runStore.get(run.runId))?.status).toBe('running')
   })
 })

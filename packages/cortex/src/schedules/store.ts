@@ -3,15 +3,15 @@
  * for the per-profile scheduling vertical. Owns SQL only; the firing
  * engine (ScheduleRunner) and cadence math live in later slices.
  *
- * Construction mirrors `SqliteTaskStore`: it takes the raw better-sqlite3
- * handle (`db.rawMainHandle`). All instants are epoch milliseconds.
+ * Construction belongs to the SQLite repository factory. All instants are
+ * epoch milliseconds.
  *
  * Key invariant for the engine: `advance()` is the at-most-once cursor
  * write — durably move `next_run_at` forward BEFORE a run fires, so a
  * crash mid-run drops at most one occurrence instead of replaying.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import {
   CadenceKindSchema,
   CatchUpPolicySchema,
@@ -178,9 +178,9 @@ function newRunId(): string {
 // ---------------------------------------------------------------------------
 
 export class SqliteScheduleStore {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
 
-  constructor(db: Database.Database) {
+  constructor(db: SqliteDatabase) {
     this.db = db
   }
 

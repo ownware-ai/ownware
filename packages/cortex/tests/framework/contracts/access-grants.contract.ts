@@ -97,7 +97,7 @@ describe('Contract: owner grants and protected source content', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({ disableAuth: false, disableSourceWorker: true })
-    workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Access grant contract').id
+    workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Access grant contract')).id
     target = await seedPreparedText()
     contentToken = await issue(
       'content-client', ['source_content.read'], 'person.synthetic-1',

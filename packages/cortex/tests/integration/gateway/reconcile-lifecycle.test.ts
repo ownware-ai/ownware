@@ -52,8 +52,8 @@ describe('Reconcile lifecycle — producer wiring', () => {
 
   it('POST /profiles/:id/composio marks every thread on that profile', async () => {
     // Create two threads on the composio-test profile.
-    const t1 = gw.state.createThread('composio-test')
-    const t2 = gw.state.createThread('composio-test')
+    const t1 = await gw.state.createThread('composio-test')
+    const t2 = await gw.state.createThread('composio-test')
     // Seed initial managed snapshots so the status-bus path (which
     // skips threads with no snapshot) would still be exercised if
     // triggered. Attach-path does not gate on snapshots, but we seed
@@ -75,7 +75,7 @@ describe('Reconcile lifecycle — producer wiring', () => {
 
   it('POST with already-declared toolkit is a no-op and does NOT mark', async () => {
     // gmail is already declared in COMPOSIO_PROFILE.tools.composio.toolkits.
-    const t1 = gw.state.createThread('composio-test')
+    const t1 = await gw.state.createThread('composio-test')
     gw.gateway.pendingReconciles.setManaged(t1.id, initialManagedTools([]))
 
     const res = await gw.client.post('/api/v1/profiles/composio-test/composio', {
@@ -88,7 +88,7 @@ describe('Reconcile lifecycle — producer wiring', () => {
   })
 
   it('DELETE /profiles/:id/composio/:toolkit marks every thread on the profile', async () => {
-    const t1 = gw.state.createThread('composio-test')
+    const t1 = await gw.state.createThread('composio-test')
     gw.gateway.pendingReconciles.setManaged(t1.id, initialManagedTools([]))
 
     const res = await gw.client.delete('/api/v1/profiles/composio-test/composio/gmail')
@@ -97,7 +97,7 @@ describe('Reconcile lifecycle — producer wiring', () => {
   })
 
   it('DELETE of a non-existent toolkit returns 404 and does NOT mark', async () => {
-    const t1 = gw.state.createThread('composio-test')
+    const t1 = await gw.state.createThread('composio-test')
     gw.gateway.pendingReconciles.setManaged(t1.id, initialManagedTools([]))
 
     const res = await gw.client.delete(
@@ -108,8 +108,8 @@ describe('Reconcile lifecycle — producer wiring', () => {
   })
 
   it('ConnectorStatusBus emit marks ONLY threads whose profile declares the connector', async () => {
-    const matching = gw.state.createThread('composio-test')
-    const unrelated = gw.state.createThread('unrelated')
+    const matching = await gw.state.createThread('composio-test')
+    const unrelated = await gw.state.createThread('unrelated')
     gw.gateway.pendingReconciles.setManaged(matching.id, initialManagedTools([]))
     gw.gateway.pendingReconciles.setManaged(unrelated.id, initialManagedTools([]))
 
@@ -125,7 +125,7 @@ describe('Reconcile lifecycle — producer wiring', () => {
     ) ?? []
     expect(declared).toContain('gmail')
 
-    gw.gateway.connectorStatusBus.emit({
+    await gw.gateway.connectorStatusBus.emitAndWait({
       connectorId: 'gmail',
       source: 'composio',
       status: 'ready',
@@ -141,11 +141,11 @@ describe('Reconcile lifecycle — producer wiring', () => {
     // them would surface a stale flag that never gets consumed.
     // Scoping the subscriber on snapshot presence keeps the tracker
     // tidy.
-    const thread = gw.state.createThread('composio-test')
+    const thread = await gw.state.createThread('composio-test')
     await gw.gateway.registry.get('composio-test')
     // NOTE: no setManaged call — this thread has never born a session.
 
-    gw.gateway.connectorStatusBus.emit({
+    await gw.gateway.connectorStatusBus.emitAndWait({
       connectorId: 'gmail',
       source: 'composio',
       status: 'ready',
@@ -156,7 +156,7 @@ describe('Reconcile lifecycle — producer wiring', () => {
   })
 
   it('consume is edge-triggered — a second consume after one POST returns false', async () => {
-    const t = gw.state.createThread('composio-test')
+    const t = await gw.state.createThread('composio-test')
     gw.gateway.pendingReconciles.setManaged(t.id, initialManagedTools([]))
 
     await gw.client.post('/api/v1/profiles/composio-test/composio', {

@@ -175,9 +175,9 @@ describe('cross-schedule recent runs feed (GET /schedules/runs)', () => {
     // Record runs directly via the store (thread_id null → no FK needed).
     const store = gateway.schedules
     const base = Date.now()
-    store.recordRun({ scheduleId: aId, scheduledFor: base - 3000, runStatus: 'succeeded', finishedAt: base - 2900 })
-    store.recordRun({ scheduleId: bId, scheduledFor: base - 2000, runStatus: 'ran-empty', finishedAt: base - 1900 })
-    store.recordRun({ scheduleId: aId, scheduledFor: base - 1000, runStatus: 'running', startedAt: base - 1000 })
+    await store.recordRun({ scheduleId: aId, scheduledFor: base - 3000, runStatus: 'succeeded', finishedAt: base - 2900 })
+    await store.recordRun({ scheduleId: bId, scheduledFor: base - 2000, runStatus: 'ran-empty', finishedAt: base - 1900 })
+    await store.recordRun({ scheduleId: aId, scheduledFor: base - 1000, runStatus: 'running', startedAt: base - 1000 })
   })
 
   it('returns runs across all schedules, newest first, enriched with schedule name + profileId', async () => {

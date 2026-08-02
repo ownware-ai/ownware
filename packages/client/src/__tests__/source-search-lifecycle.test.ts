@@ -63,7 +63,7 @@ describe('public subject-bound source-search lifecycle', () => {
       token: gateway.token,
     })
 
-    const workspace = gateway.state.createWorkspace(
+    const workspace = await gateway.state.createWorkspace(
       join(dir, 'workspace'),
       'Public search lifecycle',
     )

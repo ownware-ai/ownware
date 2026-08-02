@@ -29,6 +29,7 @@ import { assembleAgent } from '../../src/profile/assembler.js'
 import { CortexDatabase } from '../../src/gateway/db/database.js'
 import { EventBus, ROOT_AGENT_ID } from '../../src/gateway/event-bus.js'
 import { EventIngestor } from '../../src/gateway/event-ingestor.js'
+import { createSqliteCoreRepositoriesFromDatabase } from '../../src/storage/sqlite-core-repositories.js'
 import {
   SessionRunner,
   createAccumulator,
@@ -145,12 +146,15 @@ describe.skipIf(!apiKey)('tool-argument redaction — real provider stream', () 
     const db = new CortexDatabase(join(tempDir, 'cortex.db'))
     cleanups.push(async () => db.close())
     const bus = new EventBus()
-    const ingestor = new EventIngestor(db, bus)
+    const ingestor = new EventIngestor(
+      createSqliteCoreRepositoriesFromDatabase(db).events,
+      bus,
+    )
     const threadId = db.createThread('e2e-redaction', 'redaction').id
 
     const live: LoomEvent[] = []
     bus.subscribe(threadId, ROOT_AGENT_ID, e => live.push(e.event))
-    for (const event of events) ingestor.ingestParentEvent(threadId, event)
+    for (const event of events) await ingestor.ingestParentEvent(threadId, event)
 
     const stored = db.listAgentEvents({ threadId, agentId: ROOT_AGENT_ID })
     expect(stored.length).toBeGreaterThan(0)
@@ -189,9 +193,9 @@ describe.skipIf(!apiKey)('tool-argument redaction — real provider stream', () 
           enriched: LoomEvent,
           acc: ReturnType<typeof createAccumulator>,
           run: unknown,
-          save: (m: ThreadMessage) => void,
+          save: (m: ThreadMessage) => Promise<void>,
           genId: () => string,
-        ) => void
+        ) => Promise<void>
       }
     ).accumulateEvent.bind(runner)
 
@@ -205,7 +209,14 @@ describe.skipIf(!apiKey)('tool-argument redaction — real provider stream', () 
       threadId,
     }
     for (const event of events) {
-      accumulate(event, event, acc, run, m => saved.push(m), () => `msg_${++n}`)
+      await accumulate(
+        event,
+        event,
+        acc,
+        run,
+        async m => { saved.push(m) },
+        () => `msg_${++n}`,
+      )
     }
 
     expect(saved.length).toBeGreaterThan(0)

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 
 export type CandidateState = 'placing' | 'ready' | 'placement_failed' | 'cleanup_failed'
 
@@ -100,7 +100,7 @@ interface CandidateDeletionRow {
 }
 
 export class CandidateStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   get(candidateId: string): CandidateRecord | null {
     const row = this.db.prepare('SELECT * FROM profile_candidates WHERE candidate_id = ?')

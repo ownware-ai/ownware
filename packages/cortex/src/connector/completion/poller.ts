@@ -19,7 +19,7 @@
  *   - Cross-restart persistence (v1 uses `expireStaleOnBoot()` instead)
  */
 
-import type { ConnectorConnectionsStore } from '../connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type { ConnectorStatusBus } from '../status-bus.js'
 import type {
   BeforeConnectionTerminal,
@@ -99,7 +99,7 @@ export class ConnectionPoller {
   private readonly config: PollerConfig
 
   constructor(
-    private readonly store: ConnectorConnectionsStore,
+    private readonly store: ConnectorConnectionsRepository,
     private readonly statusBus: ConnectorStatusBus,
     config: Partial<PollerConfig> = {},
     private readonly beforeTerminal: BeforeConnectionTerminal = async () => {},
@@ -118,13 +118,13 @@ export class ConnectionPoller {
    * a noop (returns the existing state). To RESTART polling with a
    * fresh budget, call `cancel(id)` first.
    */
-  register(
+  async register(
     connectionId: string,
     listener: ConnectionCompletionListener,
-  ): void {
+  ): Promise<void> {
     if (this.active.has(connectionId)) return
 
-    const row = this.store.findByConnectionId(connectionId)
+    const row = await this.store.findByConnectionId(connectionId)
     if (!row) {
       throw new Error(
         `ConnectionPoller.register: unknown connectionId "${connectionId}". ` +
@@ -214,7 +214,7 @@ export class ConnectionPoller {
     // Cancelled during the in-flight call.
     if (!this.active.has(state.connectionId)) return
 
-    this.store.touchPolled(state.connectionId)
+    await this.store.touchPolled(state.connectionId)
 
     switch (result.status) {
       case 'pending': {
@@ -267,7 +267,7 @@ export class ConnectionPoller {
     },
   ): Promise<void> {
     if (!this.active.has(state.connectionId)) return
-    const before = this.store.findByConnectionId(state.connectionId)
+    const before = await this.store.findByConnectionId(state.connectionId)
     if (!before || before.status !== 'pending') {
       this.finish(state)
       return
@@ -283,7 +283,7 @@ export class ConnectionPoller {
       })
     } catch {
       if (!this.active.has(state.connectionId)) return
-      const current = this.store.findByConnectionId(state.connectionId)
+      const current = await this.store.findByConnectionId(state.connectionId)
       if (!current || current.status !== 'pending') {
         this.finish(state)
         return
@@ -301,7 +301,7 @@ export class ConnectionPoller {
     let transitioned = false
     switch (terminal) {
       case 'ready': {
-        const result = this.store.markReady({
+        const result = await this.store.markReady({
           connectionId: state.connectionId,
           ...(opts.vendorAccountId !== undefined ? { vendorAccountId: opts.vendorAccountId } : {}),
           ...(opts.vendorUserId !== undefined ? { vendorUserId: opts.vendorUserId } : {}),
@@ -310,7 +310,7 @@ export class ConnectionPoller {
         break
       }
       case 'failed': {
-        const result = this.store.markFailed({
+        const result = await this.store.markFailed({
           connectionId: state.connectionId,
           reason: opts.reason ?? 'Connection failed.',
         })
@@ -318,7 +318,7 @@ export class ConnectionPoller {
         break
       }
       case 'expired': {
-        const result = this.store.markExpired(state.connectionId, opts.reason)
+        const result = await this.store.markExpired(state.connectionId, opts.reason)
         transitioned = result?.transitioned === true
         break
       }
@@ -341,7 +341,7 @@ export class ConnectionPoller {
       : state.source === 'composio' ? 'composio'
       : 'mcp'
 
-    this.statusBus.emit({
+    await this.statusBus.emitAndWait({
       connectorId: state.connectorId,
       source: sourceForBus,
       status: statusForBus,

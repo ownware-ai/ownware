@@ -154,39 +154,39 @@ describe('Contract: immutable run snapshots', () => {
   })
 
   it('replays only one terminal run interval and rejects invalid or mismatched cursors', async () => {
-    const thread = gateway.state.createThread('mini', 'bounded event replay')
-    gateway.state.eventIngestor.ingestParentEvent(thread.id, {
+    const thread = await gateway.state.createThread('mini', 'bounded event replay')
+    await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'text.delta', text: 'old reply', turnIndex: 0,
     } as never)
-    gateway.state.eventIngestor.ingestParentEvent(thread.id, {
+    await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'turn.end', stopReason: 'end_turn', turnIndex: 0,
     } as never)
-    const first = gateway.gateway.runStore.create({
+    const first = await gateway.gateway.runStore.create({
       threadId: thread.id,
       profileId: 'mini',
       model: 'test:model',
       timeoutMs: 1_000,
       startSeq: 0,
     })
-    gateway.gateway.runStore.markTerminal(first.runId, 'succeeded', { endSeq: 2 })
+    await gateway.gateway.runStore.markTerminal(first.runId, 'succeeded', { endSeq: 2 })
 
-    const second = gateway.gateway.runStore.create({
+    const second = await gateway.gateway.runStore.create({
       threadId: thread.id,
       profileId: 'mini',
       model: 'test:model',
       timeoutMs: 1_000,
       startSeq: 2,
     })
-    gateway.state.eventIngestor.ingestParentEvent(thread.id, {
+    await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'user.message', text: 'new turn', attachments: null, timestamp: Date.now(),
     } as never)
-    gateway.state.eventIngestor.ingestParentEvent(thread.id, {
+    await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'text.delta', text: 'new reply', turnIndex: 1,
     } as never)
-    gateway.state.eventIngestor.ingestParentEvent(thread.id, {
+    await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'turn.end', stopReason: 'end_turn', turnIndex: 1,
     } as never)
-    gateway.gateway.runStore.markTerminal(second.runId, 'succeeded', { endSeq: 5 })
+    await gateway.gateway.runStore.markTerminal(second.runId, 'succeeded', { endSeq: 5 })
 
     const replay = await fetch(
       `${gateway.baseUrl}/api/v1/runs/${second.runId}/events?since=2`,
@@ -213,7 +213,7 @@ describe('Contract: immutable run snapshots', () => {
     expect(mismatched.status).toBe(409)
     expect(await mismatched.json()).toMatchObject({ error: 'cursor_mismatch' })
 
-    gateway.state.pruneAgentEvents(thread.id)
+    await gateway.state.pruneAgentEvents(thread.id)
     const prunedSnapshot = await fetch(`${gateway.baseUrl}/api/v1/runs/${second.runId}`, {
       headers: { authorization: `Bearer ${gateway.token}` },
     })

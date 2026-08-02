@@ -18,23 +18,24 @@ describe('durable run snapshot restart recovery', () => {
   it('reports a prior-process running record as indeterminate, never completed', async () => {
     const first = await createTestGateway({ disableAuth: false })
     cleanupDir = first.tmpDir
-    const thread = first.state.createThread('mini', 'crash recovery')
-    const record = first.gateway.runStore.create({
+    const thread = await first.state.createThread('mini', 'crash recovery')
+    const record = await first.gateway.runStore.create({
       threadId: thread.id,
       profileId: 'mini',
       model: 'anthropic:claude-sonnet-4-20250514',
       timeoutMs: 30 * 60 * 1000,
       startSeq: 0,
     }, 1_750_000_000_000)
-    first.gateway.runStore.markRunning(record.runId, 1_750_000_000_100)
-    const permission = first.gateway.runStore.recordPermissionRequest({
+    await first.gateway.runStore.markRunning(record.runId, 1_750_000_000_100)
+    const permission = await first.gateway.runStore.recordPermissionRequest({
       runId: record.runId,
       requestId: 'permission_before_restart',
       toolName: 'send_email',
       toolInput: { recipient: 'synthetic@example.test' },
     }, 1_750_000_000_200)
-    first.gateway.runStore.markWaiting(record.runId, 1_750_000_000_200)
-    expect(first.gateway.runStore.requestCancel(record.runId, 1_750_000_000_300)).toBe('requested')
+    await first.gateway.runStore.markWaiting(record.runId, 1_750_000_000_200)
+    await expect(first.gateway.runStore.requestCancel(record.runId, 1_750_000_000_300))
+      .resolves.toBe('requested')
     await first.stop({ cleanup: false })
 
     restarted = new OwnwareGateway({

@@ -21,11 +21,11 @@ import { ConnectorNotReadyErrorSchema } from '../../../src/connector/schema.js'
 
 class InMemSettings {
   private readonly store = new Map<string, string>()
-  getSetting(k: string) {
+  async getSetting(k: string) {
     const v = this.store.get(k)
     return v === undefined ? undefined : { value: v }
   }
-  setSetting(k: string, v: string) { this.store.set(k, v); return { value: v } }
+  async setSetting(k: string, v: string) { this.store.set(k, v); return { value: v } }
 }
 
 describe('WebSearchService', () => {
@@ -59,18 +59,18 @@ describe('WebSearchService', () => {
     expect(r.status).toBe('ready')
   })
 
-  it('persists user choice', () => {
-    service.setUserChoice('brave')
-    expect(settings.getSetting(WEB_SEARCH_SETTING_KEY)?.value).toBe('brave')
+  it('persists user choice', async () => {
+    await service.setUserChoice('brave')
+    expect((await settings.getSetting(WEB_SEARCH_SETTING_KEY))?.value).toBe('brave')
   })
 
-  it('rejects unknown provider id on setUserChoice', () => {
-    expect(() => service.setUserChoice('foo')).toThrow(/Unknown/)
+  it('rejects unknown provider id on setUserChoice', async () => {
+    await expect(service.setUserChoice('foo')).rejects.toThrow(/Unknown/)
   })
 
   it('saveApiKey persists into vault and subsequently resolves with it', async () => {
     await service.saveApiKey('brave', 'secret-key')
-    service.setUserChoice('brave')
+    await service.setUserChoice('brave')
     const r = await service.resolve()
     expect(r.providerId).toBe('brave')
     expect(r.source).toBe('user')

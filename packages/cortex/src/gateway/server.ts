@@ -19,9 +19,7 @@ import { ProfileRegistry } from '../profile/registry.js'
 import { migrateMarketplaceInstalledNames } from '../profile/ownware-bundle.js'
 import { generateSessionToken } from './middleware/auth.js'
 import { createPrincipalAuthMiddleware } from './auth/principal-middleware.js'
-import { DelegatedPrincipalStore, ScopedPrincipalService } from './auth/scoped-principal.js'
-import { RunIdempotencyStore } from './idempotency.js'
-import { GatewayRunStore } from './run-store.js'
+import { ScopedPrincipalService } from './auth/scoped-principal.js'
 import { createHostGuard } from './middleware/host-guard.js'
 import { loadOrCreateGatewayToken, gatewayTokenPath } from './token-store.js'
 import { isOllamaReachable, PROVIDER_ENV_HINTS } from '@ownware/loom'
@@ -43,7 +41,6 @@ import {
   createStageCandidateHandler,
   validateCandidate,
 } from './handlers/candidates.js'
-import { CandidateStore } from './candidate-store.js'
 import { CandidateStager } from '../profile/candidate-stager.js'
 import { CandidateRetirer } from '../profile/candidate-retirer.js'
 import {
@@ -59,8 +56,6 @@ import { TeamModule } from '../team/module.js'
 import { createTeamHandlers } from '../team/handlers.js'
 import { createRunHandlers } from './handlers/run.js'
 import {
-  SqliteScheduleStore,
-  SqliteApprovalStore,
   ScheduleRunner,
   type ScheduleDeliverySink,
 } from '../schedules/index.js'
@@ -69,13 +64,10 @@ import {
   createCredentialAuditHandlers,
   createCredentialStoreHandlers,
 } from './handlers/credential-store.js'
-import { CredentialAuditLog } from '../credential/audit.js'
 import { bootstrapProvidersFromUnifiedStore } from '../credential/bootstrap-providers.js'
 import { CredentialInjector } from '../credential/injector.js'
 import { GatewayCredentialResolver } from '../credential/resolver.js'
 import {
-  createCredentialStore,
-  runCredentialBootMigrations,
   type CredentialStore,
 } from '../credential/store/index.js'
 import { TrustGate } from '../credential/trust-gate.js'
@@ -87,11 +79,10 @@ import { featuredComposioSlugSet } from '../connector/composio/featured.js'
 import { createConnectorEventsHandler } from './handlers/connector-events.js'
 import { createGatewayEventsHandler } from './handlers/gateway-events.js'
 import { createTaskHandlers } from './handlers/tasks.js'
-import { TaskEventBus } from '../tasks/event-bus.js'
-import { SqliteTaskStore } from '../tasks/store.js'
+import type { TaskEventBus } from '../tasks/event-bus.js'
 import { createScheduleHandlers } from './handlers/schedules.js'
 import { createApprovalHandlers } from './handlers/approvals.js'
-import { createMemorySystem, type MemorySystem } from '../memory/index.js'
+import type { MemorySystem } from '../memory/index.js'
 import { createMemoryHandlers } from './handlers/memory.js'
 import { TerminalEventBus } from '../terminal/event-bus.js'
 import { TerminalSessionRegistry } from '../terminal/session-registry.js'
@@ -110,7 +101,6 @@ import {
 import { createWorkspaceEventsHandler } from './handlers/workspace-events.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { ConnectorsToolProvider } from '../connector/providers/connectors-tool-provider.js'
-import { ConnectorConnectionsStore } from '../connector/connections/store.js'
 import {
   connectionSessionHandle,
   ConnectionSessionVault,
@@ -130,7 +120,7 @@ import { createConnectorAliasHandlers } from './handlers/connector-alias.js'
 import { createConnectorConnectHandlers } from './handlers/connector-connect.js'
 import { createConnectorDisconnectHandlers } from './handlers/connector-disconnect.js'
 import { createConnectorRuntimeSetupHandler } from './handlers/connector-runtime-setup.js'
-import { credentialVault, decrypt as decryptCredentialValue } from '../connector/credentials/vault.js'
+import { credentialVault } from '../connector/credentials/vault.js'
 import { InstallIdentity } from '../identity/install-identity.js'
 import { createDebugHandlers } from './handlers/debug.js'
 import { createWorkspaceHandlers } from './handlers/workspaces.js'
@@ -154,7 +144,6 @@ import {
   createReadSourceContentHandler,
   createSearchSourceContentHandler,
 } from './handlers/source-content.js'
-import { AccessGrantStore } from './access-grant-store.js'
 import { AccessGrantEvaluator } from './access-grant-evaluator.js'
 import { ProtectedSourceReadService } from './protected-source-read.js'
 import { ProtectedSourceSearchService } from './protected-source-search.js'
@@ -166,18 +155,20 @@ import {
   createListSourcesHandler,
   createRegisterSourceHandler,
 } from './handlers/sources.js'
-import { SourceStore } from './source-store.js'
-import { SourceUploadStore } from './source-upload-store.js'
-import { SourceJobStore } from './source-job-store.js'
 import { SourceJobWorker } from './source-job-worker.js'
-import { SourceDataViewStore } from './source-data-view-store.js'
-import { ChannelJobStore } from './channel-job-store.js'
 import { ChannelJobWorker } from './channel-job-worker.js'
 import { ChannelProcedureRegistry } from './channel-procedures.js'
 import { ChannelConnectToolProvider } from './channel-connect-tool.js'
 import { createWhatsAppConnectProcedure } from './whatsapp-connect.js'
 import type { ChannelCredentialResolver } from './channel-credentials.js'
-import { SourceDeletionStore } from './source-deletion-store.js'
+import type {
+  ApprovalRepository,
+  CandidateRepository,
+  ChannelJobRepository,
+  ConnectorConnectionsRepository,
+  ScheduleRepository,
+  TaskRepository,
+} from '../storage/platform-repositories.js'
 import { SourceDeletionWorker } from './source-deletion-worker.js'
 import {
   createCancelSourceDeletionHandler,
@@ -187,7 +178,6 @@ import {
 } from './handlers/source-deletions.js'
 import {
   DEFAULT_SOURCE_QUOTA_LIMITS,
-  SourceQuotaPolicy,
   type SourceQuotaLimits,
 } from './source-quota-policy.js'
 import {
@@ -207,12 +197,21 @@ import {
 import { SourceByteStore } from './source-byte-store.js'
 import { SessionRunner } from './session-runner.js'
 import { loadRetentionConfig, startRetentionSchedule, runRetentionOnce, type RetentionStats } from './retention.js'
+import type {
+  CredentialAuditRepository,
+  IdempotencyRepository,
+  RunRepository,
+} from '../storage/security-repositories.js'
+import {
+  validateStoragePlan,
+  type GatewayStorageSelection,
+} from '../storage/config.js'
 
 // ---------------------------------------------------------------------------
 // Gateway options
 // ---------------------------------------------------------------------------
 
-export interface GatewayOptions {
+export interface GatewayBaseOptions {
   /** HTTP port. Default: 3011. Use 0 for OS-assigned port. */
   port?: number
   /**
@@ -239,8 +238,6 @@ export interface GatewayOptions {
   corsOrigins?: readonly string[]
   /** Additional profile directories to discover (e.g., global profiles). */
   additionalProfileDirs?: string[]
-  /** Custom database path (default: <dataDir>/ownware.db). Used for test isolation. */
-  dbPath?: string
   /** Data directory (default: OWNWARE_DATA_DIR env or ~/.ownware). */
   dataDir?: string
   /** Disable rate limiting (for testing). Default: false */
@@ -292,6 +289,9 @@ export interface GatewayOptions {
   tls?: boolean
 }
 
+/** Exactly one durable storage authority may be selected. SQLite remains default. */
+export type GatewayOptions = GatewayBaseOptions & GatewayStorageSelection
+
 /**
  * The hosts the bind-safety invariant treats as "this machine only".
  * `0.0.0.0`/`::` bind every interface; a hostname or LAN/public IP
@@ -321,6 +321,12 @@ export class OwnwareGateway {
   /** SHA-256 fingerprint of the loopback TLS cert (for Electron pin-trust). */
   private _tlsFingerprint = ''
   private shuttingDown = false
+  private stopRequested = false
+  private startSettled = false
+  private startPromise: Promise<void> | null = null
+  private stopRequestPromise: Promise<void> | null = null
+  private shutdownPromise: Promise<void> | null = null
+  private signalHandler: (() => void) | null = null
   /** Teardown for the bridge-catalog filesystem watcher (Phase 9). */
   private bridgeCatalogStop: (() => void) | null = null
   private readonly router: Router
@@ -343,8 +349,8 @@ export class OwnwareGateway {
    */
   private readonly authDisabled: boolean
   readonly principalService: ScopedPrincipalService
-  readonly runIdempotency: RunIdempotencyStore
-  readonly runStore: GatewayRunStore
+  readonly runIdempotency: IdempotencyRepository
+  readonly runStore: RunRepository
   /**
    * Background run manager. Owns the generator iteration lifecycle
    * so agent runs survive SSE disconnects, tab closes, and refreshes.
@@ -354,9 +360,9 @@ export class OwnwareGateway {
    * Disposer for the retention timer. `null` when retention is
    * disabled (the default). Set by `start()`, called in `stop()`.
    */
-  private stopRetention: (() => void) | null = null
-  private scheduleStore: SqliteScheduleStore | null = null
-  private approvalStore: SqliteApprovalStore | null = null
+  private stopRetention: (() => Promise<void>) | null = null
+  private scheduleStore: ScheduleRepository | null = null
+  private approvalStore: ApprovalRepository | null = null
   private scheduleRunner: ScheduleRunner | null = null
   /** Outbound schedule-delivery sink (Slice 8). Registered by the host
    *  process AFTER start() (e.g. `ownware serve` wiring its in-process
@@ -407,7 +413,7 @@ export class OwnwareGateway {
    * SQLite-backed task store. Passed into `run.ts` so the session
    * config carries a per-thread `TaskStore` adapter for Loom.
    */
-  readonly taskStore: SqliteTaskStore
+  readonly taskStore: TaskRepository
   /**
    * Memory system (memories + proposals + user identity + event bus).
    * Shared across the gateway. Passed into:
@@ -438,7 +444,7 @@ export class OwnwareGateway {
    * catalogue is no longer mirrored locally — see
    * `connector/composio/catalog-cache.ts` for the live passthrough.
    */
-  readonly connectorConnections: ConnectorConnectionsStore
+  readonly connectorConnections: ConnectorConnectionsRepository
   /**
    * Unified credential store. Single SQLite-backed source of truth
    * for every credential the gateway holds.
@@ -449,7 +455,7 @@ export class OwnwareGateway {
    * create / update / delete writes one row. The resolver-side audit
    * (one row per resolve) waits for C22 to land.
    */
-  readonly credentialAudit: CredentialAuditLog
+  readonly credentialAudit: CredentialAuditRepository
   /**
    * Trust gate (C30). HMAC-signed approval registry. The
    * `/credentials/:id/approve` endpoint feeds responses back here;
@@ -558,15 +564,19 @@ export class OwnwareGateway {
    * per-channel plugins (wired by `ownware serve` when the shuttle
    * channel store is available).
    */
-  private channelJobStore: ChannelJobStore | null = null
+  private channelJobStore: ChannelJobRepository | null = null
   private channelProcedures: ChannelProcedureRegistry | null = null
   private channelJobWorker: ChannelJobWorker | null = null
-  private readonly sourceQuota: SourceQuotaPolicy
 
   constructor(opts: GatewayOptions) {
     const dataDir = opts.dataDir ?? process.env.OWNWARE_DATA_DIR ?? join(homedir(), DEFAULT_DATA_DIR_NAME)
-    // If dbPath is explicitly set (test isolation), derive dataDir from it
-    const effectiveDbPath = opts.dbPath ?? join(dataDir, 'ownware.db')
+    // Keep both runtime values until strict validation. TypeScript callers
+    // cannot express two authorities, but JavaScript and decoded config can.
+    const storageSelection = {
+      storage: opts.storage,
+      dbPath: opts.dbPath,
+    } as GatewayStorageSelection
+    const storagePlan = validateStoragePlan(storageSelection, join(dataDir, 'ownware.db'))
 
     // Port env fallback, mirroring the OWNWARE_HOST / OWNWARE_DATA_DIR /
     // OWNWARE_GATEWAY_TLS pattern above so `OWNWARE_PORT` works through
@@ -636,37 +646,45 @@ export class OwnwareGateway {
     // hook stays wired).
     this._token = authDisabled ? generateSessionToken() : loadOrCreateGatewayToken(dataDir)
     this.router = new Router()
-    this.state = new GatewayState(effectiveDbPath)
-    this.sourceQuota = new SourceQuotaPolicy(
-      this.state.rawDbHandle,
-      this.opts.sourceQuotaLimits,
-    )
+    this.state = new GatewayState(
+      storagePlan.kind === 'sqlite' ? storagePlan.path : undefined,
+      {
+      permissionHashSecret: this._token,
+      evidenceSearchCache: this.evidenceSearchCache,
+      sourceQuotaLimits: this.opts.sourceQuotaLimits,
+      storagePlan,
+    })
     this.principalService = new ScopedPrincipalService({
       ownerToken: this._token,
-      store: new DelegatedPrincipalStore(this.state.rawDbHandle),
+      store: this.state.securityRepositories.principals,
     })
-    this.runIdempotency = new RunIdempotencyStore(this.state.rawDbHandle)
-    this.runStore = new GatewayRunStore(this.state.rawDbHandle, this._token)
+    this.runIdempotency = this.state.securityRepositories.idempotency
+    this.runStore = this.state.securityRepositories.runs
     this.runner = new SessionRunner(this.state, this.runStore)
     this.registry = new ProfileRegistry()
     this.connectorStatusBus = createConnectorStatusBus()
     this.credentialEventBus = createCredentialEventBus()
     this.workspaceEventBus = createWorkspaceEventBus()
     this.pendingReconciles = new PendingReconciles()
-    this.taskEventBus = new TaskEventBus()
-    this.taskStore = new SqliteTaskStore(this.state.rawDbHandle, this.taskEventBus)
+    this.taskEventBus = this.state.taskEventBus
+    this.taskStore = this.state.platformRepositories.tasks
     // Per-profile scheduling store (own vertical, migration 43).
-    this.scheduleStore = new SqliteScheduleStore(this.state.rawDbHandle)
-    this.approvalStore = new SqliteApprovalStore(this.state.rawDbHandle)
+    this.scheduleStore = this.state.platformRepositories.schedules
+    this.approvalStore = this.state.platformRepositories.approvals
     // Memory system — see `packages/cortex/src/memory/index.ts`. One
     // instance per gateway, sharing the main SQLite handle. Migrations
     // 018 ran on CortexDatabase construction above so the tables exist.
-    this.memorySystem = createMemorySystem(this.state.rawDbHandle)
+    this.memorySystem = {
+      memories: this.state.platformRepositories.memories,
+      proposals: this.state.platformRepositories.memoryProposals,
+      identity: this.state.platformRepositories.userIdentity,
+      bus: this.state.memoryEventBus,
+    }
     this.terminalEventBus = new TerminalEventBus()
     this.terminalRegistry = new TerminalSessionRegistry({
       bus: this.terminalEventBus,
       workspaces: {
-        getWorkspacePath: (wsId) => this.state.getWorkspace(wsId)?.path ?? null,
+        getWorkspacePath: async (wsId) => (await this.state.getWorkspace(wsId))?.path ?? null,
       },
     })
     this.webSearchService = new WebSearchService({ settings: this.state })
@@ -676,26 +694,24 @@ export class OwnwareGateway {
     // Stores operate against the shared main-db handle. Their tables
     // are created by migration 008 on CortexDatabase construction
     // above, so we can instantiate eagerly.
-    this.connectorConnections = new ConnectorConnectionsStore(this.state.rawDbHandle)
+    this.connectorConnections = this.state.platformRepositories.connectorConnections
     // Unified credential store — backed by migration 015's `credentials`
     // table. Eager construction is safe: migrations have already run on
     // the CortexDatabase constructor above, so the prepared statements
     // bind to a real schema.
-    this.credentialStore = createCredentialStore(this.state.rawDbHandle)
-    // Phase 5: audit log (migration 016) + trust gate. Audit module
-    // shares the same DB handle. Trust gate generates a fresh HMAC
+    this.credentialStore = this.state.securityRepositories.credentials
+    // Phase 5: audit log (migration 016) + trust gate. Audit storage
+    // is reached only through the selected adapter. Trust gate generates a fresh HMAC
     // key per launch — the renderer round-trips signed approval
     // responses back to `/credentials/:id/approve`.
-    this.credentialAudit = new CredentialAuditLog(this.state.rawDbHandle)
+    this.credentialAudit = this.state.securityRepositories.credentialAudit
     this.credentialTrustGate = new TrustGate()
     // Phase 6/7/8: resolver + injector. Eager construction is safe —
-    // store and audit are already alive above. The resolver pulls
-    // its spend-tracker DB handle off the same connection; no
-    // separate process or pool.
+    // credential, audit and spend repositories are already alive above.
     this.credentialResolver = new GatewayCredentialResolver({
       store: this.credentialStore,
       audit: this.credentialAudit,
-      spendDb: this.state.rawDbHandle,
+      spend: this.state.securityRepositories.credentialSpend,
       trustGate: this.credentialTrustGate,
     })
     this.credentialInjector = new CredentialInjector(this.credentialResolver)
@@ -719,12 +735,13 @@ export class OwnwareGateway {
       },
     )
 
-    // Composio runtime — built once now using the boot-time key, then
+    // Composio runtime starts disabled; async storage is authoritative, so
+    // the boot key is resolved only after storage + credential migrations.
     // rebuilt on every COMPOSIO_API_KEY credential change. The proxies
     // for source + tool-provider stay constant across rebuilds; only
     // their inner delegates swap. See `applyComposioKey()` for the
     // full lifecycle.
-    this.applyComposioKey(this.resolveComposioKey())
+    this.applyComposioKey(null)
 
     // Subscribe to credential events so a runtime credential change
     // (user adds / clears / rotates COMPOSIO_API_KEY via Settings)
@@ -732,7 +749,7 @@ export class OwnwareGateway {
     // short-circuits on events that don't actually change the
     // resolved Composio key value.
     this.credentialEventBus.subscribe(() => {
-      this.maybeRebuildComposioRuntime()
+      void this.maybeRebuildComposioRuntime()
     })
 
     // Re-wire loom's LLM provider registry on credential changes.
@@ -871,7 +888,8 @@ export class OwnwareGateway {
    *      MCP-wins; that inference no longer holds now that Composio
    *      is opt-in via a deliberate Settings → Advanced paste.
    *
-   * All lookups are pure + sync.
+   * The policy is pure; the preference lookup is async because the selected
+   * storage adapter may be remote.
    */
   /**
    * Does this profile declare the given connector (matching source +
@@ -906,11 +924,11 @@ export class OwnwareGateway {
     return false
   }
 
-  private shouldComposioEmitForAppId(appId: string): boolean {
+  private async shouldComposioEmitForAppId(appId: string): Promise<boolean> {
     try {
       const logicalKey = getAliasesFor(`composio:${appId}`)
       if (logicalKey === null) return true
-      const pref = this.sourcePreferences.get(logicalKey)
+      const pref = await this.sourcePreferences.get(logicalKey)
       if (pref !== null) return pref === 'composio'
       // No user pref + aliased app → Composio wins. The earlier
       // `!isAliasLogicalKey(logicalKey)` flip dropped Composio
@@ -924,20 +942,14 @@ export class OwnwareGateway {
     }
   }
 
-  private resolveComposioKey(): string | null {
-    // Read the COMPOSIO_API_KEY credential straight from the encrypted
-    // credentials table. better-sqlite3 is sync so this fits the
-    // sync-constructor seam without a separate bootstrap step.
-    const row = this.state.rawDbHandle
-      .prepare(
-        `SELECT encrypted_value FROM credentials
-         WHERE variable_name = 'COMPOSIO_API_KEY' AND status = 'ready'
-         LIMIT 1`,
-      )
-      .get() as { encrypted_value: string } | undefined
-    if (!row) return null
-    const plaintext = decryptCredentialValue(row.encrypted_value)
-    const trimmed = plaintext && plaintext.trim().length > 0 ? plaintext.trim() : null
+  private async resolveComposioKey(): Promise<string | null> {
+    const rows = await this.credentialStore.list({ category: 'tool' })
+    const credential = rows.find(
+      (row) => row.variableName === 'COMPOSIO_API_KEY' && row.status === 'ready',
+    )
+    if (credential === undefined) return null
+    const decrypted = await this.credentialStore.decrypt(credential.id)
+    const trimmed = decrypted?.value.trim() || null
     if (trimmed === null) return null
     // Defensive: if the user pasted a `uak_*` CLI key (the value
     // `composio login` writes to ~/.composio/user_data.json), every
@@ -966,16 +978,23 @@ export class OwnwareGateway {
    * rebuild here. Unrelated credential edits (user saves
    * `ANTHROPIC_API_KEY`, etc.) compare equal and short-circuit.
    */
-  private maybeRebuildComposioRuntime(): void {
-    const currentKey = this.resolveComposioKey()
-    if (currentKey === this.lastResolvedComposioKey) return
-    const transition = currentKey === null
-      ? 'cleared'
-      : this.lastResolvedComposioKey === null
-        ? 'configured'
-        : 'rotated'
-    console.log(`[ownware] composio: COMPOSIO_API_KEY ${transition} — rebuilding runtime`)
-    this.applyComposioKey(currentKey)
+  private async maybeRebuildComposioRuntime(): Promise<void> {
+    try {
+      const currentKey = await this.resolveComposioKey()
+      if (currentKey === this.lastResolvedComposioKey) return
+      const transition = currentKey === null
+        ? 'cleared'
+        : this.lastResolvedComposioKey === null
+          ? 'configured'
+          : 'rotated'
+      console.log(`[ownware] composio: COMPOSIO_API_KEY ${transition} — rebuilding runtime`)
+      this.applyComposioKey(currentKey)
+    } catch (error) {
+      console.error(
+        '[ownware] composio: credential resolution failed; existing runtime left unchanged:',
+        error instanceof Error ? error.message : 'unknown error',
+      )
+    }
   }
 
   /**
@@ -1150,7 +1169,7 @@ export class OwnwareGateway {
       const llmCredentials = await this.credentialStore.list({ category: 'llm' })
       const credential = llmCredentials.find(c => c.variableName === descriptor.variableName)
       if (credential === undefined) return
-      this.credentialAudit.recordEvent({
+      await this.credentialAudit.recordEvent({
         credentialId: credential.id,
         eventType: 'resolve',
         outcome: 'ok',
@@ -1168,7 +1187,24 @@ export class OwnwareGateway {
    * Start the gateway.
    * Discovers profiles, registers routes, and begins listening.
    */
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    if (this.stopRequested || this.shuttingDown) {
+      return Promise.reject(new Error('OwnwareGateway cannot start after shutdown begins.'))
+    }
+    if (this.startPromise !== null) return this.startPromise
+    this.startPromise = this.startInternal()
+      .then(() => {
+        this.startSettled = true
+      })
+      .catch(async (error: unknown) => {
+        this.startSettled = true
+        try { await this.shutdownOnce() } catch { /* original start failure wins */ }
+        throw error
+      })
+    return this.startPromise
+  }
+
+  private async startInternal(): Promise<void> {
     // [boot-trace] Temporary per-phase timing to find what delays the
     // gateway becoming responsive (gateway-perf-2026-06-13). Always-on,
     // one short line per phase, logged to the gateway's stdout (visible in
@@ -1180,6 +1216,13 @@ export class OwnwareGateway {
       console.log(`[boot-trace] ${label}: ${now - bootLast}ms (total ${now - bootStart}ms)`)
       bootLast = now
     }
+
+    // SQLite is already ready in the compatibility constructor path. This
+    // awaited seam is authoritative for every future async adapter: storage
+    // failure must precede profile writes, workers and network readiness.
+    await this.state.initializeStorage()
+    this.assertStartNotCancelled()
+    bootLap('storage ready')
 
     // 0. Ensure the user profiles dir exists. Bundled is read-only.
     const globalProfilesDir = join(this.opts.dataDir, 'profiles')
@@ -1207,14 +1250,12 @@ export class OwnwareGateway {
     // longer the read path, flip this back to `true` (the eventual
     // default) so the file vault winds down naturally and chunk F
     // can delete the implementation entirely.
-    await runCredentialBootMigrations(
-      this.state.rawDbHandle,
-      this.credentialStore,
-      {
+    await this.state.securityRepositories.credentialMigrations.run({
         log: (msg) => console.log(msg),
         deleteAfterImport: false,
-      },
-    )
+      })
+
+    await this.maybeRebuildComposioRuntime()
 
     // Wire every LLM provider's apiKeyProvider closure to the unified
     // resolver — every chat call flows through resolve → audit → spend
@@ -1338,12 +1379,12 @@ export class OwnwareGateway {
     try {
       let recovered = 0
       let cleanupFailures = 0
-      for (const pending of this.connectorConnections.findPending()) {
+      for (const pending of await this.connectorConnections.findPending()) {
         const handle = connectionSessionHandle(pending.metadata)
         if (handle === null) continue
         try {
           await this.connectionSessions.remove(handle)
-          this.connectorConnections.markExpired(
+          await this.connectorConnections.markExpired(
             pending.connectionId,
             'Connection attempt was interrupted by a gateway restart. Please retry.',
           )
@@ -1370,7 +1411,7 @@ export class OwnwareGateway {
     //     that wasn't completed before shutdown must be marked so the
     //     user sees an actionable error instead of a silent stuck row.
     try {
-      const expired = this.connectorConnections.expireStaleOnBoot()
+      const expired = await this.connectorConnections.expireStaleOnBoot()
       if (expired > 0) {
         console.log(
           `  connector connections: expired ${expired} stale pending row(s) from a previous restart`,
@@ -1392,7 +1433,7 @@ export class OwnwareGateway {
     //       old value. Loud-by-default so it doesn't silently regress
     //       to the pre-v19 user-visible bug.
     try {
-      const foreign = this.connectorConnections.countForeignEntities(
+      const foreign = await this.connectorConnections.countForeignEntities(
         this.installIdentity.id,
       )
       if (foreign > 0) {
@@ -1411,11 +1452,11 @@ export class OwnwareGateway {
     //     crash or unclean shutdown. No in-memory runtime survives a
     //     restart, so every 'active' thread is a zombie.
     try {
-      const recoveredRuns = this.runStore.recoverInterrupted()
+      const recoveredRuns = await this.runStore.recoverInterrupted()
       if (recoveredRuns > 0) {
         console.log(`  runs: marked ${recoveredRuns} interrupted run(s) indeterminate after restart`)
       }
-      const recovered = this.state.recoverOrphanedThreads()
+      const recovered = await this.state.recoverOrphanedThreads()
       if (recovered > 0) {
         console.log(
           `  threads: recovered ${recovered} orphaned active thread(s) from a previous restart`,
@@ -1456,11 +1497,12 @@ export class OwnwareGateway {
     //     list reflects the new state. Threads on unrelated profiles
     //     stay untouched. Subscription lifetime = gateway lifetime;
     //     unsubscribe handle intentionally dropped.
-    this.connectorStatusBus.subscribe((event) => {
+    this.connectorStatusBus.subscribe(async (event) => {
       try {
         const connectorId = event.connectorId
         const source = event.source
-        for (const thread of this.state.listThreads(undefined, { limit: 10_000 }).items) {
+        const threads = await this.state.listThreads(undefined, { limit: 10_000 })
+        for (const thread of threads.items) {
           // Only mark threads whose profile declares this connector.
           // Skip threads that have never born a session (no initial
           // managed snapshot → nothing to reconcile against).
@@ -1485,12 +1527,12 @@ export class OwnwareGateway {
     // beyond a durable SQLite checkpoint are crash residue and are truncated;
     // a shorter file remains untouched so the next scoped write reports the
     // explicit storage-inconsistent state rather than inventing progress.
-    const sourceRecoveryStore = new SourceUploadStore(this.state.rawDbHandle, this.sourceQuota)
+    const sourceRepositories = this.state.sourceRepositories
     const sourceRecoveryBytes = new SourceByteStore(
       join(this.opts.dataDir, 'source-storage'),
     )
     const inconsistentUploads = await sourceRecoveryBytes.recoverOpenUploads(
-      sourceRecoveryStore.listOpenCheckpoints(),
+      await sourceRepositories.uploads.listOpenCheckpoints(),
     )
     if (inconsistentUploads.length > 0) {
       console.warn(
@@ -1499,10 +1541,7 @@ export class OwnwareGateway {
     }
     bootLap('source upload recovery')
 
-    const sourceJobRecovery = new SourceJobStore(
-      this.state.rawDbHandle,
-      this.sourceQuota,
-    ).recoverExpiredClaims()
+    const sourceJobRecovery = await sourceRepositories.jobs.recoverExpiredClaims()
     if (sourceJobRecovery.requeued > 0 || sourceJobRecovery.failed > 0 ||
         sourceJobRecovery.cancelled > 0) {
       console.log(
@@ -1512,10 +1551,7 @@ export class OwnwareGateway {
     }
     bootLap('source job recovery')
 
-    const sourceDataViewRecovery = new SourceDataViewStore(
-      this.state.rawDbHandle,
-      this.sourceQuota,
-    ).recoverExpiredClaims()
+    const sourceDataViewRecovery = await sourceRepositories.dataViews.recoverExpiredClaims()
     if (sourceDataViewRecovery.requeued > 0 || sourceDataViewRecovery.failed > 0) {
       console.log(
         `  source Data Views: recovered ${sourceDataViewRecovery.requeued} queued, ` +
@@ -1524,10 +1560,8 @@ export class OwnwareGateway {
     }
     bootLap('source Data View recovery')
 
-    const sourceDeletionStore = new SourceDeletionStore(
-      this.state.rawDbHandle, this.evidenceSearchCache,
-    )
-    const sourceDeletionRecovery = sourceDeletionStore.recoverExpiredClaims()
+    const sourceDeletionStore = sourceRepositories.deletions
+    const sourceDeletionRecovery = await sourceDeletionStore.recoverExpiredClaims()
     if (sourceDeletionRecovery.requeued > 0 || sourceDeletionRecovery.partial > 0) {
       console.log(
         `  source deletion: recovered ${sourceDeletionRecovery.requeued} queued, ` +
@@ -1540,8 +1574,8 @@ export class OwnwareGateway {
     // Parked consent gates (`waiting_for_input`) survive untouched — an
     // unanswered gate waits for its person, never times out into approval.
     // The worker itself starts with the channel procedures (CC3).
-    this.channelJobStore = new ChannelJobStore(this.state.rawDbHandle)
-    const channelJobRecovery = this.channelJobStore.recoverExpiredClaims()
+    this.channelJobStore = this.state.platformRepositories.channelJobs
+    const channelJobRecovery = await this.channelJobStore.recoverExpiredClaims()
     if (channelJobRecovery.requeued > 0 || channelJobRecovery.failed > 0 ||
         channelJobRecovery.cancelled > 0) {
       console.log(
@@ -1559,10 +1593,10 @@ export class OwnwareGateway {
 
     if (this.opts.sourceWorkerEnabled) {
       this.sourceJobWorker = new SourceJobWorker(
-        new SourceJobStore(this.state.rawDbHandle, this.sourceQuota),
+        sourceRepositories.jobs,
         sourceRecoveryBytes,
         { workerId: `gateway-${process.pid}` },
-        new SourceDataViewStore(this.state.rawDbHandle, this.sourceQuota),
+        sourceRepositories.dataViews,
       )
       this.sourceJobWorker.start()
       this.sourceDeletionWorker = new SourceDeletionWorker(
@@ -1573,9 +1607,10 @@ export class OwnwareGateway {
       this.sourceDeletionWorker.start()
     }
     bootLap('source job worker')
+    this.assertStartNotCancelled()
 
     // 3. Register routes
-    this.registerRoutes()
+    await this.registerRoutes()
     bootLap('registerRoutes')
 
     // 3b. Boot the team vertical: re-register every team's conductor
@@ -1638,9 +1673,13 @@ export class OwnwareGateway {
     }
 
     // 5. Register signal handlers for graceful shutdown
-    const onSignal = () => { this.stop().catch(() => {}) }
-    process.on('SIGTERM', onSignal)
-    process.on('SIGINT', onSignal)
+    if (this.signalHandler === null) {
+      this.signalHandler = () => { this.stop().catch(() => {}) }
+      process.on('SIGTERM', this.signalHandler)
+      process.on('SIGINT', this.signalHandler)
+    }
+
+    this.assertStartNotCancelled()
 
     return new Promise<void>((resolvePromise, reject) => {
       this.server!.on('error', reject)
@@ -1693,7 +1732,7 @@ export class OwnwareGateway {
         // turned on, or archived threads go blank. See gateway/CLAUDE.md.
         const retentionConfig = loadRetentionConfig()
         this.stopRetention = startRetentionSchedule(
-          this.state.rawDatabase,
+          this.state.eventRepository,
           this.state.eventBus,
           retentionConfig,
           stats => {
@@ -1727,7 +1766,7 @@ export class OwnwareGateway {
   }
 
   /** The schedules store (read by the schedules API + tests). */
-  get schedules(): SqliteScheduleStore {
+  get schedules(): ScheduleRepository {
     if (this.scheduleStore === null) {
       throw new Error('Gateway not started: schedules store unavailable')
     }
@@ -1771,9 +1810,40 @@ export class OwnwareGateway {
    * Stop the gateway gracefully.
    * Saves session state, flushes access log, stops rate limiter, closes HTTP server + DB.
    */
-  async stop(): Promise<void> {
-    if (this.shuttingDown) return
+  stop(): Promise<void> {
+    if (this.stopRequestPromise !== null) return this.stopRequestPromise
+    this.stopRequested = true
+    this.stopRequestPromise = (async () => {
+      if (this.startPromise !== null && !this.startSettled) {
+        try { await this.startPromise } catch { /* failed start cleans itself */ }
+      }
+      await this.shutdownOnce()
+    })()
+    return this.stopRequestPromise
+  }
+
+  private shutdownOnce(): Promise<void> {
+    if (this.shutdownPromise !== null) return this.shutdownPromise
+    this.shutdownPromise = (async () => {
+      try {
+        await this.performStop()
+      } finally {
+        // Storage is the last authority to close and must not be skipped when
+        // an earlier best-effort resource reports a teardown failure.
+        await this.state.closeStorage()
+      }
+    })()
+    return this.shutdownPromise
+  }
+
+  private async performStop(): Promise<void> {
     this.shuttingDown = true
+
+    if (this.signalHandler !== null) {
+      process.off('SIGTERM', this.signalHandler)
+      process.off('SIGINT', this.signalHandler)
+      this.signalHandler = null
+    }
 
     if (this.sourceJobWorker) {
       await this.sourceJobWorker.stop()
@@ -1860,7 +1930,7 @@ export class OwnwareGateway {
 
     // Stop the retention timer so it doesn't fire after shutdown.
     if (this.stopRetention !== null) {
-      this.stopRetention()
+      await this.stopRetention()
       this.stopRetention = null
     }
     // Stop the schedule ticker so it doesn't fire after shutdown.
@@ -1879,12 +1949,12 @@ export class OwnwareGateway {
     }
     try {
       let cleanupFailures = 0
-      for (const pending of this.connectorConnections.findPending()) {
+      for (const pending of await this.connectorConnections.findPending()) {
         const handle = connectionSessionHandle(pending.metadata)
         if (handle === null) continue
         try {
           await this.connectionSessions.remove(handle)
-          this.connectorConnections.markExpired(
+          await this.connectorConnections.markExpired(
             pending.connectionId,
             'Connection attempt was interrupted by gateway shutdown. Please retry.',
           )
@@ -1946,6 +2016,7 @@ export class OwnwareGateway {
     // destroy them. Shutdown is bounded either way.
     if (this.server) {
       const server = this.server
+      this.server = null
       // `closeIdleConnections` / `closeAllConnections` exist on
       // `http.Server` (the plain-HTTP loopback path). The HTTP/2 secure
       // server has no equivalent, so there we can only bound the wait —
@@ -1955,39 +2026,45 @@ export class OwnwareGateway {
         closeIdleConnections(): void
         closeAllConnections(): void
       }>
-      await new Promise<void>((resolvePromise, reject) => {
-        let settled = false
-        const finish = (err?: Error): void => {
-          if (settled) return
-          settled = true
-          if (force !== undefined) clearTimeout(force)
-          if (err) reject(err)
-          else resolvePromise()
-        }
-        let force: NodeJS.Timeout | undefined
-        server.close(err => {
-          finish(err ?? undefined)
-        })
-        connectionApi.closeIdleConnections?.()
-        force = setTimeout(() => {
-          if (connectionApi.closeAllConnections !== undefined) {
+      // A listen failure (for example EADDRINUSE) leaves a server object that
+      // was never listening. Closing it would manufacture
+      // ERR_SERVER_NOT_RUNNING and poison the otherwise successful shared
+      // cleanup promise.
+      if (server.listening) {
+        await new Promise<void>((resolvePromise, reject) => {
+          let settled = false
+          const finish = (err?: Error): void => {
+            if (settled) return
+            settled = true
+            if (force !== undefined) clearTimeout(force)
+            if (err) reject(err)
+            else resolvePromise()
+          }
+          let force: NodeJS.Timeout | undefined
+          server.close(err => {
+            finish(err ?? undefined)
+          })
+          connectionApi.closeIdleConnections?.()
+          force = setTimeout(() => {
+            if (connectionApi.closeAllConnections !== undefined) {
+              console.warn(
+                '[ownware] shutdown: connections still open after ' +
+                  `${SHUTDOWN_CONNECTION_GRACE_MS}ms — closing them`,
+              )
+              connectionApi.closeAllConnections()
+              return
+            }
             console.warn(
               '[ownware] shutdown: connections still open after ' +
-                `${SHUTDOWN_CONNECTION_GRACE_MS}ms — closing them`,
+                `${SHUTDOWN_CONNECTION_GRACE_MS}ms and this server cannot ` +
+                'force-close them — continuing shutdown',
             )
-            connectionApi.closeAllConnections()
-            return
-          }
-          console.warn(
-            '[ownware] shutdown: connections still open after ' +
-              `${SHUTDOWN_CONNECTION_GRACE_MS}ms and this server cannot ` +
-              'force-close them — continuing shutdown',
-          )
-          finish()
-        }, SHUTDOWN_CONNECTION_GRACE_MS)
-        // Never let the grace timer itself hold the process open.
-        force.unref()
-      })
+            finish()
+          }, SHUTDOWN_CONNECTION_GRACE_MS)
+          // Never let the grace timer itself hold the process open.
+          force.unref()
+        })
+      }
     }
 
     // Remove the pidfile so the next launch's supervisor doesn't try
@@ -2000,8 +2077,12 @@ export class OwnwareGateway {
       // ENOENT is the common case (already removed, or never written).
     }
 
-    // Close database
-    this.state.close()
+  }
+
+  private assertStartNotCancelled(): void {
+    if (this.stopRequested || this.shuttingDown) {
+      throw new Error('OwnwareGateway start cancelled by shutdown request.')
+    }
   }
 
   /** Get the port the server is listening on. */
@@ -2054,7 +2135,7 @@ export class OwnwareGateway {
       }
     }
 
-    const result = reconcileMCPServers(profiles, this.state, {
+    const result = await reconcileMCPServers(profiles, this.state, {
       info: (msg) => console.log(msg),
     })
 
@@ -2074,23 +2155,17 @@ export class OwnwareGateway {
 
   // ── Route registration ─────────────────────────────────────────────
 
-  private registerRoutes(): void {
+  private async registerRoutes(): Promise<void> {
     // All profile WRITE operations target the user dir. The bundled
     // `opts.profilesDir` is read-only and must never be mutated at runtime.
     const userProfilesDir = join(this.opts.dataDir, 'profiles')
-    const candidateStore = new CandidateStore(this.state.rawDbHandle)
-    const sourceStore = new SourceStore(this.state.rawDbHandle, this.sourceQuota)
-    const sourceUploadStore = new SourceUploadStore(
-      this.state.rawDbHandle, this.sourceQuota, this.evidenceSearchCache,
-    )
-    const sourceJobStore = new SourceJobStore(this.state.rawDbHandle, this.sourceQuota)
-    const sourceDataViewStore = new SourceDataViewStore(
-      this.state.rawDbHandle, this.sourceQuota,
-    )
+    const candidateStore: CandidateRepository = this.state.platformRepositories.candidates
+    const sourceStore = this.state.sourceRepositories.sources
+    const sourceUploadStore = this.state.sourceRepositories.uploads
+    const sourceJobStore = this.state.sourceRepositories.jobs
+    const sourceDataViewStore = this.state.sourceRepositories.dataViews
     const sourceByteStore = new SourceByteStore(join(this.opts.dataDir, 'source-storage'))
-    const accessGrantStore = new AccessGrantStore(
-      this.state.rawDbHandle, undefined, this.evidenceSearchCache,
-    )
+    const accessGrantStore = this.state.securityRepositories.accessGrants
     const accessGrantHandlers = createAccessGrantHandlers({
       grants: accessGrantStore,
       idempotency: this.runIdempotency,
@@ -2122,7 +2197,7 @@ export class OwnwareGateway {
       // the public contract can claim policy-rule denial.
       () => ({ decision: 'allow' }),
     )
-    candidateStore.recoverInterrupted()
+    await candidateStore.recoverInterrupted()
     const candidateResolver = new CandidateProfileResolver({
       candidatesRoot: join(this.opts.dataDir, 'profile-candidates'),
       store: candidateStore,
@@ -2255,15 +2330,15 @@ export class OwnwareGateway {
         isRunning: (threadId) => this.runner.isRunning(threadId),
         // A clean run that parked ≥1 draft is classified 'needs-approval' (8d).
         ...(this.approvalStore != null
-          ? { pendingApprovalsForRun: (runId: string): number => this.approvalStore!.countPendingForRun(runId) }
+          ? { pendingApprovalsForRun: (runId: string): Promise<number> => this.approvalStore!.countPendingForRun(runId) }
           : {}),
         // Outbound delivery (Slice 8): payload from the consolidated
         // messages snapshot; sink looked up per delivery so the host can
         // register it after boot (setScheduleDeliverySink).
         delivery: {
-          finalText: (threadId: string): string | null => {
+          finalText: async (threadId: string): Promise<string | null> => {
             try {
-              const messages = this.state.getMessages(threadId)
+              const messages = await this.state.getMessages(threadId)
               for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i]!
                 if (m.role === 'assistant' && m.content.trim().length > 0) return m.content
@@ -2276,7 +2351,7 @@ export class OwnwareGateway {
           sink: () => this.scheduleDeliverySink,
         },
       })
-      this.scheduleRunner.start()
+      await this.scheduleRunner.start()
     }
 
     // Install reconcile deps on the runner now that providers +
@@ -2366,7 +2441,7 @@ export class OwnwareGateway {
         windowSeconds: 60,
         generalRequests: 0,
         runStarts: 0,
-      }, this.sourceQuota.limits),
+      }, this.state.sourceRepositories.quotaLimits),
       { operation: 'gateway.capabilities' },
     )
     this.router.get(
@@ -2395,9 +2470,7 @@ export class OwnwareGateway {
       createGetSourceHandler(sourceStore),
       { operation: 'sources.read' },
     )
-    const sourceDeletionStore = new SourceDeletionStore(
-      this.state.rawDbHandle, this.evidenceSearchCache,
-    )
+    const sourceDeletionStore = this.state.sourceRepositories.deletions
     this.router.post(
       '/api/v1/sources/:sourceId/deletions',
       createSourceDeletionHandler(
@@ -2624,9 +2697,9 @@ export class OwnwareGateway {
       dataDir: this.opts.dataDir,
       registry: this.registry,
       ownwareBundleDir: this.opts.profilesDir,
-      canUninstallProfile: (profileId) =>
-        candidateStore.getActive(profileId) === null &&
-        this.runStore.countActiveForProfile(profileId) === 0 &&
+      canUninstallProfile: async (profileId) =>
+        await candidateStore.getActive(profileId) === null &&
+        await this.runStore.countActiveForProfile(profileId) === 0 &&
         !this.state.hasActiveRuntime(profileId),
       ...(process.env['OWNWARE_BUNDLE_VERSION'] !== undefined
         ? { ownwareBundleVersion: process.env['OWNWARE_BUNDLE_VERSION'] }
@@ -2842,8 +2915,8 @@ export class OwnwareGateway {
         const effectiveConfig = config.enabled
           ? config
           : { ...config, enabled: true }
-        const stats = runRetentionOnce(
-          this.state.rawDatabase,
+        const stats = await runRetentionOnce(
+          this.state.eventRepository,
           this.state.eventBus,
           effectiveConfig,
         )
@@ -2864,7 +2937,7 @@ export class OwnwareGateway {
       res.end(JSON.stringify({
         config,
         lastStats: this.lastRetentionStats,
-        eventRowCount: this.state.rawDatabase.countAgentEvents(),
+        eventRowCount: await this.state.countAgentEvents(),
       }))
     })
 

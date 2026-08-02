@@ -12,11 +12,11 @@ describe('Contract: Search', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({
-      seed: (state) => {
-        state.createThread('mini', 'Alpha Project Thread')
-        state.createThread('mini', 'Beta Feature Thread')
-        state.createThread('mini', 'Alpha Bug Fix')
-        state.createWorkspace('/tmp/cortex-search-alpha', 'Alpha Workspace')
+      seed: async (state) => {
+        await state.createThread('mini', 'Alpha Project Thread')
+        await state.createThread('mini', 'Beta Feature Thread')
+        await state.createThread('mini', 'Alpha Bug Fix')
+        await state.createWorkspace('/tmp/cortex-search-alpha', 'Alpha Workspace')
       },
     })
   })

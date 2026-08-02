@@ -174,9 +174,9 @@ export function createMCPHandlers(
    * MCP handlers don't need to reach across files for a single
    * routine. No-op when tracker or state isn't wired.
    */
-  function markThreadsForProfileReconcile(profileId: string): void {
+  async function markThreadsForProfileReconcile(profileId: string): Promise<void> {
     if (pendingReconciles === undefined || state === undefined) return
-    const threads = state.listThreads(profileId, { limit: 10_000 })
+    const threads = await state.listThreads(profileId, { limit: 10_000 })
     for (const thread of threads.items) {
       pendingReconciles.mark(thread.id)
     }
@@ -219,7 +219,7 @@ export function createMCPHandlers(
 
     if (statusBus) {
       const nextStatus = await computeMCPStatus(bareId)
-      statusBus.emit({
+      await statusBus.emitAndWait({
         connectorId: bareId,
         source: 'mcp',
         status: nextStatus,
@@ -281,7 +281,7 @@ export function createMCPHandlers(
     envCache.delete(serverId)
     if (statusBus) {
       const nextStatus = await computeMCPStatus(serverId)
-      statusBus.emit({
+      await statusBus.emitAndWait({
         connectorId: serverId,
         source: 'mcp',
         status: nextStatus,
@@ -322,7 +322,7 @@ export function createMCPHandlers(
 
     // Check local sources first (DB, featured), remote registry last.
     const bareServerId = resolveMCPServerId(body.serverId)
-    const customRow = state?.getMCPServer(bareServerId) ?? null
+    const customRow = await state?.getMCPServer(bareServerId) ?? null
     const featured = getFeaturedServers().find(f => f.id === bareServerId) ?? null
     const skipRemoteAttach = process.env['OWNWARE_SKIP_MCP_REGISTRY'] === '1'
     const entry = (!customRow && !featured && !skipRemoteAttach)
@@ -424,8 +424,8 @@ export function createMCPHandlers(
       // Also populate database tables (for queryable UI)
       if (state) {
         const transport = (mcpConfig.transport === 'streamable_http' ? 'http' : mcpConfig.transport) as string
-        if (!state.getMCPServer(bareServerId)) {
-          state.createMCPServer({
+        if (!await state.getMCPServer(bareServerId)) {
+          await state.createMCPServer({
             id: bareServerId,
             name: displayName,
             transport,
@@ -435,10 +435,10 @@ export function createMCPHandlers(
             registryId: entry ? bareServerId : undefined,
           })
         }
-        state.assignServerToProfile(bareServerId, profileId)
+        await state.assignServerToProfile(bareServerId, profileId)
       }
 
-      markThreadsForProfileReconcile(profileId)
+      await markThreadsForProfileReconcile(profileId)
       sendJSON(res, 201, {
         serverId: body.serverId,
         name: displayName,
@@ -478,7 +478,7 @@ export function createMCPHandlers(
 
       // Also update database junction
       if (state) {
-        state.removeServerFromProfile(serverId, profileId)
+        await state.removeServerFromProfile(serverId, profileId)
       }
 
       // Disconnect any live MCP managers for this profile that have
@@ -494,7 +494,7 @@ export function createMCPHandlers(
         }
       }
 
-      markThreadsForProfileReconcile(profileId)
+      await markThreadsForProfileReconcile(profileId)
       res.writeHead(204)
       res.end()
     } catch (err) {
@@ -520,7 +520,7 @@ export function createMCPHandlers(
     const serverId = resolveMCPServerId(params['serverId']!)
 
     // Check local sources first (DB, featured), remote registry last.
-    const dbRow = state?.getMCPServer(serverId) ?? null
+    const dbRow = await state?.getMCPServer(serverId) ?? null
     const featured = getFeaturedServers().find(f => f.id === serverId) ?? null
     const skipRemoteConnect = process.env['OWNWARE_SKIP_MCP_REGISTRY'] === '1'
     const entry = (!dbRow && !featured && !skipRemoteConnect)
@@ -636,7 +636,7 @@ export function createMCPHandlers(
       }))
 
       if (state != null) {
-        state.updateMCPServer(serverId, {
+        await state.updateMCPServer(serverId, {
           status: 'connected',
           toolCount: tools.length,
           toolsJson: JSON.stringify(toolsMetadata),
@@ -720,7 +720,7 @@ export function createMCPHandlers(
 
     if (!preset && !clientId) {
       // Path (b): try dynamic discovery + registration.
-      const dbRow = state?.getMCPServer(serverId) ?? null
+      const dbRow = await state?.getMCPServer(serverId) ?? null
       const serverUrl = dbRow?.url ?? null
       if (!serverUrl) {
         sendJSON(res, 422, {

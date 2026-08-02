@@ -52,7 +52,7 @@ export interface ProfileForSync {
 }
 
 export interface SyncMCPServersStateAdapter {
-  getMCPServer(id: string): MCPServerRecordForSync | undefined
+  getMCPServer(id: string): Promise<MCPServerRecordForSync | undefined>
   createMCPServer(server: {
     id: string
     name: string
@@ -60,15 +60,15 @@ export interface SyncMCPServersStateAdapter {
     url?: string
     command?: string
     args?: readonly string[]
-  }): unknown
-  assignServerToProfile(serverId: string, profileId: string): void
-  removeServerFromProfile(serverId: string, profileId: string): boolean
-  getServersForProfile(profileId: string): readonly MCPServerRecordForSync[]
+  }): Promise<unknown>
+  assignServerToProfile(serverId: string, profileId: string): Promise<void>
+  removeServerFromProfile(serverId: string, profileId: string): Promise<boolean>
+  getServersForProfile(profileId: string): Promise<readonly MCPServerRecordForSync[]>
   listMCPServers(opts?: {
     limit?: number
     offset?: number
-  }): { items: readonly MCPServerRecordForSync[] }
-  deleteMCPServer(id: string): boolean
+  }): Promise<{ items: readonly MCPServerRecordForSync[] }>
+  deleteMCPServer(id: string): Promise<boolean>
 }
 
 export interface SyncMCPServersResult {
@@ -90,11 +90,11 @@ const NOOP_LOGGER: SyncMCPServersLogger = { info: () => undefined }
 // Public entry
 // ---------------------------------------------------------------------------
 
-export function reconcileMCPServers(
+export async function reconcileMCPServers(
   profiles: readonly ProfileForSync[],
   state: SyncMCPServersStateAdapter,
   logger: SyncMCPServersLogger = NOOP_LOGGER,
-): SyncMCPServersResult {
+): Promise<SyncMCPServersResult> {
   const declared = new Map<string, Set<string>>()
   // Track profiles whose `mcp` is null (load failure). Their existing
   // assignments must NOT be reconciled — a transient read error must
@@ -119,10 +119,10 @@ export function reconcileMCPServers(
 
     for (const [serverId, config] of Object.entries(profile.mcp)) {
       ids.add(serverId)
-      if (state.getMCPServer(serverId) === undefined) {
+      if (await state.getMCPServer(serverId) === undefined) {
         const transport =
           config.transport === 'streamable_http' ? 'http' : config.transport
-        state.createMCPServer({
+        await state.createMCPServer({
           id: serverId,
           name: serverId.split('/').pop() ?? serverId,
           transport,
@@ -134,17 +134,17 @@ export function reconcileMCPServers(
         })
         createdServers++
       }
-      state.assignServerToProfile(serverId, profile.id)
+      await state.assignServerToProfile(serverId, profile.id)
       addedAssignments++
     }
   }
 
   // Phase 2a — drop stale profile_mcp_servers assignments.
   for (const [profileId, declaredIds] of declared) {
-    const liveAssigned = state.getServersForProfile(profileId)
+    const liveAssigned = await state.getServersForProfile(profileId)
     for (const row of liveAssigned) {
       if (!declaredIds.has(row.id)) {
-        state.removeServerFromProfile(row.id, profileId)
+        await state.removeServerFromProfile(row.id, profileId)
         const line = `removed stale assignment profile='${profileId}' serverId='${row.id}' reason='not in agent.json'`
         removalLog.push(line)
         logger.info(`[ownware] syncMCPServers: ${line}`)
@@ -164,11 +164,11 @@ export function reconcileMCPServers(
   //
   // Skip user-owned markers ('custom', 'detected'); those persist
   // regardless of profile references.
-  const allServers = state.listMCPServers({ limit: 5000 })
+  const allServers = await state.listMCPServers({ limit: 5000 })
   // Pre-compute the set of serverIds referenced by any skipped profile.
   const skippedReferences = new Set<string>()
   for (const profileId of skippedProfileIds) {
-    for (const row of state.getServersForProfile(profileId)) {
+    for (const row of await state.getServersForProfile(profileId)) {
       skippedReferences.add(row.id)
     }
   }
@@ -186,7 +186,7 @@ export function reconcileMCPServers(
       referenced = true
     }
     if (!referenced) {
-      state.deleteMCPServer(row.id)
+      await state.deleteMCPServer(row.id)
       const line = `removed orphaned mcp_server id='${row.id}' registryId='${row.registryId ?? 'null'}' reason='no profile references it'`
       removalLog.push(line)
       logger.info(`[ownware] syncMCPServers: ${line}`)

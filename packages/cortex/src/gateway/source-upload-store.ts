@@ -1,6 +1,6 @@
 import type { SourceMediaType } from './source-media.js'
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import { SourceQuotaPolicy } from './source-quota-policy.js'
 
@@ -120,7 +120,7 @@ export interface SourceVersionManifest {
 
 export class SourceUploadStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
     private readonly evidenceSearchCache?: EvidenceSearchCache,
   ) {}

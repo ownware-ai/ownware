@@ -51,7 +51,7 @@ async function seedPendingSession(target: OwnwareGateway, connectionId: string) 
     linkToken: 'synthetic-secret-link-token',
     expiresAt,
   })
-  target.connectorConnections.upsertPending({
+  await target.connectorConnections.upsertPending({
     connectionId,
     connectorId: 'synthetic-connector',
     source: 'composio',
@@ -72,7 +72,7 @@ describe('gateway connection-session lifecycle', () => {
     await gateway.start()
 
     expect(existsSync(encryptedPath)).toBe(false)
-    expect(gateway.connectorConnections.findByConnectionId('connection-before-boot'))
+    expect(await gateway.connectorConnections.findByConnectionId('connection-before-boot'))
       .toMatchObject({ status: 'expired', metadata: null })
   })
 

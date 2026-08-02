@@ -65,13 +65,13 @@ describe('Journey: 02 Profile Lifecycle', () => {
     expect(detail.body.agentsMd).toContain('functional style')
   })
 
-  it('Step 5: setProfileMetadata stores icon, color, category', () => {
-    gw.state.setProfileMetadata(profileId, {
+  it('Step 5: setProfileMetadata stores icon, color, category', async () => {
+    await gw.state.setProfileMetadata(profileId, {
       icon: 'code',
       color: '#7C5CFC',
       category: 'Development',
     })
-    const meta = gw.state.getProfileMetadata(profileId)
+    const meta = await gw.state.getProfileMetadata(profileId)
     expect(meta?.icon).toBe('code')
     expect(meta?.color).toBe('#7C5CFC')
     expect(meta?.category).toBe('Development')
@@ -91,17 +91,17 @@ describe('Journey: 02 Profile Lifecycle', () => {
     expect(r.body.config).toBeDefined()
   })
 
-  it('Step 8: Profile usage stats start at zero', () => {
-    const meta = gw.state.getProfileMetadata(profileId)
+  it('Step 8: Profile usage stats start at zero', async () => {
+    const meta = await gw.state.getProfileMetadata(profileId)
     expect(meta?.useCount).toBe(0)
     expect(meta?.totalCost).toBe(0)
     expect(meta?.lastUsedAt).toBeNull()
   })
 
-  it('Step 9: incrementProfileUsage updates stats', () => {
-    gw.state.incrementProfileUsage(profileId, 0.05)
-    gw.state.incrementProfileUsage(profileId, 0.10)
-    const meta = gw.state.getProfileMetadata(profileId)!
+  it('Step 9: incrementProfileUsage updates stats', async () => {
+    await gw.state.incrementProfileUsage(profileId, 0.05)
+    await gw.state.incrementProfileUsage(profileId, 0.10)
+    const meta = (await gw.state.getProfileMetadata(profileId))!
     expect(meta.useCount).toBe(2)
     expect(meta.totalCost).toBeCloseTo(0.15)
     expect(meta.lastUsedAt).not.toBeNull()

@@ -220,6 +220,24 @@ describe('SqliteMemoryStore — supersede', () => {
     // Active load must only see the new row.
     expect(store.loadActiveForPrompt('p', 10).map((m) => m.id)).toEqual([next.id])
   })
+
+  it('rolls back a second replacement when the old row is no longer active', () => {
+    const old = store.create({ profileId: 'p', content: 'old fact', source: 'user_pinned' })
+    const winner = store.supersede(old.id, {
+      profileId: 'p',
+      content: 'winning replacement',
+      source: 'reflection',
+    })
+
+    expect(() => store.supersede(old.id, {
+      profileId: 'p',
+      content: 'stale replacement',
+      source: 'reflection',
+    })).toThrow('Memory supersession target is not active.')
+    expect(store.listForProfile('p', { status: 'all' }).map((memory) => memory.id).sort())
+      .toEqual([old.id, winner.id].sort())
+    expect(store.getById(old.id)).toMatchObject({ supersededBy: winner.id })
+  })
 })
 
 describe('SqliteMemoryStore — remove + listForProfile', () => {

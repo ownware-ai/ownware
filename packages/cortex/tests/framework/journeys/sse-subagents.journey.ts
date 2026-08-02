@@ -89,7 +89,7 @@ describe.skipIf(!HAS_KEY)('SSE Pattern 6 + 7: Sub-agents', () => {
       recordFixtures: true,
     })
     sandbox = await setupSandbox(gw.tmpDir)
-    const ws = gw.state.createWorkspace(sandbox, 'subagent-sandbox')
+    const ws = await gw.state.createWorkspace(sandbox, 'subagent-sandbox')
     wsId = ws.id
   }, 30_000)
 
@@ -100,7 +100,7 @@ describe.skipIf(!HAS_KEY)('SSE Pattern 6 + 7: Sub-agents', () => {
   // ── Pattern 6: Single sub-agent ────────────────────────────────────
 
   it('Pattern 6: explicit single helper invocation produces agent.spawn + agent.complete', async () => {
-    const thread = gw.state.createThread('coder', 'subagent-single', wsId)
+    const thread = await gw.state.createThread('coder', 'subagent-single', wsId)
 
     const stream = await runWithAutoApprove(
       gw,
@@ -151,7 +151,7 @@ describe.skipIf(!HAS_KEY)('SSE Pattern 6 + 7: Sub-agents', () => {
   // ── Pattern 7: Parallel sub-agents ────────────────────────────────
 
   it('Pattern 7: parallel helpers (explore + planner) both spawn', async () => {
-    const thread = gw.state.createThread('coder', 'subagent-parallel', wsId)
+    const thread = await gw.state.createThread('coder', 'subagent-parallel', wsId)
 
     const stream = await runWithAutoApprove(
       gw,

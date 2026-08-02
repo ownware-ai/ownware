@@ -38,8 +38,8 @@ const CancelRunSchema = z
 export function createTeamHandlers(module: TeamModule) {
   const { store } = module
 
-  function toSummary(team: Team): TeamSummary {
-    const runs = store.listRunsForTeam(team.id)
+  async function toSummary(team: Team): Promise<TeamSummary> {
+    const runs = await store.listRunsForTeam(team.id)
     const last = runs[0] ?? null
     const missionSource = team.fragments.identity ?? team.charter
     const mission =
@@ -63,7 +63,7 @@ export function createTeamHandlers(module: TeamModule) {
   }
 
   async function listTeams(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    sendJSON(res, 200, store.listTeams().map(toSummary))
+    sendJSON(res, 200, await Promise.all((await store.listTeams()).map(toSummary)))
   }
 
   async function createTeam(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -73,12 +73,12 @@ export function createTeamHandlers(module: TeamModule) {
       sendError(res, 400, `Invalid team: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
       return
     }
-    if (store.getTeamByName(parsed.data.name) !== null) {
+    if (await store.getTeamByName(parsed.data.name) !== null) {
       sendError(res, 409, `A team named "${parsed.data.name}" already exists.`)
       return
     }
     try {
-      const team = module.createTeam(parsed.data)
+      const team = await module.createTeam(parsed.data)
       sendJSON(res, 201, team)
     } catch (err) {
       const classified = classifyError(err)
@@ -91,7 +91,7 @@ export function createTeamHandlers(module: TeamModule) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const team = store.getTeam(params['teamId']!)
+    const team = await store.getTeam(params['teamId']!)
     if (!team) {
       sendError(res, 404, `Team "${params['teamId']}" not found`)
       return
@@ -111,7 +111,7 @@ export function createTeamHandlers(module: TeamModule) {
       return
     }
     try {
-      const team = module.updateTeam(params['teamId']!, parsed.data)
+      const team = await module.updateTeam(params['teamId']!, parsed.data)
       if (!team) {
         sendError(res, 404, `Team "${params['teamId']}" not found`)
         return
@@ -128,7 +128,7 @@ export function createTeamHandlers(module: TeamModule) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const deleted = module.deleteTeam(params['teamId']!)
+    const deleted = await module.deleteTeam(params['teamId']!)
     if (!deleted) {
       sendError(res, 404, `Team "${params['teamId']}" not found`)
       return
@@ -170,12 +170,12 @@ export function createTeamHandlers(module: TeamModule) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const team = store.getTeam(params['teamId']!)
+    const team = await store.getTeam(params['teamId']!)
     if (!team) {
       sendError(res, 404, `Team "${params['teamId']}" not found`)
       return
     }
-    sendJSON(res, 200, store.listRunsForTeam(team.id))
+    sendJSON(res, 200, await store.listRunsForTeam(team.id))
   }
 
   async function getBoardForThread(
@@ -183,12 +183,12 @@ export function createTeamHandlers(module: TeamModule) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const run = store.getRunByThread(params['threadId']!)
+    const run = await store.getRunByThread(params['threadId']!)
     if (!run) {
       sendError(res, 404, `Thread "${params['threadId']}" has no team run`)
       return
     }
-    const team = store.getTeam(run.teamId)
+    const team = await store.getTeam(run.teamId)
     if (!team) {
       sendError(res, 404, `Team "${run.teamId}" not found`)
       return
@@ -197,7 +197,7 @@ export function createTeamHandlers(module: TeamModule) {
       run,
       teamId: team.id,
       teamName: team.displayName,
-      tasks: store.listTasks(run.id),
+      tasks: await store.listTasks(run.id),
     }
     sendJSON(res, 200, view)
   }
@@ -213,7 +213,7 @@ export function createTeamHandlers(module: TeamModule) {
       sendError(res, 400, `Invalid body: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
       return
     }
-    const run = store.getRun(params['runId']!)
+    const run = await store.getRun(params['runId']!)
     if (!run) {
       sendError(res, 404, `Team run "${params['runId']}" not found`)
       return
@@ -222,7 +222,7 @@ export function createTeamHandlers(module: TeamModule) {
       sendError(res, 409, `Run is already ${run.status}`)
       return
     }
-    module.scheduler.cancelRun(run.id, parsed.data.reason ?? 'Cancelled by the user.')
+    await module.scheduler.cancelRun(run.id, parsed.data.reason ?? 'Cancelled by the user.')
     sendJSON(res, 200, { cancelled: true })
   }
 

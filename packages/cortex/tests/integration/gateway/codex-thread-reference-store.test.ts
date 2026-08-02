@@ -31,7 +31,7 @@ describe('Codex thread reference persistence', () => {
 
   it('survives restart using only allowlisted columns and cascades on thread delete', async () => {
     const { path, state } = await database()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const store = new CodexThreadReferenceStore(state.rawDbHandle)
     const reference = createCodexThreadReference({
       localThreadId: thread.id,
@@ -62,14 +62,14 @@ describe('Codex thread reference persistence', () => {
         'metadata_json',
       ]),
     )
-    expect(reopened.deleteThread(thread.id)).toBe(true)
+    await expect(reopened.deleteThread(thread.id)).resolves.toBe(true)
     expect(reopenedStore.load(thread.id)).toBeUndefined()
     reopened.close()
   })
 
   it('uses revision CAS so a stale process cannot overwrite active recovery state', async () => {
     const { state } = await database()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const store = new CodexThreadReferenceStore(state.rawDbHandle)
     const initial = createCodexThreadReference({
       localThreadId: thread.id,

@@ -15,7 +15,6 @@
  * - Clean interface matching GatewayState
  */
 
-import Database from 'better-sqlite3'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { mkdirSync } from 'node:fs'
@@ -23,6 +22,10 @@ import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto'
 import { MIGRATIONS } from './schema.js'
 import { openDatabaseSafely } from './migration-safety.js'
 import { DEFAULT_DATA_DIR_NAME } from '../../constants.js'
+import type {
+  SqliteDatabase,
+  SqliteStatement,
+} from '../../storage/sqlite-driver.js'
 import type {
   Thread,
   ThreadMessage,
@@ -62,7 +65,7 @@ function defaultDbPath(): string {
 // ---------------------------------------------------------------------------
 
 export class CortexDatabase {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
 
   // Pre-prepared statements for the streaming hot path (production-
   // perf audit Slice D, 2026-05-18). Before this, every text.delta
@@ -71,9 +74,7 @@ export class CortexDatabase {
   // caches internally, the lookup is still measurable at 30–50
   // events/sec sustained. Preparing once at construct time keeps the
   // hot path to one transaction + two `.get()` / `.run()` calls.
-  private readonly agentEventSeqStmt: Database.Statement
-  private readonly agentEventInsertStmt: Database.Statement
-  private readonly agentEventHighWaterStmt: Database.Statement
+  private readonly agentEventSeqStmt: SqliteStatement
   /**
    * Reusable transaction wrapper for `appendAgentEvent`. `db.transaction`
    * returns a closure — we want one closure for the lifetime of the
@@ -99,7 +100,7 @@ export class CortexDatabase {
     // snapshot, and a CORRUPT file on disk auto-recovers from the latest backup
     // instead of being misread as a fresh DB. Throws MigrationSafetyError (with
     // a user-facing message, data left intact) only when recovery is impossible.
-    this.db = openDatabaseSafely(
+    const db = openDatabaseSafely(
       path,
       (db) => {
         // Performance settings — applied to every freshly-opened handle,
@@ -113,47 +114,58 @@ export class CortexDatabase {
     )
 
     // Prepare hot-path statements (must come AFTER migrations, since
-    // they reference `agent_events` which is created by a migration).
-    this.agentEventSeqStmt = this.db.prepare(
-      `SELECT COALESCE(high_water_seq, 0) AS max_seq
-       FROM (SELECT 1) LEFT JOIN agent_event_streams
-         ON thread_id = ? AND agent_id = ?`,
-    )
-    this.agentEventInsertStmt = this.db.prepare(
-      'INSERT INTO agent_events (thread_id, agent_id, parent_agent_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    )
-    this.agentEventHighWaterStmt = this.db.prepare(`
-      INSERT INTO agent_event_streams (thread_id, agent_id, high_water_seq)
-      VALUES (?, ?, ?)
-      ON CONFLICT(thread_id, agent_id) DO UPDATE SET
-        high_water_seq = excluded.high_water_seq
-      WHERE excluded.high_water_seq > agent_event_streams.high_water_seq
-    `)
-    this.appendAgentEventTx = this.db.transaction((params: {
-      threadId: string
-      agentId: string
-      parentAgentId: string | null
-      type: string
-      payloadJson: string
-      createdAt: number
-    }): number => {
-      const row = this.agentEventSeqStmt.get(
-        params.threadId,
-        params.agentId,
-      ) as { max_seq: number }
-      const seq = row.max_seq + 1
-      this.agentEventInsertStmt.run(
-        params.threadId,
-        params.agentId,
-        params.parentAgentId,
-        seq,
-        params.type,
-        params.payloadJson,
-        params.createdAt,
+    // they reference `agent_events` which is created by a migration). Keep all
+    // constructor work local until it succeeds so a future statement/schema
+    // mismatch cannot leak the newly-opened SQLite handle.
+    try {
+      const agentEventSeqStmt = db.prepare(
+        `SELECT COALESCE(high_water_seq, 0) AS max_seq
+         FROM (SELECT 1) LEFT JOIN agent_event_streams
+           ON thread_id = ? AND agent_id = ?`,
       )
-      this.agentEventHighWaterStmt.run(params.threadId, params.agentId, seq)
-      return seq
-    })
+      const agentEventInsertStmt = db.prepare(
+        'INSERT INTO agent_events (thread_id, agent_id, parent_agent_id, seq, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      const agentEventHighWaterStmt = db.prepare(`
+        INSERT INTO agent_event_streams (thread_id, agent_id, high_water_seq)
+        VALUES (?, ?, ?)
+        ON CONFLICT(thread_id, agent_id) DO UPDATE SET
+          high_water_seq = excluded.high_water_seq
+        WHERE excluded.high_water_seq > agent_event_streams.high_water_seq
+      `)
+      const appendAgentEventTx = db.transaction((params: {
+        threadId: string
+        agentId: string
+        parentAgentId: string | null
+        type: string
+        payloadJson: string
+        createdAt: number
+      }): number => {
+        const row = agentEventSeqStmt.get(
+          params.threadId,
+          params.agentId,
+        ) as { max_seq: number }
+        const seq = row.max_seq + 1
+        agentEventInsertStmt.run(
+          params.threadId,
+          params.agentId,
+          params.parentAgentId,
+          seq,
+          params.type,
+          params.payloadJson,
+          params.createdAt,
+        )
+        agentEventHighWaterStmt.run(params.threadId, params.agentId, seq)
+        return seq
+      })
+
+      this.db = db
+      this.agentEventSeqStmt = agentEventSeqStmt
+      this.appendAgentEventTx = appendAgentEventTx
+    } catch (error) {
+      try { db.close() } catch { /* original construction failure wins */ }
+      throw error
+    }
   }
 
   // ── Thread CRUD ──────────────────────────────────────────────────────
@@ -215,10 +227,10 @@ export class CortexDatabase {
 
     const rows = profileId
       ? (this.db.prepare(
-          'SELECT * FROM threads WHERE profile_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?',
+          'SELECT * FROM threads WHERE profile_id = ? ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?',
         ).all(profileId, limit, offset) as ThreadRow[])
       : (this.db.prepare(
-          'SELECT * FROM threads ORDER BY updated_at DESC LIMIT ? OFFSET ?',
+          'SELECT * FROM threads ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?',
         ).all(limit, offset) as ThreadRow[])
 
     return { items: rows.map(mapThread), total, offset, limit }
@@ -295,9 +307,21 @@ export class CortexDatabase {
 
   addMessage(threadId: string, msg: ThreadMessage): void {
     this.db.transaction(() => {
+      const previous = this.db.prepare(`
+        SELECT message_seq FROM messages
+        WHERE thread_id = ?
+        ORDER BY message_seq DESC
+        LIMIT 1
+      `).get(threadId) as { message_seq: number } | undefined
+      const previousMessageSeq = previous?.message_seq ?? 0
+      if (previousMessageSeq >= Number.MAX_SAFE_INTEGER) {
+        throw new RangeError('Message sequence exhausted the safe integer domain.')
+      }
+      const messageSeq = previousMessageSeq + 1
+
       this.db.prepare(`
-        INSERT INTO messages (id, thread_id, role, content, tools, sub_agents, permissions, attachments, thinking, usage_input, usage_output, usage_cache_read, usage_cache_creation, created_at, parts, credentials, model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, thread_id, role, content, tools, sub_agents, permissions, attachments, thinking, usage_input, usage_output, usage_cache_read, usage_cache_creation, created_at, parts, credentials, model, message_seq)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         msg.id,
         threadId,
@@ -320,6 +344,7 @@ export class CortexDatabase {
         msg.parts ? JSON.stringify(msg.parts) : null,
         msg.credentials ? JSON.stringify(msg.credentials) : null,
         msg.model ?? null,
+        messageSeq,
       )
 
       // Atomically increment message_count and update last_message_preview + updated_at
@@ -336,7 +361,7 @@ export class CortexDatabase {
 
   getMessages(threadId: string): ThreadMessage[] {
     const rows = this.db.prepare(
-      'SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC',
+      'SELECT * FROM messages WHERE thread_id = ? ORDER BY message_seq ASC',
     ).all(threadId) as MessageRow[]
     return rows.map(mapMessage)
   }
@@ -359,7 +384,7 @@ export class CortexDatabase {
     const rows = this.db.prepare(
       `SELECT id, sub_agents FROM messages
        WHERE thread_id = ? AND sub_agents IS NOT NULL
-       ORDER BY created_at DESC`,
+       ORDER BY message_seq DESC`,
     ).all(threadId) as Array<{ id: string; sub_agents: string }>
 
     for (const row of rows) {
@@ -518,6 +543,7 @@ export class CortexDatabase {
       FROM agent_events
       WHERE thread_id = ?
       GROUP BY agent_id
+      ORDER BY agent_id ASC
     `).all(threadId) as Array<{ agent_id: string; parent_agent_id: string | null; event_count: number }>
     return rows.map(r => ({
       agentId: r.agent_id,
@@ -547,6 +573,7 @@ export class CortexDatabase {
       SELECT id FROM threads
       WHERE status IN ('completed', 'error')
         AND updated_at < ?
+      ORDER BY id ASC
     `).all(cutoffIso) as Array<{ id: string }>
     return rows.map(r => r.id)
   }
@@ -581,6 +608,7 @@ export class CortexDatabase {
       WHERE agent_id = 'root'
       GROUP BY thread_id
       HAVING MAX(created_at) < ?
+      ORDER BY thread_id ASC
     `).all(cutoffMs) as Array<{ id: string }>
     return rows.map(r => r.id)
   }
@@ -943,7 +971,7 @@ export class CortexDatabase {
     const profileRows = this.db.prepare(`
       SELECT profile_id, COUNT(*) as runs, COALESCE(SUM(cost_usd), 0) as cost
       FROM usage_records WHERE created_at >= ?
-      GROUP BY profile_id ORDER BY runs DESC
+      GROUP BY profile_id ORDER BY runs DESC, profile_id ASC
     `).all(weekAgo) as { profile_id: string; runs: number; cost: number }[]
 
     const totalRuns = profileRows.reduce((s, r) => s + r.runs, 0) || 1
@@ -961,7 +989,7 @@ export class CortexDatabase {
       INNER JOIN threads t ON t.workspace_id = w.id
       LEFT JOIN usage_records u ON u.thread_id = t.id AND u.created_at >= ?
       WHERE w.status = 'active'
-      GROUP BY w.id ORDER BY threads DESC
+      GROUP BY w.id ORDER BY threads DESC, w.id ASC
     `).all(weekAgo) as { workspace_id: string; name: string; threads: number; cost: number }[]
 
     const byWorkspace: DashboardWorkspaceEntry[] = wsRows.map(r => ({
@@ -1123,7 +1151,7 @@ export class CortexDatabase {
              COALESCE(AVG(CASE WHEN success = 1 THEN 1.0 ELSE 0.0 END), 1) AS success_rate
       FROM usage_records
       GROUP BY profile_id
-      ORDER BY runs DESC
+      ORDER BY runs DESC, profile_id ASC
     `).all() as {
       profile_id: string
       runs: number
@@ -1148,7 +1176,7 @@ export class CortexDatabase {
     const rows = this.db.prepare(`
       SELECT id, profile_id, thread_id, model, total_tokens, cost_usd, duration_ms, success, created_at
       FROM usage_records
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id ASC
       LIMIT ?
     `).all(limit) as {
       id: string
@@ -1376,14 +1404,18 @@ export class CortexDatabase {
    * The connector module attaches its own table-specific stores
    * (`connector_connections`, future vendor catalogues we own). Each
    * store encapsulates CRUD for its table and
-   * accepts a `Database.Database` handle so it can be unit-tested
+   * accepts a SQLite handle so it can be unit-tested
    * against a fresh temp db without needing the full `CortexDatabase`.
    *
    * Not intended for general use — callers that want thread/workspace/
    * MCP state go through the named methods above. This is the single
    * documented seam for "I own my own table and need the handle".
    */
-  get rawMainHandle(): Database.Database {
+  /**
+   * @deprecated Internal SQLite compatibility surface. Product code must use
+   * adapter repositories; this handle will be removed in a declared major.
+   */
+  get rawMainHandle(): SqliteDatabase {
     return this.db
   }
 

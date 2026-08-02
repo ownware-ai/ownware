@@ -24,7 +24,7 @@ describe('Contract: bounded ephemeral run attachments', () => {
   })
 
   it('rejects malformed/spoofed attachments before thread or run mutation', async () => {
-    const before = gateway.state.listThreads().total
+    const before = await gateway.state.listThreads().total
     for (const attachment of [
       { filename: 'bad.txt', mimeType: 'text/plain', data: '%%%%' },
       { filename: 'secret-canary.pdf', mimeType: 'application/pdf', data: Buffer.from('RAW-CANARY').toString('base64') },
@@ -36,11 +36,11 @@ describe('Contract: bounded ephemeral run attachments', () => {
       expect(raw).not.toContain('secret-canary')
       expect(raw).not.toContain('RAW-CANARY')
     }
-    expect(gateway.state.listThreads().total).toBe(before)
+    expect(await gateway.state.listThreads().total).toBe(before)
   })
 
   it('rejects count and decoded item overflow before mutation', async () => {
-    const before = gateway.state.listThreads().total
+    const before = await gateway.state.listThreads().total
     const tiny = { filename: 'x.txt', mimeType: 'text/plain', data: Buffer.from('x').toString('base64') }
     const count = await post(Array.from({ length: ATTACHMENT_MAX_COUNT + 1 }, () => tiny))
     expect(count.status).toBe(400)
@@ -61,11 +61,11 @@ describe('Contract: bounded ephemeral run attachments', () => {
     await expect(aggregate.json()).resolves.toMatchObject({
       error: 'attachment_invalid', reason: 'total_too_large',
     })
-    expect(gateway.state.listThreads().total).toBe(before)
+    expect(await gateway.state.listThreads().total).toBe(before)
   })
 
   it('requires the separate delegated attachment operation and accepts bounded data when granted', async () => {
-    const workspace = gateway.state.createWorkspace(gateway.tmpDir, 'Attachment contract')
+    const workspace = await gateway.state.createWorkspace(gateway.tmpDir, 'Attachment contract')
     const issue = async (delegateId: string, operations: string[]) => {
       const response = await gateway.client.post('/api/v1/auth/delegations', {
         delegateId,

@@ -51,15 +51,15 @@ beforeAll(async () => {
   const state = gateway.state
 
   // Create workspaces
-  const ws1 = state.createWorkspace('/tmp/project-a', 'Project A')
-  const ws2 = state.createWorkspace('/tmp/project-b', 'Project B')
+  const ws1 = await state.createWorkspace('/tmp/project-a', 'Project A')
+  const ws2 = await state.createWorkspace('/tmp/project-b', 'Project B')
 
   // Create threads in workspaces
   for (let i = 0; i < 3; i++) {
-    state.createThread('alpha', `Alpha thread ${i}`, ws1.id)
+    await state.createThread('alpha', `Alpha thread ${i}`, ws1.id)
   }
   for (let i = 0; i < 2; i++) {
-    state.createThread('beta', `Beta thread ${i}`, ws2.id)
+    await state.createThread('beta', `Beta thread ${i}`, ws2.id)
   }
 
   // Seed usage records across profiles
@@ -67,7 +67,7 @@ beforeAll(async () => {
   for (const profileId of profiles) {
     const count = profileId === 'alpha' ? 10 : profileId === 'beta' ? 6 : 4
     for (let i = 0; i < count; i++) {
-      state.addUsageRecord({
+      await state.addUsageRecord({
         profileId,
         model: 'anthropic:claude-sonnet-4-20250514',
         provider: 'anthropic',

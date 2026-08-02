@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 
 const THREAD_SCOPE_DOMAIN = 'ownware.gateway.thread-principal-scope.v1\0'
 const SHA256_HEX = /^[0-9a-f]{64}$/
@@ -19,7 +19,7 @@ export function threadPrincipalScopeDigest(principalKey: string): string {
 
 /** Durable, private binding between a delegated authority context and thread. */
 export class ThreadPrincipalBindingStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   /** Same-scope repeats are idempotent; a thread can never be rebound. */
   bind(threadId: string, principalKey: string, now: number = Date.now()): boolean {

@@ -74,10 +74,10 @@ Some random prose without bullets.
 })
 
 describe('seedFromAgentsMd', () => {
-  it('inserts one memory per parsed bullet with legacy_import source', () => {
+  it('inserts one memory per parsed bullet with legacy_import source', async () => {
     const md = `- Fact A
 - ~ Learned B`
-    const created = seedFromAgentsMd(store, 'profile-1', md)
+    const created = await seedFromAgentsMd(store, 'profile-1', md)
     expect(created).toHaveLength(2)
     expect(created[0]!.source).toBe('legacy_import')
     expect(created[0]!.pinned).toBe(true) // user bullet → pinned
@@ -87,8 +87,8 @@ describe('seedFromAgentsMd', () => {
     expect(created[1]!.confidence).toBe(0.8)
   })
 
-  it('is a no-op for empty input', () => {
-    expect(seedFromAgentsMd(store, 'p', '')).toEqual([])
+  it('is a no-op for empty input', async () => {
+    expect(await seedFromAgentsMd(store, 'p', '')).toEqual([])
     expect(store.countForProfile('p', 'all')).toBe(0)
   })
 })

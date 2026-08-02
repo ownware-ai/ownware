@@ -17,14 +17,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { sendError, sendJSON, readJSON } from '../router.js'
 import { startSSE, writeSSE } from '../sse.js'
-import type { SqliteTaskStore } from '../../tasks/store.js'
+import type { TaskRepository } from '../../storage/platform-repositories.js'
 import type { TaskEventBus, TasksUpdatedEvent } from '../../tasks/event-bus.js'
 import { TaskStatusSchema } from '../../tasks/event-bus.js'
 
 const KEEPALIVE_INTERVAL_MS = 30_000
 
 export interface TaskHandlerDeps {
-  readonly store: SqliteTaskStore
+  readonly store: TaskRepository
   readonly bus: TaskEventBus
 }
 
@@ -42,7 +42,7 @@ export function createTaskHandlers(deps: TaskHandlerDeps) {
       sendError(res, 400, 'Missing threadId')
       return
     }
-    const items = store.listForThread(threadId)
+    const items = await store.listForThread(threadId)
     sendJSON(res, 200, { items })
   }
 
@@ -70,7 +70,7 @@ export function createTaskHandlers(deps: TaskHandlerDeps) {
       return
     }
 
-    const updated = store.updateStatus(threadId, taskId, parsed.data)
+    const updated = await store.updateStatus(threadId, taskId, parsed.data)
     if (updated == null) {
       sendError(res, 404, `Task "${taskId}" not found for thread "${threadId}"`)
       return
@@ -124,7 +124,7 @@ export function createTaskHandlers(deps: TaskHandlerDeps) {
     const initial: TasksUpdatedEvent = {
       type: 'tasks.updated',
       threadId,
-      tasks: store.listForThread(threadId),
+      tasks: await store.listForThread(threadId),
       at: new Date().toISOString(),
     }
     await writeSSE(res, initial.type, initial)

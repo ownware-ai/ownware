@@ -20,8 +20,8 @@
 
 import type {
   ChannelJobClaim,
-  ChannelJobStore,
 } from './channel-job-store.js'
+import type { ChannelJobRepository } from '../storage/platform-repositories.js'
 import {
   ChannelProcedureRegistry,
   gateStepId,
@@ -43,7 +43,7 @@ export class ChannelJobWorker {
   private drainPromise: Promise<number> | null = null
 
   constructor(
-    private readonly jobs: ChannelJobStore,
+    private readonly jobs: ChannelJobRepository,
     private readonly procedures: ChannelProcedureRegistry,
     private readonly options: ChannelJobWorkerOptions,
   ) {}
@@ -89,8 +89,8 @@ export class ChannelJobWorker {
 
   async runOne(fixedNow?: number): Promise<boolean> {
     const currentTime = fixedNow === undefined ? () => Date.now() : () => fixedNow
-    if (this.jobs.confirmNextUnclaimedCancellation(currentTime())) return true
-    const claim = this.jobs.claimNext(this.options.workerId, currentTime())
+    if (await this.jobs.confirmNextUnclaimedCancellation(currentTime())) return true
+    const claim = await this.jobs.claimNext(this.options.workerId, currentTime())
     if (!claim) return false
     await this.execute(claim, currentTime)
     return true
@@ -102,13 +102,13 @@ export class ChannelJobWorker {
   ): Promise<void> {
     const procedure = this.procedures.get(claim.operation)
     if (!procedure) {
-      this.finishFailed(claim, 'procedure_unknown', currentTime())
+      await this.finishFailed(claim, 'procedure_unknown', currentTime())
       return
     }
     if (claim.stepCount !== procedure.steps.length) {
       // The registered procedure changed shape since this job was enqueued —
       // running a different machine against old checkpoints would be a lie.
-      this.finishFailed(claim, 'procedure_shape_changed', currentTime())
+      await this.finishFailed(claim, 'procedure_shape_changed', currentTime())
       return
     }
 
@@ -117,19 +117,19 @@ export class ChannelJobWorker {
 
     while (checkpoint < procedure.steps.length) {
       const step = procedure.steps[checkpoint]!
-      if (this.jobs.renewLease(claim.jobId, claim.claimToken, currentTime()) !== 'ok') {
-        this.confirmCancellation(claim, currentTime())
+      if (await this.jobs.renewLease(claim.jobId, claim.claimToken, currentTime()) !== 'ok') {
+        await this.confirmCancellation(claim, currentTime())
         return
       }
 
       if (step.kind === 'gate') {
         const gateId = gateStepId(claim.operation, step.name)
         if (claim.gateResponse?.gateId === gateId) {
-          const consumed = this.jobs.consumeGateResponse(
+          const consumed = await this.jobs.consumeGateResponse(
             claim.jobId, claim.claimToken, checkpoint, gateId, currentTime(),
           )
           if (consumed !== 'advanced') {
-            this.confirmCancellation(claim, currentTime())
+            await this.confirmCancellation(claim, currentTime())
             return
           }
           checkpoint += 1
@@ -137,36 +137,36 @@ export class ChannelJobWorker {
         }
         const spec = step.gate(this.buildContext(claim, state, currentTime))
         if (spec.id !== gateId) {
-          this.finishFailed(claim, 'gate_id_mismatch', currentTime())
+          await this.finishFailed(claim, 'gate_id_mismatch', currentTime())
           return
         }
-        const parked = this.jobs.parkForGate(
+        const parked = await this.jobs.parkForGate(
           claim.jobId, claim.claimToken, spec, currentTime(),
         )
-        if (parked !== 'parked') this.confirmCancellation(claim, currentTime())
+        if (parked !== 'parked') await this.confirmCancellation(claim, currentTime())
         return
       }
 
       try {
         await step.run(this.buildContext(claim, state, currentTime))
       } catch (error) {
-        this.handleStepFailure(claim, error, currentTime())
+        await this.handleStepFailure(claim, error, currentTime())
         return
       }
-      const advanced = this.jobs.advanceCheckpoint(
+      const advanced = await this.jobs.advanceCheckpoint(
         claim.jobId, claim.claimToken, checkpoint, state, currentTime(),
       )
       if (advanced !== 'advanced') {
-        this.confirmCancellation(claim, currentTime())
+        await this.confirmCancellation(claim, currentTime())
         return
       }
       checkpoint += 1
     }
 
-    const finished = this.jobs.finish(
+    const finished = await this.jobs.finish(
       claim.jobId, claim.claimToken, 'succeeded', 'procedure_complete', currentTime(),
     )
-    if (finished !== 'finished') this.confirmCancellation(claim, currentTime())
+    if (finished !== 'finished') await this.confirmCancellation(claim, currentTime())
   }
 
   private buildContext(
@@ -181,13 +181,13 @@ export class ChannelJobWorker {
       channelId: claim.channelId,
       params: claim.params,
       state,
-      workLine: (title, detail): void => {
-        this.jobs.appendWorkLine(
+      workLine: async (title, detail): Promise<void> => {
+        await this.jobs.appendWorkLine(
           claim.jobId, claim.claimToken, title, detail, currentTime(),
         )
       },
-      receipt: (input): void => {
-        this.jobs.appendReceipt({
+      receipt: async (input): Promise<void> => {
+        await this.jobs.appendReceipt({
           jobId: claim.jobId,
           profileId: claim.profileId,
           channelKind: claim.channelKind,
@@ -195,41 +195,41 @@ export class ChannelJobWorker {
           ...input,
         }, currentTime())
       },
-      cancelRequested: (): boolean =>
-        this.jobs.get(claim.jobId)?.state === 'cancel_requested',
-      renewLease: (): boolean =>
-        this.jobs.renewLease(claim.jobId, claim.claimToken, currentTime()) === 'ok',
+      cancelRequested: async (): Promise<boolean> =>
+        (await this.jobs.get(claim.jobId))?.state === 'cancel_requested',
+      renewLease: async (): Promise<boolean> =>
+        await this.jobs.renewLease(claim.jobId, claim.claimToken, currentTime()) === 'ok',
     }
   }
 
-  private handleStepFailure(
+  private async handleStepFailure(
     claim: ChannelJobClaim,
     error: unknown,
     now: number,
-  ): void {
+  ): Promise<void> {
     if (error instanceof ProcedureStepError) {
-      this.finishFailed(claim, error.outcomeCode, now)
+      await this.finishFailed(claim, error.outcomeCode, now)
       return
     }
     const retryAfterMs = error instanceof TransientStepError
       ? error.retryAfterMs
       : CHANNEL_JOB_RETRY_MS
-    const deferred = this.jobs.deferUntil(
+    const deferred = await this.jobs.deferUntil(
       claim.jobId, claim.claimToken, now + retryAfterMs, now,
     )
     if (deferred === 'attempts_exhausted') {
-      this.finishFailed(claim, 'attempts_exhausted', now)
+      await this.finishFailed(claim, 'attempts_exhausted', now)
     } else if (deferred !== 'deferred') {
-      this.confirmCancellation(claim, now)
+      await this.confirmCancellation(claim, now)
     }
   }
 
-  private finishFailed(claim: ChannelJobClaim, code: string, now: number): void {
-    const finished = this.jobs.finish(claim.jobId, claim.claimToken, 'failed', code, now)
-    if (finished !== 'finished') this.confirmCancellation(claim, now)
+  private async finishFailed(claim: ChannelJobClaim, code: string, now: number): Promise<void> {
+    const finished = await this.jobs.finish(claim.jobId, claim.claimToken, 'failed', code, now)
+    if (finished !== 'finished') await this.confirmCancellation(claim, now)
   }
 
-  private confirmCancellation(claim: ChannelJobClaim, now: number): void {
-    this.jobs.confirmCancelled(claim.jobId, claim.claimToken, now)
+  private async confirmCancellation(claim: ChannelJobClaim, now: number): Promise<void> {
+    await this.jobs.confirmCancelled(claim.jobId, claim.claimToken, now)
   }
 }

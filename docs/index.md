@@ -36,6 +36,7 @@ await ownware.start()
 | Put my agent on Telegram / Slack / Discord / WhatsApp / SMS | [Channels](channels/overview.md) |
 | Understand the safety model | [Security overview](security/overview.md) |
 | Expose it beyond localhost | [Exposing the gateway](gateway/exposing.md) |
+| Choose SQLite or PostgreSQL | [Gateway storage](gateway/storage.md) |
 | Look up an env var or option | [Configuration reference](reference/configuration.md) |
 | Get a quick answer | [FAQ](faq.md) |
 | Fix a common problem | [Troubleshooting](troubleshooting.md) |

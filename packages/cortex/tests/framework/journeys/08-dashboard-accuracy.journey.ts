@@ -18,10 +18,10 @@ describe('Journey: 08 Dashboard Accuracy', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({
-      seed: (state) => {
+      seed: async (state) => {
         // Profile A: 3 runs, 600 tokens total, $0.06 total
         for (let i = 0; i < 3; i++) {
-          state.addUsageRecord({
+          await state.addUsageRecord({
             profileId: 'profile-a',
             model: 'anthropic:claude-sonnet-4-20250514',
             provider: 'anthropic',
@@ -34,7 +34,7 @@ describe('Journey: 08 Dashboard Accuracy', () => {
         }
         // Profile B: 2 runs, 600 tokens total, $0.04 total
         for (let i = 0; i < 2; i++) {
-          state.addUsageRecord({
+          await state.addUsageRecord({
             profileId: 'profile-b',
             model: 'anthropic:claude-haiku-4-5-20251001',
             provider: 'anthropic',
@@ -59,8 +59,8 @@ describe('Journey: 08 Dashboard Accuracy', () => {
     expect(r.body.todayTokens).toBe(1200) // 600 + 600
   })
 
-  it('Step 2: KPIs reflect totals', () => {
-    const kpis = gw.state.getKPIs('7d')
+  it('Step 2: KPIs reflect totals', async () => {
+    const kpis = await gw.state.getKPIs('7d')
     const tokens = kpis.cards.find(c => c.label === 'Tokens')!
     const cost = kpis.cards.find(c => c.label === 'Cost')!
     const runs = kpis.cards.find(c => c.label === 'Runs')!
@@ -70,8 +70,8 @@ describe('Journey: 08 Dashboard Accuracy', () => {
     expect(runs.value).toBe(5)
   })
 
-  it('Step 3: Today bucket has correct counts', () => {
-    const buckets = gw.state.getUsageTimeSeries('7d')
+  it('Step 3: Today bucket has correct counts', async () => {
+    const buckets = await gw.state.getUsageTimeSeries('7d')
     const today = new Date().toISOString().split('T')[0]!
     const todayBucket = buckets.find(b => b.date === today)!
     expect(todayBucket).toBeDefined()
@@ -80,8 +80,8 @@ describe('Journey: 08 Dashboard Accuracy', () => {
     expect(todayBucket.cost).toBeCloseTo(0.10)
   })
 
-  it('Step 4: Profile breakdown shows both profiles', () => {
-    const rows = gw.state.getProfileBreakdown()
+  it('Step 4: Profile breakdown shows both profiles', async () => {
+    const rows = await gw.state.getProfileBreakdown()
     const a = rows.find(r => r.profileId === 'profile-a')!
     const b = rows.find(r => r.profileId === 'profile-b')!
 
@@ -98,8 +98,8 @@ describe('Journey: 08 Dashboard Accuracy', () => {
     expect(b.successRate).toBe(1)
   })
 
-  it('Step 5: Recent activity returns 5 entries newest first', () => {
-    const activity = gw.state.getRecentActivity(10)
+  it('Step 5: Recent activity returns 5 entries newest first', async () => {
+    const activity = await gw.state.getRecentActivity(10)
     expect(activity.length).toBe(5)
     for (let i = 0; i < activity.length - 1; i++) {
       expect(activity[i]!.createdAt >= activity[i + 1]!.createdAt).toBe(true)

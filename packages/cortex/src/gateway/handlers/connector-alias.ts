@@ -98,7 +98,7 @@ export function createConnectorAliasHandlers(deps: ConnectorAliasHandlersDeps) {
 
     // Persist. `SourcePreferences.set` validates the logical key again.
     try {
-      preferences.set(logicalKey, requestedSource)
+      await preferences.set(logicalKey, requestedSource)
     } catch (e) {
       sendError(res, 400, e instanceof Error ? e.message : String(e))
       return

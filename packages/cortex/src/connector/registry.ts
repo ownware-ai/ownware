@@ -46,7 +46,7 @@ export interface CustomMCPStateReader {
   readonly listMCPServers: (opts?: {
     readonly limit?: number
     readonly offset?: number
-  }) => {
+  }) => Promise<{
     readonly items: ReadonlyArray<{
       readonly id: string
       readonly name: string
@@ -65,7 +65,7 @@ export interface CustomMCPStateReader {
       /** Declared header NAMES for http/sse servers. Same shape as env. */
       readonly headers?: Record<string, string> | null
     }>
-  }
+  }>
 }
 import { credentialVault } from './credentials/vault.js'
 import { getRegistryEntry } from './mcp/registry.js'
@@ -100,7 +100,7 @@ import { SourcePreferences, type SourcePreferencesStore } from './source-prefere
 export type LastVerifiedAtLookup = (
   connectorId: string,
   source: 'mcp' | 'composio',
-) => number | null
+) => number | null | Promise<number | null>
 
 const NO_LAST_VERIFIED: LastVerifiedAtLookup = () => null
 
@@ -777,7 +777,7 @@ async function mcpServerToConnector(
   // MCP rows never reach the connections store today; the row only
   // exists for connectors with vendor-side accounts written by an OAuth
   // flow or the Composio reconciler).
-  const lastVerifiedMs = lastVerifiedLookup(snap.serverId, 'mcp')
+  const lastVerifiedMs = await lastVerifiedLookup(snap.serverId, 'mcp')
   const lastVerifiedAt = lastVerifiedMs != null
     ? new Date(lastVerifiedMs).toISOString()
     : undefined
@@ -869,7 +869,7 @@ class MCPSourceProvider implements ConnectorSourceProvider {
 
     // (b) user-registered / detected DB rows (was CustomMCPSourceProvider)
     if (this.state) {
-      const { items } = this.state.listMCPServers({ limit: 200 })
+      const { items } = await this.state.listMCPServers({ limit: 200 })
       for (const row of items) {
         if (
           row.registryId !== CUSTOM_MCP_REGISTRY_MARKER &&
@@ -955,7 +955,7 @@ class MCPSourceProvider implements ConnectorSourceProvider {
  * Type alias for `mcp_servers` rows the MCPSourceProvider reads. Same
  * shape as the row argument to `mcpRowToConnector`.
  */
-type MCPServerRow = ReturnType<CustomMCPStateReader['listMCPServers']>['items'][number]
+type MCPServerRow = Awaited<ReturnType<CustomMCPStateReader['listMCPServers']>>['items'][number]
 
 // ---------------------------------------------------------------------------
 // DB-row mapper (was CustomMCPSourceProvider — collapsed into
@@ -1112,7 +1112,7 @@ export async function mcpRowToConnector(row: {
 
   // F4.c-2 plumbing: project `last_verified_at` from
   // `connector_connections` onto the wire. Null → field omitted.
-  const lastVerifiedMs = lastVerifiedLookup(row.id, 'mcp')
+  const lastVerifiedMs = await lastVerifiedLookup(row.id, 'mcp')
   const lastVerifiedAt = lastVerifiedMs != null
     ? new Date(lastVerifiedMs).toISOString()
     : undefined
@@ -1285,7 +1285,7 @@ export class ConnectorRegistry {
    * groups not in the alias table (custom_mcp/mcp dedup) in first-seen
    * order.
    */
-  private dedupeAliases(flat: readonly Connector[]): Connector[] {
+  private async dedupeAliases(flat: readonly Connector[]): Promise<Connector[]> {
     // Group every connector by its effective grouping key.
     //
     // Precedence: alias-override > builtin-scoped key > plain logicalKey.
@@ -1315,7 +1315,7 @@ export class ConnectorRegistry {
         resolved.set(key, candidates[0]!)
         continue
       }
-      const userChoice = this.sourcePreferences?.get(key) ?? null
+      const userChoice = await this.sourcePreferences?.get(key) ?? null
       const winner = resolveSourceForLogicalKey(key, candidates, userChoice)
       // Defensive: resolver should always return one of the candidates,
       // but if it returns null fall back to the first to avoid silent

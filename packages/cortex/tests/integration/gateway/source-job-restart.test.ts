@@ -28,10 +28,10 @@ describe('source job across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Public source job replay',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',
@@ -124,7 +124,7 @@ describe('source job across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(gateway.tmpDir, 'Job restart').id
+    const workspaceId = (await gateway.state.createWorkspace(gateway.tmpDir, 'Job restart')).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',
@@ -193,10 +193,10 @@ describe('source job across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Inspection restart',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',
@@ -277,10 +277,10 @@ describe('source job across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Preparation restart',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',
@@ -378,10 +378,10 @@ describe('source job across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Data View preparation restart',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',

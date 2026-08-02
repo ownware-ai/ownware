@@ -24,10 +24,10 @@ export interface HeldCall {
   readonly toolInput: unknown
 }
 
-/** Where a held call goes. Returns void — the sink owns persistence + its own
+/** Where a held call goes. The caller awaits persistence; the sink owns its own
  *  error routing; a hold must never throw back into the agent loop. */
 export interface HoldSink {
-  hold(call: HeldCall): void
+  hold(call: HeldCall): void | Promise<void>
 }
 
 export const HELD_RESULT_MESSAGE =
@@ -46,7 +46,7 @@ export function holdTool(tool: Tool, sink: HoldSink): Tool {
       // Never let a sink failure surface as a tool error (which the model might
       // retry). Record best-effort; the result is "held" regardless.
       try {
-        sink.hold({ toolName: tool.name, toolInput: input })
+        await sink.hold({ toolName: tool.name, toolInput: input })
       } catch {
         /* sink owns its logging; a held action is still not executed */
       }

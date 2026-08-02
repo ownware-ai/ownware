@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import { isCredentialId } from './schema.js'
 
 export interface OAuthRefreshLease {
@@ -62,7 +62,7 @@ export class DbOAuthRefreshCoordinator implements OAuthRefreshCoordinator {
   private readonly ownerId: string
 
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     ownerId: string = randomUUID(),
   ) {
     if (!/^[A-Za-z0-9._:-]{1,128}$/.test(ownerId)) {

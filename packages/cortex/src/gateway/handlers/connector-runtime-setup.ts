@@ -96,7 +96,7 @@ export function createConnectorRuntimeSetupHandler(deps: ConnectorRuntimeSetupDe
     }
 
     await markCompleted(connector.id)
-    emitReadyIfPossible(deps, connector.id)
+    await emitReadyIfPossible(deps, connector.id)
     sendJSON(res, 200, {
       connectorId: connector.id,
       status: 'ready',
@@ -112,9 +112,12 @@ async function markCompleted(connectorId: string): Promise<void> {
   await credentialVault.save(connectorId, env)
 }
 
-function emitReadyIfPossible(deps: ConnectorRuntimeSetupDeps, connectorId: string): void {
+async function emitReadyIfPossible(
+  deps: ConnectorRuntimeSetupDeps,
+  connectorId: string,
+): Promise<void> {
   if (deps.statusBus == null) return
-  deps.statusBus.emit({
+  await deps.statusBus.emitAndWait({
     connectorId,
     source: 'mcp',
     status: 'ready',

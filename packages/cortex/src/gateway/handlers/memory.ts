@@ -86,12 +86,12 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
     const limit = clampInt(parseInt(limitRaw ?? '200', 10), 1, 1000, 200)
     const offset = clampInt(parseInt(offsetRaw ?? '0', 10), 0, 1_000_000, 0)
 
-    const items = system.memories.listForProfile(profileId, {
+    const items = await system.memories.listForProfile(profileId, {
       status: statusParsed.data,
       limit,
       offset,
     })
-    const total = system.memories.countForProfile(profileId, statusParsed.data)
+    const total = await system.memories.countForProfile(profileId, statusParsed.data)
     sendJSON(res, 200, { items, total, limit, offset })
   }
 
@@ -114,7 +114,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       sendError(res, 400, formatZodIssues(parsed.error))
       return
     }
-    const memory = system.memories.create({
+    const memory = await system.memories.create({
       profileId,
       content: parsed.data.content,
       kind: parsed.data.kind,
@@ -141,7 +141,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       sendError(res, 400, formatZodIssues(parsed.error))
       return
     }
-    const updated = system.memories.update(id, parsed.data)
+    const updated = await system.memories.update(id, parsed.data)
     if (!updated) {
       sendError(res, 404, `Memory "${id}" not found`)
       return
@@ -159,7 +159,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       sendError(res, 400, 'Missing memory id')
       return
     }
-    const ok = system.memories.remove(id)
+    const ok = await system.memories.remove(id)
     if (!ok) {
       sendError(res, 404, `Memory "${id}" not found`)
       return
@@ -190,11 +190,11 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
     }
     const limit = clampInt(parseInt(limitRaw ?? '100', 10), 1, 500, 100)
 
-    const items = system.proposals.listForProfile(profileId, {
+    const items = await system.proposals.listForProfile(profileId, {
       status: statusParsed.data,
       limit,
     })
-    const pendingCount = system.proposals.countPendingForProfile(profileId)
+    const pendingCount = await system.proposals.countPendingForProfile(profileId)
     sendJSON(res, 200, { items, pendingCount })
   }
 
@@ -218,7 +218,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       return
     }
     const limit = clampInt(parseInt(limitRaw ?? '100', 10), 1, 500, 100)
-    const items = system.proposals.listForThread(threadId, {
+    const items = await system.proposals.listForThread(threadId, {
       status: statusParsed.data,
       limit,
     })
@@ -242,7 +242,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       return
     }
     try {
-      const result = system.proposals.accept(id, parsed.data)
+      const result = await system.proposals.accept(id, parsed.data)
       if (!result) {
         sendError(res, 404, `Proposal "${id}" not found`)
         return
@@ -270,7 +270,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       return
     }
     try {
-      const proposal = system.proposals.reject(id, parsed.data.reason ?? null)
+      const proposal = await system.proposals.reject(id, parsed.data.reason ?? null)
       if (!proposal) {
         sendError(res, 404, `Proposal "${id}" not found`)
         return
@@ -287,7 +287,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
     _req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    sendJSON(res, 200, { identity: system.identity.get() })
+    sendJSON(res, 200, { identity: await system.identity.get() })
   }
 
   async function putIdentity(
@@ -300,7 +300,7 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
       sendError(res, 400, formatZodIssues(parsed.error))
       return
     }
-    const updated = system.identity.set(parsed.data)
+    const updated = await system.identity.set(parsed.data)
     sendJSON(res, 200, { identity: updated })
   }
 

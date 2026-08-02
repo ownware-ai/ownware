@@ -45,7 +45,6 @@ import type { ProfileRegistry } from '../../profile/registry.js'
 import { assembleAgent, buildSubagentSystemPrompt } from '../../profile/assembler.js'
 import { hookBindingOptionsFromEnv } from '../../profile/hooks.js'
 import { applyRunSafety, envelopeSpawnerPool, summarizeHeldCall, type HoldSink } from '../../schedules/draft-hold.js'
-import type { SqliteApprovalStore } from '../../schedules/approvals.js'
 import { resolveSubagentDef } from '../../profile/subagent-resolver.js'
 import {
   resolveLocalHelperDir,
@@ -63,7 +62,6 @@ import type { ConnectorToolProvider } from '../../connector/providers/types.js'
 import { CredentialHITL } from '../../credential/hitl.js'
 import { ThreadCredentialRuntime } from '../../credential/runtime.js'
 import { credentialVault } from '../../connector/credentials/vault.js'
-import type { SqliteTaskStore } from '../../tasks/store.js'
 import type { CredentialStore } from '../../credential/store/index.js'
 import { selectSttProvider } from '../../speech/index.js'
 import { createThreadScopedTaskStore } from '../../tasks/scoped-store.js'
@@ -182,25 +180,31 @@ import {
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
-  type RunIdempotencyStore,
   type RunStartSnapshot,
 } from '../idempotency.js'
-import { ThreadPrincipalBindingStore } from '../thread-principal-binding.js'
-import { ProfileRunNotAcceptingError, type GatewayRunStore } from '../run-store.js'
-import type { CandidateStore } from '../candidate-store.js'
+import { ProfileRunNotAcceptingError } from '../run-store.js'
 import type { CandidateProfileResolver } from '../../profile/candidate-activation.js'
+import type {
+  IdempotencyRepository,
+  RunRepository,
+} from '../../storage/security-repositories.js'
+import type {
+  ApprovalRepository,
+  CandidateRepository,
+  TaskRepository,
+} from '../../storage/platform-repositories.js'
 
 export interface RunHandlerDeps {
   /** Attachment processor override for failure-injection tests. */
   readonly processAttachmentsFn?: typeof processAttachments
   /** Durable execution snapshots and lifecycle transitions. */
-  readonly runStore?: GatewayRunStore
+  readonly runStore?: RunRepository
   /** Durable public retry fence. Scheduler calls do not pass through it. */
-  readonly idempotencyStore?: RunIdempotencyStore
+  readonly idempotencyStore?: IdempotencyRepository
   /** Resolve and verify the currently active immutable candidate, when one exists. */
   readonly candidateResolver?: CandidateProfileResolver
   /** Durable candidate deployment state used by the early pause fence. */
-  readonly candidateStore?: CandidateStore
+  readonly candidateStore?: CandidateRepository
   /**
    * Connector services threaded into `assembleAgent` so sessions pick
    * up the user's live provider choice. Optional — omitting them
@@ -227,13 +231,13 @@ export interface RunHandlerDeps {
    * persists via SQLite + emits `tasks.updated` bus events. Optional
    * — gateway unit tests that don't need tasks simply omit this.
    */
-  readonly taskStore?: SqliteTaskStore
+  readonly taskStore?: TaskRepository
   /**
    * Approvals store (Slice 8d). When present, a draft-for-approval scheduled
    * run parks each held write/send tool call here instead of executing it.
    * Omitted → `applyRunSafety` fails closed to read-only (no place to park).
    */
-  readonly approvalStore?: SqliteApprovalStore
+  readonly approvalStore?: ApprovalRepository
   /**
    * Unified credential store. When provided, each session gets an
    * `sttProvider` on its config (resolved from the highest-priority
@@ -321,20 +325,22 @@ export function createRunHandlers(
   runner: SessionRunner,
   deps: RunHandlerDeps = {},
 ) {
-  const threadPrincipalBindings = new ThreadPrincipalBindingStore(state.rawDbHandle)
 
-  function delegatedThreadAccessAllowed(
+  async function delegatedThreadAccessAllowed(
     principal: RuntimePrincipal | undefined,
     threadId: string,
     profileId: string,
     workspaceId: string | undefined,
-  ): boolean {
+  ): Promise<boolean> {
     if (principal?.kind !== 'delegated') return true
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     return thread !== undefined &&
       thread.profileId === profileId &&
       thread.workspaceId === workspaceId &&
-      threadPrincipalBindings.allows(threadId, principalContinuityKey(principal))
+      await state.securityRepositories.threadBindings.allows(
+        threadId,
+        principalContinuityKey(principal),
+      )
   }
 
   // POST /api/v1/run — thin HTTP wrapper; the run-start core is
@@ -428,7 +434,7 @@ export function createRunHandlers(
     // Bind the actual existing thread before touching idempotency state or
     // reporting liveness. Body workspace/profile values are desired targets,
     // not proof that the referenced thread belongs to that authority.
-    if (body.threadId && !delegatedThreadAccessAllowed(
+    if (body.threadId && !await delegatedThreadAccessAllowed(
       principal,
       body.threadId,
       body.profileId ?? 'example',
@@ -457,7 +463,7 @@ export function createRunHandlers(
       : undefined
     let idempotencyRecordId: string | undefined
     if (fence) {
-      const claim = deps.idempotencyStore!.claim({ ...fence, input: body })
+      const claim = await deps.idempotencyStore!.claim({ ...fence, input: body })
       if (claim.kind === 'replay') {
         res.setHeader('Idempotency-Replayed', 'true')
         sendJSON(res, claim.statusCode, claim.result)
@@ -486,7 +492,7 @@ export function createRunHandlers(
 
     // Guard: reject if this thread already has an active run.
     if (body.threadId && runner.isRunning(body.threadId)) {
-      if (fence) deps.idempotencyStore!.markIndeterminate(fence)
+      if (fence) await deps.idempotencyStore!.markIndeterminate(fence)
       sendError(res, 409, 'Thread already has an active run. Abort it first.')
       return
     }
@@ -504,9 +510,15 @@ export function createRunHandlers(
         ...(result.timeoutMs !== undefined ? { timeoutMs: result.timeoutMs } : {}),
       }
       if (idempotencyRecordId) {
-        deps.idempotencyStore!.linkRun(idempotencyRecordId, result.runId)
+        await deps.idempotencyStore!.linkRun(idempotencyRecordId, result.runId)
       }
-      if (fence) deps.idempotencyStore!.complete({ ...fence, statusCode: 200, result: snapshot })
+      if (fence) {
+        await deps.idempotencyStore!.complete({
+          ...fence,
+          statusCode: 200,
+          result: snapshot,
+        })
+      }
       // Return thread ID — client connects to the SSE endpoint to watch.
       sendJSON(res, 200, fence ? snapshot : {
         runId: result.runId,
@@ -520,7 +532,7 @@ export function createRunHandlers(
         attachments: result.attachments,
       })
     } catch (err) {
-      if (fence) deps.idempotencyStore!.markIndeterminate(fence)
+      if (fence) await deps.idempotencyStore!.markIndeterminate(fence)
       if (err instanceof RunStartError) {
         sendError(res, err.status, err.message, err.code, undefined, err.details)
       } else {
@@ -548,7 +560,7 @@ export function createRunHandlers(
     const preparedAttachments = preflightAttachments ?? await prepareAttachmentBatch(body.attachments)
 
     {
-      const deployment = deps.candidateStore?.getActive(profileId)
+      const deployment = await deps.candidateStore?.getActive(profileId)
       if (deployment?.routingState === 'paused') {
         throw new RunStartError(
           409,
@@ -563,7 +575,7 @@ export function createRunHandlers(
       // 0. Resolve workspace path (if provided)
       let workspacePath: string | undefined
       if (workspaceId) {
-        const ws = state.getWorkspace(workspaceId)
+        const ws = await state.getWorkspace(workspaceId)
         if (!ws) {
           throw new RunStartError(404, `Workspace "${workspaceId}" not found`)
         }
@@ -577,11 +589,11 @@ export function createRunHandlers(
       let session: Session | undefined
 
       if (threadId) {
-        const thread = state.getThread(threadId)
+        const thread = await state.getThread(threadId)
         if (!thread) {
           throw new RunStartError(404, `Thread "${threadId}" not found`)
         }
-        if (!delegatedThreadAccessAllowed(
+        if (!await delegatedThreadAccessAllowed(
           principal,
           threadId,
           profileId,
@@ -595,7 +607,7 @@ export function createRunHandlers(
         }
         session = state.getSession(threadId)
         if (!workspacePath && thread.workspaceId) {
-          const ws = state.getWorkspace(thread.workspaceId)
+          const ws = await state.getWorkspace(thread.workspaceId)
           if (ws) workspacePath = ws.path
         }
       }
@@ -603,16 +615,11 @@ export function createRunHandlers(
       if (!threadId) {
         if (principal?.kind === 'delegated') {
           try {
-            const thread = state.rawDbHandle.transaction(() => {
-              const created = state.createThread(profileId, undefined, workspaceId)
-              if (!threadPrincipalBindings.bind(
-                created.id,
-                principalContinuityKey(principal),
-              )) {
-                throw new Error('thread principal binding conflict')
-              }
-              return created
-            })()
+            const thread = await state.createDelegatedThread(
+              profileId,
+              workspaceId,
+              principalContinuityKey(principal),
+            )
             threadId = thread.id
           } catch {
             throw new RunStartError(
@@ -622,14 +629,14 @@ export function createRunHandlers(
             )
           }
         } else {
-          const thread = state.createThread(profileId, undefined, workspaceId)
+          const thread = await state.createThread(profileId, undefined, workspaceId)
           threadId = thread.id
         }
       }
 
       if (workspaceId) {
-        state.touchWorkspace(workspaceId)
-        state.updateWorkspace(workspaceId, { lastProfileId: profileId })
+        await state.touchWorkspace(workspaceId)
+        await state.updateWorkspace(workspaceId, { lastProfileId: profileId })
       }
 
       // 2. Resolve modelString unconditionally.
@@ -675,7 +682,7 @@ export function createRunHandlers(
       // Canonicalize all paths. Aliases (`haiku`, `sonnet`, etc.) get
       // resolved to the catalog's full id so the provider never sees a
       // bare alias it can't look up.
-      const threadRow = state.getThread(threadId!)
+      const threadRow = await state.getThread(threadId!)
       const threadModel = threadRow?.model ?? null
       const rawModel =
         requestModel != null && requestModel.length > 0
@@ -720,7 +727,7 @@ export function createRunHandlers(
       // (this and the PATCH /threads/:id endpoint) converge on the
       // same column.
       if (effectiveModel !== threadModel) {
-        state.setThreadModel(threadId!, effectiveModel)
+        await state.setThreadModel(threadId!, effectiveModel)
         // A cached session is bound to the OLD provider (the model is
         // resolved into the session's provider only inside the
         // `if (!session)` assembly block below). Without this, switching
@@ -817,15 +824,15 @@ export function createRunHandlers(
               }
               let operationHash: string
               try {
-                const permission = deps.runStore.recordPermissionRequest({
+                const permission = await deps.runStore.recordPermissionRequest({
                   runId: activeRun.runId,
                   requestId,
                   toolName: req.toolName,
                   toolInput: req.toolInput,
                 })
                 operationHash = permission.operationHash
-                deps.runStore.markWaiting(activeRun.runId)
-                state.eventIngestor.ingestParentEvent(hookApprovalThreadId, {
+                await deps.runStore.markWaiting(activeRun.runId)
+                await state.eventIngestor.ingestParentEvent(hookApprovalThreadId, {
                   type: 'permission.request',
                   requestId,
                   operationHash,
@@ -844,9 +851,12 @@ export function createRunHandlers(
                 { id: requestId, name: req.toolName, input: req.toolInput },
                 req.reason,
               )
-              const currentPermission = deps.runStore.getPermissionRequest(activeRun.runId, requestId)
+              const currentPermission = await deps.runStore.getPermissionRequest(
+                activeRun.runId,
+                requestId,
+              )
               if (currentPermission?.status === 'pending') {
-                deps.runStore.decidePermission(
+                await deps.runStore.decidePermission(
                   activeRun.runId,
                   requestId,
                   operationHash,
@@ -854,10 +864,10 @@ export function createRunHandlers(
                 )
               }
               if (hitlRef.pendingCount === 0) {
-                deps.runStore.markRunningAfterDecision(activeRun.runId)
+                await deps.runStore.markRunningAfterDecision(activeRun.runId)
               }
               try {
-                state.eventIngestor.ingestParentEvent(hookApprovalThreadId, {
+                await state.eventIngestor.ingestParentEvent(hookApprovalThreadId, {
                   type: 'permission.response',
                   requestId,
                   granted: approved,
@@ -1065,10 +1075,10 @@ export function createRunHandlers(
           provider: assembled.provider,
           tools: spawnerToolPool,
           config: baseSessionConfig,
-          onEvent: (event, subagentId) => {
+          onEvent: async (event, subagentId) => {
             trace('spawner-recv', capturedThreadId, subagentId, event.type)
             try {
-              state.eventIngestor.ingestSubagentEvent(
+              await state.eventIngestor.ingestSubagentEvent(
                 capturedThreadId,
                 subagentId,
                 event,
@@ -1078,6 +1088,7 @@ export function createRunHandlers(
                 err: err instanceof Error ? err.message : String(err),
               })
               console.error('[run] subagent event ingest failed:', err)
+              throw err
             }
             // Sub-agent lifecycle events are emitted by the spawner's
             // generator, NOT the parent session's. Without this hook
@@ -1091,12 +1102,12 @@ export function createRunHandlers(
             // sub-agent's own stream, not the parent's reduced row.
             if (event.type === 'agent.spawn' || event.type === 'agent.complete') {
               try {
-                const consumed = runner.notifyParentLifecycleEvent(capturedThreadId, event)
+                const consumed = await runner.notifyParentLifecycleEvent(capturedThreadId, event)
                 trace('spawner-lifecycle-forward', capturedThreadId, subagentId, event.type, {
                   consumed,
                 })
                 if (!consumed && event.type === 'agent.complete') {
-                  state.patchMessageSubAgent(capturedThreadId, event.agentId, {
+                  await state.patchMessageSubAgent(capturedThreadId, event.agentId, {
                     status: 'completed',
                     result: event.result,
                     durationMs: event.durationMs,
@@ -1320,7 +1331,7 @@ export function createRunHandlers(
           body.approvalScheduleId != null &&
           body.approvalRunId != null
             ? {
-                hold: ({ toolName, toolInput }): void => {
+                hold: async ({ toolName, toolInput }): Promise<void> => {
                   // The HoldSink contract says the sink owns its own error
                   // routing and must never throw back into the agent loop. Honor
                   // it: if persisting the draft fails (e.g. a SQLite error), the
@@ -1330,7 +1341,7 @@ export function createRunHandlers(
                   // Log ids + the tool name only — NEVER toolInput (it may carry
                   // the email body / file contents the user is composing).
                   try {
-                    deps.approvalStore!.create({
+                    await deps.approvalStore!.create({
                       scheduleId: body.approvalScheduleId!,
                       runId: body.approvalRunId!,
                       threadId: threadId ?? null,
@@ -1522,6 +1533,7 @@ export function createRunHandlers(
         throw new RunStartError(500, `Session companions missing for thread "${threadId}"`)
       }
       state.setRuntime(threadId, {
+        profileId,
         session: session!,
         hitl: companions.hitl,
         zoneManager: companions.zoneManager,
@@ -1549,15 +1561,16 @@ export function createRunHandlers(
       const timeoutMs = profile.timeoutMs
       let runId: string
       try {
-        runId = deps.runStore?.create({
+        const startSeq = await state.getAgentEventMaxSeq(threadId!, 'root')
+        runId = (await deps.runStore?.create({
           threadId: threadId!,
           ...(workspaceId !== undefined ? { workspaceId } : {}),
           profileId,
           ...(candidateId !== null ? { candidateId } : {}),
           model: modelString,
           timeoutMs,
-          startSeq: state.getAgentEventMaxSeq(threadId!, 'root'),
-        }).runId ?? randomUUID()
+          startSeq,
+        }))?.runId ?? randomUUID()
       } catch (error) {
         if (!(error instanceof ProfileRunNotAcceptingError)) throw error
         state.deleteRuntime(threadId!)
@@ -1570,7 +1583,7 @@ export function createRunHandlers(
       }
 
       // 4. Save user message
-      state.addMessage(threadId, {
+      await state.addMessage(threadId!, {
         id: `msg_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
         role: 'user',
         content: body.prompt,
@@ -1584,17 +1597,16 @@ export function createRunHandlers(
       //    because user input is not an agent event. The cast widens to
       //    LoomEvent because the ingestor's LoomEvent-typed write path
       //    persists any discriminated `type` payload verbatim.
-      try {
-        const userEvent: UserMessageEvent = {
-          type: 'user.message',
-          text: body.prompt,
-          attachments: attachmentMeta ?? null,
-          timestamp: Date.now(),
-        }
-        state.eventIngestor.ingestParentEvent(threadId!, userEvent as unknown as LoomEvent)
-      } catch {
-        // Non-fatal — messages table already has the user message
+      const userEvent: UserMessageEvent = {
+        type: 'user.message',
+        text: body.prompt,
+        attachments: attachmentMeta ?? null,
+        timestamp: Date.now(),
       }
+      await state.eventIngestor.ingestParentEvent(
+        threadId!,
+        userEvent as unknown as LoomEvent,
+      )
 
       // 6. Start background run — returns immediately. The resolved
       // profile's timeout and immutable run record were fixed before the
@@ -1615,7 +1627,7 @@ export function createRunHandlers(
       // profile, bad workspace, etc.) never leaves a thread stranded in
       // 'active' with no runtime behind it. If the runner itself fails
       // later the runner's own finally block flips status to 'error'.
-      state.updateThread(threadId!, { status: 'active' })
+      await state.updateThread(threadId!, { status: 'active' })
 
       const handle = runner.start({
         runId,
@@ -1710,7 +1722,7 @@ export function createRunHandlers(
       return
     }
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!authorizePrincipalScope(_req, {
       workspaceId: thread?.workspaceId ?? undefined,
       profileId: thread?.profileId,
@@ -1846,7 +1858,7 @@ export function createRunHandlers(
 
           // Persist on tool / profile scope only. 'session' is in-memory.
           if (scope !== 'session') {
-            const thread = state.getThread(threadId)
+            const thread = await state.getThread(threadId)
             if (thread) {
               try {
                 await permissionStore.saveRule(thread.profileId, {
@@ -1884,7 +1896,7 @@ export function createRunHandlers(
   ): Promise<void> {
     const runId = params['runId']!
     const requestId = params['requestId']!
-    const snapshot = deps.runStore?.get(runId) ?? null
+    const snapshot = await deps.runStore?.get(runId) ?? null
     if (!snapshot) {
       sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
       return
@@ -1892,7 +1904,7 @@ export function createRunHandlers(
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    }) || !delegatedThreadAccessAllowed(
+    }) || !await delegatedThreadAccessAllowed(
       getRequestPrincipal(req),
       snapshot.threadId,
       snapshot.profileId,
@@ -1906,7 +1918,7 @@ export function createRunHandlers(
       sendError(res, 400, 'Exact permission decision is invalid', 'invalid_request', 'invalid_request')
       return
     }
-    const permission = deps.runStore?.getPermissionRequest(runId, requestId) ?? null
+    const permission = await deps.runStore?.getPermissionRequest(runId, requestId) ?? null
     if (!permission) {
       sendError(res, 404, 'Permission request was not found for this run', 'permission_request_not_found', 'not_found')
       return
@@ -1931,7 +1943,7 @@ export function createRunHandlers(
       sendError(res, 409, 'Permission request is no longer live', 'permission_request_stale', 'invalid_request')
       return
     }
-    const outcome = deps.runStore!.decidePermission(
+    const outcome = await deps.runStore!.decidePermission(
       runId,
       requestId,
       parsed.data.operationHash,
@@ -1963,7 +1975,7 @@ export function createRunHandlers(
         ? runtime.execution.status().phase !== 'waiting_permission'
         : runtime.hitl!.pendingCount === 0
     ) {
-      deps.runStore!.markRunningAfterDecision(runId)
+      await deps.runStore!.markRunningAfterDecision(runId)
     }
     sendJSON(res, 200, {
       runId,
@@ -2033,7 +2045,7 @@ export function createRunHandlers(
     params: Record<string, string>,
   ): Promise<void> {
     const runId = params['runId']!
-    const snapshot = deps.runStore?.get(runId) ?? null
+    const snapshot = await deps.runStore?.get(runId) ?? null
     if (!snapshot) {
       sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
       return
@@ -2041,7 +2053,7 @@ export function createRunHandlers(
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    }) || !delegatedThreadAccessAllowed(
+    }) || !await delegatedThreadAccessAllowed(
       getRequestPrincipal(req),
       snapshot.threadId,
       snapshot.profileId,
@@ -2075,13 +2087,13 @@ export function createRunHandlers(
 
     // Persist before signalling. A crash after this point recovers to
     // indeterminate, never to invented cancelled/succeeded.
-    const outcome = deps.runStore!.requestCancel(runId)
+    const outcome = await deps.runStore!.requestCancel(runId)
     if (outcome === 'missing') {
       sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
       return
     }
     if (outcome === 'terminal') {
-      const terminal = deps.runStore!.get(runId)!
+      const terminal = (await deps.runStore!.get(runId))!
       sendJSON(res, 200, {
         runId,
         status: terminal.status,
@@ -2091,7 +2103,7 @@ export function createRunHandlers(
       })
       return
     }
-    const persisted = deps.runStore!.get(runId)!
+    const persisted = (await deps.runStore!.get(runId))!
     signalCancellation(snapshot.threadId, session, outcome === 'requested')
     sendJSON(res, 202, {
       runId,
@@ -2115,7 +2127,7 @@ export function createRunHandlers(
       return
     }
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!authorizePrincipalScope(req, {
       workspaceId: thread?.workspaceId ?? undefined,
       profileId: thread?.profileId,
@@ -2131,7 +2143,7 @@ export function createRunHandlers(
     }
 
     const active = runner.get(threadId)
-    if (active) deps.runStore?.requestCancel(active.runId)
+    if (active) await deps.runStore?.requestCancel(active.runId)
     signalCancellation(threadId, session, true)
 
     res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -2144,7 +2156,7 @@ export function createRunHandlers(
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const snapshot = deps.runStore?.get(params['runId']!) ?? null
+    const snapshot = await deps.runStore?.get(params['runId']!) ?? null
     if (!snapshot) {
       sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
       return
@@ -2152,7 +2164,7 @@ export function createRunHandlers(
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    }) || !delegatedThreadAccessAllowed(
+    }) || !await delegatedThreadAccessAllowed(
       getRequestPrincipal(req),
       snapshot.threadId,
       snapshot.profileId,
@@ -2161,8 +2173,11 @@ export function createRunHandlers(
       sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
       return
     }
-    const currentEnd = snapshot.endSeq ?? state.getAgentEventMaxSeq(snapshot.threadId, 'root')
-    const firstRetained = state.getAgentEventMinSeq(
+    const currentEnd = snapshot.endSeq ?? await state.getAgentEventMaxSeq(
+      snapshot.threadId,
+      'root',
+    )
+    const firstRetained = await state.getAgentEventMinSeq(
       snapshot.threadId,
       'root',
       snapshot.startSeq,
@@ -2206,7 +2221,7 @@ export function createRunHandlers(
     params: Record<string, string>,
   ): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -2251,7 +2266,7 @@ export function createRunHandlers(
       // the literal from the in-memory list.
     }
 
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -2312,7 +2327,7 @@ export function createRunHandlers(
     // Connector sends (gmail/slack) don't need a workspace; they resolve a token.
     let workspacePath: string | undefined
     if (params.workspaceId != null) {
-      const ws = state.getWorkspace(params.workspaceId)
+      const ws = await state.getWorkspace(params.workspaceId)
       if (ws == null || !existsSync(ws.path)) {
         return { content: 'This action needs its workspace, which no longer exists.', isError: true }
       }

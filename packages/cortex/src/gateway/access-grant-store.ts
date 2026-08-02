@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import { csvDataViewOrdinalId } from './csv-data-view.js'
 import { SourceDataViewStore } from './source-data-view-store.js'
@@ -156,7 +156,7 @@ export class AccessGrantStoreError extends Error {
   }
 }
 
-interface AccessGrantRow {
+export interface AccessGrantStorageRow {
   readonly grant_id: string
   readonly revision: number
   readonly state: string
@@ -186,7 +186,7 @@ interface AccessGrantRow {
 
 export class AccessGrantStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly maxActivePerScope: number = ACCESS_GRANT_MAX_ACTIVE_PER_SCOPE,
     private readonly evidenceSearchCache?: EvidenceSearchCache,
   ) {
@@ -196,7 +196,7 @@ export class AccessGrantStore {
   }
 
   create(input: CreateAccessGrantInput, now: number = Date.now()): AccessGrantRevision {
-    const normalized = normalizeGrantInput(input)
+    const normalized = normalizeAccessGrantInputForStorage(input)
     validateTimestamp(now)
     return this.createNormalized(normalized, now)
   }
@@ -205,7 +205,7 @@ export class AccessGrantStore {
     input: CreateImmediateAccessGrantInput,
     now: number = Date.now(),
   ): AccessGrantRevision {
-    const normalized = normalizeImmediateGrantInput(input, now)
+    const normalized = normalizeImmediateAccessGrantInputForStorage(input, now)
     return this.createNormalized(normalized, now)
   }
 
@@ -223,7 +223,7 @@ export class AccessGrantStore {
     input: CreatePreparedTextAccessGrantInput,
     now: number = Date.now(),
   ): AccessGrantRevision {
-    const normalized = normalizeImmediateGrantInput({
+    const normalized = normalizeImmediateAccessGrantInputForStorage({
       workspaceId: input.workspaceId,
       profileId: input.profileId,
       subjectId: input.subjectId,
@@ -255,11 +255,11 @@ export class AccessGrantStore {
     input: CreateDataViewQueryGrantInput,
     now: number = Date.now(),
   ): AccessGrantRevision {
-    if (!validExactDataViewIds(input.fieldIds, 'field') ||
-        !validExactDataViewIds(input.rowIds, 'row')) {
+    if (!validExactDataViewIdsForStorage(input.fieldIds, 'field') ||
+        !validExactDataViewIdsForStorage(input.rowIds, 'row')) {
       throw new AccessGrantStoreError('access_grant_invalid')
     }
-    const normalized = normalizeImmediateGrantInput({
+    const normalized = normalizeImmediateAccessGrantInputForStorage({
       workspaceId: input.workspaceId,
       profileId: input.profileId,
       subjectId: input.subjectId,
@@ -287,7 +287,7 @@ export class AccessGrantStore {
       const manifest = target.manifest
       const knownFields = new Set(manifest.fields.map(field => field.fieldId))
       if (input.fieldIds.some(fieldId => !knownFields.has(fieldId)) ||
-          !rowIdsBelongToManifest(
+          !rowIdsBelongToManifestForStorage(
             input.rowIds, manifest.sourceVersionId, manifest.rowCount,
           )) {
         throw new AccessGrantStoreError('access_grant_invalid')
@@ -300,7 +300,7 @@ export class AccessGrantStore {
     input: CreateDataViewQueryWindowGrantInput,
     now: number = Date.now(),
   ): AccessGrantRevision {
-    if (!validExactDataViewIds(input.fieldIds, 'field') ||
+    if (!validExactDataViewIdsForStorage(input.fieldIds, 'field') ||
         !Number.isSafeInteger(input.rowOffset) || input.rowOffset < 0 ||
         !Number.isSafeInteger(input.rowCount) || input.rowCount < 1 ||
         input.rowCount > ACCESS_GRANT_MAX_SCOPE_IDS) {
@@ -325,7 +325,7 @@ export class AccessGrantStore {
       }
       const rowIds = Array.from({ length: input.rowCount }, (_, offset) =>
         csvDataViewOrdinalId('row', manifest.sourceVersionId, input.rowOffset + offset))
-      const normalized = normalizeImmediateGrantInput({
+      const normalized = normalizeImmediateAccessGrantInputForStorage({
         workspaceId: input.workspaceId,
         profileId: input.profileId,
         subjectId: input.subjectId,
@@ -385,7 +385,7 @@ export class AccessGrantStore {
     profileId: string,
     resourceId: string,
   ): PreparedTextReadTarget | null {
-    if (!isScope(workspaceId) || !isScope(profileId) || !isUuid(resourceId)) return null
+    if (!isScope(workspaceId) || !isScope(profileId) || !isAccessGrantUuid(resourceId)) return null
     const row = this.db.prepare(`
       SELECT r.workspace_id, r.profile_id, r.resource_id, r.job_id,
         r.source_id, r.source_version_id, r.source_revision,
@@ -483,7 +483,7 @@ export class AccessGrantStore {
   }
 
   getPreparedTextReadTargetForOwner(resourceId: string): PreparedTextReadTarget | null {
-    if (!isUuid(resourceId)) return null
+    if (!isAccessGrantUuid(resourceId)) return null
     const scope = this.db.prepare(`
       SELECT workspace_id, profile_id FROM source_derived_resources
       WHERE resource_id = ?
@@ -494,7 +494,7 @@ export class AccessGrantStore {
   }
 
   getDataViewQueryTargetForOwner(dataViewId: string): DataViewQueryTargetIdentity | null {
-    if (!isUuid(dataViewId)) return null
+    if (!isAccessGrantUuid(dataViewId)) return null
     const scope = this.db.prepare(`
       SELECT workspace_id, profile_id FROM source_data_views
       WHERE data_view_id = ?
@@ -516,7 +516,7 @@ export class AccessGrantStore {
     workspaceId: string,
     profileId: string,
   ): AccessGrantRevision | null {
-    if (!isUuid(grantId) || !isScope(workspaceId) || !isScope(profileId)) return null
+    if (!isAccessGrantUuid(grantId) || !isScope(workspaceId) || !isScope(profileId)) return null
     const row = this.db.prepare(`
       SELECT r.*, g.workspace_id AS head_workspace_id,
         g.profile_id AS head_profile_id
@@ -524,12 +524,12 @@ export class AccessGrantStore {
       JOIN access_grant_revisions r
         ON r.grant_id = g.grant_id AND r.revision = g.current_revision
       WHERE g.grant_id = ? AND g.workspace_id = ? AND g.profile_id = ?
-    `).get(grantId, workspaceId, profileId) as AccessGrantRow | undefined
-    return row ? projectRow(row) : null
+    `).get(grantId, workspaceId, profileId) as AccessGrantStorageRow | undefined
+    return row ? projectAccessGrantRowForStorage(row) : null
   }
 
   getCurrentForOwner(grantId: string): AccessGrantRevision | null {
-    if (!isUuid(grantId)) return null
+    if (!isAccessGrantUuid(grantId)) return null
     const row = this.db.prepare(`
       SELECT r.*, g.workspace_id AS head_workspace_id,
         g.profile_id AS head_profile_id
@@ -537,12 +537,12 @@ export class AccessGrantStore {
       JOIN access_grant_revisions r
         ON r.grant_id = g.grant_id AND r.revision = g.current_revision
       WHERE g.grant_id = ?
-    `).get(grantId) as AccessGrantRow | undefined
-    return row ? projectRow(row) : null
+    `).get(grantId) as AccessGrantStorageRow | undefined
+    return row ? projectAccessGrantRowForStorage(row) : null
   }
 
   getSourceIdentityForOwner(grantId: string): AccessGrantSourceIdentity | null {
-    if (!isUuid(grantId)) return null
+    if (!isAccessGrantUuid(grantId)) return null
     const row = this.db.prepare(`
       SELECT g.grant_id, g.workspace_id, g.profile_id, d.source_id
       FROM access_grants g
@@ -599,7 +599,7 @@ export class AccessGrantStore {
   ): AccessGrantPage {
     validateTimestamp(now)
     if (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100 ||
-        !(page.cursor === null || isUuid(page.cursor))) {
+        !(page.cursor === null || isAccessGrantUuid(page.cursor))) {
       throw new AccessGrantStoreError('access_grant_invalid')
     }
     const cursor = page.cursor?.toLowerCase() ?? null
@@ -612,10 +612,10 @@ export class AccessGrantStore {
       WHERE (@cursor IS NULL OR g.grant_id > @cursor)
       ORDER BY g.grant_id ASC
       LIMIT @rowLimit
-    `).all({ cursor, rowLimit: page.limit + 1 }) as AccessGrantRow[]
+    `).all({ cursor, rowLimit: page.limit + 1 }) as AccessGrantStorageRow[]
     const hasMore = rows.length > page.limit
     const pageRows = hasMore ? rows.slice(0, page.limit) : rows
-    const items = pageRows.map(row => withLifecycle(projectRow(row), now))
+    const items = pageRows.map(row => withAccessGrantLifecycleForStorage(projectAccessGrantRowForStorage(row), now))
     return {
       items,
       nextCursor: hasMore ? items.at(-1)!.grantId : null,
@@ -630,7 +630,7 @@ export class AccessGrantStore {
   ): AccessGrantPage {
     validateTimestamp(now)
     if (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100 ||
-        !(page.cursor === null || isUuid(page.cursor))) {
+        !(page.cursor === null || isAccessGrantUuid(page.cursor))) {
       throw new AccessGrantStoreError('access_grant_invalid')
     }
     if (!isScope(workspaceId) || !isScope(profileId)) {
@@ -652,10 +652,10 @@ export class AccessGrantStore {
       profileId,
       cursor,
       rowLimit: page.limit + 1,
-    }) as AccessGrantRow[]
+    }) as AccessGrantStorageRow[]
     const hasMore = rows.length > page.limit
     const pageRows = hasMore ? rows.slice(0, page.limit) : rows
-    const items = pageRows.map(row => withLifecycle(projectRow(row), now))
+    const items = pageRows.map(row => withAccessGrantLifecycleForStorage(projectAccessGrantRowForStorage(row), now))
     return {
       items,
       nextCursor: hasMore ? items.at(-1)!.grantId : null,
@@ -668,7 +668,7 @@ export class AccessGrantStore {
     readonly profileId: string
     readonly expectedRevision: number
   }, now: number = Date.now()): AccessGrantRevision {
-    if (!isUuid(input.grantId) || !isScope(input.workspaceId) ||
+    if (!isAccessGrantUuid(input.grantId) || !isScope(input.workspaceId) ||
         !isScope(input.profileId) || !Number.isSafeInteger(input.expectedRevision) ||
         input.expectedRevision < 1 || !Number.isSafeInteger(now) || now < 0) {
       throw new AccessGrantStoreError('access_grant_invalid')
@@ -788,11 +788,11 @@ export class AccessGrantStore {
           WHEN 'draft' THEN 2 ELSE 3 END,
         r.expires_at ASC, r.grant_id ASC
       LIMIT ${this.maxActivePerScope + 1}
-    `).all({ ...input, now }) as AccessGrantRow[]
+    `).all({ ...input, now }) as AccessGrantStorageRow[]
     if (rows.length > this.maxActivePerScope) {
       throw new Error('Access grant candidate bound exceeded')
     }
-    return rows.map(projectRow)
+    return rows.map(projectAccessGrantRowForStorage)
   }
 
   private insertRevision(
@@ -907,7 +907,9 @@ export function validateAccessContext(input: {
     ['auto', 'ask', 'deny', 'allowlist'].includes(input.permissionMode)
 }
 
-function normalizeGrantInput(input: CreateAccessGrantInput): CreateAccessGrantInput {
+export function normalizeAccessGrantInputForStorage(
+  input: CreateAccessGrantInput,
+): CreateAccessGrantInput {
   if (!isScope(input.workspaceId) || !isScope(input.profileId) ||
       !isScope(input.subjectId) || !isPurpose(input.purpose) ||
       !(input.channel === null || isScope(input.channel)) ||
@@ -927,7 +929,7 @@ function normalizeGrantInput(input: CreateAccessGrantInput): CreateAccessGrantIn
   }
 }
 
-function normalizeImmediateGrantInput(
+export function normalizeImmediateAccessGrantInputForStorage(
   input: CreateImmediateAccessGrantInput,
   now: number,
 ): CreateAccessGrantInput {
@@ -941,7 +943,7 @@ function normalizeImmediateGrantInput(
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) {
     throw new AccessGrantStoreError('access_grant_invalid')
   }
-  return normalizeGrantInput({
+  return normalizeAccessGrantInputForStorage({
     workspaceId: input.workspaceId,
     profileId: input.profileId,
     subjectId: input.subjectId,
@@ -979,7 +981,7 @@ function validIds(ids: readonly string[], allowEmpty: boolean): boolean {
     (allowEmpty || ids.length > 0) && ids.every((id) => isScope(id))
 }
 
-function validExactDataViewIds(
+export function validExactDataViewIdsForStorage(
   ids: readonly string[],
   kind: 'field' | 'row',
 ): boolean {
@@ -993,7 +995,7 @@ function validExactDataViewIds(
     )
 }
 
-function rowIdsBelongToManifest(
+export function rowIdsBelongToManifestForStorage(
   requested: readonly string[],
   sourceVersionId: string,
   rowCount: number,
@@ -1030,13 +1032,15 @@ function isKind(value: string): boolean {
   return isScope(value) && value.length <= 64
 }
 
-function isUuid(value: string): boolean {
+export function isAccessGrantUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value)
 }
 
-function projectRow(row: AccessGrantRow): AccessGrantRevision {
-  if (!isUuid(row.grant_id) || !Number.isSafeInteger(row.revision) || row.revision < 1 ||
+export function projectAccessGrantRowForStorage(
+  row: AccessGrantStorageRow,
+): AccessGrantRevision {
+  if (!isAccessGrantUuid(row.grant_id) || !Number.isSafeInteger(row.revision) || row.revision < 1 ||
       row.workspace_id !== row.head_workspace_id || row.profile_id !== row.head_profile_id ||
       !['active', 'revoked'].includes(row.state) ||
       !['observe', 'recommend', 'draft', 'act'].includes(row.autonomy_ceiling) ||
@@ -1079,14 +1083,17 @@ function projectRow(row: AccessGrantRow): AccessGrantRevision {
     revokedAt: row.revoked_at,
   }
   try {
-    normalizeGrantInput(projected)
+    normalizeAccessGrantInputForStorage(projected)
   } catch {
     throw new Error('Persisted access grant revision is invalid')
   }
   return projected
 }
 
-function withLifecycle(grant: AccessGrantRevision, now: number): CurrentAccessGrant {
+export function withAccessGrantLifecycleForStorage(
+  grant: AccessGrantRevision,
+  now: number,
+): CurrentAccessGrant {
   const lifecycle: AccessGrantLifecycle = grant.state === 'revoked'
     ? 'revoked'
     : now < grant.effectiveAt

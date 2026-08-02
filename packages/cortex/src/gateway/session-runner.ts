@@ -13,7 +13,7 @@
  *                   ↓
  *            Background async function iterates session.submitMessage()
  *                   ↓
- *            Each event → EventIngestor (SQLite + EventBus)
+ *            Each event → EventIngestor (durable repository + EventBus)
  *                   ↓
  *            Any SSE client → GET /threads/:tid/agents/root/events
  *                              (subscribe-before-read, replay + tail)
@@ -41,7 +41,7 @@ import type { PendingReconciles } from './pending-reconcile.js'
 import type { ProfileRegistry } from '../profile/registry.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { reconcileSessionTools } from '../profile/reconcile.js'
-import type { GatewayRunStore } from './run-store.js'
+import type { RunRepository } from '../storage/security-repositories.js'
 import {
   ManagedExecutionRuntime,
   RuntimeContractError,
@@ -167,7 +167,7 @@ export class SessionRunner {
    * no-op when no run is active for the thread (late events are
    * dropped silently — the `messages` row was already saved).
    */
-  private readonly lifecycleCallbacks = new Map<string, (event: LoomEvent) => void>()
+  private readonly lifecycleCallbacks = new Map<string, (event: LoomEvent) => Promise<void>>()
 
   /**
    * Optional reconcile wiring. When present, the runner reconciles
@@ -208,7 +208,7 @@ export class SessionRunner {
 
   constructor(
     private readonly state: GatewayState,
-    private readonly runStore?: GatewayRunStore,
+    private readonly runStore?: RunRepository,
   ) {}
 
   /** Install the reconcile dependencies. Called once during boot. */
@@ -231,10 +231,10 @@ export class SessionRunner {
    * the caller is responsible for back-patching the message row directly
    * (the saved row's sub_agents JSON won't reflect this completion).
    */
-  notifyParentLifecycleEvent(threadId: string, event: LoomEvent): boolean {
+  async notifyParentLifecycleEvent(threadId: string, event: LoomEvent): Promise<boolean> {
     const cb = this.lifecycleCallbacks.get(threadId)
     if (cb) {
-      cb(event)
+      await cb(event)
       return true
     }
     return false
@@ -273,11 +273,29 @@ export class SessionRunner {
     }
 
     this.runs.set(params.threadId, run)
-    this.runStore?.markRunning(runId)
 
     // Fire-and-forget — the promise is exposed via the handle but never
-    // awaited inside the HTTP handler. Errors are caught internally.
-    const done = this.consumeLoop(run, params)
+    // awaited inside the HTTP handler. Keep the outer boundary non-rejecting
+    // as well as the ordinary run loop: storage can disappear during final
+    // durable bookkeeping after the loop's own catch/finally has begun. In
+    // that case the durable run remains non-terminal and startup recovery
+    // authoritatively marks it indeterminate; process-local callers receive a
+    // content-free error result instead of an unhandled rejection.
+    const settled = this.consumeLoop(run, params)
+      .catch(() => {
+        run.status = 'error'
+        console.error('[session-runner] run finalization failed after storage became unavailable')
+        return {
+          status: 'error' as const,
+          turnCount: run.turnCount,
+          inputTokens: run.inputTokens,
+          outputTokens: run.outputTokens,
+          costUsd: run.costUsd,
+          error: 'Run failed',
+        }
+      })
+    run.donePromise = settled
+    const done = settled
       .finally(() => {
         this.runs.delete(params.threadId)
       })
@@ -333,6 +351,7 @@ export class SessionRunner {
     run: MutableRun,
     params: RunParams,
   ): Promise<RunResult> {
+    await this.runStore?.markRunning(run.runId)
     const { threadId, profileId, model } = params
     const session = this.state.getSession(threadId)
     const runtime = this.state.getRuntime(threadId)
@@ -356,10 +375,6 @@ export class SessionRunner {
     if (runtime.execution === undefined) {
       this.state.setRuntime(threadId, { ...runtime, execution })
     }
-
-    // Stash the done promise so drainAll can await it
-    let resolveDone!: (r: RunResult) => void
-    run.donePromise = new Promise<RunResult>(resolve => { resolveDone = resolve })
 
     // Wall-clock timeout enforcement (F-09). A positive `timeoutMs`
     // arms a one-shot timer; on fire we request cancellation through the
@@ -388,8 +403,8 @@ export class SessionRunner {
     // the run terminates mid-turn (abort, error, timeout, shutdown).
     const acc: TurnAccumulator = createAccumulator()
 
-    const saveMessage = (msg: ThreadMessage) => {
-      try { this.state.addMessage(threadId, msg) } catch { /* best effort */ }
+    const saveMessage = async (msg: ThreadMessage): Promise<void> => {
+      await this.state.addMessage(threadId, msg)
     }
     const generateMsgId = () => `msg_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
 
@@ -409,9 +424,9 @@ export class SessionRunner {
     // the run is gone is silently dropped (the messages row is already
     // written by then). The callback closes over `acc`, so each run
     // gets its own isolated accumulator path.
-    this.lifecycleCallbacks.set(threadId, event => {
+    this.lifecycleCallbacks.set(threadId, async event => {
       trace('runner-lifecycle-cb', threadId, 'root', event.type)
-      this.accumulateEvent(event, event, acc, run, saveMessage, generateMsgId)
+      await this.accumulateEvent(event, event, acc, run, saveMessage, generateMsgId)
     })
 
     try {
@@ -455,7 +470,7 @@ export class SessionRunner {
             || reconciled.errors.length > 0
           ) {
             try {
-              this.state.eventIngestor.ingestParentEvent(
+              await this.state.eventIngestor.ingestParentEvent(
                 threadId,
                 {
                   type: 'tools.reconciled',
@@ -492,7 +507,7 @@ export class SessionRunner {
         // ── Enrich permission events with zone metadata ──────────
         let enriched = enrichEvent(event, getLastZoneDecision)
         if (event.type === 'permission.request' && this.runStore) {
-          const permission = this.runStore.recordPermissionRequest({
+          const permission = await this.runStore.recordPermissionRequest({
             runId: run.runId,
             requestId: event.requestId,
             toolName: event.toolName,
@@ -502,11 +517,11 @@ export class SessionRunner {
             ...enriched,
             operationHash: permission.operationHash,
           } as unknown as LoomEvent
-          this.runStore.markWaiting(run.runId)
+          await this.runStore.markWaiting(run.runId)
         } else if (event.type === 'permission.response' && this.runStore) {
-          const permission = this.runStore.getPermissionRequest(run.runId, event.requestId)
+          const permission = await this.runStore.getPermissionRequest(run.runId, event.requestId)
           if (permission?.status === 'pending') {
-            this.runStore.decidePermission(
+            await this.runStore.decidePermission(
               run.runId,
               event.requestId,
               permission.operationHash,
@@ -518,7 +533,7 @@ export class SessionRunner {
               ? !runtime.execution.hasPendingPermission(event.requestId)
               : runtime.hitl?.pendingCount === 0
           ) {
-            this.runStore.markRunningAfterDecision(run.runId)
+            await this.runStore.markRunningAfterDecision(run.runId)
           }
         }
 
@@ -528,7 +543,7 @@ export class SessionRunner {
         // debug timeline and hydrated messages must never retain that input.
         const evidenceEvent = projectPermissionEvidenceEvent(enriched)
 
-        // ── Persist to SQLite + fan out to EventBus ──────────────
+        // ── Persist durably + fan out to EventBus ────────────────
         // Skip transient recoverable errors — they're retry noise.
         const isRecoverableError = event.type === 'error' &&
           (event as { recoverable?: boolean }).recoverable === true
@@ -552,7 +567,10 @@ export class SessionRunner {
             })
           }
           try {
-            run.lastSeq = this.state.eventIngestor.ingestParentEvent(threadId, evidenceEvent)
+            run.lastSeq = await this.state.eventIngestor.ingestParentEvent(
+              threadId,
+              evidenceEvent,
+            )
           } catch (err) {
             trace('runner-ingest-fail', threadId, 'root', event.type, {
               err: err instanceof Error ? err.message : String(err),
@@ -560,7 +578,7 @@ export class SessionRunner {
             console.error('[session-runner] event ingest failed:', err)
             if (isPermEvent && traceEnabled) {
               // eslint-disable-next-line no-console
-              console.log('[perm-trace] cortex-runner-INGEST-SWALLOWED', {
+              console.log('[perm-trace] cortex-runner-INGEST-FAILED', {
                 threadId,
                 requestId: (event as { requestId?: string }).requestId ?? null,
                 type: event.type,
@@ -568,6 +586,7 @@ export class SessionRunner {
                 ts: Date.now(),
               })
             }
+            throw err
           }
         }
 
@@ -580,7 +599,7 @@ export class SessionRunner {
         }
 
         // ── Accumulate messages for thread history ────────────────
-        this.accumulateEvent(evidenceEvent, evidenceEvent, acc, run, saveMessage, generateMsgId)
+        await this.accumulateEvent(evidenceEvent, evidenceEvent, acc, run, saveMessage, generateMsgId)
 
         result = await events.next()
       }
@@ -613,7 +632,7 @@ export class SessionRunner {
         interruptReason = 'error'
         // Emit error event so SSE clients see it
         try {
-          this.state.eventIngestor.ingestParentEvent(threadId, {
+          await this.state.eventIngestor.ingestParentEvent(threadId, {
             type: 'error',
             message,
             code: err instanceof RuntimeContractError || err instanceof RuntimeExecutionError
@@ -639,7 +658,7 @@ export class SessionRunner {
         run.status = 'error'
         interruptReason = 'error'
         try {
-          this.state.eventIngestor.ingestParentEvent(threadId, {
+          await this.state.eventIngestor.ingestParentEvent(threadId, {
             type: 'error',
             message: closeResult.status === 'timed_out'
               ? 'Runtime did not stop within the teardown deadline.'
@@ -672,7 +691,7 @@ export class SessionRunner {
       // accumulator is already empty and this is a no-op.
       if (run.status !== 'completed' && accumulatorHasContent(acc)) {
         try {
-          this.flushPartialTurn(
+          await this.flushPartialTurn(
             threadId,
             acc,
             interruptReason ?? 'error',
@@ -702,8 +721,10 @@ export class SessionRunner {
       // leave the thread in an inconsistent state — at worst the
       // title stays the placeholder.
       try {
-        const messages = this.state.getMessages(threadId)
-        const thread = this.state.getThread(threadId)
+        const [messages, thread] = await Promise.all([
+          this.state.getMessages(threadId),
+          this.state.getThread(threadId),
+        ])
         const currentTitle = thread?.title
         const isPlaceholder = !currentTitle || currentTitle === 'New chat'
         if (isPlaceholder) {
@@ -743,7 +764,7 @@ export class SessionRunner {
               if (firstUser.content.length > 80) title += '...'
             }
 
-            this.state.updateThread(threadId, { title })
+            await this.state.updateThread(threadId, { title })
           }
         }
       } catch { /* best effort */ }
@@ -756,7 +777,7 @@ export class SessionRunner {
       //    surfaced via the partial-turn flush above and the
       //    turn.interrupted event in the agent_events stream.
       try {
-        this.state.updateThread(threadId, {
+        await this.state.updateThread(threadId, {
           status: run.status === 'error' ? 'error' : 'completed',
         })
       } catch { /* best effort */ }
@@ -764,7 +785,7 @@ export class SessionRunner {
       // 3. Record usage
       try {
         const providerName = model.includes(':') ? model.split(':')[0]! : 'unknown'
-        this.state.addUsageRecord({
+        await this.state.addUsageRecord({
           threadId,
           profileId,
           model,
@@ -773,7 +794,7 @@ export class SessionRunner {
           outputTokens: run.outputTokens,
           costUsd: run.costUsd,
         })
-        this.state.incrementProfileUsage(profileId, run.costUsd)
+        await this.state.incrementProfileUsage(profileId, run.costUsd)
         // Attribute the real cost back to the backing credential so the
         // Settings → Credentials cost panel reflects actual spend. Only
         // when the run cost something — a free/zero-cost run has nothing
@@ -797,19 +818,18 @@ export class SessionRunner {
       }
 
       if (this.runStore) {
-        const endSeq = this.state.getAgentEventMaxSeq(threadId, 'root')
+        const endSeq = await this.state.getAgentEventMaxSeq(threadId, 'root')
         if (run.status === 'completed' && run.errorEventMessage == null) {
-          this.runStore.markTerminal(run.runId, 'succeeded', { endSeq })
+          await this.runStore.markTerminal(run.runId, 'succeeded', { endSeq })
         } else if (run.status === 'aborted' && interruptReason === 'timeout') {
-          this.runStore.markTerminal(run.runId, 'timed_out', { endSeq, code: 'run_timeout' })
+          await this.runStore.markTerminal(run.runId, 'timed_out', { endSeq, code: 'run_timeout' })
         } else if (run.status === 'aborted') {
-          this.runStore.markTerminal(run.runId, 'cancelled', { endSeq, code: 'run_cancelled' })
+          await this.runStore.markTerminal(run.runId, 'cancelled', { endSeq, code: 'run_cancelled' })
         } else {
-          this.runStore.markTerminal(run.runId, 'failed', { endSeq, code: 'run_failed' })
+          await this.runStore.markTerminal(run.runId, 'failed', { endSeq, code: 'run_failed' })
         }
       }
 
-      resolveDone(finalResult)
       return finalResult
     }
   }
@@ -822,14 +842,14 @@ export class SessionRunner {
    * and makes the partial-turn flush path trivial (flushPartialTurn reads
    * the same struct).
    */
-  private accumulateEvent(
+  private async accumulateEvent(
     rawEvent: LoomEvent,
     rawEnrichedEvent: LoomEvent,
     acc: TurnAccumulator,
     run: MutableRun,
-    saveMessage: (msg: ThreadMessage) => void,
+    saveMessage: (msg: ThreadMessage) => Promise<void>,
     generateMsgId: () => string,
-  ): void {
+  ): Promise<void> {
     // Redact secret-shaped argument values before anything reaches `acc`.
     // This method is the single write path into the `messages` table —
     // the store that `/hydrate`, `/messages`, `/data/export` and the
@@ -1075,7 +1095,7 @@ export class SessionRunner {
       }
 
       case 'security.block':
-        saveMessage({
+        await saveMessage({
           id: generateMsgId(),
           role: 'system',
           content: `Blocked: ${event.toolName} — ${event.reason}`,
@@ -1092,7 +1112,7 @@ export class SessionRunner {
         break
 
       case 'error':
-        saveMessage({
+        await saveMessage({
           id: generateMsgId(),
           role: 'error',
           content: event.message,
@@ -1122,7 +1142,7 @@ export class SessionRunner {
         if (event.strategy === 'proactive-drain' && event.preTokenCount === 0) {
           break
         }
-        saveMessage({
+        await saveMessage({
           id: generateMsgId(),
           role: 'system',
           content: `Context compacted: ${event.preTokenCount} → ${event.postTokenCount} tokens (${event.strategy})`,
@@ -1132,7 +1152,7 @@ export class SessionRunner {
         break
 
       case 'recovery':
-        saveMessage({
+        await saveMessage({
           id: generateMsgId(),
           role: 'system',
           content: `Recovery: ${event.reason} (attempt ${event.attempt}) — ${event.detail}`,
@@ -1159,7 +1179,7 @@ export class SessionRunner {
         // row — otherwise the hydrated transcript loses the card entirely.
         // Mirrors the partial-turn finalizer's gate below.
         if (hasContent || hasTools || hasAgents || hasPermissions || hasCredentials || hasThinking) {
-          saveMessage({
+          await saveMessage({
             id: generateMsgId(),
             role: 'assistant',
             content: acc.text,
@@ -1308,14 +1328,14 @@ export class SessionRunner {
    * idempotent — after it runs the accumulator is reset so a second call
    * is a no-op.
    */
-  private flushPartialTurn(
+  private async flushPartialTurn(
     threadId: string,
     acc: TurnAccumulator,
     reason: TurnInterruptedEvent['reason'],
     turnIndex: number,
-    saveMessage: (msg: ThreadMessage) => void,
+    saveMessage: (msg: ThreadMessage) => Promise<void>,
     generateMsgId: () => string,
-  ): void {
+  ): Promise<void> {
     // Downgrade any still-running sub-agents. The parent aborted before
     // agent.complete arrived, so we record 'error' with a synthetic
     // result string so the client's UI shows the correct badge rather than
@@ -1385,7 +1405,7 @@ export class SessionRunner {
     const hasThinking = acc.thinking.trim().length > 0
 
     if (hasContent || hasTools || hasAgents || hasPermissions || hasCredentials || hasThinking) {
-      saveMessage({
+      await saveMessage({
         id: generateMsgId(),
         role: 'assistant',
         content: acc.text,
@@ -1417,7 +1437,10 @@ export class SessionRunner {
         hadPendingCredentials: pendingCredentialCount > 0,
         timestamp: Date.now(),
       }
-      this.state.eventIngestor.ingestParentEvent(threadId, marker as unknown as LoomEvent)
+      await this.state.eventIngestor.ingestParentEvent(
+        threadId,
+        marker as unknown as LoomEvent,
+      )
     } catch { /* best effort */ }
 
     resetAccumulator(acc)

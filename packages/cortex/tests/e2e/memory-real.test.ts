@@ -26,10 +26,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Session, systemPromptToText } from '@ownware/loom'
 import type { LoomEvent } from '@ownware/loom'
-import { CortexDatabase } from '../../src/gateway/db/database.js'
+import { GatewayState } from '../../src/gateway/state.js'
 import { loadProfile } from '../../src/profile/loader.js'
 import { assembleAgent } from '../../src/profile/assembler.js'
-import { createMemorySystem, type MemorySystem } from '../../src/memory/index.js'
+import type { MemorySystem } from '../../src/memory/index.js'
 
 const apiKey =
   process.env.ANTHROPIC_API_KEY &&
@@ -41,7 +41,7 @@ const PROFILE_ID = 'memory-e2e'
 
 let tmpDir: string
 let profileDir: string
-let db: CortexDatabase
+let state: GatewayState
 let memory: MemorySystem
 
 async function drainEvents(
@@ -95,11 +95,20 @@ beforeAll(async () => {
     ].join('\n'),
   )
 
-  db = new CortexDatabase(join(tmpDir, 'ownware.db'), join(tmpDir, 'fx.db'))
-  memory = createMemorySystem(db.rawMainHandle)
+  state = new GatewayState(join(tmpDir, 'ownware.db'), {
+    permissionHashSecret: 'memory-e2e-permission-secret',
+  })
+  await state.initializeStorage()
+  memory = {
+    memories: state.platformRepositories.memories,
+    proposals: state.platformRepositories.memoryProposals,
+    identity: state.platformRepositories.userIdentity,
+    bus: state.memoryEventBus,
+  }
 }, 30_000)
 
 afterAll(async () => {
+  await state?.closeStorage()
   await rm(tmpDir, { recursive: true, force: true })
 })
 
@@ -136,13 +145,13 @@ describe.skipIf(!apiKey)('e2e: real Anthropic API calls remember()', () => {
     expect(toolCall, 'agent should have called `remember`').toBeDefined()
 
     // The proposal landed in the DB with the right binding.
-    const pending = memory.proposals.listForProfile(PROFILE_ID, { status: 'pending' })
+    const pending = await memory.proposals.listForProfile(PROFILE_ID, { status: 'pending' })
     expect(pending.length).toBeGreaterThanOrEqual(1)
     expect(pending[0]!.threadId).toBe(threadId1)
     expect(pending[0]!.proposedContent.toLowerCase()).toMatch(/sam|concise/)
 
     // ── User accepts ────────────────────────────────────────────────
-    const acceptResult = memory.proposals.accept(pending[0]!.id, {})
+    const acceptResult = await memory.proposals.accept(pending[0]!.id, {})
     expect(acceptResult).not.toBeNull()
     expect(acceptResult!.proposal.status).toMatch(/accepted|edited/)
     expect(acceptResult!.memory.profileId).toBe(PROFILE_ID)

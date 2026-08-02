@@ -6,7 +6,6 @@ import {
   ACCESS_GRANT_MAX_TTL_SECONDS,
   ACCESS_GRANT_MIN_TTL_SECONDS,
   ACCESS_GRANT_OPAQUE_ID_PATTERN,
-  AccessGrantStore,
   AccessGrantStoreError,
   type AccessGrantRevision,
 } from '../access-grant-store.js'
@@ -14,8 +13,11 @@ import {
   isValidIdempotencyKey,
   principalContinuityKey,
   type AccessGrantMutationReceipt,
-  type RunIdempotencyStore,
 } from '../idempotency.js'
+import type {
+  AccessGrantRepository,
+  IdempotencyRepository,
+} from '../../storage/security-repositories.js'
 import { CSV_DATA_VIEW_MAX_ROWS } from '../csv-data-view.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 
@@ -54,8 +56,8 @@ const RevokeSchema = z.object({ expectedRevision: z.number().int().positive() })
 export const ACCESS_GRANT_LIST_MAX_LIMIT = 100
 
 export function createAccessGrantHandlers(options: {
-  readonly grants: AccessGrantStore
-  readonly idempotency: RunIdempotencyStore
+  readonly grants: AccessGrantRepository
+  readonly idempotency: IdempotencyRepository
   readonly authEnabled: boolean
   readonly clock?: () => number
 }) {
@@ -82,26 +84,26 @@ export function createAccessGrantHandlers(options: {
       operation: 'access_grants.create',
       key,
     }
-    const claim = options.idempotency.claim({ ...claimKey, input: fence })
+    const claim = await options.idempotency.claim({ ...claimKey, input: fence })
     if (claim.kind === 'replay') return replay(res, claim.statusCode, claim.result)
     if (claim.kind !== 'claimed') return replayFailure(res, claim.kind)
-    const target = options.grants.getPreparedTextReadTargetForOwner(resourceId)
+    const target = await options.grants.getPreparedTextReadTargetForOwner(resourceId)
     if (!target) {
-      options.idempotency.abandon(claimKey)
+      await options.idempotency.abandon(claimKey)
       return unavailableResource(res)
     }
     try {
-      options.idempotency.linkSourceMutation(
+      await options.idempotency.linkSourceMutation(
         claim.recordId, target.sourceId, 'access_grant', clock(),
       )
     } catch {
-      options.idempotency.markIndeterminate(claimKey)
+      await options.idempotency.markIndeterminate(claimKey)
       return indeterminate(res)
     }
 
     const acceptedAt = clock()
     try {
-      const created = options.grants.createPreparedTextAccessGrant({
+      const created = await options.grants.createPreparedTextAccessGrant({
         workspaceId: target.workspaceId,
         profileId: target.profileId,
         resourceId,
@@ -115,17 +117,17 @@ export function createAccessGrantHandlers(options: {
       }, acceptedAt)
       const receipt = grantReceipt(created, 'created', acceptedAt)
       try {
-        options.idempotency.complete({
+        await options.idempotency.complete({
           ...claimKey, statusCode: 201, result: receipt,
         }, acceptedAt)
       } catch {
-        options.idempotency.markIndeterminate(claimKey)
+        await options.idempotency.markIndeterminate(claimKey)
         return indeterminate(res)
       }
       noStore(res)
       sendJSON(res, 201, receipt)
     } catch (error) {
-      options.idempotency.abandon(claimKey)
+      await options.idempotency.abandon(claimKey)
       handleStoreError(res, error, null)
     }
   }
@@ -154,26 +156,26 @@ export function createAccessGrantHandlers(options: {
       operation: 'access_grants.create',
       key,
     }
-    const claim = options.idempotency.claim({ ...claimKey, input: fence })
+    const claim = await options.idempotency.claim({ ...claimKey, input: fence })
     if (claim.kind === 'replay') return replay(res, claim.statusCode, claim.result)
     if (claim.kind !== 'claimed') return replayFailure(res, claim.kind)
-    const target = options.grants.getDataViewQueryTargetForOwner(dataViewId)
+    const target = await options.grants.getDataViewQueryTargetForOwner(dataViewId)
     if (!target) {
-      options.idempotency.abandon(claimKey)
+      await options.idempotency.abandon(claimKey)
       return unavailableDataView(res)
     }
     try {
-      options.idempotency.linkSourceMutation(
+      await options.idempotency.linkSourceMutation(
         claim.recordId, target.sourceId, 'access_grant', clock(),
       )
     } catch {
-      options.idempotency.markIndeterminate(claimKey)
+      await options.idempotency.markIndeterminate(claimKey)
       return indeterminate(res)
     }
 
     const acceptedAt = clock()
     try {
-      const created = options.grants.createDataViewQueryWindowGrant({
+      const created = await options.grants.createDataViewQueryWindowGrant({
         workspaceId: target.workspaceId,
         profileId: target.profileId,
         dataViewId,
@@ -189,17 +191,17 @@ export function createAccessGrantHandlers(options: {
       }, acceptedAt)
       const receipt = grantReceipt(created, 'created', acceptedAt)
       try {
-        options.idempotency.complete({
+        await options.idempotency.complete({
           ...claimKey, statusCode: 201, result: receipt,
         }, acceptedAt)
       } catch {
-        options.idempotency.markIndeterminate(claimKey)
+        await options.idempotency.markIndeterminate(claimKey)
         return indeterminate(res)
       }
       noStore(res)
       sendJSON(res, 201, receipt)
     } catch (error) {
-      options.idempotency.abandon(claimKey)
+      await options.idempotency.abandon(claimKey)
       if (error instanceof AccessGrantStoreError &&
           error.code === 'access_grant_resource_unavailable') {
         return unavailableDataView(res)
@@ -215,7 +217,7 @@ export function createAccessGrantHandlers(options: {
   ): Promise<void> {
     if (!requireOwner(req, res, options.authEnabled)) return
     if (hasQuery(req)) return invalid(res, 'Access grant request is invalid.')
-    const grant = options.grants.getCurrentForOwner(params['grantId'] ?? '')
+    const grant = await options.grants.getCurrentForOwner(params['grantId'] ?? '')
     if (!grant) return grantNotFound(res)
     noStore(res)
     sendJSON(res, 200, grant)
@@ -227,7 +229,7 @@ export function createAccessGrantHandlers(options: {
     if (!page) return invalid(res, 'Access grant list query is invalid.')
     try {
       noStore(res)
-      sendJSON(res, 200, options.grants.listCurrentForOwner(page, clock()))
+      sendJSON(res, 200, await options.grants.listCurrentForOwner(page, clock()))
     } catch (error) {
       handleStoreError(res, error, null)
     }
@@ -254,27 +256,27 @@ export function createAccessGrantHandlers(options: {
       key,
     }
     const input = { grantId, expectedRevision: parsed.data.expectedRevision }
-    const claim = options.idempotency.claim({ ...claimKey, input })
+    const claim = await options.idempotency.claim({ ...claimKey, input })
     if (claim.kind === 'replay') return replay(res, claim.statusCode, claim.result)
     if (claim.kind !== 'claimed') return replayFailure(res, claim.kind)
-    const current = options.grants.getCurrentForOwner(grantId)
-    const source = options.grants.getSourceIdentityForOwner(grantId)
+    const current = await options.grants.getCurrentForOwner(grantId)
+    const source = await options.grants.getSourceIdentityForOwner(grantId)
     if (!current || !source) {
-      options.idempotency.abandon(claimKey)
+      await options.idempotency.abandon(claimKey)
       return grantNotFound(res)
     }
     try {
-      options.idempotency.linkSourceMutation(
+      await options.idempotency.linkSourceMutation(
         claim.recordId, source.sourceId, 'access_grant', clock(),
       )
     } catch {
-      options.idempotency.markIndeterminate(claimKey)
+      await options.idempotency.markIndeterminate(claimKey)
       return indeterminate(res)
     }
 
     const acceptedAt = clock()
     try {
-      const revoked = options.grants.revoke({
+      const revoked = await options.grants.revoke({
         grantId,
         workspaceId: source.workspaceId,
         profileId: source.profileId,
@@ -282,17 +284,17 @@ export function createAccessGrantHandlers(options: {
       }, acceptedAt)
       const receipt = grantReceipt(revoked, 'revoked', acceptedAt)
       try {
-        options.idempotency.complete({
+        await options.idempotency.complete({
           ...claimKey, statusCode: 200, result: receipt,
         }, acceptedAt)
       } catch {
-        options.idempotency.markIndeterminate(claimKey)
+        await options.idempotency.markIndeterminate(claimKey)
         return indeterminate(res)
       }
       noStore(res)
       sendJSON(res, 200, receipt)
     } catch (error) {
-      options.idempotency.abandon(claimKey)
+      await options.idempotency.abandon(claimKey)
       handleStoreError(res, error, current)
     }
   }

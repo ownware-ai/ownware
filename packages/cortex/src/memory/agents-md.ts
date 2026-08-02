@@ -23,7 +23,7 @@
  * in isolation.
  */
 
-import type { SqliteMemoryStore } from './store.js'
+import type { MemoryRepository } from '../storage/platform-repositories.js'
 import type { Memory, MemoryKind } from './schema.js'
 import { MAX_MEMORY_CONTENT_CHARS } from './schema.js'
 
@@ -58,17 +58,17 @@ export function parseAgentsMd(md: string | null | undefined): ParsedAgentsBullet
  *
  * Returns the inserted Memory[].
  */
-export function seedFromAgentsMd(
-  store: SqliteMemoryStore,
+export async function seedFromAgentsMd(
+  store: MemoryRepository,
   profileId: string,
   md: string | null | undefined,
-): Memory[] {
+): Promise<Memory[]> {
   const bullets = parseAgentsMd(md)
   if (bullets.length === 0) return []
   const created: Memory[] = []
   for (const b of bullets) {
     created.push(
-      store.create({
+      await store.create({
         profileId,
         content: b.text,
         kind: 'fact' as MemoryKind,

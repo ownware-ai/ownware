@@ -12,7 +12,6 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { statSync } from 'node:fs'
 import { sendJSON } from '../router.js'
 import type { GatewayState } from '../state.js'
 import type { DashboardRange } from '../types.js'
@@ -48,19 +47,19 @@ export function createDashboardHandlers(state: GatewayState) {
 
   // GET /api/v1/dashboard — backward-compat aggregated stats
   async function getDashboard(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    sendJSON(res, 200, state.getDashboardStats())
+    sendJSON(res, 200, await state.getDashboardStats())
   }
 
   // GET /api/v1/dashboard/kpis?range=7d
   async function getKPIs(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const range = parseRange(req)
-    sendJSON(res, 200, state.getKPIs(range))
+    sendJSON(res, 200, await state.getKPIs(range))
   }
 
   // GET /api/v1/dashboard/usage-chart?range=7d
   async function getUsageChart(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const range = parseRange(req)
-    const buckets = state.getUsageTimeSeries(range)
+    const buckets = await state.getUsageTimeSeries(range)
 
     let peakTokens = 0
     let peakCost = 0
@@ -87,28 +86,21 @@ export function createDashboardHandlers(state: GatewayState) {
 
   // GET /api/v1/dashboard/profile-breakdown
   async function getProfileBreakdown(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    sendJSON(res, 200, state.getProfileBreakdown())
+    sendJSON(res, 200, await state.getProfileBreakdown())
   }
 
   // GET /api/v1/dashboard/recent-activity?limit=20
   async function getRecentActivity(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const limit = parseLimit(req, DEFAULT_ACTIVITY_LIMIT, MAX_ACTIVITY_LIMIT)
-    sendJSON(res, 200, state.getRecentActivity(limit))
+    sendJSON(res, 200, await state.getRecentActivity(limit))
   }
 
   // GET /api/v1/storage/stats
   async function getStorageStats(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const dbStats = state.getStorageStats()
-    let dbSizeBytes = 0
-    try {
-      const stat = statSync(state.dbPath)
-      dbSizeBytes = stat.size
-    } catch {
-      // DB path might not be readable (shouldn't happen)
-    }
+    const dbStats = await state.getStorageStats()
 
     sendJSON(res, 200, {
-      dbSizeBytes,
+      dbSizeBytes: dbStats.databaseSizeBytes,
       threadCount: dbStats.threadCount,
       messageCount: dbStats.messageCount,
       usageRecordCount: dbStats.usageRecordCount,
@@ -126,7 +118,7 @@ export function createDashboardHandlers(state: GatewayState) {
 
   // POST /api/v1/data/export
   async function exportData(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const data = state.exportAllData()
+    const data = await state.exportAllData()
     sendJSON(res, 200, {
       ...data,
       exportedAt: new Date().toISOString(),

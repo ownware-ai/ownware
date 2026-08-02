@@ -51,9 +51,9 @@ describe('Journey: 10 Settings Persistence', () => {
     expect(r.body['appearance']?.['fontSize']).toBe('14')
   })
 
-  it('Step 5: Settings persist via direct DB read', () => {
-    const theme = gw.state.getSetting('appearance.theme')
-    const fontSize = gw.state.getSetting('appearance.fontSize')
+  it('Step 5: Settings persist via direct DB read', async () => {
+    const theme = await gw.state.getSetting('appearance.theme')
+    const fontSize = await gw.state.getSetting('appearance.fontSize')
     expect(theme?.value).toBe('light')
     expect(fontSize?.value).toBe('14')
   })

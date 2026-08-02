@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import {
-  AccessGrantStore,
   type AccessConsent,
   type PreparedTextReadTarget,
 } from './access-grant-store.js'
+import type { AccessGrantRepository } from '../storage/security-repositories.js'
 import {
   AccessGrantEvaluator,
   type AccessEvaluationContext,
@@ -80,7 +80,7 @@ export class ProtectedSourceSearchError extends Error {
 
 export class ProtectedSourceSearchService {
   constructor(
-    private readonly grants: AccessGrantStore,
+    private readonly grants: AccessGrantRepository,
     private readonly evaluator: AccessGrantEvaluator,
     private readonly bytes: SourceByteStore,
     private readonly cache: EvidenceSearchCache,
@@ -90,9 +90,9 @@ export class ProtectedSourceSearchService {
 
   async search(input: ProtectedSourceSearchInput): Promise<ProtectedSourceSearchResult> {
     validateSearch(input)
-    const before = this.lookup(input)
+    const before = await this.lookup(input)
     const beforeAuthorization = before
-      ? this.authorize(input, before, this.clock()) : null
+      ? await this.authorize(input, before, this.clock()) : null
     if (!before || !beforeAuthorization) throw unavailable()
     const key = cacheKey(input, before, beforeAuthorization)
     const candidate = this.cache.get(key)
@@ -109,9 +109,9 @@ export class ProtectedSourceSearchService {
         }
         throw unavailable()
       }
-      const after = this.lookup(input)
+      const after = await this.lookup(input)
       const afterAuthorization = after
-        ? this.authorize(input, after, this.clock()) : null
+        ? await this.authorize(input, after, this.clock()) : null
       if (!after || !afterAuthorization || !sameTarget(before, after) ||
           !sameAuthorization(beforeAuthorization, afterAuthorization)) throw unavailable()
       return candidate
@@ -138,10 +138,10 @@ export class ProtectedSourceSearchService {
       throw unavailable()
     }
 
-    const after = this.lookup(input)
+    const after = await this.lookup(input)
     const observedAt = this.clock()
     const afterAuthorization = after
-      ? this.authorize(input, after, observedAt) : null
+      ? await this.authorize(input, after, observedAt) : null
     if (!after || !afterAuthorization || !sameTarget(before, after) ||
         !sameAuthorization(beforeAuthorization, afterAuthorization)) throw unavailable()
 
@@ -171,9 +171,11 @@ export class ProtectedSourceSearchService {
     return output
   }
 
-  private lookup(input: ProtectedSourceSearchInput): PreparedTextReadTarget | null {
+  private async lookup(
+    input: ProtectedSourceSearchInput,
+  ): Promise<PreparedTextReadTarget | null> {
     try {
-      return this.grants.getPreparedTextReadTargetScoped(
+      return await this.grants.getPreparedTextReadTargetScoped(
         input.workspaceId, input.profileId, input.resourceId,
       )
     } catch {
@@ -181,18 +183,18 @@ export class ProtectedSourceSearchService {
     }
   }
 
-  private authorize(
+  private async authorize(
     input: ProtectedSourceSearchInput,
     target: PreparedTextReadTarget,
     now: number,
-  ): AllowedAccessEvaluation | null {
+  ): Promise<AllowedAccessEvaluation | null> {
     let hardFloor: AccessEvaluationContext['hardFloor']
     try {
       hardFloor = this.evaluateHardFloor(policyContext(input, target))
     } catch {
       return null
     }
-    const evaluation = this.evaluator.evaluate({
+    const evaluation = await this.evaluator.evaluate({
       workspaceId: input.workspaceId,
       profileId: input.profileId,
       subjectId: input.subjectId,

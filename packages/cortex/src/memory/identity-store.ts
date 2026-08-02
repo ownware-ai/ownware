@@ -11,7 +11,7 @@
  * branching on existence.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import { type UserIdentity, type UpdateUserIdentityRequest } from './schema.js'
 import type { MemoryEventBus } from './event-bus.js'
 
@@ -52,10 +52,10 @@ function rowToIdentity(row: IdentityRow): UserIdentity {
 }
 
 export class SqliteUserIdentityStore {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
   private readonly bus: MemoryEventBus | null
 
-  constructor(db: Database.Database, bus: MemoryEventBus | null = null) {
+  constructor(db: SqliteDatabase, bus: MemoryEventBus | null = null) {
     this.db = db
     this.bus = bus
   }

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../../storage/sqlite-driver.js'
 import {
   parseCodexThreadReference,
   type CodexThreadReference,
@@ -128,7 +128,7 @@ function writeValues(reference: CodexThreadReference): readonly unknown[] {
  * turn an indeterminate outcome back into a resumable thread.
  */
 export class CodexThreadReferenceStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   load(localThreadId: string): CodexThreadReference | undefined {
     try {

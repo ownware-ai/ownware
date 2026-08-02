@@ -44,6 +44,7 @@ src/
 ├── connector/            # Connectors: builtin / MCP / Composio, credentials vault
 ├── credential/           # Runtime credential handling (.env import, redaction)
 ├── gateway/              # HTTP/2 gateway: handlers, db, SSE, session runner
+├── storage/              # Adapter contracts/lifecycle, logical schema, codecs, transfer preflight
 ├── memory/               # DB-backed memory with approval gating
 ├── permissions/          # Permission store + zones
 ├── schedules/            # Cron-style proactive schedules
@@ -63,7 +64,226 @@ src/
 | `profile/context.ts` | System prompt context fragments (git, os, date, project) | Adding new context types |
 | `profile/hooks.ts` | Compiles `agent.json` `hooks` into the engine `HookRuntime` + shared `ReminderInjector`. Loud-or-dead validation at assembly; observe actions (`log`/`webhook`/`save_json`) never block; `approve` (onToolCall only, optional `tools` globs) PAUSES the run on the injected `requestHookApproval` channel — the gateway wires it to the thread's permission HITL, so the decision arrives from the web UI, terminal chat, or a messaging channel via `POST /threads/:id/resume`; no channel wired → fail-closed deny; `command` actions are operator-gated (`OWNWARE_ALLOW_COMMAND_HOOKS=1`, default OFF — a downloaded profile must never mean shell execution); `OWNWARE_DISABLE_HOOKS=1` kill switch; `OWNWARE_HOOK_WEBHOOK_ALLOWLIST` narrows egress; payloads scrubbed via the credential redactor. Session wiring: pass BOTH `hookRuntime` and `reminderInjector` from `AssembledAgent`. | Adding hook actions/events or changing the trust policy |
 | `gateway/types.ts` | HTTP wire format types (Thread, Profile, etc.) | Changing the gateway API |
-| `gateway/state.ts` | Thread/session state over SQLite | Adding persistence backends |
+| `gateway/state.ts` | Composes adapter repositories with process-local sessions/runtimes | Adding persistence backends or changing state ownership |
+| `gateway/db/schema.ts` + `migration-safety.ts` | Immutable SQLite migration manifest, exact applied-history validation, snapshots and recovery | Adding a migration or changing database startup safety |
+| `storage/contracts.ts` + `sqlite-adapter.ts` | Async adapter lifecycle, guarded repository/transaction scopes, savepoints and typed operational failures | Changing storage startup, shutdown or transaction ownership |
+| `storage/core-repositories.ts` + `sqlite-core-repositories.ts` | Backend-neutral async domain ports for threads, messages, usage and agent events, with the SQLite implementation | Changing durable core reads/writes or adding a storage backend |
+| `storage/security-repositories.ts` + `sqlite-security-repositories.ts` | Backend-neutral async ports for credentials, grants, principals, runs, permissions, idempotency, refresh leases and runtime thread references | Changing security/run authority persistence or adding a storage backend |
+| `storage/source-repositories.ts` + `sqlite-source-repositories.ts` | Backend-neutral async ports for source registration, uploads, quotas, source jobs, Data Views and deletion, with the SQLite implementation | Changing durable source authority or adding a storage backend |
+| `storage/platform-repositories.ts` + `sqlite-platform-repositories.ts` | Backend-neutral async ports for connectors, channels, schedules, approvals, tasks, memory, candidates and teams, with the SQLite implementation | Changing remaining platform persistence or adding a storage backend |
+| `storage/logical-schema.ts` + `value-codec.ts` | Exact live-schema classification and driver-neutral durable value normalization | Adding/changing a stored column or adapter value mapping |
+| `storage/migration-manifest.ts` + `postgresql-migrations.ts` | Shared post-baseline migration identities plus immutable PostgreSQL dialect SQL, fingerprints and semantic postconditions | Adding a logical migration after the PostgreSQL baseline or changing migration certification |
+| `storage/sqlite-transfer-preflight.ts` + `canonical-storage-digest.ts` | Read-only exact SQLite source preflight plus bounded, typed, content-free table/database receipts | Building or changing cross-adapter transfer validation |
+| `storage/postgresql-transfer-preflight.ts` + `postgresql-catalog-certification.ts` | Read-only target identity/ownership/emptiness/privilege classification and exact behavioral catalog receipt | Changing transfer target admission or PostgreSQL schema certification |
+| `storage/postgresql-canonical-snapshot.ts` | Bounded canonical read of all transferable PostgreSQL tables in one repeatable-read snapshot | Changing post-copy equality verification |
+| `storage/sqlite-to-postgresql-transfer.ts` | Offline SQLite writer fence, transactionally bounded copy into one certified empty PostgreSQL target, and pre/post-commit canonical equality verification; it never selects the target | Changing transfer execution, failure states or explicit-cutover evidence |
+
+### SQLite migration identity
+
+- `_migrations` is authoritative; `PRAGMA user_version` is a diagnostic mirror.
+- Applied rows must be the exact contiguous version/name prefix of the compiled
+  manifest. Migration 82 introduces nullable fingerprints: legacy rows remain
+  name-validated because their historical SQL cannot be proven retroactively;
+  migration 82 and every later row must match the exact compiled fingerprint.
+- Never edit an applied migration definition. Add a new migration. Never
+  “repair” a divergent database by renaming history rows to look canonical.
+- Identity refusal happens before snapshot or schema/application writes and
+  uses a content-free support error. Tests use disposable databases only.
+
+### PostgreSQL migration identity
+
+- PostgreSQL begins with one exact generated baseline at logical version 82.
+  Every later schema change has one shared logical version/name plus separate
+  immutable SQLite and PostgreSQL implementations; omission or disagreement is
+  a manifest failure, not an adapter fallback.
+- Applied history must be the exact contiguous compiled prefix. PostgreSQL
+  fingerprints the exact dialect SQL, applies the complete pending suffix and
+  its receipts inside one transaction under the fixed advisory migration lock,
+  and certifies both each new effect and the exact current schema before commit.
+- A coherent next version from a newer binary is reported separately from a
+  malformed, gapped or divergent history. Neither case is repaired or rewritten.
+  Health is ready only when the compiled head is also the durable history head.
+- Compatibility tests may supply an internal old/new manifest directly to the
+  adapter. This is not a public configuration field and never permits callers
+  to supply migration SQL through `GatewayOptions`.
+- Migration 83 adds the internal per-thread `messages.message_seq` authority.
+  Repository `add` assigns it transactionally at durable acceptance; `list`,
+  hydrate, export and newest-message patching use it. Caller timestamps remain
+  display/event time and opaque random IDs remain identity only—neither may be
+  used to infer conversation order. Legacy rows retain their previously
+  observable `(created_at, id)` order; that backfill is deterministic
+  preservation, not a claim to recover unknowable historical causality.
+
+### Storage value boundary
+
+- The logical manifest is pinned to the exact fresh live schema. A column add,
+  removal, rename or declared-type change fails certification until its meaning
+  is classified and tested.
+- PostgreSQL-shaped `BIGINT` strings, booleans, timestamps and JSON must pass
+  through the shared codecs before entering domain code. Raw driver values are
+  not domain values.
+- SQLite transfer validation inspects `typeof(column)` in addition to declared
+  affinity. Read integers in exact/safe-integer mode; never validate after a
+  driver may already have rounded int64 data.
+- Transfer errors contain stable reason codes plus certified table/column/PK
+  names and deterministic row ordinal only—never primary-key values or stored
+  customer content.
+- A SQLite preflight receipt proves one read-only transaction and any source
+  change it actually observes; it does not prove that writers are stopped and
+  never authorizes target writes. The offline transfer must establish its own
+  writer fence/fixed source snapshot, repeat the receipt comparison, and recheck
+  target emptiness/ownership inside the transfer transaction.
+- Offline transfer requires the earlier exact source and target receipts. It
+  holds a SQLite `BEGIN IMMEDIATE` fence from source revalidation through target
+  commit and verification, and it always rolls that source transaction back.
+- Target copy runs in one PostgreSQL `SERIALIZABLE READ WRITE` transaction under
+  the transfer advisory lock plus `ACCESS EXCLUSIVE` locks on every business
+  table. Ownership, catalog identity and exact emptiness are revalidated after
+  those locks; transfer never truncates, adopts or resumes a non-empty target.
+- Rows are read in deterministic primary-key order and copied in bounded batches
+  through the strict logical codecs. Foreign-key order comes from the certified
+  target catalog, deferrable constraints are checked before commit, and the full
+  canonical source/target receipt must match both before and after commit.
+- Transfer success is only evidence that a committed verified target is ready
+  for an explicit operator cutover. It never changes gateway configuration,
+  starts the target or makes PostgreSQL authoritative; unchanged SQLite remains
+  the rollback source until the target accepts runtime writes.
+- Cancellation and confirmed failures roll the entire empty target transaction
+  back so the exact transfer can restart. Ambiguous commit/rollback outcomes
+  remain explicit uncertainty that requires a fresh authoritative inspection;
+  never present them as success or automatically repair, truncate or adopt them.
+- Canonical table/database digests are equality evidence, not harmless telemetry:
+  low-entropy stored values can make them dictionary oracles. Keep receipts
+  local with restrictive permissions; never emit them to normal logs, HTTP/SSE,
+  analytics or support reports. Report only stable failure categories there.
+- PostgreSQL target certification compares authoritative catalog definitions,
+  not object counts or names alone: column defaults, every constraint, exact
+  indexes/predicates/operator classes, trigger events, function bodies and the
+  identity-sequence configuration are part of the current receipt. Unknown or
+  version-divergent catalog output is non-success.
+
+### Storage lifecycle and transactions
+
+- SQLite remains the configuration-free default. `GatewayState` still opens it
+  eagerly for pre-1.0 constructor compatibility, while gateway startup awaits
+  the selected adapter lifecycle before any listener can become ready.
+  PostgreSQL is explicit, tenant-owned and never a fallback after SQLite or
+  PostgreSQL startup failure.
+- The SQLite driver is synchronous internally. Its async adapter surface
+  serializes transaction callbacks; it does not make SQLite work non-blocking
+  and never passes an async callback to `better-sqlite3.transaction()`.
+- Root and transaction repository implementations must call their supplied
+  `assertActive` guard at every operation boundary. Transaction scopes expire
+  after commit/rollback. Nested roots are rejected; intentional nesting uses
+  the transaction's savepoint API.
+- Arbitrary callbacks are never replayed. Adapter-owned failures are
+  content-free and typed; only a SQLite busy/locked failure before callback
+  invocation is marked retryable, and callers still need an explicitly
+  idempotent boundary before retrying.
+- `OwnwareGateway.start()` and `stop()` share their in-flight transitions.
+  Storage closes last on success, cancellation, listen failure and ordinary
+  shutdown. A stopped gateway instance is terminal; construct a new instance
+  to reopen the same database.
+- `storage/sqlite-driver.ts` is the only production module allowed to import
+  `better-sqlite3`. SQLite physical repositories import its handle aliases;
+  gateway/domain callers use async repository ports. The AST architecture test
+  enforces the single dependency edge, quarantined raw compatibility accessors
+  and adapter-only `CortexDatabase` construction.
+- SQLite history inspection, snapshot, migration and corruption recovery run
+  under the adapter-owned migration lock database. The uncommitted write is
+  the cross-process lock; a process crash releases it through SQLite/the OS.
+  This prevents competing startup restores but does not claim that two gateway
+  processes may share one SQLite database for ordinary runtime work.
+- `GatewayState.rawDbHandle`, `GatewayState.rawDatabase` and
+  `CortexDatabase.rawMainHandle` are deprecated SQLite-only compatibility
+  surfaces. Do not use them in production code and do not add an equivalent to
+  another adapter; removal requires a declared major release.
+
+### Core storage repositories and event ordering
+
+- Gateway production paths access threads, messages, usage and agent events
+  through the async interfaces in `storage/core-repositories.ts`. New backends
+  implement those ports directly; do not expose a driver or SQL dialect to
+  handlers, runners or public gateway types.
+- Every SQLite repository operation checks its active scope and converts driver
+  failures to content-free `StorageRepositoryError` metadata. Never attach the
+  raw driver error as a cause or copy its message: either can contain SQL,
+  filesystem paths or customer data and later reach a log.
+- `EventIngestor` is the ordering boundary for live agent events. It serializes
+  each stream and awaits the durable append before publishing to the live bus.
+  An append failure must reject the ingest, publish nothing and leave the next
+  successful event with the next contiguous durable sequence.
+- Deterministic repository ordering needs an explicit final tie-breaker. Shared
+  contract tests must cover null fidelity, ordering, pagination, reopen/replay
+  and an unfamiliar valid value—not only the examples currently in fixtures.
+
+### Security storage repositories and authority
+
+- Gateway production paths access credentials/audit/spend/import, delegated
+  principals, thread bindings, grants, runs, permission requests, idempotency,
+  OAuth refresh leases and runtime thread references through
+  `storage/security-repositories.ts`. Construct their SQLite stores only in the
+  SQLite repository factory; handlers, runners, resolvers and CLI commands do
+  not receive `rawDbHandle` for these domains.
+- Credential encrypted-value revision plus status is the rotation CAS. Refresh
+  ownership uses owner plus generation; idempotency mutations use the current
+  lease owner; permission decisions conditionally match run, request, operation
+  hash and pending status. A stale writer must visibly lose—it never becomes an
+  idempotent-looking success.
+- Delegated thread creation and its principal binding are one adapter-owned
+  write transaction. Failure rolls back the thread and workspace/profile count;
+  a delegated caller must never observe an unbound thread.
+- Audit append and credential `lastUsedAt` metadata are separate durable
+  operations. The audit append is required before a resolver returns a handle;
+  the metadata update is best-effort. Do not claim they are one transaction.
+- Driver errors are discarded at the repository boundary. Secret-canary tests
+  must cover thrown errors, logs and durable rows; never attach a raw error as a
+  cause. Shared security repository contracts must run unchanged for every
+  adapter and cover independent-owner contention plus reopen continuity.
+
+### Source storage repositories and effects
+
+- Gateway production paths access source registrations, upload sessions,
+  quotas, source jobs, Data View metadata and deletion state through
+  `storage/source-repositories.ts`. Construct their SQLite stores and shared
+  quota policy only in the SQLite repository factory; handlers and workers do
+  not receive a raw database handle for these domains.
+- Source bytes and Data View artifacts remain filesystem effects behind
+  `SourceByteStore`; database and filesystem mutation are not one atomic
+  transaction. Preserve the explicit ordering, ownership fences, rollback and
+  restart reconciliation at each workflow boundary rather than claiming
+  cross-resource atomicity.
+- Job, Data View and deletion mutations conditionally match their current
+  claim owner/token. Lease heartbeats are non-overlapping and failure-contained,
+  and stale owners must visibly lose after expiry or takeover.
+- `uploads.getScoped` is a write operation because it may durably expire a live
+  session. Repository operation classifications describe effects, not method
+  name conventions.
+- Shared source repository contracts must cover independent-adapter quota and
+  claim contention, stale-owner rejection, public Data View manifests,
+  deletion cancellation, thaw and restart continuity. A real gateway journey
+  must additionally prove uploaded bytes, delegated field/row enforcement,
+  revocation and physical deletion.
+
+### Platform storage repositories and coordination
+
+- Gateway production paths access connector connections, channel jobs and
+  receipts, schedules and held approvals, thread tasks, memory and proposals,
+  profile candidates, and team boards/runs/tasks/leases through
+  `storage/platform-repositories.ts`. Construct their SQLite stores only in the
+  SQLite repository factory; handlers, workers and schedulers receive async
+  ports rather than a raw database handle.
+- Await the durable transition before publishing an invalidation, dispatching
+  a dependent effect or returning success. Memory proposal acceptance publishes
+  both memory and proposal events only after their shared transaction commits.
+- Channel claim tokens/checkpoints, candidate expected-active/revision checks,
+  schedule cursor/run coupling, team task ordinals/resource leases and approval
+  pending decisions are authority predicates. A stale/conflicting writer must
+  return a visible non-success and cannot be treated as idempotent completion.
+- Shared platform repository contracts run unchanged for every adapter and
+  cover independent-connection contention plus reopen continuity. The real
+  gateway lifecycle journey supplements those contracts with public HTTP reads;
+  it does not replace their internal ownership/fencing assertions.
 
 ## Profile Directory Structure
 

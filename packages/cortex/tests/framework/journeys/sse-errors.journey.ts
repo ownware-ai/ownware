@@ -30,7 +30,7 @@ describe.skipIf(!HAS_KEY)('SSE Pattern 12: Error recovery', () => {
     })
     sandbox = join(gw.tmpDir, 'error-sandbox')
     await mkdir(sandbox, { recursive: true })
-    const ws = gw.state.createWorkspace(sandbox, 'error-sandbox')
+    const ws = await gw.state.createWorkspace(sandbox, 'error-sandbox')
     wsId = ws.id
   }, 30_000)
 
@@ -39,7 +39,7 @@ describe.skipIf(!HAS_KEY)('SSE Pattern 12: Error recovery', () => {
   })
 
   it('reading non-existent file → tool error → LLM acknowledges gracefully', async () => {
-    const thread = gw.state.createThread('coder', 'error-recovery', wsId)
+    const thread = await gw.state.createThread('coder', 'error-recovery', wsId)
     const missingFile = join(sandbox, 'this-file-does-not-exist.txt')
 
     const { events } = await gw.client.sseRaw('/api/v1/run', {

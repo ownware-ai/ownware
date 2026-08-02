@@ -28,7 +28,7 @@ export interface RememberHook {
    * Throws on validation failure — the tool surfaces the error message
    * to the model verbatim.
    */
-  propose(input: { content: string; kind?: MemoryKind }): { proposalId: string }
+  propose(input: { content: string; kind?: MemoryKind }): Promise<{ proposalId: string }>
 }
 
 export interface RememberToolDeps {
@@ -91,7 +91,7 @@ export function createRememberTool(deps: RememberToolDeps): Tool {
       },
       required: ['content'],
     },
-    execute(input) {
+    async execute(input) {
       const parsed = RememberInputSchema.safeParse(input)
       if (!parsed.success) {
         const issue = parsed.error.issues[0]
@@ -105,7 +105,7 @@ export function createRememberTool(deps: RememberToolDeps): Tool {
       }
 
       try {
-        const { proposalId } = deps.hook.propose({
+        const { proposalId } = await deps.hook.propose({
           content: parsed.data.content.trim(),
           kind: parsed.data.kind,
         })

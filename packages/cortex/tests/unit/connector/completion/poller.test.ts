@@ -44,7 +44,7 @@ describe('ConnectionPoller', () => {
       entityId: 'cortex-default-user',
       metadata: { sessionHandle: 'connection-session.11111111-1111-4111-8111-111111111111' },
     })
-    poller.register('c', mkListener(async () => ({ status: 'ready' })))
+    await poller.register('c', mkListener(async () => ({ status: 'ready' })))
     await vi.advanceTimersByTimeAsync(150)
     expect(store.findByConnectionId('c')?.status).toBe('ready')
     expect(store.findByConnectionId('c')?.metadata).toBeNull()
@@ -57,7 +57,7 @@ describe('ConnectionPoller', () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 100, backoffMultiplier: 2, maxDelayMs: 5_000, maxDurationMs: 60_000 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
     let attempt = 0
-    poller.register('c', mkListener(async () => {
+    await poller.register('c', mkListener(async () => {
       attempt++
       return attempt < 3 ? { status: 'pending' } : { status: 'ready' }
     }))
@@ -71,7 +71,7 @@ describe('ConnectionPoller', () => {
   it('failed result marks row with reason', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 50, maxDurationMs: 60_000 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    poller.register('c', mkListener(async () => ({ status: 'failed', errorReason: 'user denied' })))
+    await poller.register('c', mkListener(async () => ({ status: 'failed', errorReason: 'user denied' })))
     await vi.advanceTimersByTimeAsync(60)
     expect(store.findByConnectionId('c')?.status).toBe('failed')
     expect(store.findByConnectionId('c')?.errorReason).toBe('user denied')
@@ -81,7 +81,7 @@ describe('ConnectionPoller', () => {
   it('listener throw is caught, row is marked failed, poller does not crash', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 50, maxDurationMs: 60_000 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    poller.register('c', mkListener(async () => { throw new Error('boom') }))
+    await poller.register('c', mkListener(async () => { throw new Error('boom') }))
     await vi.advanceTimersByTimeAsync(60)
     const row = store.findByConnectionId('c')
     expect(row?.status).toBe('failed')
@@ -93,42 +93,42 @@ describe('ConnectionPoller', () => {
   it('maxDurationMs elapsed → marked expired', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 50, maxDelayMs: 50, maxDurationMs: 200 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    poller.register('c', mkListener(async () => ({ status: 'pending' })))
+    await poller.register('c', mkListener(async () => ({ status: 'pending' })))
     // Advance well past budget.
     await vi.advanceTimersByTimeAsync(500)
     expect(store.findByConnectionId('c')?.status).toBe('expired')
   })
 
-  it('register is idempotent for an already-active id', () => {
+  it('register is idempotent for an already-active id', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 10_000 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    poller.register('c', mkListener(async () => ({ status: 'pending' })))
-    poller.register('c', mkListener(async () => ({ status: 'pending' })))
+    await poller.register('c', mkListener(async () => ({ status: 'pending' })))
+    await poller.register('c', mkListener(async () => ({ status: 'pending' })))
     expect(poller.activeCount).toBe(1)
   })
 
   it('cancel aborts and removes state', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 1000 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    poller.register('c', mkListener(async () => ({ status: 'pending' })))
+    await poller.register('c', mkListener(async () => ({ status: 'pending' })))
     expect(poller.activeCount).toBe(1)
     poller.cancel('c')
     expect(poller.activeCount).toBe(0)
     expect(poller.isActive('c')).toBe(false)
   })
 
-  it('register on unknown connectionId throws', () => {
+  it('register on unknown connectionId throws', async () => {
     const poller = new ConnectionPoller(store, bus)
-    expect(() =>
+    await expect(
       poller.register('ghost', mkListener(async () => ({ status: 'pending' }))),
-    ).toThrow(/unknown connectionId/)
+    ).rejects.toThrow(/unknown connectionId/)
   })
 
-  it('register on a ready row is a no-op', () => {
+  it('register on a ready row is a no-op', async () => {
     const poller = new ConnectionPoller(store, bus, { initialDelayMs: 1000 })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
     store.markReady({ connectionId: 'c' })
-    poller.register('c', mkListener(async () => ({ status: 'pending' })))
+    await poller.register('c', mkListener(async () => ({ status: 'pending' })))
     expect(poller.activeCount).toBe(0)
   })
 
@@ -141,7 +141,7 @@ describe('ConnectionPoller', () => {
     })
     store.upsertPending({ connectionId: 'c', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
     let attempts = 0
-    poller.register('c', mkListener(async () => {
+    await poller.register('c', mkListener(async () => {
       attempts++
       return { status: 'pending' }
     }))
@@ -160,7 +160,7 @@ describe('ConnectionPoller', () => {
       entityId: 'cortex-default-user',
     })
     let release!: (result: ConnectionCheckResult) => void
-    poller.register('race', mkListener(() => new Promise((resolve) => { release = resolve })))
+    await poller.register('race', mkListener(() => new Promise((resolve) => { release = resolve })))
     await vi.advanceTimersByTimeAsync(10)
     store.markRevoked('race', 'owner revoked')
     release({ status: 'ready' })
@@ -193,7 +193,7 @@ describe('ConnectionPoller', () => {
       metadata: { sessionHandle: 'connection-session.22222222-2222-4222-8222-222222222222' },
     })
     let checks = 0
-    poller.register('cleanup', mkListener(async () => {
+    await poller.register('cleanup', mkListener(async () => {
       checks++
       return { status: 'ready' }
     }))

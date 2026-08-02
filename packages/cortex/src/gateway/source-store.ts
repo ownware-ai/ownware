@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import { SourceQuotaPolicy } from './source-quota-policy.js'
 
 export const SOURCE_KINDS = [
@@ -96,7 +96,7 @@ interface SourceRow {
 
 export class SourceStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
   ) {}
 

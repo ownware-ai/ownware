@@ -22,8 +22,8 @@ afterEach(async () => {
 })
 
 describe('ThreadPrincipalBindingStore', () => {
-  it('persists only a domain-separated digest and survives restart', () => {
-    const thread = state.createThread('mini')
+  it('persists only a domain-separated digest and survives restart', async () => {
+    const thread = await state.createThread('mini')
     const principalKey = 'delegated\0client-a\0workspace-a\0mini\0support\0web\0subject-a'
     const store = new ThreadPrincipalBindingStore(state.rawDbHandle)
 
@@ -43,8 +43,8 @@ describe('ThreadPrincipalBindingStore', () => {
     expect(new ThreadPrincipalBindingStore(state.rawDbHandle).allows(thread.id, principalKey)).toBe(true)
   })
 
-  it('is idempotent for the same authority and refuses rebinding', () => {
-    const thread = state.createThread('mini')
+  it('is idempotent for the same authority and refuses rebinding', async () => {
+    const thread = await state.createThread('mini')
     const store = new ThreadPrincipalBindingStore(state.rawDbHandle)
     expect(store.bind(thread.id, 'scope-a')).toBe(true)
     expect(store.bind(thread.id, 'scope-a')).toBe(true)

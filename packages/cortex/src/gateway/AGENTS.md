@@ -43,6 +43,13 @@ sub-agent cards, permissions, thinking, usage) is already denormalized
 into the assistant row by `session-runner.ts:accumulateEvent`. This is
 the durable-forever source.
 
+Message order comes from the storage-assigned per-thread `message_seq`,
+allocated inside the same transaction that accepts the row and updates the
+thread aggregate. `ThreadMessage.timestamp` is presentation/event time and can
+collide or move backwards; message IDs are opaque. Hydrate, message reads,
+portable export, and “newest matching message” logic must never reintroduce
+timestamp/ID ordering.
+
 ## Hydration contract (what `/hydrate` returns)
 
 ```ts

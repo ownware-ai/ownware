@@ -1,8 +1,8 @@
 import {
-  AccessGrantStore,
   type AccessConsent,
   type PreparedTextReadTarget,
 } from './access-grant-store.js'
+import type { AccessGrantRepository } from '../storage/security-repositories.js'
 import {
   AccessGrantEvaluator,
   type AccessEvaluationContext,
@@ -78,7 +78,7 @@ export class ProtectedSourceReadError extends Error {
 
 export class ProtectedSourceReadService {
   constructor(
-    private readonly grants: AccessGrantStore,
+    private readonly grants: AccessGrantRepository,
     private readonly evaluator: AccessGrantEvaluator,
     private readonly bytes: SourceByteStore,
     private readonly evaluateHardFloor: ProtectedSourceReadHardFloor,
@@ -87,12 +87,12 @@ export class ProtectedSourceReadService {
 
   async read(input: ProtectedSourceReadInput): Promise<ProtectedSourceReadResult> {
     validateRange(input.byteStart, input.byteEnd)
-    const before = this.lookup(input)
+    const before = await this.lookup(input)
     if (!before || input.byteEnd > before.expectedByteCount) {
       throw unavailable()
     }
     const beforeAt = this.clock()
-    if (!this.isAllowed(input, before, beforeAt)) throw unavailable()
+    if (!await this.isAllowed(input, before, beforeAt)) throw unavailable()
 
     let range: Awaited<ReturnType<SourceByteStore['readPlacedUtf8Range']>>
     try {
@@ -107,10 +107,10 @@ export class ProtectedSourceReadService {
       throw unavailable()
     }
 
-    const after = this.lookup(input)
+    const after = await this.lookup(input)
     const observedAt = this.clock()
     if (!after || !sameTarget(before, after) ||
-        !this.isAllowed(input, after, observedAt)) {
+        !await this.isAllowed(input, after, observedAt)) {
       throw unavailable()
     }
 
@@ -130,9 +130,11 @@ export class ProtectedSourceReadService {
     }
   }
 
-  private lookup(input: ProtectedSourceReadInput): PreparedTextReadTarget | null {
+  private async lookup(
+    input: ProtectedSourceReadInput,
+  ): Promise<PreparedTextReadTarget | null> {
     try {
-      return this.grants.getPreparedTextReadTargetScoped(
+      return await this.grants.getPreparedTextReadTargetScoped(
         input.workspaceId,
         input.profileId,
         input.resourceId,
@@ -142,18 +144,18 @@ export class ProtectedSourceReadService {
     }
   }
 
-  private isAllowed(
+  private async isAllowed(
     input: ProtectedSourceReadInput,
     target: PreparedTextReadTarget,
     now: number,
-  ): boolean {
+  ): Promise<boolean> {
     let hardFloor: AccessEvaluationContext['hardFloor']
     try {
       hardFloor = this.evaluateHardFloor(policyContext(input, target))
     } catch {
       return false
     }
-    return this.evaluator.evaluate({
+    return (await this.evaluator.evaluate({
       workspaceId: input.workspaceId,
       profileId: input.profileId,
       subjectId: input.subjectId,
@@ -168,7 +170,7 @@ export class ProtectedSourceReadService {
       autonomy: 'observe',
       permissionMode: input.permissionMode,
       hardFloor,
-    }, now).decision === 'allow'
+    }, now)).decision === 'allow'
   }
 }
 

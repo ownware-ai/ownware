@@ -25,6 +25,12 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['tests/setup/env.ts'],
     testTimeout: 30_000,
+    // PostgreSQL fixtures serialize CREATE/DROP DATABASE through one
+    // cluster-catalog lock. A wide full-suite run can therefore spend more
+    // than Vitest's 10 s hook default waiting behind other workers even when
+    // every individual lifecycle remains healthy. Keep hook and test bounds
+    // aligned; the fixture's own active-session leak deadline stays stricter.
+    hookTimeout: 30_000,
   },
   server: {
     fs: {

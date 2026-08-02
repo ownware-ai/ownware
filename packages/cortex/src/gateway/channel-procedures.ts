@@ -56,13 +56,13 @@ export interface ChannelProcedureContext {
    */
   readonly state: Record<string, unknown>
   /** Stream a work line (`✓ Checked the number · 2s`). */
-  workLine(title: string, detail?: string): void
+  workLine(title: string, detail?: string): Promise<void>
   /** Append a permanent receipt (see ChannelJobStore.appendReceipt). */
-  receipt(input: ProcedureReceiptInput): void
+  receipt(input: ProcedureReceiptInput): Promise<void>
   /** True when a cancel was requested — long steps should stop early. */
-  cancelRequested(): boolean
+  cancelRequested(): Promise<boolean>
   /** Extend the claim lease before/inside a slow provider call. */
-  renewLease(): boolean
+  renewLease(): Promise<boolean>
 }
 
 export interface ProcedureReceiptInput {

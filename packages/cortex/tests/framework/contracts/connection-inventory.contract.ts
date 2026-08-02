@@ -25,10 +25,10 @@ describe('Contract: owner connection inventory', () => {
 
   beforeAll(async () => {
     gateway = await createTestGateway({ disableAuth: false })
-    seedConnections(gateway)
-    const workspaceId = gateway.state.createWorkspace(
+    await seedConnections(gateway)
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir, 'Connection inventory contract',
-    ).id
+    )).id
     const delegation = await fetch(`${gateway.baseUrl}/api/v1/auth/delegations`, {
       method: 'POST',
       headers: ownerHeaders(gateway),
@@ -165,7 +165,7 @@ function ownerHeaders(gateway: TestGateway): Record<string, string> {
   }
 }
 
-function seedConnections(gateway: TestGateway): void {
+async function seedConnections(gateway: TestGateway): Promise<void> {
   const store = gateway.gateway.connectorConnections
   const entityId = InstallIdentity.resolve().id
   const seed = (
@@ -186,35 +186,35 @@ function seedConnections(gateway: TestGateway): void {
     vendorUserId: 'vendor-user-canary',
   })
 
-  seed('pending-internal-canary', 'calendar', 9_000_000)
+  await seed('pending-internal-canary', 'calendar', 9_000_000)
 
-  seed('vendor-account-canary', 'mail', 8_000_000)
-  store.markReady({ connectionId: 'vendor-account-canary', completedAt: 8_001_234 })
-  store.touchVerified('vendor-account-canary', 8_002_345)
+  await seed('vendor-account-canary', 'mail', 8_000_000)
+  await store.markReady({ connectionId: 'vendor-account-canary', completedAt: 8_001_234 })
+  await store.touchVerified('vendor-account-canary', 8_002_345)
 
-  seed('failed-internal-canary', 'crm', 7_000_000)
-  store.markFailed({
+  await seed('failed-internal-canary', 'crm', 7_000_000)
+  await store.markFailed({
     connectionId: 'failed-internal-canary',
     reason: 'raw-provider-error-canary',
     completedAt: 7_001_234,
   })
 
-  seed('expired-internal-canary', 'storage', 6_000_000)
-  store.markExpired('expired-internal-canary', 'raw-provider-error-canary')
+  await seed('expired-internal-canary', 'storage', 6_000_000)
+  await store.markExpired('expired-internal-canary', 'raw-provider-error-canary')
 
-  seed('unconfirmed-revoke-canary', 'billing', 5_000_000)
-  store.markReady({ connectionId: 'unconfirmed-revoke-canary', completedAt: 5_001_234 })
-  store.markRevoked(
+  await seed('unconfirmed-revoke-canary', 'billing', 5_000_000)
+  await store.markReady({ connectionId: 'unconfirmed-revoke-canary', completedAt: 5_001_234 })
+  await store.markRevoked(
     'unconfirmed-revoke-canary', 'raw-provider-error-canary', false,
   )
 
-  seed('logical-key-canary', 'figma-c4vrjq3w', 4_000_000, 'mcp')
-  store.markReady({ connectionId: 'logical-key-canary', completedAt: 4_001_234 })
+  await seed('logical-key-canary', 'figma-c4vrjq3w', 4_000_000, 'mcp')
+  await store.markReady({ connectionId: 'logical-key-canary', completedAt: 4_001_234 })
 
-  seed('older-failed-state', 'revoked-capability', 3_000_000)
-  store.markFailed({ connectionId: 'older-failed-state', reason: 'failed' })
-  seed('revoked-latest-state', 'revoked-capability', 3_100_000)
-  store.markRevoked('revoked-latest-state', 'owner revoked')
+  await seed('older-failed-state', 'revoked-capability', 3_000_000)
+  await store.markFailed({ connectionId: 'older-failed-state', reason: 'failed' })
+  await seed('revoked-latest-state', 'revoked-capability', 3_100_000)
+  await store.markRevoked('revoked-latest-state', 'owner revoked')
 
-  seed('foreign-row', 'install-identity-canary', 10_000_000, 'composio', 'foreign-entity')
+  await seed('foreign-row', 'install-identity-canary', 10_000_000, 'composio', 'foreign-entity')
 }

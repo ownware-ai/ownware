@@ -33,7 +33,7 @@ export function createActivityHandlers(state: GatewayState) {
     // 1. Running agents from in-memory state
     const runtimes = state.listActiveRuntimes()
     for (const { threadId } of runtimes) {
-      const thread = state.getThread(threadId)
+      const thread = await state.getThread(threadId)
       if (!thread) continue
 
       // Apply filters
@@ -55,7 +55,7 @@ export function createActivityHandlers(state: GatewayState) {
     }
 
     // 2. Recent threads from DB (completed/idle)
-    const dbThreads = state.listThreads(profileFilter, { limit: limit * 2 })
+    const dbThreads = await state.listThreads(profileFilter, { limit: limit * 2 })
     for (const thread of dbThreads.items) {
       // Skip if already in running list
       if (entries.some(e => e.id === thread.id)) continue

@@ -79,7 +79,7 @@ describe.skipIf(!HAS_KEY)('SSE Permissions (HITL)', () => {
       recordFixtures: true,
     })
     sandbox = await setupSandbox(gw.tmpDir)
-    const ws = gw.state.createWorkspace(sandbox, 'permission-sandbox')
+    const ws = await gw.state.createWorkspace(sandbox, 'permission-sandbox')
     wsId = ws.id
   }, 30_000)
 
@@ -90,7 +90,7 @@ describe.skipIf(!HAS_KEY)('SSE Permissions (HITL)', () => {
   // ── Pattern 8: HITL approve ────────────────────────────────────────
 
   it('Pattern 8: approve mid-stream → tool executes', async () => {
-    const thread = gw.state.createThread('coder', 'perm-approve', wsId)
+    const thread = await gw.state.createThread('coder', 'perm-approve', wsId)
 
     const result = await runWithResponder(
       gw,
@@ -127,7 +127,7 @@ describe.skipIf(!HAS_KEY)('SSE Permissions (HITL)', () => {
   // permission.request. The responder denies it, so the write is blocked.
 
   it('Pattern 9: deny mid-stream → write blocked', async () => {
-    const thread = gw.state.createThread('coder', 'perm-deny', wsId)
+    const thread = await gw.state.createThread('coder', 'perm-deny', wsId)
     const targetFile = join(sandbox, 'deny-target.txt')
 
     const result = await runWithResponder(
@@ -157,7 +157,7 @@ describe.skipIf(!HAS_KEY)('SSE Permissions (HITL)', () => {
   // ── Pattern 10: "always" → persistence ─────────────────────────────
 
   it('Pattern 10: "always" persists permission, second run skips prompt', async () => {
-    const thread1 = gw.state.createThread('coder', 'perm-always-1', wsId)
+    const thread1 = await gw.state.createThread('coder', 'perm-always-1', wsId)
 
     const r1 = await runWithResponder(
       gw,
@@ -175,7 +175,7 @@ describe.skipIf(!HAS_KEY)('SSE Permissions (HITL)', () => {
     })
 
     // Second run should not need permission for the same tool
-    const thread2 = gw.state.createThread('coder', 'perm-always-2', wsId)
+    const thread2 = await gw.state.createThread('coder', 'perm-always-2', wsId)
     let promptedAgain = 0
     const r2 = await runWithResponder(
       gw,
@@ -206,7 +206,7 @@ describe.skipIf(!HAS_KEY)('SSE Permissions (HITL)', () => {
   // with NO permission.request (not askable — permanently forbidden).
 
   it('Pattern 11: zone NEVER hard-blocks sensitive path writes', async () => {
-    const thread = gw.state.createThread('coder', 'perm-never', wsId)
+    const thread = await gw.state.createThread('coder', 'perm-never', wsId)
     const sensitiveTarget = join(sandbox, '.env')
 
     const result = await runWithResponder(

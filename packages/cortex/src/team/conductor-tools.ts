@@ -18,21 +18,21 @@ import {
   type TeamTask,
   type TeamTaskStatus,
 } from './schema.js'
-import type { TeamStore } from './store.js'
+import type { TeamRepository } from '../storage/platform-repositories.js'
 import { renderBoardForConductor } from './digest.js'
 
 export interface ConductorToolDeps {
-  readonly store: TeamStore
+  readonly store: TeamRepository
   readonly runId: string
   /** Fired after every successful board mutation — wires the scheduler. */
-  readonly onBoardChange: () => void
+  readonly onBoardChange: () => void | Promise<void>
 }
 
 /** Resolve a "T<seq>" reference (case-insensitive, "T3" or "3"). */
-function resolveTaskRef(store: TeamStore, runId: string, ref: string): TeamTask | null {
+async function resolveTaskRef(store: TeamRepository, runId: string, ref: string): Promise<TeamTask | null> {
   const match = /^[tT]?(\d+)$/.exec(ref.trim())
   if (!match) return null
-  return store.getTaskBySeq(runId, Number(match[1]))
+  return await store.getTaskBySeq(runId, Number(match[1]))
 }
 
 function err(content: string): { content: string; isError: true } {
@@ -110,32 +110,32 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
       }
       const input = parsed.data
 
-      const run = store.getRun(runId)
+      const run = await store.getRun(runId)
       if (!run) return err(`Team run "${runId}" not found — this is a kernel bug.`)
       if (run.status !== 'active') {
         return err(`This run is ${run.status}. The board is closed; no further writes.`)
       }
-      const team = store.getTeam(run.teamId)
+      const team = await store.getTeam(run.teamId)
       if (!team) return err(`Team "${run.teamId}" not found — this is a kernel bug.`)
       const memberSlugs = new Set(team.members.map((m) => m.slug))
 
       switch (input.action) {
         case 'set_goal': {
-          const existing = store.listTasks(runId).find((t) => t.kind === 'goal')
+          const existing = (await store.listTasks(runId)).find((t) => t.kind === 'goal')
           const brief = input.outOfScope
             ? `${input.brief}\n\nOut of scope: ${input.outOfScope}`
             : input.brief
           if (existing) {
-            store.updateTaskStructure(existing.id, {
+            await store.updateTaskStructure(existing.id, {
               title: input.title,
               brief,
               doneCriteria: input.doneCriteria,
               deliverables: input.deliverables,
             })
-            onBoardChange()
+            await onBoardChange()
             return ok(`Goal T${existing.seq} updated: "${input.title}".`)
           }
-          const goal = store.insertTask(runId, {
+          const goal = await store.insertTask(runId, {
             kind: 'goal',
             title: input.title,
             brief,
@@ -144,7 +144,7 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
             filedBy: 'conductor',
             status: 'active',
           })
-          onBoardChange()
+          await onBoardChange()
           return ok(`Goal written as T${goal.seq}: "${goal.title}". Now file the first wave of tasks.`)
         }
 
@@ -160,7 +160,7 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
             }
             for (const dep of t.dependsOn) {
               const isLocal = localIds.has(dep)
-              const existing = isLocal ? null : resolveTaskRef(store, runId, dep)
+              const existing = isLocal ? null : await resolveTaskRef(store, runId, dep)
               if (!isLocal && !existing) {
                 return err(`Task "${t.title}": dependency "${dep}" is neither a localId in this batch nor an existing "T<seq>".`)
               }
@@ -169,15 +169,22 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
           const filed: Array<{ localId: string; task: TeamTask }> = []
           const idByLocal = new Map<string, string>()
           for (const t of input.tasks) {
-            const dependsOn = t.dependsOn.map((dep) => {
+            const dependsOn: string[] = []
+            for (const dep of t.dependsOn) {
               const local = idByLocal.get(dep)
-              if (local) return local
-              const existing = resolveTaskRef(store, runId, dep)
-              if (existing) return existing.id
+              if (local) {
+                dependsOn.push(local)
+                continue
+              }
+              const existing = await resolveTaskRef(store, runId, dep)
+              if (existing) {
+                dependsOn.push(existing.id)
+                continue
+              }
               // Forward reference within the batch: defer resolution.
-              return `local:${dep}`
-            })
-            const task = store.insertTask(runId, {
+              dependsOn.push(`local:${dep}`)
+            }
+            const task = await store.insertTask(runId, {
               kind: 'work',
               title: t.title,
               brief: t.brief,
@@ -202,10 +209,10 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
                 if (!real) throw new Error(`Unresolved batch dependency "${d}" on T${task.seq}`)
                 return real
               })
-              store.updateTaskStructure(task.id, { dependsOn: resolved })
+              await store.updateTaskStructure(task.id, { dependsOn: resolved })
             }
           }
-          onBoardChange()
+          await onBoardChange()
           const lines = filed.map(
             ({ localId, task }) => `${localId} → T${task.seq} "${task.title}" (owner: ${task.owner})`,
           )
@@ -213,7 +220,7 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
         }
 
         case 'assign': {
-          const task = resolveTaskRef(store, runId, input.taskRef)
+          const task = await resolveTaskRef(store, runId, input.taskRef)
           if (!task) return err(`No task "${input.taskRef}" on this board.`)
           if (!memberSlugs.has(input.owner)) {
             return err(`"${input.owner}" is not on the roster. Members: ${[...memberSlugs].join(', ')}.`)
@@ -221,49 +228,49 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
           if (task.status === 'done' || task.status === 'cancelled') {
             return err(`T${task.seq} is ${task.status}; assignment is moot.`)
           }
-          store.assignTask(task.id, input.owner)
+          await store.assignTask(task.id, input.owner)
           // Re-assigning a failed task is the retry gesture: the kernel
           // puts it back in the schedulable pool.
           if (task.status === 'failed') {
-            store.setTaskStatus(task.id, 'ready')
+            await store.setTaskStatus(task.id, 'ready')
           }
-          onBoardChange()
+          await onBoardChange()
           return ok(`T${task.seq} "${task.title}" assigned to ${input.owner}${task.status === 'failed' ? ' and re-queued' : ''}.`)
         }
 
         case 'update': {
-          const task = resolveTaskRef(store, runId, input.taskRef)
+          const task = await resolveTaskRef(store, runId, input.taskRef)
           if (!task) return err(`No task "${input.taskRef}" on this board.`)
-          store.updateTaskStructure(task.id, {
+          await store.updateTaskStructure(task.id, {
             ...(input.title !== undefined ? { title: input.title } : {}),
             ...(input.brief !== undefined ? { brief: input.brief } : {}),
             ...(input.doneCriteria !== undefined ? { doneCriteria: input.doneCriteria } : {}),
             ...(input.deliverables !== undefined ? { deliverables: input.deliverables } : {}),
             ...(input.resourceHints !== undefined ? { resourceHints: input.resourceHints } : {}),
           })
-          onBoardChange()
+          await onBoardChange()
           return ok(`T${task.seq} updated.`)
         }
 
         case 'answer_question': {
-          const task = resolveTaskRef(store, runId, input.taskRef)
+          const task = await resolveTaskRef(store, runId, input.taskRef)
           if (!task) return err(`No task "${input.taskRef}" on this board.`)
           if (task.kind !== 'question') return err(`T${task.seq} is a ${task.kind} task, not a question.`)
           if (task.status === 'done') return err(`T${task.seq} is already answered.`)
-          store.answerQuestion(task.id, input.answer)
-          onBoardChange()
+          await store.answerQuestion(task.id, input.answer)
+          await onBoardChange()
           return ok(`Answer written to T${task.seq}. The asker sees it in their next digest; any blocked task resumes automatically.`)
         }
 
         case 'cancel': {
-          const task = resolveTaskRef(store, runId, input.taskRef)
+          const task = await resolveTaskRef(store, runId, input.taskRef)
           if (!task) return err(`No task "${input.taskRef}" on this board.`)
           if (task.kind === 'goal') return err(`The goal cannot be cancelled — re-scope it with set_goal, or finish the run.`)
           if (task.status === 'done' || task.status === 'cancelled') {
             return err(`T${task.seq} is already ${task.status}.`)
           }
-          store.setTaskStatus(task.id, 'cancelled', input.reason)
-          onBoardChange()
+          await store.setTaskStatus(task.id, 'cancelled', input.reason)
+          await onBoardChange()
           return ok(`T${task.seq} cancelled: ${input.reason}`)
         }
 
@@ -272,8 +279,8 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
           // approved the new number (the SOUL binds it; the kernel can't
           // verify chat consent). The cap is per-run, never the team's
           // standing config.
-          store.setRunBudget(runId, input.maxCostUsd)
-          onBoardChange()
+          await store.setRunBudget(runId, input.maxCostUsd)
+          await onBoardChange()
           return ok(
             `Run budget set to $${input.maxCostUsd.toFixed(2)}. Work resumes automatically if it was paused on budget.`,
           )
@@ -295,11 +302,16 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
     },
     inputSchema: { type: 'object', properties: {} },
     async execute() {
-      const run = store.getRun(runId)
+      const run = await store.getRun(runId)
       if (!run) return err(`Team run "${runId}" not found — this is a kernel bug.`)
-      const team = store.getTeam(run.teamId)
+      const team = await store.getTeam(run.teamId)
       if (!team) return err(`Team "${run.teamId}" not found — this is a kernel bug.`)
-      return ok(renderBoardForConductor(team, run, store.listTasks(runId), store.listLeases(runId)))
+      return ok(renderBoardForConductor(
+        team,
+        run,
+        await store.listTasks(runId),
+        await store.listLeases(runId),
+      ))
     },
   })
 
@@ -329,11 +341,11 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
       if (!parsed.success) {
         return err(`finish_run input invalid: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
       }
-      const run = store.getRun(runId)
+      const run = await store.getRun(runId)
       if (!run) return err(`Team run "${runId}" not found — this is a kernel bug.`)
       if (run.status !== 'active') return err(`This run is already ${run.status}.`)
 
-      const tasks = store.listTasks(runId)
+      const tasks = await store.listTasks(runId)
       const open = tasks.filter((t) => t.kind !== 'goal' && OPEN_TASK_STATUSES.has(t.status))
       if (open.length > 0) {
         return err(
@@ -367,7 +379,7 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
           )
         }
       }
-      if (goal.status === 'active') store.setTaskStatus(goal.id, 'done')
+      if (goal.status === 'active') await store.setTaskStatus(goal.id, 'done')
 
       const taskCounts = Object.fromEntries(
         TEAM_TASK_STATUSES.map((s) => [s, tasks.filter((t) => t.status === s).length]),
@@ -377,11 +389,11 @@ export function createConductorTools(deps: ConductorToolDeps): Tool[] {
         summary: parsed.data.summary,
         outcome: 'done',
         taskCounts,
-        costUsd: store.getRun(runId)?.costUsd ?? run.costUsd,
+        costUsd: (await store.getRun(runId))?.costUsd ?? run.costUsd,
         durationMs: Date.now() - new Date(run.createdAt).getTime(),
       }
-      store.setRunStatus(runId, 'done', receipt)
-      onBoardChange()
+      await store.setRunStatus(runId, 'done', receipt)
+      await onBoardChange()
       return ok(`Run finished. Receipt recorded. Give the user your closing summary in plain language.`)
     },
   })

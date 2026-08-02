@@ -12,8 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ToolResult } from '@ownware/loom'
 import { sendError, sendJSON } from '../router.js'
-import type { SqliteApprovalStore } from '../../schedules/approvals.js'
-import type { SqliteScheduleStore } from '../../schedules/store.js'
+import type { ApprovalRepository, ScheduleRepository } from '../../storage/platform-repositories.js'
 
 /** Re-execute the exact held tool call with the user's credentials (8d-4).
  *  Implemented by the run handlers, where the registry + credential vault live. */
@@ -26,9 +25,9 @@ export type ExecuteHeldTool = (params: {
 }) => Promise<ToolResult>
 
 export interface ApprovalHandlerDeps {
-  readonly store: SqliteApprovalStore
+  readonly store: ApprovalRepository
   /** To resolve an approval's schedule → its profile + workspace. */
-  readonly scheduleStore: SqliteScheduleStore
+  readonly scheduleStore: ScheduleRepository
   /** Re-execute the held call on approve (8d-4). */
   readonly executeHeldTool: ExecuteHeldTool
 }
@@ -43,7 +42,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     const limitRaw = Number(url.searchParams.get('limit'))
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 500) : 200
     sendJSON(res, 200, {
-      approvals: store.listPending({ ...(profileId != null ? { profileId } : {}), limit }),
+      approvals: await store.listPending({ ...(profileId != null ? { profileId } : {}), limit }),
     })
   }
 
@@ -52,7 +51,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
   async function countApprovals(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const profileId = url.searchParams.get('profileId') ?? undefined
-    sendJSON(res, 200, { count: store.countPending(profileId) })
+    sendJSON(res, 200, { count: await store.countPending(profileId) })
   }
 
   // GET /api/v1/approvals/:id
@@ -61,7 +60,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const approval = store.get(params['id'] ?? '')
+    const approval = await store.get(params['id'] ?? '')
     if (approval == null) {
       sendError(res, 404, `Approval "${params['id']}" not found`)
       return
@@ -76,13 +75,13 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     params: Record<string, string>,
   ): Promise<void> {
     const id = params['id'] ?? ''
-    if (store.get(id) == null) {
+    if (await store.get(id) == null) {
       sendError(res, 404, `Approval "${id}" not found`)
       return
     }
     // decide() only transitions a still-pending row (idempotent); a discarded
     // draft is never executed.
-    sendJSON(res, 200, { approval: store.decide(id, { status: 'discarded' }) })
+    sendJSON(res, 200, { approval: await store.decide(id, { status: 'discarded' }) })
   }
 
   // POST /api/v1/approvals/:id/approve — re-execute the EXACT held call (8d-4).
@@ -92,7 +91,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     params: Record<string, string>,
   ): Promise<void> {
     const id = params['id'] ?? ''
-    const approval = store.get(id)
+    const approval = await store.get(id)
     if (approval == null) {
       sendError(res, 404, `Approval "${id}" not found`)
       return
@@ -107,10 +106,10 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     // from the STORED approval row — never the request body — so a caller cannot
     // approve-execute an arbitrary tool/input. We resolve the schedule only for
     // the profile + workspace to run under.
-    const schedule = scheduleStore.get(approval.scheduleId)
+    const schedule = await scheduleStore.get(approval.scheduleId)
     if (schedule == null) {
       sendJSON(res, 200, {
-        approval: store.decide(id, {
+        approval: await store.decide(id, {
           status: 'failed',
           errorMessage: 'The schedule for this draft no longer exists, so it cannot be sent.',
         }),
@@ -131,7 +130,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
       // executeHeldTool returns isError results rather than throwing, but a
       // thrown error must still be recorded honestly — never swallowed.
       sendJSON(res, 200, {
-        approval: store.decide(id, {
+        approval: await store.decide(id, {
           status: 'failed',
           errorMessage: err instanceof Error ? err.message : String(err),
         }),
@@ -141,7 +140,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
 
     if (result.isError) {
       sendJSON(res, 200, {
-        approval: store.decide(id, {
+        approval: await store.decide(id, {
           status: 'failed',
           errorMessage: typeof result.content === 'string' ? result.content : 'The action failed.',
         }),
@@ -149,7 +148,7 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
       return
     }
     sendJSON(res, 200, {
-      approval: store.decide(id, { status: 'approved', result: result.content }),
+      approval: await store.decide(id, { status: 'approved', result: result.content }),
     })
   }
 

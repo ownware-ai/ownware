@@ -66,7 +66,7 @@ import {
   type TeamTask,
   type TeamTaskStatus,
 } from './schema.js'
-import type { TeamStore } from './store.js'
+import type { TeamRepository } from '../storage/platform-repositories.js'
 
 const MAX_WAKE_ATTEMPTS = 3
 const WAKE_RETRY_MS = 2_000
@@ -106,7 +106,7 @@ export type WakeReason =
   | 'verify-cap'
 
 export interface TeamSchedulerDeps {
-  readonly store: TeamStore
+  readonly store: TeamRepository
   readonly state: GatewayState
   readonly registry: ProfileRegistry
   readonly runner: SessionRunner
@@ -180,16 +180,22 @@ export class TeamScheduler {
   }
 
   /** Refresh digests for every member currently working this run. */
-  refreshDigests(runId: string): void {
-    const run = this.deps.store.getRun(runId)
+  async refreshDigests(runId: string): Promise<void> {
+    const run = await this.deps.store.getRun(runId)
     if (!run) return
-    const team = this.deps.store.getTeam(run.teamId)
+    const team = await this.deps.store.getTeam(run.teamId)
     if (!team) return
-    const tasks = this.deps.store.listTasks(runId)
+    const tasks = await this.deps.store.listTasks(runId)
     for (const work of this.activeWork.values()) {
-      const task = this.deps.store.getTask(work.taskId)
+      const task = await this.deps.store.getTask(work.taskId)
       if (!task || task.runId !== runId) continue
-      const digest = renderDigest(team, run, tasks, work.memberSlug, this.deps.store.listLeases(runId))
+      const digest = renderDigest(
+        team,
+        run,
+        tasks,
+        work.memberSlug,
+        await this.deps.store.listLeases(runId),
+      )
       const key = `${runId}:${work.memberSlug}`
       if (this.lastDigests.get(key) === digest) continue
       this.lastDigests.set(key, digest)
@@ -224,16 +230,16 @@ export class TeamScheduler {
 
   private async tickOnce(runId: string): Promise<void> {
     const { store } = this.deps
-    const run = store.getRun(runId)
+    const run = await store.getRun(runId)
     if (!run || run.status !== 'active') return
-    const team = store.getTeam(run.teamId)
+    const team = await store.getTeam(run.teamId)
     if (!team) {
       console.error(`[team] run ${runId} references missing team ${run.teamId}; failing run`)
-      this.failRun(run, 'Team configuration disappeared mid-run.')
+      await this.failRun(run, 'Team configuration disappeared mid-run.')
       return
     }
 
-    let tasks = store.listTasks(runId)
+    let tasks = await store.listTasks(runId)
     const goal = tasks.find((t) => t.kind === 'goal')
     if (!goal) return // still crystallizing — nothing to schedule yet
 
@@ -245,15 +251,15 @@ export class TeamScheduler {
         (q) => q.kind === 'question' && q.parentId === task.id && OPEN_TASK_STATUSES.has(q.status),
       )
       if (openQuestions.length === 0) {
-        store.setTaskStatus(task.id, 'ready')
+        await store.setTaskStatus(task.id, 'ready')
       }
     }
-    tasks = store.listTasks(runId)
+    tasks = await store.listTasks(runId)
 
     // 1b. Notify members waiting on freed resources ("(c) wait —
     //     you'll be notified"). Runs every tick; freed = no longer
     //     in the lease table.
-    this.notifyFreedResources(run)
+    await this.notifyFreedResources(run)
 
     // 1c. Budget gate (scenario 8: pause with a decision, never a
     //     silent death). Effective spend = the thread's cost (every
@@ -261,7 +267,7 @@ export class TeamScheduler {
     //     sessions). Over the cap: no new dispatch, no new verify
     //     round — wake the Conductor to take it to the user. Members
     //     already mid-task finish their current work.
-    const spendUsd = run.costUsd + (this.deps.state.getThread(run.threadId)?.totalCost ?? 0)
+    const spendUsd = run.costUsd + ((await this.deps.state.getThread(run.threadId))?.totalCost ?? 0)
     if (run.maxCostUsd !== null && spendUsd >= run.maxCostUsd) {
       await this.requestWake(team, run, new Set<WakeReason>(['budget-exceeded']))
       return
@@ -271,7 +277,7 @@ export class TeamScheduler {
     //     branch below; by construction nothing else is open then).
     const pendingVerify = tasks.find((t) => t.kind === 'verify' && t.status === 'ready')
     if (pendingVerify) {
-      const updated = store.setTaskStatus(pendingVerify.id, 'active')
+      const updated = await store.setTaskStatus(pendingVerify.id, 'active')
       void this.runVerifierTask(team, run, updated)
       this.ensureLivenessSweep()
       return
@@ -298,7 +304,7 @@ export class TeamScheduler {
       if (!candidate.dependsOn.every(doneOrSettled)) continue
       if (activeWorkTasks.some((a) => a.owner === candidate.owner)) continue
       if (activeWorkTasks.some((a) => hintsOverlap(a.resourceHints, candidate.resourceHints))) continue
-      const updated = store.setTaskStatus(candidate.id, 'active')
+      const updated = await store.setTaskStatus(candidate.id, 'active')
       activeWorkTasks = [...activeWorkTasks, updated]
       dispatched = true
       // Fire-and-forget: each member loop runs in the background and
@@ -344,7 +350,7 @@ export class TeamScheduler {
           reasons.add('verify-cap')
         } else {
           const goal = tasks.find((t) => t.kind === 'goal')
-          store.insertTask(runId, {
+          await store.insertTask(runId, {
             kind: 'verify',
             title: `Verification round ${verifies.length + 1}`,
             brief: goal ? `Verify against: ${goal.title}` : 'Verify the completed work.',
@@ -377,7 +383,7 @@ export class TeamScheduler {
 
     // Loop guard: identical reasons against an unchanged board burn
     // tokens without progress. Escalate wording, then fail honestly.
-    const tasks = store.listTasks(run.id)
+    const tasks = await store.listTasks(run.id)
     const boardVersion = tasks.map((t) => `${t.id}:${t.status}:${t.updatedAt}`).join('|')
     const key = [...reasons].sort().join(',')
     const tracker = this.wakeTrackers.get(run.id)
@@ -390,7 +396,7 @@ export class TeamScheduler {
       console.error(
         `[team] run ${run.id}: conductor failed to act on [${key}] after ${MAX_WAKE_ATTEMPTS} wakes; failing run`,
       )
-      this.failRun(
+      await this.failRun(
         run,
         `The Conductor was woken ${MAX_WAKE_ATTEMPTS} times for [${key}] without resolving it. The run was stopped to avoid spinning.`,
       )
@@ -415,20 +421,20 @@ export class TeamScheduler {
 
   private scheduleWakeRetry(runId: string): void {
     if (this.stopped || this.wakeRetryTimers.has(runId)) return
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       this.wakeRetryTimers.delete(runId)
       const pending = this.pendingWakes.get(runId)
       if (!pending) return
       if (Date.now() - pending.since > WAKE_RETRY_DEADLINE_MS) {
         this.pendingWakes.delete(runId)
-        const run = this.deps.store.getRun(runId)
+        const run = await this.deps.store.getRun(runId)
         if (run && run.status === 'active') {
           console.error(`[team] run ${runId}: pending wake undeliverable for 30m; failing run`)
-          this.failRun(run, 'The Conductor stayed busy for 30 minutes; the run was stopped to avoid a silent stall.')
+          await this.failRun(run, 'The Conductor stayed busy for 30 minutes; the run was stopped to avoid a silent stall.')
         }
         return
       }
-      const run = this.deps.store.getRun(runId)
+      const run = await this.deps.store.getRun(runId)
       if (!run || run.status !== 'active') {
         this.pendingWakes.delete(runId)
         return
@@ -437,7 +443,7 @@ export class TeamScheduler {
         this.scheduleWakeRetry(runId)
         return
       }
-      const team = this.deps.store.getTeam(run.teamId)
+      const team = await this.deps.store.getTeam(run.teamId)
       this.pendingWakes.delete(runId)
       if (team) {
         void this.deliverWake(team, run, pending.reasons, 1)
@@ -462,20 +468,21 @@ export class TeamScheduler {
       if (!companions || !session) {
         throw new Error(`Conductor session for thread ${run.threadId} could not be ensured`)
       }
+      const profileId = conductorProfileId(team.id)
       state.setRuntime(run.threadId, {
+        profileId,
         session,
         hitl: companions.hitl,
         zoneManager: companions.zoneManager,
         lastZoneDecision: companions.getLastZoneDecision,
       })
-      state.updateThread(run.threadId, { status: 'active' })
+      await state.updateThread(run.threadId, { status: 'active' })
 
-      const profileId = conductorProfileId(team.id)
       const profile = await registry.get(profileId)
-      const prompt = this.buildWakePrompt(team, run, reasons, attempt)
+      const prompt = await this.buildWakePrompt(team, run, reasons, attempt)
 
       try {
-        state.eventIngestor.ingestParentEvent(run.threadId, {
+        await state.eventIngestor.ingestParentEvent(run.threadId, {
           type: 'team.wake',
           runId: run.id,
           reasons: [...reasons],
@@ -488,7 +495,7 @@ export class TeamScheduler {
 
       // Snapshot the root stream's cursor BEFORE the wake so we can
       // tell afterwards whether the Conductor relayed to the user.
-      const sinceSeq = state.getAgentEventMaxSeq(run.threadId, 'root')
+      const sinceSeq = await state.getAgentEventMaxSeq(run.threadId, 'root')
 
       let handle
       try {
@@ -513,14 +520,14 @@ export class TeamScheduler {
         }
         throw startErr
       }
-      void handle.done.finally(() => {
+      void handle.done.finally(async () => {
         // Did this wake end with the Conductor asking the USER
         // something (ask_user)? Then the run is waiting on a human —
         // suppress further wakes until they reply (the latent S1 bug:
         // re-waking three times while the user typed would fail the
         // run mid-conversation).
         try {
-          const events = state.listAgentEvents({
+          const events = await state.listAgentEvents({
             threadId: run.threadId,
             agentId: 'root',
             since: sinceSeq,
@@ -531,7 +538,7 @@ export class TeamScheduler {
             return payload.toolName === 'ask_user'
           })
           if (askedUser) {
-            const thread = state.getThread(run.threadId)
+            const thread = await state.getThread(run.threadId)
             this.awaitingUser.set(run.id, thread?.messageCount ?? 0)
             this.ensureLivenessSweep()
           }
@@ -543,18 +550,18 @@ export class TeamScheduler {
     } catch (err) {
       const classified = classifyError(err)
       console.error(`[team] conductor wake failed for run ${run.id} (${classified.category}):`, classified.message)
-      this.failRun(run, `The Conductor could not be woken: ${classified.message}`)
+      await this.failRun(run, `The Conductor could not be woken: ${classified.message}`)
     }
   }
 
-  private buildWakePrompt(
+  private async buildWakePrompt(
     team: Team,
     run: TeamRun,
     reasons: Set<WakeReason>,
     attempt: number,
-  ): string {
+  ): Promise<string> {
     const { store } = this.deps
-    const tasks = store.listTasks(run.id)
+    const tasks = await store.listTasks(run.id)
     const lines: string[] = ['[TEAM EVENT] The kernel woke you. Pending judgment calls:']
     if (reasons.has('unassigned-work')) {
       const unassigned = tasks.filter((t) => t.kind === 'work' && t.status === 'ready' && t.owner === null)
@@ -579,7 +586,7 @@ export class TeamScheduler {
       )
     }
     if (reasons.has('budget-exceeded')) {
-      const spend = run.costUsd + (this.deps.state.getThread(run.threadId)?.totalCost ?? 0)
+      const spend = run.costUsd + ((await this.deps.state.getThread(run.threadId))?.totalCost ?? 0)
       lines.push(
         `- BUDGET EXCEEDED: $${spend.toFixed(2)} spent of the $${(run.maxCostUsd ?? 0).toFixed(2)} cap. Work is paused (running members finish their current task; nothing new starts). Take it to the user with ask_user: offer (1) raise the budget to a concrete number, or (2) wrap up now. If they approve a raise, call board_write set_budget with their number. If they wrap up, cancel the open tasks with reason "budget" and call finish_run with an honest partial summary.`,
       )
@@ -599,7 +606,11 @@ export class TeamScheduler {
         `This is wake ${attempt} of ${MAX_WAKE_ATTEMPTS} for the SAME unresolved situation — you must act with your tools THIS turn (the run is stopped after ${MAX_WAKE_ATTEMPTS}).`,
       )
     }
-    lines.push('', 'Current board:', renderBoardForConductor(team, run, tasks, store.listLeases(run.id)))
+    lines.push(
+      '',
+      'Current board:',
+      renderBoardForConductor(team, run, tasks, await store.listLeases(run.id)),
+    )
     return lines.join('\n')
   }
 
@@ -609,7 +620,7 @@ export class TeamScheduler {
     const { store, state, registry, toolProviders } = this.deps
     const member = team.members.find((m) => m.slug === task.owner)
     if (!member) {
-      store.setTaskStatus(task.id, 'failed', `Owner "${task.owner}" is not on the roster.`)
+      await store.setTaskStatus(task.id, 'failed', `Owner "${task.owner}" is not on the roster.`)
       this.tickSoon(run.id)
       return
     }
@@ -619,7 +630,7 @@ export class TeamScheduler {
     try {
       const profile = await registry.get(member.profileId)
       const workspacePath = run.workspaceId !== null
-        ? state.getWorkspace(run.workspaceId)?.path ?? null
+        ? (await state.getWorkspace(run.workspaceId))?.path ?? null
         : null
 
       // In-module profile augmentation (no shared-assembler changes,
@@ -686,7 +697,7 @@ export class TeamScheduler {
       this.activeWork.set(task.id, { session, injector, memberSlug: member.slug, taskId: task.id })
 
       try {
-        state.eventIngestor.ingestParentEvent(run.threadId, {
+        await state.eventIngestor.ingestParentEvent(run.threadId, {
           type: 'team.handoff',
           runId: run.id,
           taskSeq: task.seq,
@@ -699,7 +710,7 @@ export class TeamScheduler {
         // Observability only.
       }
 
-      const prompt = this.buildHandoffPrompt(team, run, task, member.slug)
+      const prompt = await this.buildHandoffPrompt(team, run, task, member.slug)
       await this.drainMemberTurn(run, agentId, session.submitMessage(prompt))
 
       // Gateway shutdown aborted this member: stand down without
@@ -708,14 +719,14 @@ export class TeamScheduler {
       if (this.stopped) return
 
       // End-of-turn verdicts (the kernel writes status, never the model):
-      let fresh = store.getTask(task.id)
+      let fresh = await store.getTask(task.id)
       if (fresh && fresh.status === 'active') {
-        const tasksNow = store.listTasks(run.id)
+        const tasksNow = await store.listTasks(run.id)
         const openQuestionFromTask = tasksNow.find(
           (q) => q.kind === 'question' && q.parentId === task.id && OPEN_TASK_STATUSES.has(q.status),
         )
         if (openQuestionFromTask) {
-          store.setTaskStatus(
+          await store.setTaskStatus(
             task.id,
             'blocked',
             `Waiting on T${openQuestionFromTask.seq}: ${openQuestionFromTask.title}`,
@@ -732,9 +743,9 @@ export class TeamScheduler {
                 'If you are blocked, call ask_team. Do not do anything else.',
             ),
           )
-          fresh = store.getTask(task.id)
+          fresh = await store.getTask(task.id)
           if (fresh && fresh.status === 'active') {
-            store.setTaskStatus(task.id, 'failed', 'Member ended its session without completing the task.')
+            await store.setTaskStatus(task.id, 'failed', 'Member ended its session without completing the task.')
           }
         }
       }
@@ -745,13 +756,13 @@ export class TeamScheduler {
         `[team] member ${member.slug} failed on T${task.seq} (${classified.category}):`,
         classified.message,
       )
-      const fresh = store.getTask(task.id)
+      const fresh = await store.getTask(task.id)
       if (fresh && fresh.status === 'active') {
-        store.setTaskStatus(task.id, 'failed', `${classified.category}: ${classified.message}`)
+        await store.setTaskStatus(task.id, 'failed', `${classified.category}: ${classified.message}`)
       }
     } finally {
       if (session && !this.stopped) {
-        store.addRunCost(run.id, session.getState().totalUsage.costUsd)
+        await store.addRunCost(run.id, session.getState().totalUsage.costUsd)
       }
       this.activeWork.delete(task.id)
       this.lastDigests.delete(`${run.id}:${member.slug}`)
@@ -774,7 +785,7 @@ export class TeamScheduler {
     let session: Session | null = null
     try {
       const workspacePath = run.workspaceId !== null
-        ? state.getWorkspace(run.workspaceId)?.path ?? null
+        ? (await state.getWorkspace(run.workspaceId))?.path ?? null
         : null
       const profile = buildVerifierProfile(team, run)
       const assembled = await assembleAgent(profile, { workspacePath })
@@ -804,7 +815,7 @@ export class TeamScheduler {
       })
 
       try {
-        state.eventIngestor.ingestParentEvent(run.threadId, {
+        await state.eventIngestor.ingestParentEvent(run.threadId, {
           type: 'team.handoff',
           runId: run.id,
           taskSeq: task.seq,
@@ -817,7 +828,7 @@ export class TeamScheduler {
         // Observability only.
       }
 
-      const tasks = store.listTasks(run.id)
+      const tasks = await store.listTasks(run.id)
       const goal = tasks.find((t) => t.kind === 'goal')
       if (!goal) throw new Error('Verify round dispatched with no goal on the board')
       const round = tasks.filter((t) => t.kind === 'verify').length
@@ -825,7 +836,7 @@ export class TeamScheduler {
       await this.drainMemberTurn(run, agentId, session.submitMessage(prompt))
 
       if (this.stopped) return
-      let fresh = store.getTask(task.id)
+      let fresh = await store.getTask(task.id)
       if (fresh && fresh.status === 'active') {
         await this.drainMemberTurn(
           run,
@@ -834,22 +845,22 @@ export class TeamScheduler {
             'You ended without delivering a verdict. Call complete_task now — "PASS — …" if you filed zero gap tasks, "FAIL — …" otherwise. Nothing else.',
           ),
         )
-        fresh = store.getTask(task.id)
+        fresh = await store.getTask(task.id)
         if (fresh && fresh.status === 'active') {
-          store.setTaskStatus(task.id, 'failed', 'Verifier ended its session without a verdict.')
+          await store.setTaskStatus(task.id, 'failed', 'Verifier ended its session without a verdict.')
         }
       }
     } catch (err) {
       if (this.stopped) return
       const classified = classifyError(err)
       console.error(`[team] verifier failed on T${task.seq} (${classified.category}):`, classified.message)
-      const fresh = store.getTask(task.id)
+      const fresh = await store.getTask(task.id)
       if (fresh && fresh.status === 'active') {
-        store.setTaskStatus(task.id, 'failed', `${classified.category}: ${classified.message}`)
+        await store.setTaskStatus(task.id, 'failed', `${classified.category}: ${classified.message}`)
       }
     } finally {
       if (session && !this.stopped) {
-        store.addRunCost(run.id, session.getState().totalUsage.costUsd)
+        await store.addRunCost(run.id, session.getState().totalUsage.costUsd)
       }
       this.activeWork.delete(task.id)
       this.reclaimAttempts.delete(task.id)
@@ -870,7 +881,7 @@ export class TeamScheduler {
         event.type === 'error' && (event as { recoverable?: boolean }).recoverable === true
       if (!isRecoverableError) {
         try {
-          state.eventIngestor.ingestSubagentEvent(run.threadId, agentId, event)
+          await state.eventIngestor.ingestSubagentEvent(run.threadId, agentId, event)
         } catch (err) {
           console.error(`[team] member event ingest failed (${agentId}):`, err)
         }
@@ -879,9 +890,14 @@ export class TeamScheduler {
     }
   }
 
-  private buildHandoffPrompt(team: Team, run: TeamRun, task: TeamTask, memberSlug: string): string {
+  private async buildHandoffPrompt(
+    team: Team,
+    run: TeamRun,
+    task: TeamTask,
+    memberSlug: string,
+  ): Promise<string> {
     const { store } = this.deps
-    const tasks = store.listTasks(run.id)
+    const tasks = await store.listTasks(run.id)
     const goal = tasks.find((t) => t.kind === 'goal')
     const member = team.members.find((m) => m.slug === memberSlug)
 
@@ -914,7 +930,7 @@ export class TeamScheduler {
       '- If a question fully blocks you, call `ask_team`, then end your turn.',
       '',
       'Current team digest:',
-      renderDigest(team, run, tasks, memberSlug, store.listLeases(run.id)),
+      renderDigest(team, run, tasks, memberSlug, await store.listLeases(run.id)),
     ]
     return lines.filter((l) => l !== '').join('\n')
   }
@@ -942,17 +958,22 @@ export class TeamScheduler {
    * silently — their task either completed without the resource or
    * will be re-briefed on re-dispatch.
    */
-  private notifyFreedResources(run: TeamRun): void {
+  private async notifyFreedResources(run: TeamRun): Promise<void> {
     const byKey = this.leaseWaiters.get(run.id)
     if (!byKey || byKey.size === 0) return
-    const held = new Set(this.deps.store.listLeases(run.id).map((l) => l.resourceKey))
+    const held = new Set((await this.deps.store.listLeases(run.id)).map((l) => l.resourceKey))
     for (const [resourceKey, slugs] of byKey) {
       if (held.has(resourceKey)) continue
       byKey.delete(resourceKey)
       for (const slug of slugs) {
-        const work = [...this.activeWork.values()].find(
-          (w) => w.memberSlug === slug && this.deps.store.getTask(w.taskId)?.runId === run.id,
-        )
+        let work: ActiveMemberWork | undefined
+        for (const candidate of this.activeWork.values()) {
+          if (candidate.memberSlug !== slug) continue
+          if ((await this.deps.store.getTask(candidate.taskId))?.runId === run.id) {
+            work = candidate
+            break
+          }
+        }
         if (work) {
           work.injector.emit({
             type: 'hook.context',
@@ -975,9 +996,9 @@ export class TeamScheduler {
    */
   private ensureLivenessSweep(): void {
     if (this.stopped || this.livenessTimer !== null) return
-    this.livenessTimer = setInterval(() => {
+    this.livenessTimer = setInterval(async () => {
       try {
-        this.sweepOnce()
+        await this.sweepOnce()
       } catch (err) {
         console.error('[team] liveness sweep failed:', err)
       }
@@ -986,20 +1007,20 @@ export class TeamScheduler {
     this.livenessTimer.unref?.()
   }
 
-  private sweepOnce(): void {
+  private async sweepOnce(): Promise<void> {
     const { store, state } = this.deps
-    const activeRuns = store.listActiveRuns()
+    const activeRuns = await store.listActiveRuns()
     let anyActiveWork = false
 
     // Awaiting-user recheck: a new user message on the thread means
     // the human replied — lift wake suppression and re-judge.
     for (const [runId, messageCountAtAsk] of this.awaitingUser) {
-      const run = store.getRun(runId)
+      const run = await store.getRun(runId)
       if (!run || run.status !== 'active') {
         this.awaitingUser.delete(runId)
         continue
       }
-      const thread = state.getThread(run.threadId)
+      const thread = await state.getThread(run.threadId)
       if (thread !== undefined && thread.messageCount > messageCountAtAsk) {
         this.awaitingUser.delete(runId)
         this.tickSoon(runId)
@@ -1007,7 +1028,7 @@ export class TeamScheduler {
     }
 
     for (const run of activeRuns) {
-      for (const task of store.listTasks(run.id)) {
+      for (const task of await store.listTasks(run.id)) {
         if (task.kind === 'goal' || task.status !== 'active') continue
         if (this.activeWork.has(task.id)) {
           anyActiveWork = true
@@ -1017,10 +1038,10 @@ export class TeamScheduler {
         this.reclaimAttempts.set(task.id, attempts)
         if (attempts > 1) {
           console.error(`[team] T${task.seq} orphaned twice — failing it for conductor judgment`)
-          store.setTaskStatus(task.id, 'failed', 'Member session died twice without completing the task.')
+          await store.setTaskStatus(task.id, 'failed', 'Member session died twice without completing the task.')
         } else {
           console.error(`[team] T${task.seq} orphaned (no live session) — reclaiming to ready`)
-          store.setTaskStatus(task.id, 'ready')
+          await store.setTaskStatus(task.id, 'ready')
         }
         this.tickSoon(run.id)
       }
@@ -1054,14 +1075,14 @@ export class TeamScheduler {
 
   // ── Board-change entry point (called by every team tool) ─────────
 
-  onBoardChange(runId: string): void {
+  async onBoardChange(runId: string): Promise<void> {
     // (The wake-loop tracker self-resets: its boardVersion is computed
     // from task updatedAt stamps, so any real change restarts the
     // attempt count in requestWake.)
     // The Conductor acted on the board — it is no longer parked on a
     // user question; wakes may flow again.
     this.awaitingUser.delete(runId)
-    const run = this.deps.store.getRun(runId)
+    const run = await this.deps.store.getRun(runId)
     if (run) {
       this.deps.events.emit({ scope: 'board', threadId: run.threadId, runId })
       if (run.status !== 'active') {
@@ -1070,7 +1091,7 @@ export class TeamScheduler {
         this.deps.events.emit({ scope: 'teams' })
       }
     }
-    this.refreshDigests(runId)
+    await this.refreshDigests(runId)
     this.tickSoon(runId)
   }
 
@@ -1083,23 +1104,23 @@ export class TeamScheduler {
    * artifacts survived on disk; only the in-flight transcript is
    * redone. At-least-once execution, honestly.
    */
-  resumeRun(runId: string): void {
+  async resumeRun(runId: string): Promise<void> {
     const { store } = this.deps
-    const tasks = store.listTasks(runId)
+    const tasks = await store.listTasks(runId)
     for (const task of tasks) {
       if (task.kind !== 'goal' && task.status === 'active' && !this.activeWork.has(task.id)) {
-        store.setTaskStatus(task.id, 'ready', null)
+        await store.setTaskStatus(task.id, 'ready', null)
       }
     }
     this.tickSoon(runId)
   }
 
   /** Cancel a run: close the board and abort any in-flight member session. */
-  cancelRun(runId: string, reason: string): void {
+  async cancelRun(runId: string, reason: string): Promise<void> {
     const { store } = this.deps
-    const run = store.getRun(runId)
+    const run = await store.getRun(runId)
     if (!run || run.status !== 'active') return
-    const tasks = store.listTasks(runId)
+    const tasks = await store.listTasks(runId)
     const taskCounts = Object.fromEntries(
       TEAM_TASK_STATUSES.map((s) => [s, tasks.filter((t) => t.status === s).length]),
     ) as Record<TeamTaskStatus, number>
@@ -1110,9 +1131,9 @@ export class TeamScheduler {
       costUsd: run.costUsd,
       durationMs: Date.now() - new Date(run.createdAt).getTime(),
     }
-    store.setRunStatus(runId, 'cancelled', receipt)
+    await store.setRunStatus(runId, 'cancelled', receipt)
     for (const [taskId, work] of this.activeWork) {
-      const task = store.getTask(taskId)
+      const task = await store.getTask(taskId)
       if (task && task.runId === runId) {
         try {
           work.session.abort('user')
@@ -1126,17 +1147,17 @@ export class TeamScheduler {
     this.deps.events.emit({ scope: 'teams' })
   }
 
-  private failRun(run: TeamRun, reason: string): void {
+  private async failRun(run: TeamRun, reason: string): Promise<void> {
     const { store } = this.deps
-    const tasks = store.listTasks(run.id)
+    const tasks = await store.listTasks(run.id)
     const taskCounts = Object.fromEntries(
       TEAM_TASK_STATUSES.map((s) => [s, tasks.filter((t) => t.status === s).length]),
     ) as Record<TeamTaskStatus, number>
-    store.setRunStatus(run.id, 'failed', {
+    await store.setRunStatus(run.id, 'failed', {
       summary: reason,
       outcome: 'failed',
       taskCounts,
-      costUsd: store.getRun(run.id)?.costUsd ?? run.costUsd,
+      costUsd: (await store.getRun(run.id))?.costUsd ?? run.costUsd,
       durationMs: Date.now() - new Date(run.createdAt).getTime(),
     })
     this.clearRunTimers(run.id)

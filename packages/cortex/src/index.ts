@@ -361,6 +361,48 @@ export {
 // Gateway
 export { OwnwareGateway } from './gateway/server.js'
 export type { GatewayOptions } from './gateway/server.js'
+export { StorageConfigurationError } from './storage/config.js'
+export type {
+  GatewayStorageSelection,
+  PostgreSqlConnectionSource,
+  PostgreSqlPoolOptions,
+  PostgreSqlStorageOptions,
+  PostgreSqlTlsOptions,
+  SqliteStorageOptions,
+  StorageConfigurationErrorCode,
+  StoragePlanSummary,
+} from './storage/config.js'
+export {
+  preflightSqliteTransferSource,
+  SqliteTransferFindingsError,
+  SqliteTransferPreflightError,
+} from './storage/sqlite-transfer-preflight.js'
+export type {
+  SqliteTransferFinding,
+  SqliteTransferPreflightErrorCode,
+  SqliteTransferSourceOptions,
+  SqliteTransferSourceReceipt,
+} from './storage/sqlite-transfer-preflight.js'
+export {
+  preflightPostgreSqlTransferTarget,
+  PostgreSqlTransferPreflightError,
+} from './storage/postgresql-transfer-preflight.js'
+export type {
+  PostgreSqlTransferPreflightErrorCode,
+  PostgreSqlTransferTargetReceipt,
+  PostgreSqlTransferTargetState,
+  PostgreSqlTransferRuntimeAuthority,
+} from './storage/postgresql-transfer-preflight.js'
+export {
+  OfflineTransferError,
+  transferOfflineSqliteToPostgreSql,
+} from './storage/sqlite-to-postgresql-transfer.js'
+export type {
+  OfflineSqliteToPostgreSqlTransferOptions,
+  OfflineSqliteToPostgreSqlTransferReceipt,
+  OfflineTransferErrorCode,
+  OfflineTransferProgress,
+} from './storage/sqlite-to-postgresql-transfer.js'
 export { GatewayState } from './gateway/state.js'
 export { Router } from './gateway/router.js'
 export type {

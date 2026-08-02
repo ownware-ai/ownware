@@ -1,6 +1,6 @@
 import { isSourceMediaType, type SourceMediaType } from './source-media.js'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { RuntimePrincipal } from './auth/scoped-principal.js'
 
 export const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
@@ -139,14 +139,14 @@ export type IdempotencyClaim =
   | { readonly kind: 'indeterminate' }
   | { readonly kind: 'expired' }
 
-interface ClaimInput {
+export interface IdempotencyClaimInput {
   readonly principalKey: string
   readonly operation: string
   readonly key: string
   readonly input: unknown
 }
 
-interface CompleteInput {
+export interface IdempotencyCompleteInput {
   readonly principalKey: string
   readonly operation: string
   readonly key: string
@@ -188,11 +188,11 @@ export function isValidIdempotencyKey(value: string): boolean {
 
 export class RunIdempotencyStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly leaseOwner: string = randomUUID(),
   ) {}
 
-  claim(input: ClaimInput, now: number = Date.now()): IdempotencyClaim {
+  claim(input: IdempotencyClaimInput, now: number = Date.now()): IdempotencyClaim {
     if (!isValidIdempotencyKey(input.key)) throw new Error('Invalid idempotency key')
     const run = this.db.transaction((): IdempotencyClaim => {
       const row = this.find(input)
@@ -207,12 +207,12 @@ export class RunIdempotencyStore {
           ) VALUES (?, ?, ?, ?, ?, ?, 'in_progress', ?, NULL, NULL, ?, ?, ?)
         `).run(
           recordId, input.principalKey, input.operation, input.key, salt,
-          digestInput(salt, input.input), this.leaseOwner, now, now, now + IDEMPOTENCY_RETENTION_MS,
+          digestIdempotencyInput(salt, input.input), this.leaseOwner, now, now, now + IDEMPOTENCY_RETENTION_MS,
         )
         return { kind: 'claimed', recordId }
       }
 
-      if (row.request_digest !== digestInput(row.request_salt, input.input)) {
+      if (row.request_digest !== digestIdempotencyInput(row.request_salt, input.input)) {
         return { kind: 'conflict' }
       }
       if (row.state === 'completed') {
@@ -220,7 +220,7 @@ export class RunIdempotencyStore {
         if (row.source_id !== null && !this.sourceIsActive(row.source_id)) {
           return { kind: 'indeterminate' }
         }
-        const result = parseSnapshot(row.result_json)
+        const result = parseIdempotencySnapshot(row.result_json)
         if (row.status_code === null || result === null) {
           this.markRowIndeterminate(input, now)
           return { kind: 'indeterminate' }
@@ -235,8 +235,8 @@ export class RunIdempotencyStore {
     return run.immediate()
   }
 
-  complete(input: CompleteInput, now: number = Date.now()): void {
-    const result = validateSnapshot(input.result)
+  complete(input: IdempotencyCompleteInput, now: number = Date.now()): void {
+    const result = validateIdempotencySnapshot(input.result)
     const sourceId = sourceIdForOperation(input.operation, result)
     const updated = this.db.prepare(`
       UPDATE run_idempotency
@@ -263,11 +263,11 @@ export class RunIdempotencyStore {
     if (updated.changes !== 1) throw new Error('Idempotency claim is not completable')
   }
 
-  markIndeterminate(input: Pick<CompleteInput, 'principalKey' | 'operation' | 'key'>, now: number = Date.now()): void {
+  markIndeterminate(input: Pick<IdempotencyCompleteInput, 'principalKey' | 'operation' | 'key'>, now: number = Date.now()): void {
     this.markRowIndeterminate(input, now)
   }
 
-  abandon(input: Pick<CompleteInput, 'principalKey' | 'operation' | 'key'>): void {
+  abandon(input: Pick<IdempotencyCompleteInput, 'principalKey' | 'operation' | 'key'>): void {
     this.db.prepare(`
       DELETE FROM run_idempotency
       WHERE principal_key = ? AND operation = ? AND idempotency_key = ?
@@ -276,9 +276,12 @@ export class RunIdempotencyStore {
   }
 
   linkRun(recordId: string, runId: string): void {
-    this.db.prepare(
-      'UPDATE run_idempotency SET run_id = ? WHERE id = ? AND run_id IS NULL',
-    ).run(runId, recordId)
+    const linked = this.db.prepare(`
+      UPDATE run_idempotency SET run_id = ?
+      WHERE id = ? AND run_id IS NULL
+        AND state = 'in_progress' AND lease_owner = ?
+    `).run(runId, recordId, this.leaseOwner)
+    if (linked.changes !== 1) throw new Error('Run idempotency link is not available')
   }
 
   linkSourceMutation(
@@ -304,7 +307,7 @@ export class RunIdempotencyStore {
     if (linked.changes !== 1) throw new Error('Source mutation link is not available')
   }
 
-  private find(input: Pick<ClaimInput, 'principalKey' | 'operation' | 'key'>): IdempotencyRow | null {
+  private find(input: Pick<IdempotencyClaimInput, 'principalKey' | 'operation' | 'key'>): IdempotencyRow | null {
     return (this.db.prepare(`
       SELECT * FROM run_idempotency
       WHERE principal_key = ? AND operation = ? AND idempotency_key = ?
@@ -312,7 +315,7 @@ export class RunIdempotencyStore {
   }
 
   private markRowIndeterminate(
-    input: Pick<ClaimInput, 'principalKey' | 'operation' | 'key'>,
+    input: Pick<IdempotencyClaimInput, 'principalKey' | 'operation' | 'key'>,
     now: number,
   ): void {
     this.db.prepare(`
@@ -330,7 +333,8 @@ export class RunIdempotencyStore {
   }
 }
 
-function digestInput(salt: string, input: unknown): string {
+/** Adapter seam: canonical salted digest used by every idempotency authority. */
+export function digestIdempotencyInput(salt: string, input: unknown): string {
   return createHash('sha256').update(salt).update('\0').update(canonicalJson(input)).digest('hex')
 }
 
@@ -363,16 +367,18 @@ function canonicalJson(value: unknown): string {
   throw new Error('Idempotency input contains an unsupported value')
 }
 
-function parseSnapshot(json: string | null): IdempotencySnapshot | null {
+/** Adapter seam: validate a persisted replay without trusting its JSON shape. */
+export function parseIdempotencySnapshot(json: string | null): IdempotencySnapshot | null {
   if (json === null || json.length > 4096) return null
   try {
-    return validateSnapshot(JSON.parse(json))
+    return validateIdempotencySnapshot(JSON.parse(json))
   } catch {
     return null
   }
 }
 
-function validateSnapshot(value: unknown): IdempotencySnapshot {
+/** Adapter seam: canonical replay validation shared by storage backends. */
+export function validateIdempotencySnapshot(value: unknown): IdempotencySnapshot {
   if (!value || typeof value !== 'object') throw new Error('Invalid run snapshot')
   const row = value as Record<string, unknown>
   if (typeof row['grantId'] === 'string') return validateAccessGrantReceipt(row)

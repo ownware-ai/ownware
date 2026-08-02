@@ -25,7 +25,7 @@ import {
 } from '../../credential/bootstrap-providers.js'
 import type { GatewayCredentialResolver } from '../../credential/resolver.js'
 import type { CredentialInjector } from '../../credential/injector.js'
-import type { CredentialAuditLog } from '../../credential/audit.js'
+import type { CredentialAuditRepository } from '../../storage/security-repositories.js'
 
 const KNOWN_PROVIDERS = LLM_PROVIDERS.map((d) => d.providerId)
 
@@ -50,7 +50,7 @@ export interface ProviderHandlerDeps {
    * the fact. Making the dependency mandatory means the endpoint cannot be wired
    * up without an audit trail.
    */
-  readonly audit: CredentialAuditLog
+  readonly audit: CredentialAuditRepository
 }
 
 /**
@@ -228,7 +228,7 @@ export function createProviderHandlers(deps: ProviderHandlerDeps) {
     if (decrypted === null) {
       // A failed decrypt is itself security-relevant — it can mean a corrupted
       // vault, a rotated master key, or a tampered row. Record it.
-      deps.audit.recordEvent({
+      await deps.audit.recordEvent({
         credentialId: existing.id,
         eventType: 'reveal',
         outcome: 'error',
@@ -240,7 +240,7 @@ export function createProviderHandlers(deps: ProviderHandlerDeps) {
 
     // Audit BEFORE responding. If the process dies mid-response the record must
     // already exist — an audit trail that can be lost by a crash is not a trail.
-    deps.audit.recordEvent({
+    await deps.audit.recordEvent({
       credentialId: existing.id,
       eventType: 'reveal',
       outcome: 'ok',

@@ -25,15 +25,15 @@ import {
 
 class MemStore implements SourcePreferencesStore {
   readonly data = new Map<string, string>()
-  getSetting(key: string): { value: string } | undefined {
+  async getSetting(key: string): Promise<{ value: string } | undefined> {
     const v = this.data.get(key)
     return v === undefined ? undefined : { value: v }
   }
-  setSetting(key: string, value: string): unknown {
+  async setSetting(key: string, value: string): Promise<unknown> {
     this.data.set(key, value)
     return { value }
   }
-  deleteSetting(key: string): boolean {
+  async deleteSetting(key: string): Promise<boolean> {
     return this.data.delete(key)
   }
 }
@@ -54,40 +54,40 @@ describe('SourcePreferences (alias-key-dependent paths — dormant while CONNECT
     prefs = new SourcePreferences(store)
   })
 
-  it.skip('get returns null when nothing persisted', () => {
-    expect(prefs.get('notion')).toBeNull()
+  it.skip('get returns null when nothing persisted', async () => {
+    expect(await prefs.get('notion')).toBeNull()
   })
 
-  it.skip('set + get round-trips', () => {
-    prefs.set('notion', 'composio')
-    expect(prefs.get('notion')).toBe('composio')
+  it.skip('set + get round-trips', async () => {
+    await prefs.set('notion', 'composio')
+    expect(await prefs.get('notion')).toBe('composio')
     expect(store.data.get('connector.alias.notion.source')).toBe('composio')
   })
 
-  it.skip('set trims whitespace', () => {
-    prefs.set('notion', '  composio  ')
-    expect(prefs.get('notion')).toBe('composio')
+  it.skip('set trims whitespace', async () => {
+    await prefs.set('notion', '  composio  ')
+    expect(await prefs.get('notion')).toBe('composio')
   })
 
-  it.skip('multiple keys are independent', () => {
-    prefs.set('notion', 'composio')
-    prefs.set('github', 'mcp')
-    expect(prefs.get('notion')).toBe('composio')
-    expect(prefs.get('github')).toBe('mcp')
-    expect(prefs.get('slack')).toBeNull()
+  it.skip('multiple keys are independent', async () => {
+    await prefs.set('notion', 'composio')
+    await prefs.set('github', 'mcp')
+    expect(await prefs.get('notion')).toBe('composio')
+    expect(await prefs.get('github')).toBe('mcp')
+    expect(await prefs.get('slack')).toBeNull()
   })
 
-  it.skip('clear removes the persisted value', () => {
-    prefs.set('notion', 'composio')
-    expect(prefs.clear('notion')).toBe(true)
-    expect(prefs.get('notion')).toBeNull()
+  it.skip('clear removes the persisted value', async () => {
+    await prefs.set('notion', 'composio')
+    expect(await prefs.clear('notion')).toBe(true)
+    expect(await prefs.get('notion')).toBeNull()
     // Second clear is a no-op.
-    expect(prefs.clear('notion')).toBe(false)
+    expect(await prefs.clear('notion')).toBe(false)
   })
 
-  it.skip('set throws on empty source', () => {
-    expect(() => prefs.set('notion', '')).toThrow(/non-empty/)
-    expect(() => prefs.set('notion', '   ')).toThrow(/non-empty/)
+  it.skip('set throws on empty source', async () => {
+    await expect(prefs.set('notion', '')).rejects.toThrow(/non-empty/)
+    await expect(prefs.set('notion', '   ')).rejects.toThrow(/non-empty/)
   })
 })
 
@@ -100,17 +100,17 @@ describe('SourcePreferences (no-alias paths — testable while CONNECTOR_ALIASES
     prefs = new SourcePreferences(store)
   })
 
-  it('set throws for an unknown logical key', () => {
-    expect(() => prefs.set('not-a-key', 'mcp')).toThrow(/Unknown alias logical key/)
+  it('set throws for an unknown logical key', async () => {
+    await expect(prefs.set('not-a-key', 'mcp')).rejects.toThrow(/Unknown alias logical key/)
   })
 
-  it('get for an unknown logical key returns null without hitting the store', () => {
+  it('get for an unknown logical key returns null without hitting the store', async () => {
     // Pre-seed a stray row under an unrelated key.
     store.data.set('connector.alias.unknown.source', 'mcp')
-    expect(prefs.get('unknown')).toBeNull()
+    expect(await prefs.get('unknown')).toBeNull()
   })
 
-  it('clear for an unknown logical key returns false', () => {
-    expect(prefs.clear('unknown')).toBe(false)
+  it('clear for an unknown logical key returns false', async () => {
+    expect(await prefs.clear('unknown')).toBe(false)
   })
 })

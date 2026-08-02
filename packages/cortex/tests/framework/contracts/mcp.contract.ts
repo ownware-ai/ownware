@@ -20,10 +20,10 @@ describe('Contract: MCP', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({
-      seed: (state) => {
-        state.createMCPServer({ id: 'contract-srv-1', name: 'Server One', transport: 'stdio' })
-        state.createMCPServer({ id: 'contract-srv-2', name: 'Server Two', transport: 'sse' })
-        state.assignServerToProfile('contract-srv-1', 'mini')
+      seed: async (state) => {
+        await state.createMCPServer({ id: 'contract-srv-1', name: 'Server One', transport: 'stdio' })
+        await state.createMCPServer({ id: 'contract-srv-2', name: 'Server Two', transport: 'sse' })
+        await state.assignServerToProfile('contract-srv-1', 'mini')
       },
     })
   })
@@ -32,8 +32,8 @@ describe('Contract: MCP', () => {
     await gw.stop()
   })
 
-  it('listMCPServers returns profileIds without N+1', () => {
-    const result = gw.state.listMCPServers()
+  it('listMCPServers returns profileIds without N+1', async () => {
+    const result = await gw.state.listMCPServers()
     expect(result.items.length).toBeGreaterThanOrEqual(2)
     const srv1 = result.items.find(s => s.id === 'contract-srv-1')
     expect(srv1).toBeDefined()
@@ -41,9 +41,9 @@ describe('Contract: MCP', () => {
     expect(srv1!.profileIds).toContain('mini')
   })
 
-  it('listMCPServers honors pagination', () => {
-    const r1 = gw.state.listMCPServers({ limit: 1, offset: 0 })
-    const r2 = gw.state.listMCPServers({ limit: 1, offset: 1 })
+  it('listMCPServers honors pagination', async () => {
+    const r1 = await gw.state.listMCPServers({ limit: 1, offset: 0 })
+    const r2 = await gw.state.listMCPServers({ limit: 1, offset: 1 })
     expect(r1.items.length).toBe(1)
     expect(r2.items.length).toBe(1)
     expect(r1.total).toBeGreaterThanOrEqual(2)

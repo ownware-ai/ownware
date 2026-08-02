@@ -2,11 +2,10 @@
  * Credential audit log (board: credentials-unification — C28).
  *
  * Append-only event log for every security-relevant credential
- * interaction. The architectural rule (D7) requires audit writes to
- * be atomic with the work they record — for resolves that means the
- * INSERT runs in the SAME SQLite transaction as the
- * `credentials.lastUsedAt` update, so loom has no way to suppress
- * the write.
+ * interaction. Resolve treats the append as required and its
+ * `credentials.lastUsedAt` metadata update as best-effort. They are not one
+ * transaction: the audit row is the authority that the resolve was issued;
+ * `lastUsedAt` may remain stale after a later metadata write failure.
  *
  * Phase-5 scope:
  *   - The module + table land now (this file + migration 016).
@@ -23,7 +22,10 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type {
+  SqliteDatabase,
+  SqliteStatement,
+} from '../storage/sqlite-driver.js'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -162,16 +164,16 @@ const SELECT_COLS = `
 
 /**
  * Append-only credential audit module. Construct against a raw
- * `Database.Database` handle — same convention as the credential
+ * `SqliteDatabase` handle — same convention as the credential
  * store backend.
  */
 export class CredentialAuditLog {
-  private readonly db: Database.Database
-  private readonly stmtInsert: Database.Statement
-  private readonly stmtListByCredential: Database.Statement
-  private readonly stmtCountByCredential: Database.Statement
+  private readonly db: SqliteDatabase
+  private readonly stmtInsert: SqliteStatement
+  private readonly stmtListByCredential: SqliteStatement
+  private readonly stmtCountByCredential: SqliteStatement
 
-  constructor(db: Database.Database) {
+  constructor(db: SqliteDatabase) {
     this.db = db
     this.stmtInsert = db.prepare(INSERT_SQL)
     this.stmtListByCredential = db.prepare(`

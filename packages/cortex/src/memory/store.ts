@@ -23,7 +23,7 @@
  * in `loadActiveForPrompt` (filtered by `status='active'`).
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import {
   MemoryKindSchema,
   MemoryScopeSchema,
@@ -117,10 +117,10 @@ export interface UpdateMemoryInput {
 // ---------------------------------------------------------------------------
 
 export class SqliteMemoryStore {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
   private readonly bus: MemoryEventBus | null
 
-  constructor(db: Database.Database, bus: MemoryEventBus | null = null) {
+  constructor(db: SqliteDatabase, bus: MemoryEventBus | null = null) {
     this.db = db
     this.bus = bus
   }
@@ -226,6 +226,19 @@ export class SqliteMemoryStore {
   // ── Writes ────────────────────────────────────────────────────────
 
   create(input: CreateMemoryInput): Memory {
+    return this.insert(input, true)
+  }
+
+  /**
+   * Insert without publishing. This is intentionally adapter-internal: a
+   * surrounding SQLite transaction must publish `memory.changed` only after
+   * its complete durable state commits (proposal acceptance is the caller).
+   */
+  createWithoutPublish(input: CreateMemoryInput): Memory {
+    return this.insert(input, false)
+  }
+
+  private insert(input: CreateMemoryInput, publish: boolean): Memory {
     const id = newMemoryId()
     const now = new Date().toISOString()
     const kind = input.kind ?? 'fact'
@@ -259,12 +272,14 @@ export class SqliteMemoryStore {
       throw new Error(`Failed to read back inserted memory ${id}`)
     }
 
-    this.bus?.emit({
-      type: 'memory.changed',
-      profileId: input.profileId,
-      memoryId: id,
-      at: now,
-    })
+    if (publish) {
+      this.bus?.emit({
+        type: 'memory.changed',
+        profileId: input.profileId,
+        memoryId: id,
+        at: now,
+      })
+    }
 
     return created
   }
@@ -373,7 +388,10 @@ export class SqliteMemoryStore {
         now,
         now,
       )
-      markOld.run(newId, now, oldId)
+      const marked = markOld.run(newId, now, oldId)
+      if (marked.changes !== 1) {
+        throw new Error('Memory supersession target is not active.')
+      }
     })
     txn()
 

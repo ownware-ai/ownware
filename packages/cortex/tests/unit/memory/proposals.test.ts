@@ -137,6 +137,54 @@ describe('SqliteMemoryProposalsStore — accept', () => {
     })
   })
 
+  it('publishes memory and proposal invalidations only after durable commit', () => {
+    const p = proposals.propose({ profileId: 'p', threadId: 't', content: 'X' })
+    const observations: Array<{ type: MemoryEvent['type']; durable: boolean }> = []
+    bus.subscribe((event) => {
+      if (event.type === 'memory.changed') {
+        observations.push({
+          type: event.type,
+          durable: memories.getById(event.memoryId) !== null &&
+            proposals.getById(p.id)?.status === 'accepted',
+        })
+      }
+      if (event.type === 'memory.proposal.resolved') {
+        observations.push({
+          type: event.type,
+          durable: proposals.getById(p.id)?.status === 'accepted' &&
+            memories.countForProfile('p', 'all') === 1,
+        })
+      }
+    })
+
+    proposals.accept(p.id, {})
+
+    expect(observations).toEqual([
+      { type: 'memory.changed', durable: true },
+      { type: 'memory.proposal.resolved', durable: true },
+    ])
+  })
+
+  it('rolls back both rows and publishes nothing when proposal resolution fails after insert', () => {
+    const p = proposals.propose({ profileId: 'p', threadId: 't', content: 'X' })
+    db.rawMainHandle.exec(`
+      CREATE TRIGGER force_proposal_resolution_failure
+      BEFORE UPDATE OF status ON memory_proposals
+      WHEN NEW.status IN ('accepted', 'edited')
+      BEGIN
+        SELECT RAISE(ABORT, 'forced proposal resolution failure');
+      END;
+    `)
+    const events: MemoryEvent[] = []
+    bus.subscribe((event) => events.push(event))
+
+    expect(() => proposals.accept(p.id, {})).toThrow(/forced proposal resolution failure/)
+
+    expect(memories.countForProfile('p', 'all')).toBe(0)
+    expect(proposals.getById(p.id)?.status).toBe('pending')
+    expect(events).toEqual([])
+  })
+
   it('rejects double-accept loudly', () => {
     const p = proposals.propose({ profileId: 'p', threadId: 't', content: 'X' })
     proposals.accept(p.id, {})

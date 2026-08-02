@@ -48,7 +48,7 @@ describe.runIf(RUN && Boolean(KEY))('e2e: schedule fires a real run', () => {
     await gateway.start()
     const baseUrl = `http://127.0.0.1:${gateway.port}`
     try {
-      const s = gateway.schedules.create({
+      const s = await gateway.schedules.create({
         profileId: 'sched-bench',
         name: 'e2e once',
         prompt: 'Say hello in exactly three words.',
@@ -63,14 +63,14 @@ describe.runIf(RUN && Boolean(KEY))('e2e: schedule fires a real run', () => {
       await gateway.tickSchedulesOnce()
       await gateway.drainSchedules()
 
-      const runs = gateway.schedules.listRuns(s.id)
+      const runs = await gateway.schedules.listRuns(s.id)
       expect(runs.length).toBe(1)
       expect(runs[0]!.runStatus).toBe('succeeded')
       expect(runs[0]!.threadId).toBeTruthy()
       expect(runs[0]!.finishedAt).toBeGreaterThan(0)
 
       // A one-off → completed, cursor nulled (never fires again).
-      const after = gateway.schedules.get(s.id)!
+      const after = (await gateway.schedules.get(s.id))!
       expect(after.state).toBe('completed')
       expect(after.nextRunAt).toBeNull()
 
@@ -110,12 +110,12 @@ describe.runIf(RUN && Boolean(KEY))('e2e: schedule fires a real run', () => {
       })
       expect(rn.status).toBe(202)
       await gateway.drainSchedules()
-      const rnRuns = gateway.schedules.listRuns(created.schedule.id)
+      const rnRuns = await gateway.schedules.listRuns(created.schedule.id)
       expect(rnRuns.length).toBe(1)
       expect(rnRuns[0]!.runStatus).toBe('succeeded')
       expect(rnRuns[0]!.threadId).toBeTruthy()
       // run-now must NOT advance the cursor (no nextRunAt was set on create).
-      expect(gateway.schedules.get(created.schedule.id)!.nextRunAt).toBeNull()
+      expect((await gateway.schedules.get(created.schedule.id))!.nextRunAt).toBeNull()
     } finally {
       await gateway.stop().catch(() => {})
       rmSync(root, { recursive: true, force: true })

@@ -83,7 +83,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 1: Plain text streaming ─────────────────────────────────
 
   it('1. text.delta streams accumulate to final response', async () => {
-    const thread = gw.state.createThread('sse-text', 'pattern-1-text')
+    const thread = await gw.state.createThread('sse-text', 'pattern-1-text')
     const stream = await gw.client.sse('/api/v1/run', {
       prompt: 'Say exactly: HELLO PATTERN ONE',
       profileId: 'sse-text',
@@ -113,7 +113,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 2: Multi-turn context retention ─────────────────────────
 
   it('2. multi-turn conversation retains context across runs', async () => {
-    const thread = gw.state.createThread('sse-text', 'pattern-2-multi-turn')
+    const thread = await gw.state.createThread('sse-text', 'pattern-2-multi-turn')
 
     const turn1 = await gw.client.sse('/api/v1/run', {
       prompt: 'Remember this code: VIOLET-9921. Just acknowledge.',
@@ -141,7 +141,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
     assertTextContains(turn2, 'VIOLET-9921')
 
     // Verify thread accumulated both turns
-    const threadDetail = gw.state.getThread(thread.id)!
+    const threadDetail = await gw.state.getThread(thread.id)!
     expect(threadDetail.messageCount).toBeGreaterThanOrEqual(4)
     expect(threadDetail.totalTokens).toBeGreaterThan(0)
   }, 90_000)
@@ -149,7 +149,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 3: Tool use (single tool call) ──────────────────────────
 
   it('3. tool.call.start + tool.call.end events appear with output', async () => {
-    const thread = gw.state.createThread('sse-tools', 'pattern-3-tool')
+    const thread = await gw.state.createThread('sse-tools', 'pattern-3-tool')
 
     // Create a small file the agent can read
     const { writeFile } = await import('node:fs/promises')
@@ -192,7 +192,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 4: Thinking blocks (if model supports) ─────────────────
 
   it('4. thinking.delta events appear when extended thinking is on', async () => {
-    const thread = gw.state.createThread('sse-thinking', 'pattern-4-thinking')
+    const thread = await gw.state.createThread('sse-thinking', 'pattern-4-thinking')
 
     const stream = await gw.client.sse('/api/v1/run', {
       prompt: 'What is 47 * 83? Show your reasoning briefly, then give the answer.',
@@ -217,8 +217,8 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 5: Model switching (cost difference verification) ──────
 
   it('5. same prompt on Sonnet vs Haiku — costs differ', async () => {
-    const sonnetThread = gw.state.createThread('sse-thinking', 'pattern-5-sonnet')
-    const haikuThread = gw.state.createThread('sse-haiku', 'pattern-5-haiku')
+    const sonnetThread = await gw.state.createThread('sse-thinking', 'pattern-5-sonnet')
+    const haikuThread = await gw.state.createThread('sse-haiku', 'pattern-5-haiku')
 
     const sonnetStream = await gw.client.sse('/api/v1/run', {
       prompt: 'Say HI',
@@ -256,7 +256,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 6: Error handling — invalid profile ────────────────────
 
   it('6. invalid profileId returns error before SSE starts', async () => {
-    const thread = gw.state.createThread('sse-text', 'pattern-6-error')
+    const thread = await gw.state.createThread('sse-text', 'pattern-6-error')
 
     let threw = false
     try {
@@ -275,7 +275,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 7: Verify event ordering ───────────────────────────────
 
   it('7. events arrive in expected order', async () => {
-    const thread = gw.state.createThread('sse-text', 'pattern-7-ordering')
+    const thread = await gw.state.createThread('sse-text', 'pattern-7-ordering')
 
     const stream = await gw.client.sse('/api/v1/run', {
       prompt: 'Say OK',
@@ -314,7 +314,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 8: Token-by-token streaming verification ───────────────
 
   it('8. text.delta arrives in many small chunks (true streaming)', async () => {
-    const thread = gw.state.createThread('sse-text', 'pattern-8-chunks')
+    const thread = await gw.state.createThread('sse-text', 'pattern-8-chunks')
 
     const stream = await gw.client.sse('/api/v1/run', {
       prompt: 'Count slowly from one to ten in words, separated by commas.',
@@ -350,7 +350,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
     expect([200, 201]).toContain(reload.status)
 
     // Run with new personality
-    const thread = gw.state.createThread('sse-text', 'pattern-9-reload')
+    const thread = await gw.state.createThread('sse-text', 'pattern-9-reload')
     const stream = await gw.client.sse('/api/v1/run', {
       prompt: 'Say hello',
       profileId: 'sse-text',
@@ -372,7 +372,7 @@ describe.skipIf(!HAS_KEY)('SSE Patterns — Deep Agent Behavior', () => {
   // ── Pattern 10: SSE survives long output ───────────────────────────
 
   it('10. long-output stream stays connected and completes', async () => {
-    const thread = gw.state.createThread('sse-text', 'pattern-10-long')
+    const thread = await gw.state.createThread('sse-text', 'pattern-10-long')
 
     const stream = await gw.client.sse('/api/v1/run', {
       prompt: 'List 20 colors with one short description each.',

@@ -64,14 +64,14 @@ describe('GET /threads/:id/hydrate', () => {
   })
 
   it('returns the full snapshot for an archived thread with runningAgentId=null', async () => {
-    const thread = state.createThread('test', 'my thread')
-    state.addMessage(thread.id, {
+    const thread = await state.createThread('test', 'my thread')
+    await state.addMessage(thread.id, {
       id: 'm1',
       role: 'user',
       content: 'hello',
       timestamp: new Date().toISOString(),
     })
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'm2',
       role: 'assistant',
       content: 'hi back',
@@ -102,16 +102,16 @@ describe('GET /threads/:id/hydrate', () => {
   })
 
   it('returns lastClosedTurnEndSeq for SSE reconnect cursor', async () => {
-    const thread = state.createThread('test', 't')
+    const thread = await state.createThread('test', 't')
     // Ingest a stream that mixes deltas and turn boundaries so the
     // last turn.end is the cursor we expect the client to use.
-    const ingest = (event: { type: string; turnIndex?: number }) =>
-      state.eventIngestor.ingestParentEvent(thread.id, event as unknown as import('@ownware/loom').LoomEvent)
-    ingest({ type: 'turn.start', turnIndex: 0 })            // seq 1
-    ingest({ type: 'text.delta', turnIndex: 0 })             // seq 2
-    ingest({ type: 'turn.end', turnIndex: 0 })               // seq 3 ← lastClosedTurnEndSeq
-    ingest({ type: 'turn.start', turnIndex: 1 })             // seq 4
-    ingest({ type: 'text.delta', turnIndex: 1 })             // seq 5  (in-flight turn)
+    const ingest = async (event: { type: string; turnIndex?: number }) =>
+      await state.eventIngestor.ingestParentEvent(thread.id, event as unknown as import('@ownware/loom').LoomEvent)
+    await ingest({ type: 'turn.start', turnIndex: 0 })        // seq 1
+    await ingest({ type: 'text.delta', turnIndex: 0 })         // seq 2
+    await ingest({ type: 'turn.end', turnIndex: 0 })           // seq 3 ← lastClosedTurnEndSeq
+    await ingest({ type: 'turn.start', turnIndex: 1 })         // seq 4
+    await ingest({ type: 'text.delta', turnIndex: 1 })         // seq 5  (in-flight turn)
 
     const res = await fetch(`${url}/hydrate/${thread.id}`)
     const body = await res.json() as { maxSeq: number; lastClosedTurnEndSeq: number }
@@ -120,8 +120,8 @@ describe('GET /threads/:id/hydrate', () => {
   })
 
   it('lastClosedTurnEndSeq is 0 when no turn has ever closed', async () => {
-    const thread = state.createThread('test', 't')
-    state.eventIngestor.ingestParentEvent(thread.id, {
+    const thread = await state.createThread('test', 't')
+    await state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'turn.start', turnIndex: 0,
     } as unknown as import('@ownware/loom').LoomEvent)
     const res = await fetch(`${url}/hydrate/${thread.id}`)
@@ -131,7 +131,7 @@ describe('GET /threads/:id/hydrate', () => {
   })
 
   it('reports runningAgentId="root" + live maxSeq while a run is in flight', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     // Simulate "a run is in flight" by pretending the runner holds a
     // run record for this thread. We can't easily plug a fake Session
     // into SessionRunner.start() here without reproducing the rest of
@@ -139,7 +139,7 @@ describe('GET /threads/:id/hydrate', () => {
     // `runs` Map which start() populates. Instead we drive it via the
     // event-ingestor directly to emulate the disk state and then flip
     // `isRunning` with a tiny shim.
-    state.eventIngestor.ingestParentEvent(thread.id, {
+    await state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'text.delta', text: 'streaming', turnIndex: 0,
     } as unknown as import('@ownware/loom').LoomEvent)
 
@@ -167,14 +167,14 @@ describe('GET /threads/:id/hydrate', () => {
     // back to rendering just the `request_credential` tool subrow. This
     // test locks the new contract: the endpoint surfaces the full
     // CredentialRecord so the client can rebuild the CredentialChatItem.
-    const thread = state.createThread('coder', 'with credential')
-    state.addMessage(thread.id, {
+    const thread = await state.createThread('coder', 'with credential')
+    await state.addMessage(thread.id, {
       id: 'm-user',
       role: 'user',
       content: 'please fetch the admin list',
       timestamp: new Date().toISOString(),
     })
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'm-asst',
       role: 'assistant',
       content: '',

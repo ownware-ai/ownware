@@ -1,6 +1,7 @@
 import { createHash, createSecretKey, randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../../storage/sqlite-driver.js'
 import { SignJWT, jwtVerify } from 'jose'
+import type { DelegatedPrincipalRepository } from '../../storage/security-repositories.js'
 
 const AUDIENCE = 'ownware.gateway.v1'
 const KEY_DOMAIN = 'ownware.gateway.delegated-principal.hs256.v1\0'
@@ -90,7 +91,7 @@ interface PrincipalRow {
 }
 
 export class DelegatedPrincipalStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   insert(principal: DelegatedPrincipal): void {
     this.db.prepare(`
@@ -152,7 +153,7 @@ export class ScopedPrincipalService {
 
   constructor(private readonly options: {
     readonly ownerToken: string
-    readonly store: DelegatedPrincipalStore
+    readonly store: DelegatedPrincipalRepository
   }) {
     if (!/^[0-9a-f]{64}$/.test(options.ownerToken)) {
       throw new PrincipalAuthError('principal_config_invalid', 'Owner token has an invalid shape')
@@ -207,7 +208,7 @@ export class ScopedPrincipalService {
       .setExpirationTime(expiresAt)
       .sign(this.key)
 
-    this.options.store.insert(principal)
+    await this.options.store.insert(principal)
     return { token, principal }
   }
 
@@ -248,7 +249,7 @@ export class ScopedPrincipalService {
       throw new PrincipalAuthError('principal_invalid', 'Delegated principal claims are invalid')
     }
 
-    const persisted = this.options.store.find(tokenId)
+    const persisted = await this.options.store.find(tokenId)
     if (!persisted || persisted.revokedAt !== null) {
       throw new PrincipalAuthError('principal_revoked', 'Delegated principal was revoked')
     }
@@ -271,7 +272,7 @@ export class ScopedPrincipalService {
     return principal
   }
 
-  revoke(tokenId: string, reason: string, nowMs: number = Date.now()): boolean {
+  revoke(tokenId: string, reason: string, nowMs: number = Date.now()): Promise<boolean> {
     return this.options.store.revoke(tokenId, reason, Math.floor(nowMs / 1000))
   }
 }

@@ -161,7 +161,7 @@ describe('Decoupled run — API contract', () => {
     // but no events would follow, so we additionally assert the runner
     // recorded the run (even if it later errored at the provider).
     await new Promise(r => setTimeout(r, 300))
-    const messages = gw.state.getMessages(threadId)
+    const messages = await gw.state.getMessages(threadId)
     const userMessages = messages.filter(m => m.role === 'user')
     expect(userMessages.length).toBeGreaterThanOrEqual(2)
     expect(userMessages[0]!.content).toBe('first')
@@ -179,9 +179,9 @@ describe('Decoupled run — API contract', () => {
     // thread.status='active' by the time the handler returns.
 
     // Seed a completed thread.
-    const thread = gw.state.createThread('mini', 'completed thread')
-    gw.state.updateThread(thread.id, { status: 'completed' })
-    expect(gw.state.getThread(thread.id)!.status).toBe('completed')
+    const thread = await gw.state.createThread('mini', 'completed thread')
+    await gw.state.updateThread(thread.id, { status: 'completed' })
+    expect((await gw.state.getThread(thread.id))!.status).toBe('completed')
 
     const res = await fetch(`${gw.baseUrl}/api/v1/run`, {
       method: 'POST',
@@ -203,7 +203,7 @@ describe('Decoupled run — API contract', () => {
     // The handler returns before the runner's finally runs — this is
     // exactly the window where Slice 2 must have already flipped
     // status, so SSE openers in this gap read 'active'.
-    const after = gw.state.getThread(thread.id)!
+    const after = (await gw.state.getThread(thread.id))!
     expect(after.status).toBe('active')
 
     // Cleanup: wait for the runner to settle so afterAll's gw.stop()
@@ -216,7 +216,7 @@ describe('Decoupled run — API contract', () => {
   })
 
   it('POST /abort returns 404 for threads with no active session', async () => {
-    const thread = gw.state.createThread('mini', 'no-session thread')
+    const thread = await gw.state.createThread('mini', 'no-session thread')
     const res = await fetch(`${gw.baseUrl}/api/v1/threads/${thread.id}/abort`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gw.token}` },

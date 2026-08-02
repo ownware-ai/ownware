@@ -31,16 +31,15 @@ engine only ever sees opaque handles, and secrets never enter events, logs, or t
 Nothing is sent to Ownware; there is no Ownware server. See [Security overview](security/overview.md).
 
 **Where does my data live, and what happens on an upgrade?**
-Everything is one SQLite database plus files under `~/.ownware/` (override with
-`OWNWARE_DATA_DIR`) — threads, message history, the credential vault, channels. There is no
-separate database to install or configure. **Migrations are automatic:** on first run the
-database is created and set up; on every upgrade only the new schema changes run, silently.
-You never run a migrate command. Before it changes an existing database, Ownware takes a
-consistent snapshot to `~/.ownware/backups/` (keeping the last few) and **auto-restores if a
-migration ever fails** — a half-migrated database never runs. And if you open your data with
-an *older* Ownware than last wrote it, it refuses (safely, untouched) and tells you to update
-rather than risk corruption. To reset everything, stop the gateway and delete `~/.ownware/`.
-See [Troubleshooting → Data & reset](troubleshooting.md#data-migrations--backups).
+SQLite remains the zero-configuration default: its database and local artifacts
+live under `~/.ownware/` (override with `OWNWARE_DATA_DIR`). Library deployments
+can explicitly select tenant-owned PostgreSQL 16–18; PostgreSQL still uses the
+local data directory for source bytes and key material. **Migrations are
+automatic** on both adapters and unknown/newer histories are refused. SQLite
+takes bounded pre-upgrade snapshots and auto-restores a failed migration;
+PostgreSQL migrations are transactional, while service backups/PITR remain the
+operator's job. See [Gateway storage](gateway/storage.md) and
+[Troubleshooting](troubleshooting.md#data-migrations-backups-and-storage).
 
 **How do I put it on a real server / expose it safely?**
 Run `ownware serve --host 0.0.0.0`. The moment the bind leaves localhost, auth **and** TLS

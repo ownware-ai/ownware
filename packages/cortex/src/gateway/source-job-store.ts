@@ -1,6 +1,6 @@
 import type { SourceMediaType } from './source-media.js'
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import { SourceQuotaPolicy } from './source-quota-policy.js'
 
 export const SOURCE_JOB_MAX_ATTEMPTS = 3 as const
@@ -195,7 +195,7 @@ export class SourcePreparationNotReadyError extends Error {
 
 export class SourceJobStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
   ) {}
 

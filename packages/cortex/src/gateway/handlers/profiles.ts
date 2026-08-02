@@ -18,7 +18,7 @@ import { ProfileSchema } from '../../profile/schema.js'
 import { countResolvedTools } from '../../profile/tool-policy.js'
 import { deepMergePartial } from '../../profile/merge.js'
 import { getRequestPrincipal } from '../auth/scoped-principal.js'
-import type { CandidateStore } from '../candidate-store.js'
+import type { CandidateRepository } from '../../storage/platform-repositories.js'
 
 /**
  * Resolve a parent profile's `subagents` list into the wire shape the
@@ -107,7 +107,7 @@ export function createProfileHandlers(
   userProfilesDir: string,
   state?: GatewayState,
   pendingReconciles?: PendingReconciles,
-  candidateStore?: CandidateStore,
+  candidateStore?: CandidateRepository,
 ) {
   /**
    * Mark every thread on this profile as needing a reconcile on its
@@ -115,9 +115,9 @@ export function createProfileHandlers(
    * profile's declared tool list (attach/detach composio or mcp,
    * PUT that rewrites `tools.*`). No-op when reconcile isn't wired.
    */
-  function markThreadsForProfileReconcile(profileId: string): void {
+  async function markThreadsForProfileReconcile(profileId: string): Promise<void> {
     if (pendingReconciles === undefined || state === undefined) return
-    const threads = state.listThreads(profileId, { limit: 10_000 })
+    const threads = await state.listThreads(profileId, { limit: 10_000 })
     for (const thread of threads.items) {
       pendingReconciles.mark(thread.id)
     }
@@ -144,7 +144,7 @@ export function createProfileHandlers(
     const principal = getRequestPrincipal(req)
     if (principal?.kind === 'delegated') {
       const profileId = principal.profileId
-      const deployment = candidateStore?.getActive(profileId) ?? null
+      const deployment = await candidateStore?.getActive(profileId) ?? null
       const known = registry.has(profileId)
       if (!known && !deployment) {
         sendJSON(res, 200, [])
@@ -190,7 +190,7 @@ export function createProfileHandlers(
     const summaries: ProfileSummary[] = []
 
     for (const entry of profiles) {
-      const meta = state?.getProfileMetadata(entry.name)
+      const meta = await state?.getProfileMetadata(entry.name)
       const isLive = state?.hasActiveRuntime(entry.name) ?? false
 
       try {
@@ -310,7 +310,7 @@ export function createProfileHandlers(
 
     try {
       const loaded = await registry.get(profileId)
-      const meta = state?.getProfileMetadata(profileId)
+      const meta = await state?.getProfileMetadata(profileId)
       const isLive = state?.hasActiveRuntime(profileId) ?? false
       const configMeta = loaded.config.metadata
       const helpers = await resolveHelpers(loaded.config.subagents, registry)
@@ -625,7 +625,7 @@ export function createProfileHandlers(
       // Update profile metadata (icon, color, category) in DB
       const metaFields = body as Record<string, unknown>
       if (state && (metaFields.icon !== undefined || metaFields.color !== undefined || metaFields.category !== undefined)) {
-        state.setProfileMetadata(profileId, {
+        await state.setProfileMetadata(profileId, {
           icon: metaFields.icon as string | null | undefined,
           color: metaFields.color as string | null | undefined,
           category: metaFields.category as string | null | undefined,
@@ -639,7 +639,7 @@ export function createProfileHandlers(
       // pending reconcile — the next turn will diff + apply. If the
       // edit didn't touch tools, the diff is empty and reconcile is
       // a free no-op.
-      markThreadsForProfileReconcile(profileId)
+      await markThreadsForProfileReconcile(profileId)
       sendJSON(res, 200, {
         id: profileId,
         name: reloaded.config.name,
@@ -909,9 +909,9 @@ Respond with ONLY the JSON object, no markdown fences, no explanation.`
 
       // Create metadata for the copy
       if (state) {
-        const originalMeta = state.getProfileMetadata(profileId)
+        const originalMeta = await state.getProfileMetadata(profileId)
         if (originalMeta) {
-          state.setProfileMetadata(copyName, {
+          await state.setProfileMetadata(copyName, {
             icon: originalMeta.icon,
             color: originalMeta.color,
             category: originalMeta.category,
@@ -972,7 +972,7 @@ Respond with ONLY the JSON object, no markdown fences, no explanation.`
         toolkit,
         userProfilesDir,
       )
-      if (added) markThreadsForProfileReconcile(profileId)
+      if (added) await markThreadsForProfileReconcile(profileId)
       // Idempotent: 200 either way. `added === false` means the slug
       // was already in the profile — no-op, still success.
       sendJSON(res, 200, { profileId, toolkit, added })
@@ -1021,7 +1021,7 @@ Respond with ONLY the JSON object, no markdown fences, no explanation.`
         )
         return
       }
-      markThreadsForProfileReconcile(profileId)
+      await markThreadsForProfileReconcile(profileId)
       res.writeHead(204)
       res.end()
     } catch (err) {

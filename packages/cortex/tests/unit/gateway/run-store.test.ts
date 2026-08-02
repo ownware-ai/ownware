@@ -22,7 +22,7 @@ afterEach(async () => {
 })
 
 describe('migration 053 gateway runs', () => {
-  it('upgrades v52 additively and preserves existing thread/idempotency data', () => {
+  it('upgrades v52 additively and preserves existing thread/idempotency data', async () => {
     const path = join(dir, 'upgrade.db')
     const legacy = openDatabaseSafely(
       path,
@@ -55,7 +55,7 @@ describe('migration 053 gateway runs', () => {
 
     const upgraded = new GatewayState(path)
     try {
-      expect(upgraded.getThread('thread_existing')?.profileId).toBe('mini')
+      expect((await upgraded.getThread('thread_existing'))?.profileId).toBe('mini')
       expect(upgraded.rawDbHandle
         .prepare('SELECT run_id FROM run_idempotency WHERE id = ?')
         .pluck()
@@ -71,10 +71,10 @@ describe('migration 053 gateway runs', () => {
 })
 
 describe('exact run permission records', () => {
-  it('binds request and operation hash without persisting raw tool input', () => {
+  it('binds request and operation hash without persisting raw tool input', async () => {
     const state = new GatewayState(join(dir, 'permissions.db'))
     try {
-      const thread = state.createThread('mini')
+      const thread = await state.createThread('mini')
       const store = new GatewayRunStore(state.rawDbHandle, 'a'.repeat(64))
       const run = store.create({
         threadId: thread.id,
@@ -117,11 +117,11 @@ describe('exact run permission records', () => {
 })
 
 describe('durable run cancellation requests', () => {
-  it('moves a live run to cancel_requested exactly once and never reopens terminal state', () => {
+  it('moves a live run to cancel_requested exactly once and never reopens terminal state', async () => {
     const state = new GatewayState(join(dir, 'cancel.db'))
     try {
       const store = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
-      const thread = state.createThread('test')
+      const thread = await state.createThread('test')
       const run = store.create({
         threadId: thread.id,
         profileId: 'test',
@@ -151,7 +151,7 @@ describe('durable run cancellation requests', () => {
 })
 
 describe('profile deployment acceptance fence', () => {
-  it('atomically rejects a paused profile and reports only its real active runs', () => {
+  it('atomically rejects a paused profile and reports only its real active runs', async () => {
     const state = new GatewayState(join(dir, 'paused.db'))
     try {
       const candidates = new CandidateStore(state.rawDbHandle)
@@ -164,7 +164,7 @@ describe('profile deployment acceptance fence', () => {
         profileId: 'test', candidateId, expectedActiveCandidateId: null,
       })
       const runs = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
-      const firstThread = state.createThread('test')
+      const firstThread = await state.createThread('test')
       const first = runs.create({
         threadId: firstThread.id, profileId: 'test', candidateId,
         model: 'test:model', timeoutMs: 60_000, startSeq: 0,
@@ -175,7 +175,7 @@ describe('profile deployment acceptance fence', () => {
       candidates.compareAndSetRouting({
         profileId: 'test', expectedRevision: 1, routingState: 'paused',
       })
-      const blockedThread = state.createThread('test')
+      const blockedThread = await state.createThread('test')
       expect(() => runs.create({
         threadId: blockedThread.id, profileId: 'test', candidateId,
         model: 'test:model', timeoutMs: 60_000, startSeq: 0,

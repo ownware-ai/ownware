@@ -73,8 +73,8 @@ describe('Contract: exact run cancellation', () => {
   })
 
   it('persists an idempotent cancel request without watchdog-invented completion', async () => {
-    const workspace = gateway.state.createWorkspace(gateway.tmpDir, 'Run cancellation contract')
-    const thread = gateway.state.createThread('mini', 'stuck cancellation', workspace.id)
+    const workspace = await gateway.state.createWorkspace(gateway.tmpDir, 'Run cancellation contract')
+    const thread = await gateway.state.createThread('mini', 'stuck cancellation', workspace.id)
     const session = new NonAbortAwareSession()
     stuckSession = session
     const hitl = new HumanInTheLoop({ timeoutMs: 10_000 })
@@ -84,7 +84,7 @@ describe('Contract: exact run cancellation', () => {
       hitl,
       zoneManager: null,
     })
-    const run = gateway.gateway.runStore.create({
+    const run = await gateway.gateway.runStore.create({
       threadId: thread.id,
       workspaceId: workspace.id,
       profileId: 'mini',
@@ -136,15 +136,15 @@ describe('Contract: exact run cancellation', () => {
       cancellation: 'requested',
       terminal: false,
     })
-    const firstRequestedAt = gateway.gateway.runStore.get(run.runId)!.cancelRequestedAt
+    const firstRequestedAt = (await gateway.gateway.runStore.get(run.runId))!.cancelRequestedAt
 
     const duplicate = await cancel()
     expect(duplicate.status).toBe(202)
     await expect(duplicate.json()).resolves.toMatchObject({ cancellation: 'already_requested' })
-    expect(gateway.gateway.runStore.get(run.runId)?.cancelRequestedAt).toBe(firstRequestedAt)
+    expect((await gateway.gateway.runStore.get(run.runId))?.cancelRequestedAt).toBe(firstRequestedAt)
     expect(session.abortCalls).toBe(2)
 
-    const wrongRun = gateway.gateway.runStore.create({
+    const wrongRun = await gateway.gateway.runStore.create({
       threadId: thread.id,
       workspaceId: workspace.id,
       profileId: 'mini',
@@ -155,11 +155,11 @@ describe('Contract: exact run cancellation', () => {
     const wrong = await cancel(wrongRun.runId)
     expect(wrong.status).toBe(409)
     await expect(wrong.json()).resolves.toMatchObject({ error: 'run_not_active' })
-    expect(gateway.gateway.runStore.get(wrongRun.runId)?.status).toBe('accepted')
+    expect((await gateway.gateway.runStore.get(wrongRun.runId))?.status).toBe('accepted')
 
-    const otherWorkspace = gateway.state.createWorkspace(`${gateway.tmpDir}/other`, 'Other scope')
-    const otherThread = gateway.state.createThread('mini', 'other cancellation', otherWorkspace.id)
-    const otherRun = gateway.gateway.runStore.create({
+    const otherWorkspace = await gateway.state.createWorkspace(`${gateway.tmpDir}/other`, 'Other scope')
+    const otherThread = await gateway.state.createThread('mini', 'other cancellation', otherWorkspace.id)
+    const otherRun = await gateway.gateway.runStore.create({
       threadId: otherThread.id,
       workspaceId: otherWorkspace.id,
       profileId: 'mini',
@@ -172,17 +172,17 @@ describe('Contract: exact run cancellation', () => {
     await expect(wrongScope.json()).resolves.toMatchObject({ error: 'principal_scope_denied' })
 
     await new Promise((resolve) => setTimeout(resolve, 2_200))
-    expect(gateway.gateway.runStore.get(run.runId)).toMatchObject({
+    expect(await gateway.gateway.runStore.get(run.runId)).toMatchObject({
       status: 'cancel_requested',
       terminal: false,
     })
     expect(gateway.runner.isRunning(thread.id)).toBe(true)
     expect(gateway.state.getRuntime(thread.id)).toBeDefined()
-    expect(gateway.state.getThread(thread.id)?.status).toBe('active')
+    expect((await gateway.state.getThread(thread.id))?.status).toBe('active')
 
     session.release()
     await handle.done
-    expect(gateway.gateway.runStore.get(run.runId)?.status).toBe('succeeded')
+    expect((await gateway.gateway.runStore.get(run.runId))?.status).toBe('succeeded')
 
     const afterTerminal = await cancel()
     expect(afterTerminal.status).toBe(200)
@@ -194,7 +194,7 @@ describe('Contract: exact run cancellation', () => {
   }, 10_000)
 
   it('reports cancelled only after an abort-aware loop finalizes', async () => {
-    const thread = gateway.state.createThread('mini', 'confirmed cancellation')
+    const thread = await gateway.state.createThread('mini', 'confirmed cancellation')
     const session = new AbortAwareSession()
     const hitl = new HumanInTheLoop({ timeoutMs: 10_000 })
     gateway.state.setSession(thread.id, session as unknown as Session)
@@ -203,7 +203,7 @@ describe('Contract: exact run cancellation', () => {
       hitl,
       zoneManager: null,
     })
-    const run = gateway.gateway.runStore.create({
+    const run = await gateway.gateway.runStore.create({
       threadId: thread.id,
       profileId: 'mini',
       model: 'test:model',
@@ -225,7 +225,7 @@ describe('Contract: exact run cancellation', () => {
     expect(response.status).toBe(202)
     await expect(response.json()).resolves.toMatchObject({ status: 'cancel_requested' })
     await handle.done
-    expect(gateway.gateway.runStore.get(run.runId)).toMatchObject({
+    expect(await gateway.gateway.runStore.get(run.runId)).toMatchObject({
       status: 'cancelled',
       terminal: true,
       outcomeKnown: true,

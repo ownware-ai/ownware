@@ -20,6 +20,8 @@ Packages: `ownware` (umbrella, the quickstart surface), `@ownware/loom` (agent r
 ## Gateway & wire contract
 
 - [Gateway](gateway/overview.md): OwnwareGateway options, bearer-token auth, TLS default, where data lives (~/.ownware)
+- [Gateway storage](gateway/storage.md): SQLite/PostgreSQL selection, versions, TLS/roles, backup/restore, offline transfer, and support limits
+- [Storage performance](gateway/storage-performance.md): reproducible p50/p95/p99, throughput and growth measurements for both adapters
 - [The run API](gateway/run-api.md): POST /api/v1/run, SSE event stream (+ event vocabulary), POST /resume for permissions, GET /models
 - [Exposing the gateway](gateway/exposing.md): the bind-safety invariant (non-loopback forces auth+TLS), the persistent gateway-token file, TLS/proxy patterns
 

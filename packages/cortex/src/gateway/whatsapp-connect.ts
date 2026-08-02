@@ -243,7 +243,7 @@ export function createWhatsAppConnectProcedure(deps: WhatsAppConnectDeps): Chann
           ctx.state['codeVerificationStatus'] = info.codeVerificationStatus
           ctx.state['nameStatus'] = info.nameStatus
           ctx.state['coexistence'] = ctx.params['coexistence'] === true
-          ctx.workLine(
+          await ctx.workLine(
             'Checked the number',
             ctx.params['coexistence'] === true
               ? `${info.displayPhoneNumber} is on the WhatsApp Business app — it can link without moving anything`
@@ -296,7 +296,7 @@ export function createWhatsAppConnectProcedure(deps: WhatsAppConnectDeps): Chann
             mapMetaFailure(error, 'webhook_registration_failed')
           }
           ctx.state['callbackUrl'] = callbackUrl
-          ctx.workLine('Webhook registered', `Meta will deliver messages to ${callbackUrl}`)
+          await ctx.workLine('Webhook registered', `Meta will deliver messages to ${callbackUrl}`)
         },
       },
       {
@@ -304,21 +304,21 @@ export function createWhatsAppConnectProcedure(deps: WhatsAppConnectDeps): Chann
         name: 'register_number',
         run: async (ctx): Promise<void> => {
           if (ctx.state['coexistence'] === true) {
-            ctx.workLine(
+            await ctx.workLine(
               'Registration skipped',
               'Coexistence: the WhatsApp Business app stays the primary device',
             )
             return
           }
           if (ctx.state['codeVerificationStatus'] === 'VERIFIED') {
-            ctx.workLine('Number already registered', 'Meta reports it as verified')
+            await ctx.workLine('Number already registered', 'Meta reports it as verified')
             return
           }
           const credentials = await resolveCredentials(ctx)
           const pin = credentials['verificationPin']
           if (!pin) {
             // Non-fatal by evidence (Chatwoot): the number may already work.
-            ctx.workLine(
+            await ctx.workLine(
               'Registration not attempted',
               'No verificationPin credential — add one and reconnect if sending fails',
             )
@@ -328,13 +328,13 @@ export function createWhatsAppConnectProcedure(deps: WhatsAppConnectDeps): Chann
             await api.registerPhone(
               credentials['phoneNumberId']!, credentials['accessToken']!, pin,
             )
-            ctx.workLine('Number registered', 'Cloud API registration completed')
+            await ctx.workLine('Number registered', 'Cloud API registration completed')
           } catch (error) {
             if (error instanceof MetaGraphError && error.transient) {
               throw new TransientStepError(error.message)
             }
             // Permanent registration failure is stated, not fatal.
-            ctx.workLine(
+            await ctx.workLine(
               'Registration failed — continuing',
               error instanceof MetaGraphError ? error.message : 'unknown registration error',
             )
@@ -347,12 +347,12 @@ export function createWhatsAppConnectProcedure(deps: WhatsAppConnectDeps): Chann
         run: async (ctx): Promise<void> => {
           const displayNumber = str(ctx.state['displayPhoneNumber']) ?? 'the number'
           if (ctx.state['nameStatus'] && ctx.state['nameStatus'] !== 'APPROVED') {
-            ctx.workLine(
+            await ctx.workLine(
               'Display name under review at Meta',
               'Usually minutes — customers may briefly see just the number. Nothing is blocked.',
             )
           }
-          ctx.receipt({
+          await ctx.receipt({
             kind: 'connection',
             title: `WhatsApp connected — Not live`,
             body: {
@@ -365,7 +365,7 @@ export function createWhatsAppConnectProcedure(deps: WhatsAppConnectDeps): Chann
               reversalRoute: 'Disconnect any time; coexistence numbers can also be unlinked from the phone.',
             },
           })
-          ctx.workLine('WhatsApp connected — Not live', `${displayNumber} is ready to publish`)
+          await ctx.workLine('WhatsApp connected — Not live', `${displayNumber} is ready to publish`)
         },
       },
     ],

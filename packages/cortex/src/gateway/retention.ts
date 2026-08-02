@@ -31,7 +31,7 @@
  * destroy history.
  */
 
-import type { CortexDatabase } from './db/database.js'
+import type { AgentEventRepository } from '../storage/core-repositories.js'
 import type { EventBus } from './event-bus.js'
 import { ROOT_AGENT_ID } from './event-bus.js'
 
@@ -84,22 +84,21 @@ export function loadRetentionConfig(env: NodeJS.ProcessEnv = process.env): Reten
 }
 
 /**
- * Run one retention pass synchronously-ish (the DB calls are sync, the
- * subscriber check is sync too). Returns stats so tests and operators
- * can log the outcome.
+ * Run one retention pass against the backend-neutral event repository.
+ * Returns stats so tests and operators can log the outcome.
  *
  * Safe to call even when `enabled=false`; the caller decides whether
  * to invoke it. Kept pure — no timers here.
  */
-export function runRetentionOnce(
-  db: CortexDatabase,
+export async function runRetentionOnce(
+  events: AgentEventRepository,
   bus: EventBus,
   config: RetentionConfig,
-): RetentionStats {
+): Promise<RetentionStats> {
   const cutoffMs = Date.now() - config.retentionDays * 24 * 60 * 60 * 1000
   const cutoffIso = new Date(cutoffMs).toISOString()
 
-  const eligible = db.listThreadsWithQuietRootAgent(cutoffMs)
+  const eligible = await events.listQuietRootThreads(cutoffMs)
   let prunedCount = 0
   let skipped = 0
   let rowsDeleted = 0
@@ -114,7 +113,7 @@ export function runRetentionOnce(
       continue
     }
 
-    const deleted = db.pruneAgentEvents(threadId)
+    const deleted = await events.pruneRootStream(threadId)
     rowsDeleted += deleted
     if (deleted > 0) prunedCount++
   }
@@ -137,22 +136,27 @@ export function runRetentionOnce(
  * and logged so a single bad run never kills the schedule.
  */
 export function startRetentionSchedule(
-  db: CortexDatabase,
+  events: AgentEventRepository,
   bus: EventBus,
   config: RetentionConfig,
   onPass?: (stats: RetentionStats) => void,
-): () => void {
-  if (!config.enabled) return () => {}
+): () => Promise<void> {
+  if (!config.enabled) return async () => {}
 
   let stopped = false
+  let activePass: Promise<void> | null = null
   const tick = () => {
-    if (stopped) return
-    try {
-      const stats = runRetentionOnce(db, bus, config)
-      onPass?.(stats)
-    } catch (err) {
-      console.error('[retention] pass failed:', err)
-    }
+    if (stopped || activePass !== null) return
+    activePass = (async () => {
+      try {
+        const stats = await runRetentionOnce(events, bus, config)
+        onPass?.(stats)
+      } catch (err) {
+        console.error('[retention] pass failed:', err)
+      }
+    })().finally(() => {
+      activePass = null
+    })
   }
   const handle = setInterval(tick, config.intervalMs)
   // Don't keep the event loop alive just for retention — the gateway's
@@ -163,8 +167,9 @@ export function startRetentionSchedule(
   // first interval elapses.
   tick()
 
-  return () => {
+  return async () => {
     stopped = true
     clearInterval(handle)
+    await activePass
   }
 }

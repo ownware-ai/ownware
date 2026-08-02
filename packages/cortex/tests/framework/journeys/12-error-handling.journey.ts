@@ -61,7 +61,7 @@ describe('Journey: 12 Error Handling', () => {
   })
 
   it('POST /run with non-existent profile returns 404', async () => {
-    const t = gw.state.createThread('mini', 'err-test')
+    const t = await gw.state.createThread('mini', 'err-test')
     const r = await gw.client.post('/api/v1/run', {
       prompt: 'hi',
       profileId: 'nope',

@@ -67,8 +67,8 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
     // Ensure the fixture workspace directory exists on disk so agent
     // tool calls (shell, readFile, glob) have a real cwd to operate in.
     mkdirSync(WORKSPACE_PATH, { recursive: true })
-    const existing = gw.state.getWorkspaceByPath(WORKSPACE_PATH)
-    const ws = existing ?? gw.state.createWorkspace(WORKSPACE_PATH, 'fixture-sandbox')
+    const existing = await gw.state.getWorkspaceByPath(WORKSPACE_PATH)
+    const ws = existing ?? (await gw.state.createWorkspace(WORKSPACE_PATH, 'fixture-sandbox'))
     wsId = ws.id
   }, 30_000)
 
@@ -79,7 +79,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 1/12 — tool-sequential-3 ─────────────────────────────────────────────
 
   it('fixture:tool-sequential-3 — three tools in sequence, one turn', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-sequential-3] Three tools in sequence, one turn',
       wsId,
@@ -96,7 +96,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -112,7 +112,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 2/12 — tool-parallel-reads ────────────────────────────────────────────
 
   it('fixture:tool-parallel-reads — multiple reads in parallel', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-parallel-reads] Multiple reads in parallel',
       wsId,
@@ -128,7 +128,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -153,7 +153,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 3/12 — tool-editfile-permission ──────────────────────────────────────
 
   it('fixture:tool-editfile-permission — editFile triggers permission', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-editfile-permission] editFile triggers permission',
       wsId,
@@ -169,7 +169,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
     expect(rootEvents.some(e => e.type === 'permission.request')).toBe(true)
@@ -183,7 +183,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 4/12 — tool-writefile-permission ─────────────────────────────────────
 
   it('fixture:tool-writefile-permission — writeFile triggers permission', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-writefile-permission] writeFile triggers permission',
       wsId,
@@ -198,7 +198,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
     expect(rootEvents.some(e => e.type === 'permission.request')).toBe(true)
@@ -212,7 +212,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 5/12 — tool-error-notfound ────────────────────────────────────────────
 
   it('fixture:tool-error-notfound — tool error — file not found', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-error-notfound] Tool error — file not found',
       wsId,
@@ -227,7 +227,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -248,7 +248,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 6/12 — tool-error-shell ───────────────────────────────────────────────
 
   it('fixture:tool-error-shell — shell command fails', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-error-shell] Shell command fails',
       wsId,
@@ -262,7 +262,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -287,7 +287,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 7/12 — tool-search-chain ──────────────────────────────────────────────
 
   it('fixture:tool-search-chain — glob → grep → readFile chain', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-search-chain] Glob → grep → readFile chain',
       wsId,
@@ -304,7 +304,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -327,7 +327,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 8/12 — tool-mixed-read-write ─────────────────────────────────────────
 
   it('fixture:tool-mixed-read-write — read then write workflow', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-mixed-read-write] Read then write workflow',
       wsId,
@@ -342,7 +342,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -362,7 +362,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 9/12 — tool-shell-pipe ────────────────────────────────────────────────
 
   it('fixture:tool-shell-pipe — shell with pipes', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-shell-pipe] Shell with pipes',
       wsId,
@@ -377,7 +377,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -397,7 +397,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 10/12 — tool-multi-turn-chain ─────────────────────────────────────────
 
   it('fixture:tool-multi-turn-chain — tools across multiple turns', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-multi-turn-chain] Tools across multiple turns',
       wsId,
@@ -420,7 +420,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
 
     // Two turns = at least 2 turn.end events
@@ -436,7 +436,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 11/12 — tool-ask-human ────────────────────────────────────────────────
 
   it('fixture:tool-ask-human — invisible ask_human tool', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-ask-human] Invisible ask_human tool',
       wsId,
@@ -450,7 +450,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
@@ -470,7 +470,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
   // ── 12/12 — tool-todo-checklist ───────────────────────────────────────────
 
   it('fixture:tool-todo-checklist — todo tool renders inline', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:tool-todo-checklist] Todo tool renders inline',
       wsId,
@@ -486,7 +486,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 2 — Tool Combinations', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.length).toBeGreaterThan(0)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
     expect(rootEvents.some(e => e.type === 'text.delta')).toBe(true)

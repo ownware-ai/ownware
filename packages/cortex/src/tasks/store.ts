@@ -16,7 +16,7 @@
  * testable. This file only owns SQL + bus plumbing.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { TaskEventBus, TaskDto } from './event-bus.js'
 import { TaskStatusSchema, type TaskStatusWire } from './event-bus.js'
 
@@ -68,10 +68,10 @@ export interface TaskReplaceInput {
 // ---------------------------------------------------------------------------
 
 export class SqliteTaskStore {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
   private readonly bus: TaskEventBus
 
-  constructor(db: Database.Database, bus: TaskEventBus) {
+  constructor(db: SqliteDatabase, bus: TaskEventBus) {
     this.db = db
     this.bus = bus
   }

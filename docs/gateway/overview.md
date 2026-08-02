@@ -35,7 +35,7 @@ console.log(`token: ${ownware.token}`)
 
 ## How it works
 
-On `start()`, the gateway discovers every profile in `profilesDir`, assembles each into a runnable agent (see [Thinking in Ownware](../getting-started/thinking-in-ownware.md)), and exposes them all through one API. Each run executes in a thread; threads, the credential vault, and memory persist in `~/.ownware/` (`OWNWARE_DATA_DIR` to override) — stop and restart the process and your conversations are still there.
+On `start()`, the gateway discovers every profile in `profilesDir`, assembles each into a runnable agent (see [Thinking in Ownware](../getting-started/thinking-in-ownware.md)), and exposes them all through one API. Each run executes in a thread; threads, the credential vault, and memory persist in the selected [gateway storage](storage.md). SQLite under `~/.ownware/` is the default; a library deployment can explicitly select tenant-owned PostgreSQL. Stop and restart the process and committed conversations remain available.
 
 > **Warning** — the gateway defaults to **TLS on** (self-signed certificate). `tls: false` keeps first contact copy-paste simple on localhost, but never expose a plain-HTTP gateway beyond loopback. `OWNWARE_*` environment variables configure host, port, TLS, and auth.
 

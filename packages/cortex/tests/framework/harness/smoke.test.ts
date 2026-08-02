@@ -50,9 +50,9 @@ describe('Harness smoke test', () => {
     expect(create.body.messageCount).toBe(0)
   })
 
-  it('direct state access works', () => {
-    const before = gw.state.threadCount
-    gw.state.createThread('mini', 'Direct create test')
-    expect(gw.state.threadCount).toBe(before + 1)
+  it('direct state access works', async () => {
+    const before = await gw.state.threadCount()
+    await gw.state.createThread('mini', 'Direct create test')
+    expect(await gw.state.threadCount()).toBe(before + 1)
   })
 })

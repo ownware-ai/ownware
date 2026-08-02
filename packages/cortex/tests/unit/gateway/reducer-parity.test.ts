@@ -22,7 +22,10 @@
  * just plays back the array of events.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { GatewayState } from '../../../src/gateway/state.js'
 import { SessionRunner } from '../../../src/gateway/session-runner.js'
 import { GatewayRunStore } from '../../../src/gateway/run-store.js'
@@ -134,6 +137,17 @@ function installFakeSession(
   return session
 }
 
+async function waitForRootEvent(
+  state: GatewayState,
+  threadId: string,
+  type: string,
+): Promise<void> {
+  await vi.waitFor(async () => {
+    const events = await state.listAgentEvents({ threadId, agentId: 'root' })
+    expect(events.some(event => event.type === type)).toBe(true)
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Canonical event stream builder
 // ---------------------------------------------------------------------------
@@ -162,18 +176,21 @@ function mkTurn(turnIndex: number): LoomEvent[] {
 describe('reducer parity — messages snapshot carries everything UI needs', () => {
   let state: GatewayState
   let runner: SessionRunner
+  let directory: string
 
   beforeEach(() => {
-    state = new GatewayState()
+    directory = mkdtempSync(join(tmpdir(), 'cortex-reducer-parity-'))
+    state = new GatewayState(join(directory, 'ownware.db'))
     runner = new SessionRunner(state)
   })
 
-  afterEach(() => {
-    state.close()
+  afterEach(async () => {
+    await state.closeStorage()
+    rmSync(directory, { recursive: true, force: true })
   })
 
   it('captures text, thinking, tools, permissions, sub-agents, and usage on a clean turn', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events = mkTurn(0)
     installFakeSession(state, thread.id, events)
 
@@ -186,7 +203,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     const result = await handle.done
     expect(result.status).toBe('completed')
 
-    const messages = state.getMessages(thread.id)
+    const messages = await state.getMessages(thread.id)
     // Assistant row is emitted on turn.end; no user row (run.ts handler
     // owns that write path, which we bypass here).
     const assistant = messages.find(m => m.role === 'assistant')
@@ -239,8 +256,129 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
   })
 
+  it('surfaces a durable event failure without publishing or leaking driver text', async () => {
+    const thread = await state.createThread('test')
+    const secretCanary = 'customer-secret-session-storage-failure'
+    installFakeSession(state, thread.id, [
+      { type: 'text.delta', turnIndex: 0, text: 'must not publish' } as LoomEvent,
+    ])
+    state.rawDbHandle.exec(`
+      CREATE TRIGGER fail_runner_text_event
+      BEFORE INSERT ON agent_events
+      WHEN NEW.type = 'text.delta'
+      BEGIN
+        SELECT RAISE(FAIL, '${secretCanary}');
+      END
+    `)
+
+    const liveEvents: Array<{ readonly seq: number; readonly event: LoomEvent }> = []
+    const unsubscribe = state.eventBus.subscribe(thread.id, 'root', (entry) => {
+      liveEvents.push(entry)
+    })
+    const logged: unknown[][] = []
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args)
+    })
+
+    try {
+      const result = await runner.start({
+        threadId: thread.id,
+        profileId: 'test',
+        model: 'test:test',
+        prompt: 'force storage failure',
+      }).done
+
+      expect(result).toMatchObject({ status: 'error', error: 'Run failed' })
+      expect(JSON.stringify(result)).not.toContain(secretCanary)
+      expect((await state.getThread(thread.id))?.status).toBe('error')
+
+      const stored = await state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+      expect(stored.map(({ seq, type }) => ({ seq, type }))).toEqual([
+        { seq: 1, type: 'error' },
+      ])
+      expect(liveEvents.map(({ seq, event }) => ({ seq, type: event.type }))).toEqual([
+        { seq: 1, type: 'error' },
+      ])
+      expect(JSON.stringify(stored)).not.toContain(secretCanary)
+      expect(JSON.stringify(liveEvents)).not.toContain(secretCanary)
+      expect(JSON.stringify(logged)).not.toContain(secretCanary)
+
+      state.rawDbHandle.exec('DROP TRIGGER fail_runner_text_event')
+      await expect(state.eventIngestor.ingestParentEvent(thread.id, {
+        type: 'text.delta', turnIndex: 1, text: 'after failure',
+      } as LoomEvent)).resolves.toBe(2)
+    } finally {
+      errorSpy.mockRestore()
+      unsubscribe()
+    }
+  })
+
+  it('contains a final storage outage and leaves the durable run for indeterminate recovery', async () => {
+    const thread = await state.createThread('test')
+    const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
+    runner = new SessionRunner(state, runStore)
+    const run = runStore.create({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'test:test',
+      timeoutMs: 60_000,
+      startSeq: 0,
+    })
+    installFakeSession(state, thread.id, [
+      {
+        type: 'turn.end',
+        turnIndex: 0,
+        stopReason: 'end_turn',
+        usage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          model: 'test',
+          costUsd: 0,
+        },
+        timestamp: Date.now(),
+      } as LoomEvent,
+    ])
+    const secretCanary = 'final-storage-driver-secret'
+    vi.spyOn(state, 'getAgentEventMaxSeq').mockRejectedValueOnce(new Error(secretCanary))
+    const logged: unknown[][] = []
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args)
+    })
+
+    try {
+      const result = await runner.start({
+        runId: run.runId,
+        threadId: thread.id,
+        profileId: 'test',
+        model: 'test:test',
+        prompt: 'finish while storage disappears',
+      }).done
+
+      expect(result).toMatchObject({ status: 'error', error: 'Run failed' })
+      expect(JSON.stringify(result)).not.toContain(secretCanary)
+      expect(JSON.stringify(logged)).not.toContain(secretCanary)
+      expect(runStore.get(run.runId)).toMatchObject({
+        status: 'running',
+        terminal: false,
+      })
+
+      expect(runStore.recoverInterrupted()).toBe(1)
+      expect(runStore.get(run.runId)).toMatchObject({
+        status: 'indeterminate',
+        terminal: true,
+        outcomeKnown: false,
+        code: 'gateway_restarted',
+        endSeq: null,
+      })
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
   it('binds a streamed permission request to its run and persists the operation hash', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
     runner = new SessionRunner(state, runStore)
     const run = runStore.create({
@@ -276,10 +414,10 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
     expect(permission!.operationHash).toMatch(/^[0-9a-f]{64}$/)
 
-    const persistedRequest = state.listAgentEvents({
+    const persistedRequest = (await state.listAgentEvents({
       threadId: thread.id,
       agentId: 'root',
-    }).find(event => event.type === 'permission.request')
+    })).find(event => event.type === 'permission.request')
     expect(persistedRequest?.payload).toMatchObject({
       requestId: 'req_exact',
       operationHash: permission!.operationHash,
@@ -287,7 +425,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('persists and streams only bounded permission evidence, never raw model input', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
     runner = new SessionRunner(state, runStore)
     const run = runStore.create({
@@ -345,7 +483,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     const permission = runStore.getPermissionRequest(run.runId, 'req_private')
     expect(permission?.operationHash).toMatch(/^[0-9a-f]{64}$/)
 
-    const persistedEvents = state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const persistedEvents = await state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const persistedRequest = persistedEvents.find(event => event.type === 'permission.request')
     expect(persistedRequest?.payload).toMatchObject({
       type: 'permission.request',
@@ -357,7 +495,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       operationHash: permission!.operationHash,
     })
 
-    const assistant = state.getMessages(thread.id).find(message => message.role === 'assistant')
+    const assistant = (await state.getMessages(thread.id)).find(message => message.role === 'assistant')
     expect(assistant?.permissions?.[0]).toMatchObject({
       requestId: 'req_private',
       toolName: 'send_email',
@@ -375,7 +513,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('marks a wall-clock timeout only after the runner finalizer observes it', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
     runner = new SessionRunner(state, runStore)
     const run = runStore.create({
@@ -410,7 +548,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('captures enriched sub-agent fields (model/task/usage/status) for orchestrate workers', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     // Two workers spawned INSIDE one `orchestrate` tool call. There is no
     // per-worker `agent_spawn` tool call, so the gateway's agent_spawn-input
     // correlation never fires — the ENRICHED `agent.spawn`/`agent.complete`
@@ -430,7 +568,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     const handle = runner.start({ threadId: thread.id, profileId: 'test', model: 'test:test', prompt: 'go' })
     await handle.done
 
-    const assistant = state.getMessages(thread.id).find(m => m.role === 'assistant')!
+    const assistant = (await state.getMessages(thread.id)).find(m => m.role === 'assistant')!
     // Both workers (spawned under ONE tool call) become sub-agent records.
     expect(assistant.subAgents).toHaveLength(2)
 
@@ -450,7 +588,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('emits a separate system message for each compaction.end, recovery, and security.block', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
       { type: 'compaction.end', turnIndex: 0, strategy: 'truncate', preTokenCount: 100, postTokenCount: 40, savedPercent: 60 },
@@ -469,7 +607,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const system = msgs.filter(m => m.role === 'system')
     expect(system).toHaveLength(3) // compaction.end, recovery, security.block
 
@@ -482,7 +620,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('flushes partial assistant turn on abort (Task #4 finalizer)', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     // Turn starts, text streams, a tool finishes, then the session is
     // aborted mid-turn — no turn.end ever arrives.
     const events: LoomEvent[] = [
@@ -501,7 +639,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
     // Let the runner drain all scripted events, then abort while the
     // generator is blocked in hangAtEnd.
-    await new Promise(r => setTimeout(r, 30))
+    await waitForRootEvent(state, thread.id, 'tool.call.end')
     session.abort('user')
     const result = await handle.done
 
@@ -510,7 +648,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     // The finalizer should have flushed the partial assistant turn even
     // though turn.end never arrived. Without the finalizer, messages[]
     // for this thread would be empty — all streamed content lost.
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const assistant = msgs.find(m => m.role === 'assistant')
     expect(assistant).toBeDefined()
     expect(assistant!.content).toBe('Working on it')
@@ -518,7 +656,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     expect(assistant!.tools![0]!.name).toBe('read_file')
 
     // A turn.interrupted marker event must also be in the agent_events log.
-    const rawEvents = state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rawEvents = await state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const interrupted = rawEvents.find(e => e.type === 'turn.interrupted')
     expect(interrupted).toBeDefined()
     const payload = interrupted!.payload as { reason: string; hadContent: boolean; hadTools: boolean }
@@ -528,7 +666,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('marks pending sub-agents as error when parent aborts before agent.complete', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
       { type: 'text.delta', turnIndex: 0, text: 'launching helper' },
@@ -543,11 +681,11 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       model: 'test:test',
       prompt: 'hi',
     })
-    await new Promise(r => setTimeout(r, 30))
+    await waitForRootEvent(state, thread.id, 'agent.spawn')
     fake.abort('user')
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const assistant = msgs.find(m => m.role === 'assistant')
     expect(assistant).toBeDefined()
     expect(assistant!.subAgents).toHaveLength(1)
@@ -558,7 +696,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('captures pending permission request that never got a response', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
       { type: 'text.delta', turnIndex: 0, text: 'asking' },
@@ -573,11 +711,11 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       model: 'test:test',
       prompt: 'hi',
     })
-    await new Promise(r => setTimeout(r, 30))
+    await waitForRootEvent(state, thread.id, 'permission.request')
     fake.abort('user')
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const assistant = msgs.find(m => m.role === 'assistant')
     expect(assistant).toBeDefined()
     expect(assistant!.permissions).toHaveLength(1)
@@ -587,7 +725,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('preserves interleaved order in parts (text → tool → text → tool)', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     // The classic case: text, then a tool call, then more text, then
     // another tool. Today's tools[] array would render as
     // "text text" + two trailing tool cards. parts must preserve order.
@@ -612,7 +750,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')!
     expect(asst.parts).toBeDefined()
     expect(asst.parts).toEqual([
@@ -631,7 +769,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   })
 
   it('merges consecutive text deltas into one part; drops empty deltas', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
       { type: 'text.delta', turnIndex: 0, text: 'hel' },
@@ -645,13 +783,13 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')!
     expect(asst.parts).toEqual([{ kind: 'text', text: 'hello' }])
   })
 
   it('partial-flush materializes interrupted tool record so parts.tool refs resolve', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     // tool.call.start fires but tool.call.end never arrives (parent
     // aborts mid-tool). parts has a {kind:'tool', toolCallId:'tc_1'};
     // tools[] must contain tc_1 with isError so the lookup resolves.
@@ -665,11 +803,11 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     const handle = runner.start({
       threadId: thread.id, profileId: 'test', model: 'test:test', prompt: 'hi',
     })
-    await new Promise(r => setTimeout(r, 30))
+    await waitForRootEvent(state, thread.id, 'tool.call.start')
     fake.abort('user')
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')!
     // parts has a tool entry referring to tc_1
     expect(asst.parts?.some(p => p.kind === 'tool' && p.toolCallId === 'tc_1')).toBe(true)
@@ -692,7 +830,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     // flight. The parent generator only carries text + the
     // tool.call.start for `agent_spawn` (the tool the model invokes
     // to launch a helper) — which mirrors what happens live.
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
       { type: 'text.delta', turnIndex: 0, text: "I'll spawn a helper." },
@@ -711,16 +849,16 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
 
     // Let the parent generator drain the scripted events, then fire
     // the lifecycle hook the way the real spawner.onEvent does.
-    await new Promise(r => setTimeout(r, 30))
+    await waitForRootEvent(state, thread.id, 'tool.call.end')
     const SUB_ID = 'sub_helper_42'
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.spawn',
       agentId: SUB_ID,
       profileName: 'helper',
       parentAgentId: null,
       turnIndex: 0,
     } as LoomEvent)
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.complete',
       agentId: SUB_ID,
       result: 'helper done',
@@ -739,7 +877,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     } as LoomEvent)
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')
     expect(asst).toBeDefined()
 
@@ -775,7 +913,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     // must pull name+prompt out of the input and patch the matching
     // SubAgentRecord so a refresh-hydrated modal can render the user
     // bubble.
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const SUB_ID = 'sub_helper_fg'
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
@@ -791,15 +929,15 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
 
     // Let the start event drain, then fire the spawner lifecycle hooks.
-    await new Promise(r => setTimeout(r, 30))
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await waitForRootEvent(state, thread.id, 'tool.call.start')
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.spawn',
       agentId: SUB_ID,
       profileName: 'explore',
       parentAgentId: null,
       turnIndex: 0,
     } as LoomEvent)
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.complete',
       agentId: SUB_ID,
       result: 'redis persistence: RDB + AOF',
@@ -829,7 +967,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     } as LoomEvent)
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')
     expect(asst).toBeDefined()
     expect(asst!.subAgents).toHaveLength(1)
@@ -846,7 +984,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     // Background mode can put tool.call.end before agent.spawn. The
     // reducer must pre-register the tool input by agentId and then let
     // the agent.spawn handler pick it up when the event finally lands.
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const SUB_ID = 'sub_helper_bg'
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
@@ -861,15 +999,15 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
 
     // Let the start + end drain so the reducer pre-registers the spawn
     // input by agentId. Only THEN does the helper emit its lifecycle.
-    await new Promise(r => setTimeout(r, 30))
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await waitForRootEvent(state, thread.id, 'tool.call.end')
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.spawn',
       agentId: SUB_ID,
       profileName: 'indexer',
       parentAgentId: null,
       turnIndex: 0,
     } as LoomEvent)
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.complete',
       agentId: SUB_ID,
       result: 'indexed 42 files',
@@ -886,7 +1024,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     } as LoomEvent)
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')!
     expect(asst.subAgents).toHaveLength(1)
     const sub = asst.subAgents![0]!
@@ -901,7 +1039,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     // Defensive: a malformed or failed agent_spawn tool call may emit
     // tool.call.end with no metadata.agentId. The reducer must not
     // throw and must not bind the input to the wrong record.
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const SUB_ID = 'sub_no_meta'
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
@@ -911,15 +1049,15 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     const handle = runner.start({
       threadId: thread.id, profileId: 'test', model: 'test:test', prompt: 'x',
     })
-    await new Promise(r => setTimeout(r, 30))
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await waitForRootEvent(state, thread.id, 'tool.call.start')
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.spawn',
       agentId: SUB_ID,
       profileName: 'helper',
       parentAgentId: null,
       turnIndex: 0,
     } as LoomEvent)
-    runner.notifyParentLifecycleEvent(thread.id, {
+    await runner.notifyParentLifecycleEvent(thread.id, {
       type: 'agent.complete',
       agentId: SUB_ID,
       result: 'done',
@@ -945,7 +1083,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     } as LoomEvent)
     await handle.done
 
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')!
     const sub = asst.subAgents![0]!
     // prompt/task stay undefined — we refuse to guess the binding
@@ -956,7 +1094,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
   it('late lifecycle events (after run ends) are silently dropped', async () => {
     // Helper completes after the parent already saved its turn.end row.
     // Late events must not throw and must not mutate stale state.
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events: LoomEvent[] = [
       { type: 'turn.start', turnIndex: 0, timestamp: Date.now() },
       { type: 'text.delta', turnIndex: 0, text: 'fire and forget' },
@@ -969,24 +1107,22 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     await handle.done
 
     // Run is finished; lifecycle callback was unregistered.
-    expect(() => {
-      runner.notifyParentLifecycleEvent(thread.id, {
+    await expect(runner.notifyParentLifecycleEvent(thread.id, {
         type: 'agent.complete',
         agentId: 'sub_late',
         result: 'too late',
         durationMs: 1,
         turnIndex: 0,
-      } as LoomEvent)
-    }).not.toThrow()
+      } as LoomEvent)).resolves.toBe(false)
 
     // Saved row is unchanged.
-    const msgs = state.getMessages(thread.id)
+    const msgs = await state.getMessages(thread.id)
     const asst = msgs.find(m => m.role === 'assistant')!
     expect(asst.subAgents).toBeUndefined()
   })
 
   it('every Loom event type appears in agent_events (raw log is complete)', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const events = mkTurn(0)
     installFakeSession(state, thread.id, events)
 
@@ -998,7 +1134,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
     })
     await handle.done
 
-    const raw = state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const raw = await state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const rawTypes = raw.map(e => e.type)
     // Every event in the scripted stream must be on disk verbatim.
     for (const ev of events) {

@@ -4,15 +4,15 @@ import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
-  type RunIdempotencyStore,
 } from '../idempotency.js'
+import type { IdempotencyRepository } from '../../storage/security-repositories.js'
+import type { SourceRepository } from '../../storage/source-repositories.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 import { SourceQuotaExceededError } from '../source-quota-policy.js'
 import {
   SOURCE_AUTHORITIES,
   SOURCE_CLASSIFICATIONS,
   SOURCE_KINDS,
-  type SourceStore,
 } from '../source-store.js'
 
 const POLICY_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
@@ -34,8 +34,8 @@ const SourceRegistrationSchema = z.object({
 }).strict()
 
 export function createRegisterSourceHandler(
-  store: SourceStore,
-  idempotency: RunIdempotencyStore,
+  store: SourceRepository,
+  idempotency: IdempotencyRepository,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
     const principal = getRequestPrincipal(req)
@@ -65,7 +65,7 @@ export function createRegisterSourceHandler(
       operation: 'sources.register',
       key: idempotencyKey,
     }
-    const claim = idempotency.claim({ ...key, input: parsed.data })
+    const claim = await idempotency.claim({ ...key, input: parsed.data })
     if (claim.kind === 'replay') {
       res.setHeader('Idempotency-Replayed', 'true')
       sendJSON(res, claim.statusCode, claim.result)
@@ -90,30 +90,30 @@ export function createRegisterSourceHandler(
     }
 
     try {
-      const result = store.create({
+      const result = await store.create({
         workspaceId: principal.workspaceId,
         profileId: principal.profileId,
         ...parsed.data,
       })
-      idempotency.complete({ ...key, statusCode: 202, result })
+      await idempotency.complete({ ...key, statusCode: 202, result })
       sendJSON(res, 202, result)
     } catch (error) {
       if (error instanceof SourceQuotaExceededError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         sendError(res, 409, 'Source quota does not allow this operation.',
           'source_quota_exceeded', 'invalid_request', {
             resourceClass: error.resourceClass,
           })
         return
       }
-      idempotency.markIndeterminate(key)
+      await idempotency.markIndeterminate(key)
       throw error
     }
   }
 }
 
 export function createListSourcesHandler(
-  store: SourceStore,
+  store: SourceRepository,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res): Promise<void> => {
     const principal = getRequestPrincipal(req)
@@ -137,7 +137,7 @@ export function createListSourcesHandler(
         'source_list_invalid', 'invalid_request')
       return
     }
-    sendJSON(res, 200, store.listScoped(
+    sendJSON(res, 200, await store.listScoped(
       principal.workspaceId,
       principal.profileId,
       { limit, ...(cursor !== undefined ? { cursor } : {}) },
@@ -146,7 +146,7 @@ export function createListSourcesHandler(
 }
 
 export function createGetSourceHandler(
-  store: SourceStore,
+  store: SourceRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -161,7 +161,7 @@ export function createGetSourceHandler(
     }
     const sourceId = params['sourceId']
     const source = sourceId && SOURCE_ID.test(sourceId)
-      ? store.getScoped(sourceId, principal.workspaceId, principal.profileId)
+      ? await store.getScoped(sourceId, principal.workspaceId, principal.profileId)
       : null
     if (!source) {
       sendError(res, 404, 'Source not found.', 'source_not_found', 'not_found')

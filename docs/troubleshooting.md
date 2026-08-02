@@ -76,27 +76,42 @@ Check what's usable right now: `curl http://localhost:3011/api/v1/models` and lo
 - **Bot ignores an unknown DM.** That's fail-closed pairing — approve the sender with
   `ownware channel approve <channel> <code>`.
 
-## Data, migrations & backups
+## Data, migrations, backups, and storage
 
-Everything Ownware stores is one SQLite database plus files under `~/.ownware/`
-(`OWNWARE_DATA_DIR` to override): threads, message history, the encrypted credential vault,
-and channels. No separate database server to install or configure.
+SQLite is the default database under `~/.ownware/` (`OWNWARE_DATA_DIR` to
+override). An explicitly configured library deployment may instead use
+tenant-owned PostgreSQL. PostgreSQL still relies on `dataDir` for source bytes,
+channel configuration, tokens, TLS material and potentially the key material
+needed to decrypt credential ciphertext. Back up the database and `dataDir` as
+one deployment; see [Gateway storage](gateway/storage.md).
 
 - **Migrations are automatic.** First run creates and sets up the database; each upgrade runs
   only the new schema changes, silently — you never run a migrate command. On a fresh install
   you'll see one line like `database initialized (48 migrations)`; that's normal, not an error.
-- **Your data is snapshotted before every upgrade.** Before changing an existing database,
+- **SQLite data is snapshotted before every upgrade.** Before changing an existing database,
   Ownware writes a consistent backup to `~/.ownware/backups/` (keeping the last few) and
   **auto-restores if a migration fails** — a half-migrated database never runs.
+- **PostgreSQL does not auto-back up your service.** Migrations are transactional,
+  but `pg_dump`, point-in-time recovery, replication and failover belong to the
+  operator. Stop the gateway and back up PostgreSQL plus `dataDir` together.
+- **PostgreSQL refuses to start.** Stable codes identify the boundary without
+  echoing a URL: install the optional `pg` peer for `driver_missing`; use a
+  supported 16.14+/17.10+/18.4+ server; verify the migration role owns the
+  `ownware` schema; verify runtime privileges; and use verified TLS for every
+  non-loopback server. Ownware never falls back to SQLite.
 - **"Your data was last used by a newer version of Ownware…"** means you opened your data with
   an *older* Ownware than last wrote it. Your data is safe and untouched — install the latest
   version to open it. (Ownware refuses to downgrade rather than risk corrupting your data.)
 - **Database keeps growing?** Old raw event rows for finished threads can be pruned with
   `OWNWARE_EVENT_RETENTION_ENABLED=1` (your conversation history is never pruned). See the
   [configuration reference](reference/configuration.md).
-- **Reset everything:** stop the gateway and delete `~/.ownware/`. Your provider keys live
-  encrypted there — if you set `OWNWARE_MASTER_KEY`, keep a copy or you can't decrypt an old
-  vault.
+- **Reset SQLite:** stop the gateway and delete its `dataDir` (plus an explicit
+  external `storage.path`, if used). Provider keys are encrypted—preserve an
+  externally supplied `OWNWARE_MASTER_KEY` if you need an old backup.
+- **Reset PostgreSQL:** do not delete only `dataDir`; that can strand encrypted
+  database rows. Stop the gateway, identify the exact tenant database and local
+  state, take any required backup, then remove them through your normal database
+  and filesystem procedures. Ownware intentionally has no broad reset command.
 
 ## See also
 

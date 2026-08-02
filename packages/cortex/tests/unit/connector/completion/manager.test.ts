@@ -47,19 +47,19 @@ describe('ConnectionCompletionManager', () => {
 
     store.upsertPending({ connectionId: 'a', connectorId: 'notion', source: 'composio', entityId: 'cortex-default-user' })
     store.upsertPending({ connectionId: 'b', connectorId: 'webhook', source: 'mcp', entityId: 'cortex-default-user' })
-    mgr.dispatch('a')
-    mgr.dispatch('b')
+    await mgr.dispatch('a')
+    await mgr.dispatch('b')
     await vi.advanceTimersByTimeAsync(20)
 
     expect(composioCalls).toBe(1)
     expect(customCalls).toBe(1)
   })
 
-  it('dispatch with unknown source throws', () => {
+  it('dispatch with unknown source throws', async () => {
     const bus = createConnectorStatusBus()
     const mgr = new ConnectionCompletionManager(store, bus)
     store.upsertPending({ connectionId: 'a', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
-    expect(() => mgr.dispatch('a')).toThrow(/no listener registered/)
+    await expect(mgr.dispatch('a')).rejects.toThrow(/no listener registered/)
   })
 
   it('hasListener reflects registration', () => {
@@ -78,8 +78,8 @@ describe('ConnectionCompletionManager', () => {
     mgr.registerListener(makeListener('composio', async () => ({ status: 'pending' })))
     store.upsertPending({ connectionId: 'a', connectorId: 'x', source: 'composio', entityId: 'cortex-default-user' })
     store.upsertPending({ connectionId: 'b', connectorId: 'y', source: 'composio', entityId: 'cortex-default-user' })
-    mgr.dispatch('a')
-    mgr.dispatch('b')
+    await mgr.dispatch('a')
+    await mgr.dispatch('b')
     expect(mgr.poller.activeCount).toBe(2)
     mgr.cancelAll()
     expect(mgr.poller.activeCount).toBe(0)
@@ -97,7 +97,7 @@ describe('ConnectionCompletionManager', () => {
       connectionId: 'cleanup', connectorId: 'x', source: 'composio',
       entityId: 'cortex-default-user',
     })
-    mgr.dispatch('cleanup')
+    await mgr.dispatch('cleanup')
     await vi.advanceTimersByTimeAsync(20)
     expect(cleaned).toEqual(['cleanup'])
   })

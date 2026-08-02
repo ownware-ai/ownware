@@ -29,7 +29,7 @@ afterEach(async () => {
 describe('Contract: transactional source quotas', () => {
   it('rejects registration growth safely without poisoning the retry key', async () => {
     gateway = await createTestGateway({ disableAuth: false, sourceQuotaLimits: LIMITS })
-    const workspaceId = gateway.state.createWorkspace(gateway.tmpDir, 'Source quota').id
+    const workspaceId = (await gateway.state.createWorkspace(gateway.tmpDir, 'Source quota')).id
     const token = await issue(workspaceId, ['sources.register', 'sources.read'])
     const register = (key: string, label: string) => fetch(`${gateway!.baseUrl}/api/v1/sources`, {
       method: 'POST',
@@ -72,7 +72,7 @@ describe('Contract: transactional source quotas', () => {
 
   it('counts active upload bytes as reservations before any chunk is written', async () => {
     gateway = await createTestGateway({ disableAuth: false, sourceQuotaLimits: LIMITS })
-    const workspaceId = gateway.state.createWorkspace(gateway.tmpDir, 'Upload quota').id
+    const workspaceId = (await gateway.state.createWorkspace(gateway.tmpDir, 'Upload quota')).id
     const token = await issue(workspaceId, ['sources.register', 'source_uploads.create'])
     const registered = await fetch(`${gateway.baseUrl}/api/v1/sources`, {
       method: 'POST',

@@ -10,7 +10,7 @@
  * `runCredentialBootMigrations` below.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../../storage/sqlite-driver.js'
 import { CredentialVault } from '../../connector/credentials/vault.js'
 import {
   importFileVaultIntoCredentials,
@@ -50,7 +50,7 @@ export type CredentialStore = CredentialBackend
  * store can construct one directly via `new DbCredentialBackend(db)`
  * and skip the migration pass entirely.
  */
-export function createCredentialStore(db: Database.Database): CredentialStore {
+export function createCredentialStore(db: SqliteDatabase): CredentialStore {
   return new DbCredentialBackend(db)
 }
 
@@ -88,7 +88,7 @@ export interface CredentialBootMigrationOptions {
  * line, matching the migration history docs.
  */
 export async function runCredentialBootMigrations(
-  db: Database.Database,
+  db: SqliteDatabase,
   store: CredentialStore,
   options: CredentialBootMigrationOptions = {},
 ): Promise<CredentialBootMigrationResult> {

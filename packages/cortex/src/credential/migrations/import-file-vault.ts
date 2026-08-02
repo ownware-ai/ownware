@@ -48,7 +48,7 @@
  *     "what happens on the very first run after a fresh install".
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../../storage/sqlite-driver.js'
 import {
   CredentialVault,
   credentialVault as defaultVault,
@@ -102,7 +102,7 @@ export interface ImportFileVaultOptions {
 }
 
 export async function importFileVaultIntoCredentials(
-  db: Database.Database,
+  db: SqliteDatabase,
   backend: CredentialBackend,
   options: ImportFileVaultOptions = {},
 ): Promise<FileVaultImportResult> {
@@ -244,7 +244,7 @@ export async function importFileVaultIntoCredentials(
   return { ran: true, perConnector, skippedRuntime }
 }
 
-function setFlag(db: Database.Database): void {
+function setFlag(db: SqliteDatabase): void {
   const now = new Date().toISOString()
   db.prepare(`
     INSERT INTO app_state (key, value, updated_at)

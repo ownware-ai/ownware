@@ -400,7 +400,7 @@ export async function assembleAgent(
   // AGENTS.md file. Returns nullish when memory system isn't wired
   // (tests / CLI) so downstream callers preserve the pre-memory
   // behaviour exactly.
-  const memoryContext = resolveMemoryContext(profile, options)
+  const memoryContext = await resolveMemoryContext(profile, options)
 
   // 3. Assemble tools (including MCP tools and not-ready stubs)
   const tools0 = await assembleTools(
@@ -1053,10 +1053,10 @@ interface MemoryContext {
   readonly rememberTool: Tool | null
 }
 
-function resolveMemoryContext(
+async function resolveMemoryContext(
   profile: LoadedProfile,
   options: AssembleOptions,
-): MemoryContext | null {
+): Promise<MemoryContext | null> {
   const wired = options.memory
   if (!wired) return null
 
@@ -1079,9 +1079,9 @@ function resolveMemoryContext(
   if (
     memoryCfg.enabled &&
     profile.agentsMd &&
-    wired.system.memories.countForProfile(profileId, 'all') === 0
+    await wired.system.memories.countForProfile(profileId, 'all') === 0
   ) {
-    seedFromAgentsMd(wired.system.memories, profileId, profile.agentsMd)
+    await seedFromAgentsMd(wired.system.memories, profileId, profile.agentsMd)
   }
 
   // When memory is disabled entirely, render no fragments and inject
@@ -1089,7 +1089,7 @@ function resolveMemoryContext(
   // on `memoryContext != null` to know "DB-backed memory is wired".
   if (!memoryCfg.enabled) {
     return {
-      identityFragment: wired.system.identity.renderForPrompt(),
+      identityFragment: await wired.system.identity.renderForPrompt(),
       memoryFragment: null,
       injectRememberTool: false,
       rememberTool: null,
@@ -1097,10 +1097,10 @@ function resolveMemoryContext(
   }
 
   // Load top-N for the prompt and bump usage counters.
-  const top = wired.system.memories.loadActiveForPrompt(profileId, DEFAULT_MEMORY_TOP_N)
+  const top = await wired.system.memories.loadActiveForPrompt(profileId, DEFAULT_MEMORY_TOP_N)
   const memoryFragment = renderMemoryFragmentForPrompt(top)
   if (top.length > 0) {
-    wired.system.memories.recordReferences(top.map((m) => m.id))
+    await wired.system.memories.recordReferences(top.map((m) => m.id))
   }
 
   // Build the bound `remember` tool when autoLearn is on.
@@ -1110,8 +1110,8 @@ function resolveMemoryContext(
     const proposalsRef = wired.system.proposals
     rememberTool = createRememberTool({
       hook: {
-        propose(input) {
-          const proposal = proposalsRef.propose({
+        async propose(input) {
+          const proposal = await proposalsRef.propose({
             profileId,
             threadId: capturedThreadId,
             content: input.content,
@@ -1124,7 +1124,7 @@ function resolveMemoryContext(
   }
 
   return {
-    identityFragment: wired.system.identity.renderForPrompt(),
+    identityFragment: await wired.system.identity.renderForPrompt(),
     memoryFragment,
     injectRememberTool: rememberTool != null,
     rememberTool,

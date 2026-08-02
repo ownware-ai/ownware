@@ -33,6 +33,7 @@ import { OpenAIProvider, ProviderError, type ProviderFetch, type ProviderRequest
 import { CredentialAuditLog } from '../../../src/credential/audit.js'
 import { CredentialInjector } from '../../../src/credential/injector.js'
 import { GatewayCredentialResolver } from '../../../src/credential/resolver.js'
+import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqlite-security-repositories.js'
 import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js'
 import { __resetMasterKeyCacheForTests } from '../../../src/connector/credentials/vault.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
@@ -68,7 +69,11 @@ beforeEach(() => {
   for (const migration of MIGRATIONS) db.exec(migration.sql)
   store = new DbCredentialBackend(db)
   audit = new CredentialAuditLog(db)
-  resolver = new GatewayCredentialResolver({ store, audit, spendDb: db })
+  resolver = new GatewayCredentialResolver({
+    store,
+    audit,
+    spend: createSqliteCredentialSpendRepository(db),
+  })
   injector = new CredentialInjector(resolver)
 })
 

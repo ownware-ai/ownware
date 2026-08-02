@@ -44,7 +44,7 @@ describe('Contract: delegated principals', () => {
       disableAuth: false,
       profiles: [{ name: 'other', tools: { preset: 'none' } }],
     })
-    workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Principal contract').id
+    workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Principal contract')).id
   })
 
   afterAll(async () => {
@@ -132,7 +132,7 @@ describe('Contract: delegated principals', () => {
   })
 
   it('denies a different agent before creating a thread or calling a provider', async () => {
-    const before = gw.state.listThreads().total
+    const before = (await gw.state.listThreads()).total
     const response = await fetch(`${gw.baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: {
@@ -148,11 +148,11 @@ describe('Contract: delegated principals', () => {
 
     expect(response.status).toBe(403)
     expect(ErrorSchema.parse(await response.json()).error).toBe('principal_scope_denied')
-    expect(gw.state.listThreads().total).toBe(before)
+    expect((await gw.state.listThreads()).total).toBe(before)
   })
 
   it('requires a durable key for an otherwise in-scope delegated run', async () => {
-    const before = gw.state.listThreads().total
+    const before = (await gw.state.listThreads()).total
     const response = await fetch(`${gw.baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: {
@@ -163,7 +163,7 @@ describe('Contract: delegated principals', () => {
     })
     expect(response.status).toBe(400)
     expect(ErrorSchema.parse(await response.json()).error).toBe('idempotency_key_required')
-    expect(gw.state.listThreads().total).toBe(before)
+    expect((await gw.state.listThreads()).total).toBe(before)
   })
 
   it('binds delegated thread continuity to the verified authority context', async () => {
@@ -208,7 +208,7 @@ describe('Contract: delegated principals', () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
     expect(gw.runner.isRunning(started.threadId)).toBe(false)
-    const beforeMessages = gw.state.getMessages(started.threadId).length
+    const beforeMessages = (await gw.state.getMessages(started.threadId)).length
 
     const denied = await fetch(`${gw.baseUrl}/api/v1/run`, {
       method: 'POST',
@@ -223,7 +223,7 @@ describe('Contract: delegated principals', () => {
     })
     expect(denied.status).toBe(403)
     expect(ErrorSchema.parse(await denied.json()).error).toBe('principal_scope_denied')
-    expect(gw.state.getMessages(started.threadId)).toHaveLength(beforeMessages)
+    await expect(gw.state.getMessages(started.threadId)).resolves.toHaveLength(beforeMessages)
 
     for (const request of [
       fetch(`${gw.baseUrl}/api/v1/runs/${started.runId}`, {
@@ -270,7 +270,7 @@ describe('Contract: delegated principals', () => {
     expect(stream.status).toBe(200)
     await stream.body?.cancel()
 
-    const unboundOwnerThread = gw.state.createThread('mini', undefined, workspaceId)
+    const unboundOwnerThread = await gw.state.createThread('mini', undefined, workspaceId)
     const unbound = await fetch(
       `${gw.baseUrl}/api/v1/threads/${unboundOwnerThread.id}/agents/root/events?since=0`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -296,8 +296,8 @@ describe('Contract: delegated principals', () => {
     expect(abort.status).toBe(403)
     expect(ErrorSchema.parse(await abort.json()).error).toBe('principal_operation_denied')
 
-    const otherWorkspace = gw.state.createWorkspace(`${gw.tmpDir}/other`, 'Other scope')
-    const other = gw.state.createThread('mini', undefined, otherWorkspace.id)
+    const otherWorkspace = await gw.state.createWorkspace(`${gw.tmpDir}/other`, 'Other scope')
+    const other = await gw.state.createThread('mini', undefined, otherWorkspace.id)
     const denied = await fetch(
       `${gw.baseUrl}/api/v1/threads/${other.id}/agents/root/events?since=0`,
       { headers: { Authorization: `Bearer ${token}` } },

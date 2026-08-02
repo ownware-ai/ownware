@@ -77,13 +77,13 @@ export interface MCPRegistrySourceProviderOptions {
    * Default: always-on. Tests use this; production passes a
    * settings-backed closure.
    */
-  readonly enabledChecker?: () => boolean
+  readonly enabledChecker?: () => boolean | Promise<boolean>
 }
 
 export class MCPRegistrySourceProvider implements ConnectorSourceProvider {
   readonly name = 'mcp_registry'
   private readonly fetcher: () => Promise<readonly MCPRegistryEntry[]>
-  private readonly enabledChecker: () => boolean
+  private readonly enabledChecker: () => boolean | Promise<boolean>
 
   constructor(opts: MCPRegistrySourceProviderOptions = {}) {
     this.fetcher = opts.fetcher ?? fetchMCPRegistry
@@ -100,7 +100,7 @@ export class MCPRegistrySourceProvider implements ConnectorSourceProvider {
    * failing must not brick the catalog. The error is logged once.
    */
   async listGlobal(): Promise<Connector[]> {
-    if (!this.enabledChecker()) return []
+    if (!await this.enabledChecker()) return []
     let entries: readonly MCPRegistryEntry[]
     try {
       entries = await this.fetcher()

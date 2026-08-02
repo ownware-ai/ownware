@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 
 export type DurableRunStatus =
   | 'accepted'
@@ -91,7 +91,7 @@ export class GatewayRunStore {
   private readonly permissionHashKey: Buffer
 
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     permissionHashSecret?: string,
   ) {
     this.permissionHashKey = permissionHashSecret === undefined

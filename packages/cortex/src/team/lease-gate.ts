@@ -28,7 +28,7 @@
 
 import { resolve } from 'node:path'
 import type { Tool, ToolContext } from '@ownware/loom'
-import type { TeamStore } from './store.js'
+import type { TeamRepository } from '../storage/platform-repositories.js'
 import type { TeamLease } from './schema.js'
 
 /**
@@ -61,7 +61,7 @@ const RESOURCE_KEY_EXTRACTORS: Readonly<
 }
 
 export interface LeaseGateContext {
-  readonly store: TeamStore
+  readonly store: TeamRepository
   readonly runId: string
   readonly taskId: string
   readonly memberSlug: string
@@ -108,9 +108,9 @@ export function wrapMemberToolsWithLeaseGate(
   return tools.map((tool) => {
     const extractor = RESOURCE_KEY_EXTRACTORS[tool.name]
 
-    const heartbeat = (): void => {
+    const heartbeat = async (): Promise<void> => {
       try {
-        store.renewLeasesForAgent(runId, memberSlug)
+        await store.renewLeasesForAgent(runId, memberSlug)
       } catch {
         // Heartbeat is an optimization on top of task-scoped release;
         // a failed renew must never break the tool call itself.
@@ -125,9 +125,9 @@ export function wrapMemberToolsWithLeaseGate(
       ): Promise<ValidateResult> {
         if (extractor) {
           for (const resourceKey of extractor(input, workspacePath)) {
-            const result = store.acquireLease({ runId, resourceKey, taskId, agentId: memberSlug })
+            const result = await store.acquireLease({ runId, resourceKey, taskId, agentId: memberSlug })
             if (!result.acquired) {
-              const holderTask = store.getTask(result.holder.taskId)
+              const holderTask = await store.getTask(result.holder.taskId)
               const label = holderTask
                 ? `T${holderTask.seq} "${holderTask.title}"`
                 : `task ${result.holder.taskId}`
@@ -147,8 +147,19 @@ export function wrapMemberToolsWithLeaseGate(
         return { result: true }
       },
       execute(input, context) {
-        heartbeat()
-        return tool.execute(input, context)
+        return (async function* () {
+          await heartbeat()
+          const execution = tool.execute(input, context)
+          if (Symbol.asyncIterator in execution) {
+            let next = await execution.next()
+            while (!next.done) {
+              yield next.value
+              next = await execution.next()
+            }
+            return next.value
+          }
+          return await execution
+        })()
       },
     }
     return wrapped

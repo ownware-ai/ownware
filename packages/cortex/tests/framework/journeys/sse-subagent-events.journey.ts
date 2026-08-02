@@ -111,7 +111,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
       recordFixtures: false,
     })
     const sandbox = await setupSandbox(gw.tmpDir)
-    const ws = gw.state.createWorkspace(sandbox, 'subagent-events-sandbox')
+    const ws = await gw.state.createWorkspace(sandbox, 'subagent-events-sandbox')
     wsId = ws.id
   }, 30_000)
 
@@ -120,7 +120,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
   })
 
   it('persists every subagent event and exposes them via the history endpoint', async () => {
-    const thread = gw.state.createThread('coder', 'subagent-history', wsId)
+    const thread = await gw.state.createThread('coder', 'subagent-history', wsId)
 
     await runToCompletion(
       gw,
@@ -133,7 +133,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
     )
 
     // ── 1. Root agent events on disk ──────────────────────────────────
-    const rootEvents = gw.state.listAgentEvents({
+    const rootEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: ROOT_AGENT_ID,
     })
@@ -177,7 +177,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
     // The sub-agent should have emitted session.start, at least one
     // turn.start / turn.end pair, and likely some tool.call events
     // (the explore helper has access to filesystem tools).
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: childRow!.agentId,
     })
@@ -220,7 +220,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
   }, 300_000)
 
   it('SSE replay endpoint emits the full subagent stream in order with a stream.start envelope', async () => {
-    const thread = gw.state.createThread('coder', 'subagent-replay', wsId)
+    const thread = await gw.state.createThread('coder', 'subagent-replay', wsId)
 
     await runToCompletion(
       gw,
@@ -301,7 +301,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
     // The SSE replay must match the DB state exactly — same types in
     // the same order. Drop the trailing 'done' event if present.
     const contentWithoutDone = content.filter(e => e.event !== 'done')
-    const dbRows = gw.state.listAgentEvents({
+    const dbRows = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: childRow!.agentId,
     })
@@ -312,7 +312,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
   }, 300_000)
 
   it('resume via ?since=N returns only events after the cursor', async () => {
-    const thread = gw.state.createThread('coder', 'subagent-resume', wsId)
+    const thread = await gw.state.createThread('coder', 'subagent-resume', wsId)
 
     await runToCompletion(
       gw,
@@ -326,7 +326,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent event replay + live tail', (
     const childRow = agents.find(a => a.agentId !== ROOT_AGENT_ID)
     expect(childRow).toBeDefined()
 
-    const all = gw.state.listAgentEvents({
+    const all = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: childRow!.agentId,
     })

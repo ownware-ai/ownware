@@ -34,7 +34,7 @@ import {
 
 export interface WorkspaceResolver {
   /** Return the filesystem path for a workspace, or null if unknown. */
-  getWorkspacePath(workspaceId: string): string | null
+  getWorkspacePath(workspaceId: string): Promise<string | null>
 }
 
 export interface TerminalSessionRegistryOptions {
@@ -157,7 +157,7 @@ export class TerminalSessionRegistry {
    * one. Returns null when the workspace path cannot be resolved —
    * callers should surface that as a 404 / error, not silently spawn.
    */
-  getAgent(workspaceId: string): PtySession | null {
+  async getAgent(workspaceId: string): Promise<PtySession | null> {
     const key = agentKey(workspaceId)
     const existing = this.entries.get(key)
     if (existing != null && existing.session.exited == null) {
@@ -167,8 +167,19 @@ export class TerminalSessionRegistry {
       this.cleanupEntry(key, existing)
     }
 
-    const cwd = this.opts.workspaces.getWorkspacePath(workspaceId)
+    const cwd = await this.opts.workspaces.getWorkspacePath(workspaceId)
     if (cwd == null) return null
+
+    // Repository-backed workspace resolution yields to the event loop. A
+    // concurrent caller may have created the singleton while this lookup was
+    // in flight, so re-check before spawning a second PTY.
+    const concurrent = this.entries.get(key)
+    if (concurrent != null && concurrent.session.exited == null) {
+      return concurrent.session
+    }
+    if (concurrent != null) {
+      this.cleanupEntry(key, concurrent)
+    }
 
     const session = this.spawn({ cwd })
     const entry = this.attachListeners(session, {
@@ -196,8 +207,8 @@ export class TerminalSessionRegistry {
    * having to call `getAgent` (which would spawn a PTY as a
    * side-effect).
    */
-  workspaceExists(workspaceId: string): boolean {
-    return this.opts.workspaces.getWorkspacePath(workspaceId) != null
+  async workspaceExists(workspaceId: string): Promise<boolean> {
+    return await this.opts.workspaces.getWorkspacePath(workspaceId) != null
   }
 
   /**
@@ -235,7 +246,7 @@ export class TerminalSessionRegistry {
    * `shell_execute`, later board items) MUST set both fields so
    * the client can label the tab and `cleanupByThread` can reap it.
    */
-  createUser(workspaceId: string, owner?: SessionOwner): CreateUserResult | null {
+  async createUser(workspaceId: string, owner?: SessionOwner): Promise<CreateUserResult | null> {
     if (owner?.timeoutSeconds !== undefined) {
       if (
         !Number.isInteger(owner.timeoutSeconds) ||
@@ -245,7 +256,7 @@ export class TerminalSessionRegistry {
       }
     }
 
-    const cwd = this.opts.workspaces.getWorkspacePath(workspaceId)
+    const cwd = await this.opts.workspaces.getWorkspacePath(workspaceId)
     if (cwd == null) return null
 
     const id = randomUUID()
@@ -281,7 +292,7 @@ export class TerminalSessionRegistry {
    * `parentThreadId: null` keeps it workspace-stable (NOT reaped by
    * `cleanupByThread`) — it lives for the workspace like the old agent PTY did.
    */
-  getOrCreateAgentShell(workspaceId: string): PtySession | null {
+  async getOrCreateAgentShell(workspaceId: string): Promise<PtySession | null> {
     const key = userKey(workspaceId, AGENT_SHELL_ID)
     const existing = this.entries.get(key)
     if (existing != null && existing.session.exited == null) {
@@ -290,8 +301,17 @@ export class TerminalSessionRegistry {
     if (existing != null) {
       this.cleanupEntry(key, existing)
     }
-    const cwd = this.opts.workspaces.getWorkspacePath(workspaceId)
+    const cwd = await this.opts.workspaces.getWorkspacePath(workspaceId)
     if (cwd == null) return null
+    // The async workspace read can overlap another first-use call. Preserve
+    // the stable one-shell-per-workspace invariant across that await.
+    const concurrent = this.entries.get(key)
+    if (concurrent != null && concurrent.session.exited == null) {
+      return concurrent.session
+    }
+    if (concurrent != null) {
+      this.cleanupEntry(key, concurrent)
+    }
     // Integrate the shell (OSC-633 markers + clean prompt) when possible (zsh);
     // otherwise spawn normally and the runner uses its Stage-1 fallback.
     const integration = prepareShellIntegration({})

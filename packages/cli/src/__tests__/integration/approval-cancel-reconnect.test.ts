@@ -160,14 +160,14 @@ function makeSink(): Sink {
   }
 }
 
-function startScriptedRun(session: Session, hitl: HumanInTheLoop, label: string) {
+async function startScriptedRun(session: Session, hitl: HumanInTheLoop, label: string) {
   const workspaceDir = join(tempRoot, label.replace(/[^a-z0-9]+/gi, '-'))
   mkdirSync(workspaceDir, { recursive: true })
-  const workspace = gateway.state.createWorkspace(workspaceDir, label)
-  const thread = gateway.state.createThread('test-agent', label, workspace.id)
+  const workspace = await gateway.state.createWorkspace(workspaceDir, label)
+  const thread = await gateway.state.createThread('test-agent', label, workspace.id)
   gateway.state.setSession(thread.id, session)
   gateway.state.setRuntime(thread.id, { session, hitl, zoneManager: null } as never)
-  const run = gateway.runStore.create({
+  const run = await gateway.runStore.create({
     threadId: thread.id,
     workspaceId: workspace.id,
     profileId: 'test-agent',
@@ -227,7 +227,7 @@ describe('S1 gaps over the real wire', () => {
       /* decision arrives via the HTTP decision route */
     })
     const session = new PermissionSession(hitl, 'perm_approve') as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, hitl, 'approve flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, hitl, 'approve flow')
 
     const sink = makeSink()
     const keys = new TestKeys()
@@ -254,7 +254,7 @@ describe('S1 gaps over the real wire', () => {
     const hitl = new HumanInTheLoop({ timeoutMs: 15_000 })
     hitl.onApprovalNeeded(() => {})
     const session = new PermissionSession(hitl, 'perm_pinned') as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, hitl, 'pinned card flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, hitl, 'pinned card flow')
 
     const sink = makeSink()
     const presented: string[] = []
@@ -286,7 +286,7 @@ describe('S1 gaps over the real wire', () => {
     const hitl = new HumanInTheLoop({ timeoutMs: 15_000 })
     hitl.onApprovalNeeded(() => {})
     const session = new PermissionSession(hitl, 'perm_always') as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, hitl, 'always flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, hitl, 'always flow')
 
     const sink = makeSink()
     await streamRun(
@@ -309,7 +309,7 @@ describe('S1 gaps over the real wire', () => {
     const hitl = new HumanInTheLoop({ timeoutMs: 15_000 })
     hitl.onApprovalNeeded(() => {})
     const session = new PermissionSession(hitl, 'perm_deny') as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, hitl, 'deny flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, hitl, 'deny flow')
 
     const sink = makeSink()
     const questions: string[] = []
@@ -331,7 +331,7 @@ describe('S1 gaps over the real wire', () => {
 
   it('esc mid-run cancels over the wire and the stream ends interrupted', async () => {
     const session = new SlowSession() as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, new HumanInTheLoop({ timeoutMs: 15_000 }), 'cancel flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, new HumanInTheLoop({ timeoutMs: 15_000 }), 'cancel flow')
 
     const sink = makeSink()
     const keys = new TestKeys()
@@ -353,7 +353,7 @@ describe('S1 gaps over the real wire', () => {
     const hitl = new HumanInTheLoop({ timeoutMs: 15_000 })
     hitl.onApprovalNeeded(() => {})
     const session = new PermissionSession(hitl, 'perm_history') as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, hitl, 'history flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, hitl, 'history flow')
     const sink = makeSink()
     await streamRun(
       { ...makeDeps(sink, null), presentApproval: async () => 'approve' as const },
@@ -374,7 +374,7 @@ describe('S1 gaps over the real wire', () => {
     const hitl = new HumanInTheLoop({ timeoutMs: 15_000 })
     hitl.onApprovalNeeded(() => {})
     const session = new PermissionSession(hitl, 'perm_reconnect') as unknown as Session
-    const { threadId, runId, handle } = startScriptedRun(session, hitl, 'reconnect flow')
+    const { threadId, runId, handle } = await startScriptedRun(session, hitl, 'reconnect flow')
 
     // First subscriber sees the pause, then the connection drops.
     let cursor = 0

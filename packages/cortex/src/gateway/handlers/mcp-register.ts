@@ -120,7 +120,7 @@ export function createMCPRegisterHandlers(deps: MCPRegisterHandlersDeps) {
     // (`registry_id = 'custom'`) rows participate in dedup. Featured-only
     // entries are skipped — they have no row yet (the MCP source provider
     // surfaces them from the curated catalog).
-    const existing = deps.state.listMCPServers({ limit: 200 })
+    const existing = await deps.state.listMCPServers({ limit: 200 })
     const endpointKey = body.transport === 'stdio'
       ? `stdio:${body.command ?? ''}:${(body.args ?? []).join(',')}`
       : `${body.transport}:${body.url ?? ''}`
@@ -179,7 +179,7 @@ export function createMCPRegisterHandlers(deps: MCPRegisterHandlersDeps) {
     let id = ''
     for (let attempt = 0; attempt < 3; attempt++) {
       const candidate = `${kebabize(body.name)}-${randomSuffix()}`
-      if (!deps.state.getMCPServer(candidate)) {
+      if (!await deps.state.getMCPServer(candidate)) {
         id = candidate
         break
       }
@@ -197,7 +197,7 @@ export function createMCPRegisterHandlers(deps: MCPRegisterHandlersDeps) {
       // Build the mcp_servers row. Transport-specific fields are
       // already shape-validated by the Zod refinement above, so we
       // know the right set is present.
-      deps.state.createMCPServer({
+      await deps.state.createMCPServer({
         id,
         name: body.name,
         // Database `transport` is a free-form string; map `http` → `http`,
@@ -260,7 +260,7 @@ export function createMCPRegisterHandlers(deps: MCPRegisterHandlersDeps) {
       sendError(res, 400, 'Server id is required.')
       return
     }
-    const existing = deps.state.getMCPServer(id)
+    const existing = await deps.state.getMCPServer(id)
     if (!existing) {
       sendError(res, 404, `Custom MCP server "${id}" not found.`)
       return
@@ -280,7 +280,7 @@ export function createMCPRegisterHandlers(deps: MCPRegisterHandlersDeps) {
     }
 
     try {
-      deps.state.deleteMCPServer(id)
+      await deps.state.deleteMCPServer(id)
       // Purge any vault entries under this id. Custom servers are
       // typically api_key/env-driven; leaving their credentials
       // orphaned would be a dangling secret.

@@ -77,21 +77,21 @@ describe('agent_events retention', () => {
     expect(config.retentionDays).toBe(3)
   })
 
-  it('prunes agent_events for a quiescent thread whose last root event is older than the cutoff', () => {
-    const thread = state.createThread('test')
+  it('prunes agent_events for a quiescent thread whose last root event is older than the cutoff', async () => {
+    const thread = await state.createThread('test')
     // Write a few events then mark the thread terminal.
     for (let i = 0; i < 3; i++) {
-      state.eventIngestor.ingestParentEvent(thread.id, textEvent(`e${i}`))
+      await state.eventIngestor.ingestParentEvent(thread.id, textEvent(`e${i}`))
     }
     // Snapshot messages must survive.
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'm1', role: 'assistant', content: 'hi',
       timestamp: new Date().toISOString(),
     })
-    state.updateThread(thread.id, { status: 'completed' })
+    await state.updateThread(thread.id, { status: 'completed' })
     backdateRootEvents(state, thread.id, ANCIENT_MS)
 
-    const stats = runRetentionOnce(state.rawDatabase, state.eventBus, {
+    const stats = await runRetentionOnce(state.eventRepository, state.eventBus, {
       enabled: true,
       retentionDays: 7,
       intervalMs: 0,
@@ -102,27 +102,27 @@ describe('agent_events retention', () => {
     expect(stats.rowsDeleted).toBe(3)
 
     // Messages table is untouched.
-    expect(state.getMessages(thread.id)).toHaveLength(1)
+    expect(await state.getMessages(thread.id)).toHaveLength(1)
     // Raw events for this thread are gone.
-    expect(state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID })).toEqual([])
+    expect(await state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID })).toEqual([])
     // Retention removes replay bytes, not cursor identity. A later turn
     // must continue after the pruned high-water instead of reusing seq 1.
-    expect(state.getAgentEventMaxSeq(thread.id, ROOT_AGENT_ID)).toBe(3)
-    expect(state.eventIngestor.ingestParentEvent(thread.id, textEvent('later-turn'))).toBe(4)
+    expect(await state.getAgentEventMaxSeq(thread.id, ROOT_AGENT_ID)).toBe(3)
+    expect(await state.eventIngestor.ingestParentEvent(thread.id, textEvent('later-turn'))).toBe(4)
   })
 
-  it('prunes a stalled active thread (status=active, no root events in the window)', () => {
+  it('prunes a stalled active thread (status=active, no root events in the window)', async () => {
     // Post-CRITICAL-2 semantic: status='active' is no longer a "do not
     // touch" flag. A thread whose status got flipped to 'active' but
     // then went quiet for >retentionDays is either stuck or abandoned;
     // its raw event log is safe to drop. `messages` survives.
-    const thread = state.createThread('test')
-    state.eventIngestor.ingestParentEvent(thread.id, textEvent('stalled'))
+    const thread = await state.createThread('test')
+    await state.eventIngestor.ingestParentEvent(thread.id, textEvent('stalled'))
     // Leave status as 'active' — this is the scenario that pre-fix
     // tests asserted should be untouchable.
     backdateRootEvents(state, thread.id, ANCIENT_MS)
 
-    const stats = runRetentionOnce(state.rawDatabase, state.eventBus, {
+    const stats = await runRetentionOnce(state.eventRepository, state.eventBus, {
       enabled: true,
       retentionDays: 7,
       intervalMs: 0,
@@ -132,21 +132,21 @@ describe('agent_events retention', () => {
     expect(stats.threadsPruned).toBe(1)
     expect(stats.rowsDeleted).toBe(1)
     expect(
-      state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID }),
+      await state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID }),
     ).toEqual([])
   })
 
-  it('never prunes a thread whose root events are fresh (active or terminal)', () => {
+  it('never prunes a thread whose root events are fresh (active or terminal)', async () => {
     // Two threads with recent events — one active, one completed. Both
     // must be untouched. Freshness is the signal; status is not.
-    const active = state.createThread('active')
-    state.eventIngestor.ingestParentEvent(active.id, textEvent('a'))
+    const active = await state.createThread('active')
+    await state.eventIngestor.ingestParentEvent(active.id, textEvent('a'))
 
-    const terminal = state.createThread('terminal')
-    state.eventIngestor.ingestParentEvent(terminal.id, textEvent('t'))
-    state.updateThread(terminal.id, { status: 'completed' })
+    const terminal = await state.createThread('terminal')
+    await state.eventIngestor.ingestParentEvent(terminal.id, textEvent('t'))
+    await state.updateThread(terminal.id, { status: 'completed' })
 
-    const stats = runRetentionOnce(state.rawDatabase, state.eventBus, {
+    const stats = await runRetentionOnce(state.eventRepository, state.eventBus, {
       enabled: true,
       retentionDays: 7,
       intervalMs: 0,
@@ -154,20 +154,20 @@ describe('agent_events retention', () => {
 
     expect(stats.threadsEligible).toBe(0)
     expect(stats.rowsDeleted).toBe(0)
-    expect(state.listAgentEvents({ threadId: active.id, agentId: ROOT_AGENT_ID })).toHaveLength(1)
-    expect(state.listAgentEvents({ threadId: terminal.id, agentId: ROOT_AGENT_ID })).toHaveLength(1)
+    expect(await state.listAgentEvents({ threadId: active.id, agentId: ROOT_AGENT_ID })).toHaveLength(1)
+    expect(await state.listAgentEvents({ threadId: terminal.id, agentId: ROOT_AGENT_ID })).toHaveLength(1)
   })
 
-  it('skips a quiescent thread with a live SSE subscriber on root', () => {
-    const thread = state.createThread('test')
-    state.eventIngestor.ingestParentEvent(thread.id, textEvent('e1'))
-    state.updateThread(thread.id, { status: 'completed' })
+  it('skips a quiescent thread with a live SSE subscriber on root', async () => {
+    const thread = await state.createThread('test')
+    await state.eventIngestor.ingestParentEvent(thread.id, textEvent('e1'))
+    await state.updateThread(thread.id, { status: 'completed' })
     backdateRootEvents(state, thread.id, ANCIENT_MS)
 
     // Simulate an active SSE reader on the root agent.
     const unsub = state.eventBus.subscribe(thread.id, ROOT_AGENT_ID, () => {})
     try {
-      const stats = runRetentionOnce(state.rawDatabase, state.eventBus, {
+      const stats = await runRetentionOnce(state.eventRepository, state.eventBus, {
         enabled: true,
         retentionDays: 7,
         intervalMs: 0,
@@ -177,26 +177,26 @@ describe('agent_events retention', () => {
       expect(stats.threadsSkippedLiveSubscriber).toBe(1)
       expect(stats.threadsPruned).toBe(0)
       expect(
-        state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID }),
+        await state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID }),
       ).toHaveLength(1)
     } finally {
       unsub()
     }
   })
 
-  it('preserves sub-agent rows when pruning a quiescent thread', () => {
-    const thread = state.createThread('test')
+  it('preserves sub-agent rows when pruning a quiescent thread', async () => {
+    const thread = await state.createThread('test')
     // Root events — these will be pruned.
-    state.eventIngestor.ingestParentEvent(thread.id, textEvent('root-1'))
-    state.eventIngestor.ingestParentEvent(thread.id, textEvent('root-2'))
+    await state.eventIngestor.ingestParentEvent(thread.id, textEvent('root-1'))
+    await state.eventIngestor.ingestParentEvent(thread.id, textEvent('root-2'))
     // Sub-agent events — these must survive.
-    state.eventIngestor.ingestSubagentEvent(thread.id, 'sub_helper', textEvent('sub-1'))
-    state.eventIngestor.ingestSubagentEvent(thread.id, 'sub_helper', textEvent('sub-2'))
+    await state.eventIngestor.ingestSubagentEvent(thread.id, 'sub_helper', textEvent('sub-1'))
+    await state.eventIngestor.ingestSubagentEvent(thread.id, 'sub_helper', textEvent('sub-2'))
 
-    state.updateThread(thread.id, { status: 'completed' })
+    await state.updateThread(thread.id, { status: 'completed' })
     backdateRootEvents(state, thread.id, ANCIENT_MS)
 
-    const stats = runRetentionOnce(state.rawDatabase, state.eventBus, {
+    const stats = await runRetentionOnce(state.eventRepository, state.eventBus, {
       enabled: true,
       retentionDays: 7,
       intervalMs: 0,
@@ -204,23 +204,23 @@ describe('agent_events retention', () => {
 
     // 2 root rows deleted, 2 sub-agent rows untouched.
     expect(stats.rowsDeleted).toBe(2)
-    expect(state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID })).toEqual([])
-    const subEvents = state.listAgentEvents({ threadId: thread.id, agentId: 'sub_helper' })
+    expect(await state.listAgentEvents({ threadId: thread.id, agentId: ROOT_AGENT_ID })).toEqual([])
+    const subEvents = await state.listAgentEvents({ threadId: thread.id, agentId: 'sub_helper' })
     expect(subEvents).toHaveLength(2)
   })
 
-  it('reports zero when the cutoff is in the future (retentionDays=0 keeps nothing)', () => {
+  it('reports zero when the cutoff is in the future (retentionDays=0 keeps nothing)', async () => {
     // Edge case: retentionDays=0 means "prune any thread whose last
     // root event is older than right now." Verifies the cutoff math
     // doesn't misbehave at the boundary.
-    const thread = state.createThread('test')
-    state.eventIngestor.ingestParentEvent(thread.id, textEvent('e1'))
-    state.updateThread(thread.id, { status: 'completed' })
+    const thread = await state.createThread('test')
+    await state.eventIngestor.ingestParentEvent(thread.id, textEvent('e1'))
+    await state.updateThread(thread.id, { status: 'completed' })
     // Force the event's created_at to be a moment in the past so the
     // strict `<` comparison against "now" matches.
     backdateRootEvents(state, thread.id, Date.now() - 60_000)
 
-    const stats = runRetentionOnce(state.rawDatabase, state.eventBus, {
+    const stats = await runRetentionOnce(state.eventRepository, state.eventBus, {
       enabled: true,
       retentionDays: 0,
       intervalMs: 0,

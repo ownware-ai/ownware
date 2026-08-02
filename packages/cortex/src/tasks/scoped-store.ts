@@ -11,8 +11,9 @@
  * testable in isolation.
  */
 
-import type { SqliteTaskStore, TaskReplaceInput } from './store.js'
+import type { TaskReplaceInput } from './store.js'
 import type { TaskStatusWire } from './event-bus.js'
+import type { TaskRepository } from '../storage/platform-repositories.js'
 
 // Matches Loom's `TaskStore` interface (duplicated here — we don't
 // import from @ownware/loom because a runtime dependency on the
@@ -33,7 +34,7 @@ export interface LoomTaskStoreShape {
 }
 
 export function createThreadScopedTaskStore(
-  store: SqliteTaskStore,
+  store: TaskRepository,
   threadId: string,
 ): LoomTaskStoreShape {
   return {
@@ -42,7 +43,7 @@ export function createThreadScopedTaskStore(
         content: t.content,
         status: t.status,
       }))
-      const stored = store.replaceAllForThread(threadId, input)
+      const stored = await store.replaceAllForThread(threadId, input)
       // Strip threadId — Loom's TaskEntry shape doesn't have it; the
       // Loom tool doesn't need to know which thread the store belongs
       // to. Keeps the boundary clean and the blob smaller.

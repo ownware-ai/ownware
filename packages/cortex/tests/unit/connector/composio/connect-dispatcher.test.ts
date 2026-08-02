@@ -725,7 +725,7 @@ describe('scenario 4: persistent network drop → listener keeps returning pendi
       entityId: 'cortex-default-user',
       expiresAt: Date.now() + 1000, authConfigId: 'ac_x',
     })
-    manager.dispatch('net_1')
+    await manager.dispatch('net_1')
     await new Promise(r => setTimeout(r, 80))
     const row = connections.findByConnectionId('net_1')
     expect(row?.status).toBe('expired')

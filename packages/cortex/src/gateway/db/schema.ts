@@ -21,6 +21,14 @@ export interface Migration {
   readonly name: string
   readonly sql: string
   /**
+   * Marks the migration that adds durable migration fingerprints to the
+   * `_migrations` audit trail. Rows applied before this version are legacy:
+   * their exact historical SQL cannot be proven retroactively, so startup
+   * validates their ordered version/name identity only. This migration and
+   * every later one must record and match the exact compiled fingerprint.
+   */
+  readonly recordsFingerprint?: true
+  /**
    * Set ONLY when this migration intentionally contains destructive SQL
    * (DROP TABLE / DROP COLUMN / DELETE FROM / RENAME) and the author has
    * verified it cannot lose real user data — e.g. a 12-step table rebuild
@@ -4379,6 +4387,78 @@ export const MIGRATIONS: Migration[] = [
         ON source_versions(source_id, created_at DESC, source_version_id DESC);
       CREATE UNIQUE INDEX idx_source_versions_identity_source
         ON source_versions(source_version_id, source_id);
+    `,
+  },
+  {
+    version: 82,
+    name: '082_migration_fingerprints',
+    recordsFingerprint: true,
+    sql: `
+      -- Existing rows intentionally remain NULL: recording today's hash for
+      -- SQL applied by an older binary would not prove which SQL actually ran.
+      -- The runner validates their ordered version/name identity and records
+      -- an authoritative fingerprint for this and every later migration.
+      ALTER TABLE _migrations ADD COLUMN fingerprint TEXT;
+    `,
+  },
+  {
+    version: 83,
+    name: '083_message_sequence',
+    destructive: {
+      reason:
+        'SQLite cannot add a required per-thread sequence with a uniqueness invariant in place. ' +
+        'The messages table is rebuilt transactionally, every existing row is copied with its ' +
+        'previously observable created_at/id order, and no column or row is intentionally discarded.',
+    },
+    sql: `
+      -- created_at has millisecond resolution and message ids are random, so
+      -- neither field proves conversation order when two durable writes share a
+      -- timestamp. Persist the database-authoritative insertion order instead.
+      CREATE TABLE messages_new (
+        id                    TEXT    PRIMARY KEY,
+        thread_id             TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        role                  TEXT    NOT NULL,
+        content               TEXT    NOT NULL DEFAULT '',
+        tools                 TEXT,
+        sub_agents            TEXT,
+        permissions           TEXT,
+        attachments           TEXT,
+        thinking              TEXT,
+        usage_input           INTEGER,
+        usage_output          INTEGER,
+        created_at            TEXT    NOT NULL DEFAULT (datetime('now')),
+        parts                 TEXT,
+        credentials           TEXT,
+        model                 TEXT,
+        usage_cache_read      INTEGER,
+        usage_cache_creation  INTEGER,
+        message_seq           INTEGER NOT NULL CHECK (
+          message_seq BETWEEN 1 AND 9007199254740991
+        )
+      );
+
+      INSERT INTO messages_new (
+        id, thread_id, role, content, tools, sub_agents, permissions,
+        attachments, thinking, usage_input, usage_output, created_at, parts,
+        credentials, model, usage_cache_read, usage_cache_creation, message_seq
+      )
+      SELECT
+        id, thread_id, role, content, tools, sub_agents, permissions,
+        attachments, thinking, usage_input, usage_output, created_at, parts,
+        credentials, model, usage_cache_read, usage_cache_creation,
+        ROW_NUMBER() OVER (
+          PARTITION BY thread_id
+          ORDER BY created_at ASC, id ASC
+        )
+      FROM messages;
+
+      DROP TABLE messages;
+      ALTER TABLE messages_new RENAME TO messages;
+
+      CREATE INDEX idx_messages_thread
+        ON messages(thread_id, created_at ASC);
+      CREATE UNIQUE INDEX idx_messages_thread_sequence
+        ON messages(thread_id, message_seq ASC);
     `,
   },
 ]

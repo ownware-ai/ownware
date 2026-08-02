@@ -44,12 +44,12 @@ describe('SSE slow-consumer guard (smoke)', () => {
   })
 
   it('does not drop a normal consumer that reads at line rate', async () => {
-    const thread = gw.state.createThread('mini')
+    const thread = await gw.state.createThread('mini')
     const agentId = 'agent_normal'
 
     // Modest pre-ingest so phase-1 has work but well under any cap.
     for (let i = 0; i < 50; i++) {
-      gw.state.eventIngestor.ingestSubagentEvent(thread.id, agentId, textEvent(`pre-${i}`))
+      await gw.state.eventIngestor.ingestSubagentEvent(thread.id, agentId, textEvent(`pre-${i}`))
     }
 
     const res = await fetch(

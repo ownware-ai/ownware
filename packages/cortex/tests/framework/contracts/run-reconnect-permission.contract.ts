@@ -117,8 +117,8 @@ describe('Contract: reconnect through an exact permission pause', () => {
   })
 
   it('drops, resumes from the cursor, approves exactly, and reaches a truthful terminal snapshot', async () => {
-    const workspace = gateway.state.createWorkspace(gateway.tmpDir, 'Reconnect permission contract')
-    const thread = gateway.state.createThread('mini', 'reconnect permission', workspace.id)
+    const workspace = await gateway.state.createWorkspace(gateway.tmpDir, 'Reconnect permission contract')
+    const thread = await gateway.state.createThread('mini', 'reconnect permission', workspace.id)
     const hitl = new HumanInTheLoop({ timeoutMs: 10_000 })
     hitl.onApprovalNeeded(() => { /* exact HTTP decision */ })
     const session = new PermissionFlowSession(hitl)
@@ -128,7 +128,7 @@ describe('Contract: reconnect through an exact permission pause', () => {
       hitl,
       zoneManager: null,
     })
-    const run = gateway.gateway.runStore.create({
+    const run = await gateway.gateway.runStore.create({
       threadId: thread.id,
       workspaceId: workspace.id,
       profileId: 'mini',

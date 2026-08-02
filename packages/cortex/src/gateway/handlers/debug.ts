@@ -18,7 +18,7 @@ export function createDebugHandlers(state: GatewayState) {
       return
     }
 
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -36,7 +36,7 @@ export function createDebugHandlers(state: GatewayState) {
   // GET /api/v1/debug/events/:threadId/timeline
   async function getTimeline(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThread(threadId)
+    const thread = await state.getThread(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return

@@ -169,7 +169,7 @@ describe('candidate activation', () => {
       resolver,
       activeRunCount: () => 2,
     })
-    expect(deployment.pause({
+    expect(await deployment.pause({
       profileId: 'portable', expectedDeploymentRevision: 1,
     })).toMatchObject({
       state: 'paused', deploymentRevision: 2, activeRunCount: 2,

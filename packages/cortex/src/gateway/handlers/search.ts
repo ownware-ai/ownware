@@ -58,7 +58,7 @@ export function createSearchHandlers(state: GatewayState, registry: ProfileRegis
 
     // Search threads
     if (scope === 'all' || scope === 'threads') {
-      const threads = state.listThreads(undefined, { limit: 200 })
+      const threads = await state.listThreads(undefined, { limit: 200 })
       for (const thread of threads.items) {
         const title = thread.title ?? ''
         const score = scoreMatch(title, qLower)
@@ -95,7 +95,7 @@ export function createSearchHandlers(state: GatewayState, registry: ProfileRegis
 
     // Search workspaces
     if (scope === 'all' || scope === 'workspaces') {
-      const workspaces = state.listWorkspaces(undefined, { limit: 200 })
+      const workspaces = await state.listWorkspaces(undefined, { limit: 200 })
       for (const ws of workspaces.items) {
         const nameScore = scoreMatch(ws.name, qLower)
         const pathScore = scoreMatch(ws.path, qLower) * 0.3

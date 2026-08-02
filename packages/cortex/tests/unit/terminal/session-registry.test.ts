@@ -52,7 +52,7 @@ class FakeSession {
 
 function makeResolver(paths: Record<string, string>): WorkspaceResolver {
   return {
-    getWorkspacePath: (id) => paths[id] ?? null,
+    getWorkspacePath: async (id) => paths[id] ?? null,
   }
 }
 
@@ -65,7 +65,7 @@ function fakeFactory(fakes: FakeSession[]): (o: PtySessionOptions) => PtySession
 }
 
 describe('TerminalSessionRegistry — agent PTY', () => {
-  it('lazy-spawns on first getAgent and reuses on subsequent getAgents', () => {
+  it('lazy-spawns on first getAgent and reuses on subsequent getAgents', async () => {
     const bus = new TerminalEventBus()
     const factory = vi.fn(
       () => new FakeSession() as unknown as PtySession,
@@ -75,22 +75,22 @@ describe('TerminalSessionRegistry — agent PTY', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory,
     })
-    const a = registry.getAgent('ws1')
-    const b = registry.getAgent('ws1')
+    const a = await registry.getAgent('ws1')
+    const b = await registry.getAgent('ws1')
     expect(a).not.toBeNull()
     expect(a).toBe(b)
     expect(factory).toHaveBeenCalledTimes(1)
   })
 
-  it('returns null when workspace path unresolvable', () => {
+  it('returns null when workspace path unresolvable', async () => {
     const registry = new TerminalSessionRegistry({
       bus: new TerminalEventBus(),
       workspaces: makeResolver({}),
     })
-    expect(registry.getAgent('ghost')).toBeNull()
+    expect(await registry.getAgent('ghost')).toBeNull()
   })
 
-  it('forwards output events tagged with kind:agent and terminalId:null', () => {
+  it('forwards output events tagged with kind:agent and terminalId:null', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -100,7 +100,7 @@ describe('TerminalSessionRegistry — agent PTY', () => {
     })
     const events: unknown[] = []
     bus.subscribe((ev) => events.push(ev))
-    registry.getAgent('ws1')
+    await registry.getAgent('ws1')
     fake.emitData('hello')
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
@@ -112,7 +112,7 @@ describe('TerminalSessionRegistry — agent PTY', () => {
     })
   })
 
-  it('dropAgent kills + removes; next getAgent spawns a fresh session', () => {
+  it('dropAgent kills + removes; next getAgent spawns a fresh session', async () => {
     const bus = new TerminalEventBus()
     const factory = vi.fn(
       () => new FakeSession() as unknown as PtySession,
@@ -122,16 +122,16 @@ describe('TerminalSessionRegistry — agent PTY', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory,
     })
-    const first = registry.getAgent('ws1')
+    const first = await registry.getAgent('ws1')
     registry.dropAgent('ws1')
     expect(registry.hasAgent('ws1')).toBe(false)
-    const second = registry.getAgent('ws1')
+    const second = await registry.getAgent('ws1')
     expect(second).not.toBeNull()
     expect(second).not.toBe(first)
     expect(factory).toHaveBeenCalledTimes(2)
   })
 
-  it('emits terminal.exit when an agent session exits, and removes the entry', () => {
+  it('emits terminal.exit when an agent session exits, and removes the entry', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -141,7 +141,7 @@ describe('TerminalSessionRegistry — agent PTY', () => {
     })
     const events: unknown[] = []
     bus.subscribe((ev) => events.push(ev))
-    registry.getAgent('ws1')
+    await registry.getAgent('ws1')
     fake.kill()
     expect(
       events.some(
@@ -155,7 +155,7 @@ describe('TerminalSessionRegistry — agent PTY', () => {
 })
 
 describe('TerminalSessionRegistry — user PTYs', () => {
-  it('createUser returns an opaque id and spawns a live session', () => {
+  it('createUser returns an opaque id and spawns a live session', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -163,7 +163,7 @@ describe('TerminalSessionRegistry — user PTYs', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory: () => fake as unknown as PtySession,
     })
-    const created = registry.createUser('ws1')
+    const created = await registry.createUser('ws1')
     expect(created).not.toBeNull()
     expect(typeof created!.id).toBe('string')
     expect(created!.id.length).toBeGreaterThan(0)
@@ -171,15 +171,15 @@ describe('TerminalSessionRegistry — user PTYs', () => {
     expect(registry.listUser('ws1')).toEqual([created!.id])
   })
 
-  it('createUser returns null when workspace path unresolvable', () => {
+  it('createUser returns null when workspace path unresolvable', async () => {
     const registry = new TerminalSessionRegistry({
       bus: new TerminalEventBus(),
       workspaces: makeResolver({}),
     })
-    expect(registry.createUser('ghost')).toBeNull()
+    expect(await registry.createUser('ghost')).toBeNull()
   })
 
-  it('listUser returns every live user id for the workspace and nothing else', () => {
+  it('listUser returns every live user id for the workspace and nothing else', async () => {
     const bus = new TerminalEventBus()
     const a = new FakeSession()
     const b = new FakeSession()
@@ -189,9 +189,9 @@ describe('TerminalSessionRegistry — user PTYs', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1', ws2: '/tmp/ws2' }),
       factory: fakeFactory([a, b, c]),
     })
-    const ua = registry.createUser('ws1')
-    const ub = registry.createUser('ws1')
-    const uc = registry.createUser('ws2')
+    const ua = await registry.createUser('ws1')
+    const ub = await registry.createUser('ws1')
+    const uc = await registry.createUser('ws2')
     expect(ua).not.toBeNull()
     expect(ub).not.toBeNull()
     expect(uc).not.toBeNull()
@@ -199,7 +199,7 @@ describe('TerminalSessionRegistry — user PTYs', () => {
     expect(registry.listUser('ws2')).toEqual([uc!.id])
   })
 
-  it('getUser returns the session, or null for unknown ids', () => {
+  it('getUser returns the session, or null for unknown ids', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -207,13 +207,13 @@ describe('TerminalSessionRegistry — user PTYs', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory: () => fake as unknown as PtySession,
     })
-    const created = registry.createUser('ws1')!
+    const created = (await registry.createUser('ws1'))!
     expect(registry.getUser('ws1', created.id)).toBe(fake as unknown as PtySession)
     expect(registry.getUser('ws1', 'nonexistent')).toBeNull()
     expect(registry.getUser('ws2', created.id)).toBeNull()
   })
 
-  it('dropUser kills the session and removes it from listUser', () => {
+  it('dropUser kills the session and removes it from listUser', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -221,7 +221,7 @@ describe('TerminalSessionRegistry — user PTYs', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory: () => fake as unknown as PtySession,
     })
-    const created = registry.createUser('ws1')!
+    const created = (await registry.createUser('ws1'))!
     registry.dropUser('ws1', created.id)
     expect(fake.exited).not.toBeNull()
     expect(registry.listUser('ws1')).toEqual([])
@@ -237,7 +237,7 @@ describe('TerminalSessionRegistry — user PTYs', () => {
     expect(() => registry.dropUser('ws1', 'ghost')).not.toThrow()
   })
 
-  it('forwards output events tagged with kind:user and the correct terminalId', () => {
+  it('forwards output events tagged with kind:user and the correct terminalId', async () => {
     const bus = new TerminalEventBus()
     const a = new FakeSession()
     const b = new FakeSession()
@@ -246,8 +246,8 @@ describe('TerminalSessionRegistry — user PTYs', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory: fakeFactory([a, b]),
     })
-    const ua = registry.createUser('ws1')!
-    const ub = registry.createUser('ws1')!
+    const ua = (await registry.createUser('ws1'))!
+    const ub = (await registry.createUser('ws1'))!
     const events: unknown[] = []
     bus.subscribe((ev) => events.push(ev))
     a.emitData('from-a')
@@ -269,7 +269,7 @@ describe('TerminalSessionRegistry — user PTYs', () => {
     })
   })
 
-  it('emits terminal.exit and removes entry when a user session exits on its own', () => {
+  it('emits terminal.exit and removes entry when a user session exits on its own', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -279,7 +279,7 @@ describe('TerminalSessionRegistry — user PTYs', () => {
     })
     const events: unknown[] = []
     bus.subscribe((ev) => events.push(ev))
-    const created = registry.createUser('ws1')!
+    const created = (await registry.createUser('ws1'))!
     fake.kill()
     expect(
       events.some(
@@ -304,13 +304,13 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     return { registry, bus }
   }
 
-  it('createUser accepts parentThreadId + parentAgent and exposes them via getInfo', () => {
+  it('createUser accepts parentThreadId + parentAgent and exposes them via getInfo', async () => {
     const fake = new FakeSession()
     const { registry } = makeRegistry([fake], { ws1: '/tmp' })
-    const created = registry.createUser('ws1', {
+    const created = (await registry.createUser('ws1', {
       parentThreadId: 'thr-42',
       parentAgent: 'coder',
-    })!
+    }))!
     const info = registry.getInfo('ws1', 'user', created.id)!
     expect(info.parentThreadId).toBe('thr-42')
     expect(info.parentAgent).toBe('coder')
@@ -318,16 +318,16 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     expect(info.status).toBe('running')
   })
 
-  it('cleanupByThread kills every session owned by the thread and leaves others', () => {
+  it('cleanupByThread kills every session owned by the thread and leaves others', async () => {
     const a = new FakeSession()
     const b = new FakeSession()
     const c = new FakeSession()
     const d = new FakeSession() // human-owned, no parent — must survive
     const { registry } = makeRegistry([a, b, c, d], { ws1: '/tmp' })
-    const ua = registry.createUser('ws1', { parentThreadId: 'thr-1', parentAgent: 'coder' })!
-    const ub = registry.createUser('ws1', { parentThreadId: 'thr-1', parentAgent: 'coder' })!
-    const uc = registry.createUser('ws1', { parentThreadId: 'thr-2', parentAgent: 'coder' })!
-    const ud = registry.createUser('ws1')! // human-owned
+    const ua = (await registry.createUser('ws1', { parentThreadId: 'thr-1', parentAgent: 'coder' }))!
+    const ub = (await registry.createUser('ws1', { parentThreadId: 'thr-1', parentAgent: 'coder' }))!
+    const uc = (await registry.createUser('ws1', { parentThreadId: 'thr-2', parentAgent: 'coder' }))!
+    const ud = (await registry.createUser('ws1'))! // human-owned
 
     registry.cleanupByThread('thr-1')
 
@@ -337,26 +337,26 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     expect(registry.getUser('ws1', ud.id)).not.toBeNull()
   })
 
-  it('cleanupByThread does NOT touch the workspace agent PTY', () => {
+  it('cleanupByThread does NOT touch the workspace agent PTY', async () => {
     const agentFake = new FakeSession()
     const userFake = new FakeSession()
     const { registry } = makeRegistry([agentFake, userFake], { ws1: '/tmp' })
-    registry.getAgent('ws1') // spawn agent
-    registry.createUser('ws1', { parentThreadId: 'thr-1', parentAgent: 'coder' })
+    await registry.getAgent('ws1') // spawn agent
+    await registry.createUser('ws1', { parentThreadId: 'thr-1', parentAgent: 'coder' })
 
     registry.cleanupByThread('thr-1')
 
     expect(registry.hasAgent('ws1')).toBe(true)
   })
 
-  it('listByThread returns info only for sessions owned by that thread', () => {
+  it('listByThread returns info only for sessions owned by that thread', async () => {
     const a = new FakeSession()
     const b = new FakeSession()
     const c = new FakeSession()
     const { registry } = makeRegistry([a, b, c], { ws1: '/tmp' })
-    registry.createUser('ws1', { parentThreadId: 'thr-X', parentAgent: 'explorer' })
-    registry.createUser('ws1', { parentThreadId: 'thr-X', parentAgent: 'explorer' })
-    registry.createUser('ws1', { parentThreadId: 'thr-Y', parentAgent: 'coder' })
+    await registry.createUser('ws1', { parentThreadId: 'thr-X', parentAgent: 'explorer' })
+    await registry.createUser('ws1', { parentThreadId: 'thr-X', parentAgent: 'explorer' })
+    await registry.createUser('ws1', { parentThreadId: 'thr-Y', parentAgent: 'coder' })
 
     const xs = registry.listByThread('thr-X')
     expect(xs.length).toBe(2)
@@ -371,7 +371,7 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     bus.subscribe((ev) => {
       if (ev.type === 'terminal.exited') exited.push(ev as unknown as Record<string, unknown>)
     })
-    const created = registry.createUser('ws1', { notifyOnExit: true })!
+    const created = (await registry.createUser('ws1', { notifyOnExit: true }))!
     // Seed the FakeSession's scrollback so summarizeScrollback sees
     // real content.
     ;(fake as unknown as { seedScrollback: (s: string) => void }).seedScrollback(
@@ -389,7 +389,7 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     expect(ev.timedOut).toBe(false)
   })
 
-  it('notifyOnExit: false suppresses the terminal.exited event (terminal.exit still fires)', () => {
+  it('notifyOnExit: false suppresses the terminal.exited event (terminal.exit still fires)', async () => {
     const fake = new FakeSession()
     const { registry, bus } = makeRegistry([fake], { ws1: '/tmp' })
     const exited: unknown[] = []
@@ -398,7 +398,7 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
       if (ev.type === 'terminal.exited') exited.push(ev)
       if (ev.type === 'terminal.exit') exits.push(ev)
     })
-    registry.createUser('ws1')
+    await registry.createUser('ws1')
     fake.kill()
     expect(exited.length).toBe(0)
     expect(exits.length).toBe(1)
@@ -415,7 +415,7 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
           exited.push(ev as unknown as { timedOut: boolean })
         }
       })
-      registry.createUser('ws1', { notifyOnExit: true, timeoutSeconds: 2 })
+      await registry.createUser('ws1', { notifyOnExit: true, timeoutSeconds: 2 })
 
       // Advance past the 2-second timeout. The fake session's `kill()`
       // fires its exit listener synchronously, which triggers the
@@ -429,19 +429,19 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     }
   })
 
-  it('timeoutSeconds rejects non-positive / non-integer values synchronously', () => {
+  it('timeoutSeconds rejects non-positive / non-integer values', async () => {
     const { registry } = makeRegistry([new FakeSession()], { ws1: '/tmp' })
-    expect(() => registry.createUser('ws1', { timeoutSeconds: 0 })).toThrow()
-    expect(() => registry.createUser('ws1', { timeoutSeconds: -1 })).toThrow()
-    expect(() => registry.createUser('ws1', { timeoutSeconds: 1.5 })).toThrow()
+    await expect(registry.createUser('ws1', { timeoutSeconds: 0 })).rejects.toThrow()
+    await expect(registry.createUser('ws1', { timeoutSeconds: -1 })).rejects.toThrow()
+    await expect(registry.createUser('ws1', { timeoutSeconds: 1.5 })).rejects.toThrow()
   })
 
-  it('natural exit clears the timeout (no double-kill on timer fire)', () => {
+  it('natural exit clears the timeout (no double-kill on timer fire)', async () => {
     vi.useFakeTimers()
     try {
       const fake = new FakeSession()
       const { registry } = makeRegistry([fake], { ws1: '/tmp' })
-      registry.createUser('ws1', { timeoutSeconds: 10 })
+      await registry.createUser('ws1', { timeoutSeconds: 10 })
       // Process exits on its own before the timeout.
       fake.kill()
       // Advancing past the timeout must NOT throw or re-kill.
@@ -451,10 +451,10 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
     }
   })
 
-  it('session status reflects the PtyStatus union from the underlying session', () => {
+  it('session status reflects the PtyStatus union from the underlying session', async () => {
     const fake = new FakeSession()
     const { registry } = makeRegistry([fake], { ws1: '/tmp' })
-    const created = registry.createUser('ws1')!
+    const created = (await registry.createUser('ws1'))!
     expect(registry.getInfo('ws1', 'user', created.id)?.status).toBe('running')
     // FakeSession.kill flips `exited` directly, which we don't care
     // about for status — real PtyStatus transitions are covered in
@@ -464,7 +464,7 @@ describe('TerminalSessionRegistry — status + ownership + notify + timeout (Ite
 })
 
 describe('TerminalSessionRegistry — peek + workspaceExists (read-only helpers)', () => {
-  it('peekAgent returns null before any spawn and the session after', () => {
+  it('peekAgent returns null before any spawn and the session after', async () => {
     const bus = new TerminalEventBus()
     const registry = new TerminalSessionRegistry({
       bus,
@@ -472,7 +472,7 @@ describe('TerminalSessionRegistry — peek + workspaceExists (read-only helpers)
       factory: fakeFactory([new FakeSession()]),
     })
     expect(registry.peekAgent('ws1')).toBeNull()
-    const spawned = registry.getAgent('ws1')
+    const spawned = await registry.getAgent('ws1')
     expect(registry.peekAgent('ws1')).toBe(spawned)
   })
 
@@ -493,7 +493,7 @@ describe('TerminalSessionRegistry — peek + workspaceExists (read-only helpers)
     expect(registry.hasAgent('ws1')).toBe(false)
   })
 
-  it('peekAgent returns null after the session exits', () => {
+  it('peekAgent returns null after the session exits', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -501,13 +501,13 @@ describe('TerminalSessionRegistry — peek + workspaceExists (read-only helpers)
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory: fakeFactory([fake]),
     })
-    registry.getAgent('ws1')
+    await registry.getAgent('ws1')
     expect(registry.peekAgent('ws1')).not.toBeNull()
     fake.kill()
     expect(registry.peekAgent('ws1')).toBeNull()
   })
 
-  it('workspaceExists mirrors the resolver without touching the PTY', () => {
+  it('workspaceExists mirrors the resolver without touching the PTY', async () => {
     const bus = new TerminalEventBus()
     const factory = vi.fn(
       () => new FakeSession() as unknown as PtySession,
@@ -517,14 +517,14 @@ describe('TerminalSessionRegistry — peek + workspaceExists (read-only helpers)
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory,
     })
-    expect(registry.workspaceExists('ws1')).toBe(true)
-    expect(registry.workspaceExists('ghost')).toBe(false)
+    expect(await registry.workspaceExists('ws1')).toBe(true)
+    expect(await registry.workspaceExists('ghost')).toBe(false)
     expect(factory).not.toHaveBeenCalled()
   })
 })
 
 describe('TerminalSessionRegistry — bulk cleanup', () => {
-  it('dropWorkspace kills the agent and every user PTY for that workspace', () => {
+  it('dropWorkspace kills the agent and every user PTY for that workspace', async () => {
     const bus = new TerminalEventBus()
     const agentWs1 = new FakeSession()
     const userWs1a = new FakeSession()
@@ -536,11 +536,11 @@ describe('TerminalSessionRegistry — bulk cleanup', () => {
       workspaces: makeResolver({ ws1: '/tmp/ws1', ws2: '/tmp/ws2' }),
       factory: fakeFactory([agentWs1, userWs1a, userWs1b, agentWs2, userWs2]),
     })
-    registry.getAgent('ws1')
-    registry.createUser('ws1')
-    registry.createUser('ws1')
-    registry.getAgent('ws2')
-    registry.createUser('ws2')
+    await registry.getAgent('ws1')
+    await registry.createUser('ws1')
+    await registry.createUser('ws1')
+    await registry.getAgent('ws2')
+    await registry.createUser('ws2')
 
     registry.dropWorkspace('ws1')
 
@@ -557,7 +557,7 @@ describe('TerminalSessionRegistry — bulk cleanup', () => {
     expect(registry.listUser('ws2')).toHaveLength(1)
   })
 
-  it('shutdown kills every live session across every workspace', () => {
+  it('shutdown kills every live session across every workspace', async () => {
     const bus = new TerminalEventBus()
     const fakes = [new FakeSession(), new FakeSession(), new FakeSession(), new FakeSession()]
     const registry = new TerminalSessionRegistry({
@@ -565,10 +565,10 @@ describe('TerminalSessionRegistry — bulk cleanup', () => {
       workspaces: makeResolver({ ws1: '/ws1', ws2: '/ws2' }),
       factory: fakeFactory(fakes),
     })
-    registry.getAgent('ws1')
-    registry.createUser('ws1')
-    registry.getAgent('ws2')
-    registry.createUser('ws2')
+    await registry.getAgent('ws1')
+    await registry.createUser('ws1')
+    await registry.getAgent('ws2')
+    await registry.createUser('ws2')
 
     registry.shutdown()
 
@@ -581,15 +581,15 @@ describe('TerminalSessionRegistry — bulk cleanup', () => {
 })
 
 describe('TerminalSessionRegistry — agent shell (unified dock)', () => {
-  it('get-or-creates ONE stable user session that appears in listUser', () => {
+  it('get-or-creates ONE stable user session that appears in listUser', async () => {
     const factory = vi.fn(() => new FakeSession() as unknown as PtySession)
     const registry = new TerminalSessionRegistry({
       bus: new TerminalEventBus(),
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory,
     })
-    const a = registry.getOrCreateAgentShell('ws1')
-    const b = registry.getOrCreateAgentShell('ws1')
+    const a = await registry.getOrCreateAgentShell('ws1')
+    const b = await registry.getOrCreateAgentShell('ws1')
     expect(a).not.toBeNull()
     expect(a).toBe(b) // reused, not re-spawned
     expect(factory).toHaveBeenCalledTimes(1)
@@ -597,7 +597,7 @@ describe('TerminalSessionRegistry — agent shell (unified dock)', () => {
     expect(registry.listUser('ws1')).toEqual(['agent'])
   })
 
-  it('emits output tagged kind:user (indistinguishable from a human shell)', () => {
+  it('emits output tagged kind:user (indistinguishable from a human shell)', async () => {
     const bus = new TerminalEventBus()
     const fake = new FakeSession()
     const registry = new TerminalSessionRegistry({
@@ -607,7 +607,7 @@ describe('TerminalSessionRegistry — agent shell (unified dock)', () => {
     })
     const events: Array<{ type: string; kind?: string; terminalId?: string | null }> = []
     bus.subscribe((ev) => events.push(ev as typeof events[number]))
-    registry.getOrCreateAgentShell('ws1')
+    await registry.getOrCreateAgentShell('ws1')
     fake.emitData('npm test\n')
     // Creation announces a `terminal.created` (so the dock adds a tab live),
     // then output streams — both tagged kind:user, terminalId 'agent'.
@@ -619,22 +619,22 @@ describe('TerminalSessionRegistry — agent shell (unified dock)', () => {
     )
   })
 
-  it('is NOT reaped by cleanupByThread (workspace-stable)', () => {
+  it('is NOT reaped by cleanupByThread (workspace-stable)', async () => {
     const registry = new TerminalSessionRegistry({
       bus: new TerminalEventBus(),
       workspaces: makeResolver({ ws1: '/tmp/ws1' }),
       factory: () => new FakeSession() as unknown as PtySession,
     })
-    registry.getOrCreateAgentShell('ws1')
+    await registry.getOrCreateAgentShell('ws1')
     registry.cleanupByThread('some-thread')
     expect(registry.listUser('ws1')).toEqual(['agent'])
   })
 
-  it('returns null when the workspace path is unresolvable', () => {
+  it('returns null when the workspace path is unresolvable', async () => {
     const registry = new TerminalSessionRegistry({
       bus: new TerminalEventBus(),
       workspaces: makeResolver({}),
     })
-    expect(registry.getOrCreateAgentShell('ghost')).toBeNull()
+    expect(await registry.getOrCreateAgentShell('ghost')).toBeNull()
   })
 })

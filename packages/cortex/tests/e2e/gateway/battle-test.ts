@@ -127,18 +127,18 @@ check('Dashboard todayRuns > 0', r.body.todayRuns > 0, `got ${r.body.todayRuns}`
 check('Dashboard todayTokens > 0', r.body.todayTokens > 0)
 
 // ── 10. Usage time series ──
-const buckets = gw.state.getUsageTimeSeries('7d')
+const buckets = await gw.state.getUsageTimeSeries('7d')
 check('getUsageTimeSeries(7d) returns 7 buckets', buckets.length === 7)
 const todayDate = new Date().toISOString().split('T')[0]!
 const todayBucket = buckets.find(b => b.date === todayDate)
 check('Today bucket has runs > 0', todayBucket !== undefined && todayBucket.runs > 0)
 check('Today bucket has tokens > 0', todayBucket !== undefined && todayBucket.tokens > 0)
 
-const hourBuckets = gw.state.getUsageTimeSeries('24h')
+const hourBuckets = await gw.state.getUsageTimeSeries('24h')
 check('getUsageTimeSeries(24h) returns 24 buckets', hourBuckets.length === 24)
 
 // ── 11. KPIs ──
-const kpis = gw.state.getKPIs('7d')
+const kpis = await gw.state.getKPIs('7d')
 check('getKPIs returns 4 cards', kpis.cards.length === 4)
 check('KPI cards: Tokens, Cost, Runs, Avg Duration', kpis.cards.map(c => c.label).join(',') === 'Tokens,Cost,Runs,Avg Duration')
 check('Each card has 12-pt sparkline', kpis.cards.every(c => c.sparkline.length === 12))
@@ -146,7 +146,7 @@ check('Tokens KPI value > 0', kpis.cards[0]!.value > 0)
 check('Runs KPI value > 0', kpis.cards[2]!.value > 0)
 
 // ── 12. Profile breakdown ──
-const breakdown = gw.state.getProfileBreakdown()
+const breakdown = await gw.state.getProfileBreakdown()
 check('getProfileBreakdown has entries', breakdown.length > 0)
 const miniRow = breakdown.find(r => r.profileId === 'mini')
 check('Mini profile in breakdown', miniRow !== undefined)
@@ -154,37 +154,37 @@ check('Mini has runs > 0', miniRow !== undefined && miniRow.runs > 0)
 check('Mini has successRate between 0 and 1', miniRow !== undefined && miniRow.successRate >= 0 && miniRow.successRate <= 1)
 
 // ── 13. Recent activity ──
-const activity = gw.state.getRecentActivity(5)
+const activity = await gw.state.getRecentActivity(5)
 check('getRecentActivity returns entries', activity.length > 0)
 check('Activity entry has expected fields', activity.length > 0 && activity[0]!.id.startsWith('usage_') && typeof activity[0]!.totalTokens === 'number')
 
 // ── 14. incrementProfileUsage ──
-gw.state.incrementProfileUsage('battle-profile', 0.05)
-gw.state.incrementProfileUsage('battle-profile', 0.10)
-gw.state.incrementProfileUsage('battle-profile', 0.15)
-const meta = gw.state.getProfileMetadata('battle-profile')!
+await gw.state.incrementProfileUsage('battle-profile', 0.05)
+await gw.state.incrementProfileUsage('battle-profile', 0.10)
+await gw.state.incrementProfileUsage('battle-profile', 0.15)
+const meta = (await gw.state.getProfileMetadata('battle-profile'))!
 check('incrementProfileUsage: useCount = 3', meta.useCount === 3)
 check('incrementProfileUsage: totalCost ≈ 0.30', Math.abs(meta.totalCost - 0.30) < 0.001)
 check('incrementProfileUsage: lastUsedAt set', meta.lastUsedAt !== null)
 
 // ── 15. Pagination edge cases ──
-for (let i = 0; i < 5; i++) gw.state.createThread('mini', `Paginate ${i}`, wsId)
-const { items: page1Items, total } = gw.state.listThreads(undefined, { limit: 2, offset: 0 })
-const { items: page2Items } = gw.state.listThreads(undefined, { limit: 2, offset: 2 })
+for (let i = 0; i < 5; i++) await gw.state.createThread('mini', `Paginate ${i}`, wsId)
+const { items: page1Items, total } = await gw.state.listThreads(undefined, { limit: 2, offset: 0 })
+const { items: page2Items } = await gw.state.listThreads(undefined, { limit: 2, offset: 2 })
 check('Pagination: page1 has 2 items', page1Items.length === 2)
 check('Pagination: page2 has 2 items', page2Items.length === 2)
 check('Pagination: total >= 6', total >= 6)
 check('Pagination: pages have different items', page1Items[0]!.id !== page2Items[0]!.id)
 
-const beyondResult = gw.state.listThreads(undefined, { limit: 10, offset: 9999 })
+const beyondResult = await gw.state.listThreads(undefined, { limit: 10, offset: 9999 })
 check('Pagination: offset beyond total returns empty items', beyondResult.items.length === 0)
 check('Pagination: total still correct when offset beyond', beyondResult.total >= 6)
 
 // ── 16. MCP servers (N+1 fix) ──
-gw.state.createMCPServer({ id: 'battle-srv', name: 'Battle Server', transport: 'stdio' })
-gw.state.assignServerToProfile('battle-srv', 'profile-a')
-gw.state.assignServerToProfile('battle-srv', 'profile-b')
-const { items: servers } = gw.state.listMCPServers()
+await gw.state.createMCPServer({ id: 'battle-srv', name: 'Battle Server', transport: 'stdio' })
+await gw.state.assignServerToProfile('battle-srv', 'profile-a')
+await gw.state.assignServerToProfile('battle-srv', 'profile-b')
+const { items: servers } = await gw.state.listMCPServers()
 const battleSrv = servers.find(s => s.id === 'battle-srv')
 check('MCP server has profileIds (no N+1)', battleSrv !== undefined && Array.isArray(battleSrv.profileIds))
 check('MCP server profileIds has 2 entries', battleSrv !== undefined && battleSrv.profileIds!.length === 2)

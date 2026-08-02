@@ -11,24 +11,24 @@ import {
 const CANDIDATE_ID = /^sha256:[0-9a-f]{64}$/
 
 export interface CandidateStageStore {
-  get(candidateId: string): CandidateRecord | null
+  get(candidateId: string): CandidateRecord | null | Promise<CandidateRecord | null>
   begin(input: {
     readonly candidateId: string
     readonly profileId: string
     readonly attemptId: string
     readonly fileCount: number
     readonly totalBytes: number
-  }, now?: number): 'started' | 'ready' | 'in_progress'
-  markReady(candidateId: string, attemptId: string, now?: number): void
+  }, now?: number): 'started' | 'ready' | 'in_progress' | Promise<'started' | 'ready' | 'in_progress'>
+  markReady(candidateId: string, attemptId: string, now?: number): void | Promise<void>
   markFailed(
     candidateId: string,
     attemptId: string,
     state: Extract<CandidateState, 'placement_failed' | 'cleanup_failed'>,
     code: string,
     now?: number,
-  ): void
-  markCleanupFailed(candidateId: string, attemptId: string, now?: number): void
-  markCleanupResolved(candidateId: string, attemptId: string, now?: number): void
+  ): void | Promise<void>
+  markCleanupFailed(candidateId: string, attemptId: string, now?: number): void | Promise<void>
+  markCleanupResolved(candidateId: string, attemptId: string, now?: number): void | Promise<void>
 }
 
 export interface CandidateStageResult {
@@ -134,22 +134,22 @@ export class CandidateStager {
     }
 
     const target = join(this.options.candidatesRoot, input.expectedCandidateId.slice('sha256:'.length))
-    const previous = this.options.store.get(input.expectedCandidateId)
+    const previous = await this.options.store.get(input.expectedCandidateId)
     if (previous && previous.state !== 'ready' && previous.attemptId !== null) {
       const previousAttempt = join(this.options.candidatesRoot, '.incoming', previous.attemptId)
       try {
         await this.dependencies.removeDirectory(previousAttempt)
       } catch {
-        this.options.store.markCleanupFailed(input.expectedCandidateId, previous.attemptId)
+        await this.options.store.markCleanupFailed(input.expectedCandidateId, previous.attemptId)
         return result(validated, 'cleanup_failed', 'cleanup_failed', true)
       }
       if (previous.state === 'cleanup_failed') {
-        this.options.store.markCleanupResolved(input.expectedCandidateId, previous.attemptId)
+        await this.options.store.markCleanupResolved(input.expectedCandidateId, previous.attemptId)
       }
     }
     const attemptId = this.dependencies.makeAttemptId()
     const attempt = join(this.options.candidatesRoot, '.incoming', attemptId)
-    const begin = this.options.store.begin({
+    const begin = await this.options.store.begin({
       candidateId: input.expectedCandidateId,
       profileId: validated.profileName,
       attemptId,
@@ -193,7 +193,7 @@ export class CandidateStager {
         }
       }
       try {
-        this.options.store.markReady(input.expectedCandidateId, attemptId)
+        await this.options.store.markReady(input.expectedCandidateId, attemptId)
       } catch {
         return await this.fail(
           validated,
@@ -239,10 +239,10 @@ export class CandidateStager {
       await this.dependencies.removeDirectory(attempt)
       if (sourceToRemove !== undefined) await this.dependencies.removeDirectory(sourceToRemove)
     } catch {
-      this.options.store.markFailed(candidateId, attemptId, 'cleanup_failed', 'cleanup_failed')
+      await this.options.store.markFailed(candidateId, attemptId, 'cleanup_failed', 'cleanup_failed')
       return result(source, 'cleanup_failed', 'cleanup_failed', false)
     }
-    this.options.store.markFailed(candidateId, attemptId, 'placement_failed', code)
+    await this.options.store.markFailed(candidateId, attemptId, 'placement_failed', code)
     return result(source, 'placement_failed', code, false)
   }
 }

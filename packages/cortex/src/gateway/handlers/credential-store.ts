@@ -36,7 +36,7 @@ import {
   isCredentialId,
   type Credential,
 } from '../../credential/schema.js'
-import type { CredentialAuditLog } from '../../credential/audit.js'
+import type { CredentialAuditRepository } from '../../storage/security-repositories.js'
 import type {
   CredentialSaveInput,
   CredentialUpdateInput,
@@ -481,7 +481,7 @@ type SimpleHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void
  * don't use trust:high.
  */
 export interface CredentialStoreHandlerDeps {
-  readonly audit?: CredentialAuditLog
+  readonly audit?: CredentialAuditRepository
   readonly trustGate?: TrustGate
   /**
    * Fan-out bus for credential CRUD events (audit #5 H1, 2026-05-16).
@@ -643,7 +643,7 @@ export function createCredentialStoreHandlers(
       return
     }
 
-    audit?.recordEvent({
+    await audit?.recordEvent({
       credentialId: credential.id,
       eventType: 'create',
       outcome: 'ok',
@@ -718,7 +718,7 @@ export function createCredentialStoreHandlers(
       sendError(res, 404, `No credential with id "${id}".`)
       return
     }
-    audit?.recordEvent({
+    await audit?.recordEvent({
       credentialId: credential.id,
       eventType: 'update',
       outcome: 'ok',
@@ -781,7 +781,7 @@ export function createCredentialStoreHandlers(
       // entity (we don't have that table yet — Phase 5 records inline
       // and accepts that hard-delete loses the audit trail along with
       // the row).
-      audit?.recordEvent({
+      await audit?.recordEvent({
         credentialId: id,
         eventType: 'delete',
         outcome: 'ok',
@@ -825,7 +825,7 @@ export function createCredentialStoreHandlers(
       sendError(res, 404, `No credential with id "${id}".`)
       return
     }
-    audit?.recordEvent({
+    await audit?.recordEvent({
       credentialId: id,
       eventType: 'delete',
       outcome: 'ok',
@@ -894,7 +894,7 @@ export function createCredentialStoreHandlers(
       // the next validate call.
     }
 
-    audit?.recordEvent({
+    await audit?.recordEvent({
       credentialId: id,
       eventType: 'validate',
       outcome: verdict.ok ? 'ok' : 'error',
@@ -972,7 +972,7 @@ export function createCredentialStoreHandlers(
     // correlation handles available without per-session ids; they
     // land in the `detail` JSON column.
     const ua = req.headers['user-agent'] ?? '<no-ua>'
-    audit?.recordEvent({
+    await audit?.recordEvent({
       credentialId: id,
       eventType: 'reveal',
       outcome: 'ok',
@@ -1029,7 +1029,7 @@ export function createCredentialStoreHandlers(
       sendError(res, 404, 'Approval request not found or signature invalid.')
       return
     }
-    audit?.recordEvent({
+    await audit?.recordEvent({
       credentialId: id,
       eventType: parsed.data.decision === 'granted' ? 'approval_granted' : 'approval_denied',
       outcome: parsed.data.decision === 'granted' ? 'ok' : 'denied',
@@ -1080,7 +1080,7 @@ const TimeRangeQuerySchema = z
 
 export function createCredentialAuditHandlers(
   store: CredentialStore,
-  audit: CredentialAuditLog,
+  audit: CredentialAuditRepository,
 ): {
   readonly listAudit: ParamHandler
   readonly cost: ParamHandler
@@ -1122,7 +1122,7 @@ export function createCredentialAuditHandlers(
     }
 
     try {
-      const result = audit.listEventsForCredential(id, {
+      const result = await audit.listEventsForCredential(id, {
         ...(parsed.data.limit !== undefined ? { limit: parsed.data.limit } : {}),
         ...(parsed.data.offset !== undefined ? { offset: parsed.data.offset } : {}),
       })
@@ -1157,7 +1157,7 @@ export function createCredentialAuditHandlers(
     }
 
     try {
-      const result = audit.aggregateCost(id, {
+      const result = await audit.aggregateCost(id, {
         ...(parsed.data.since !== undefined ? { sinceIso: parsed.data.since } : {}),
       })
       sendJSON(res, 200, result)
@@ -1191,7 +1191,7 @@ export function createCredentialAuditHandlers(
     }
 
     try {
-      const result = audit.aggregateUsage(id, {
+      const result = await audit.aggregateUsage(id, {
         ...(parsed.data.since !== undefined ? { sinceIso: parsed.data.since } : {}),
       })
       sendJSON(res, 200, result)

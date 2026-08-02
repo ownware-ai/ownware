@@ -115,6 +115,29 @@ describe('ConnectorStatusBus', () => {
     expect(b).toHaveLength(1)
   })
 
+  it('emitAndWait is a completion barrier for async subscribers', async () => {
+    let completed = false
+    bus.subscribe(async () => {
+      await Promise.resolve()
+      completed = true
+    })
+
+    await bus.emitAndWait({ connectorId: 's', source: 'mcp', status: 'ready' })
+
+    expect(completed).toBe(true)
+  })
+
+  it('emitAndWait isolates a rejected listener and still reaches the others', async () => {
+    const received: ConnectorStatusEvent[] = []
+    bus.subscribe(async () => { throw new Error('subscriber failed') })
+    bus.subscribe((event) => { received.push(event) })
+
+    await expect(bus.emitAndWait({
+      connectorId: 's', source: 'mcp', status: 'ready',
+    })).resolves.not.toBeNull()
+    expect(received).toHaveLength(1)
+  })
+
   it('removes a listener on unsubscribe (no leak)', () => {
     const received: ConnectorStatusEvent[] = []
     const unsub = bus.subscribe(e => { received.push(e) })

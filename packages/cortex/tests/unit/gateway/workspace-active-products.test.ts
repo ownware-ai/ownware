@@ -25,43 +25,43 @@ describe('Workspace.activeProducts (migration 032)', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('defaults to ["ownware"] on a freshly created workspace', () => {
-    const ws = state.createWorkspace('/tmp/fresh', 'fresh')
+  it('defaults to ["ownware"] on a freshly created workspace', async () => {
+    const ws = await state.createWorkspace('/tmp/fresh', 'fresh')
     expect(ws.activeProducts).toEqual(['ownware'])
   })
 
-  it('persists ["ownware"] across read (mapWorkspace round-trip)', () => {
-    const created = state.createWorkspace('/tmp/persist', 'persist')
-    const fetched = state.getWorkspace(created.id)
+  it('persists ["ownware"] across read (mapWorkspace round-trip)', async () => {
+    const created = await state.createWorkspace('/tmp/persist', 'persist')
+    const fetched = await state.getWorkspace(created.id)
     expect(fetched?.activeProducts).toEqual(['ownware'])
   })
 
-  it('updateWorkspace replaces the product list and re-read returns it', () => {
-    const created = state.createWorkspace('/tmp/multi', 'multi')
+  it('updateWorkspace replaces the product list and re-read returns it', async () => {
+    const created = await state.createWorkspace('/tmp/multi', 'multi')
 
-    const updated = state.updateWorkspace(created.id, {
+    const updated = await state.updateWorkspace(created.id, {
       activeProducts: ['ownware', 'ownware-design'],
     })
     expect(updated?.activeProducts).toEqual(['ownware', 'ownware-design'])
 
-    const fetched = state.getWorkspace(created.id)
+    const fetched = await state.getWorkspace(created.id)
     expect(fetched?.activeProducts).toEqual(['ownware', 'ownware-design'])
   })
 
-  it('updateWorkspace without activeProducts leaves the existing list intact', () => {
-    const created = state.createWorkspace('/tmp/intact', 'intact')
-    state.updateWorkspace(created.id, { activeProducts: ['ownware', 'ownware-marketing'] })
+  it('updateWorkspace without activeProducts leaves the existing list intact', async () => {
+    const created = await state.createWorkspace('/tmp/intact', 'intact')
+    await state.updateWorkspace(created.id, { activeProducts: ['ownware', 'ownware-marketing'] })
 
-    const renamed = state.updateWorkspace(created.id, { name: 'Renamed' })
+    const renamed = await state.updateWorkspace(created.id, { name: 'Renamed' })
     expect(renamed?.name).toBe('Renamed')
     expect(renamed?.activeProducts).toEqual(['ownware', 'ownware-marketing'])
   })
 
-  it('WorkspaceDetail also exposes activeProducts', () => {
-    const created = state.createWorkspace('/tmp/detail', 'detail')
-    state.updateWorkspace(created.id, { activeProducts: ['ownware', 'ownware-design'] })
+  it('WorkspaceDetail also exposes activeProducts', async () => {
+    const created = await state.createWorkspace('/tmp/detail', 'detail')
+    await state.updateWorkspace(created.id, { activeProducts: ['ownware', 'ownware-design'] })
 
-    const detail = state.getWorkspaceDetail(created.id)
+    const detail = await state.getWorkspaceDetail(created.id)
     expect(detail?.activeProducts).toEqual(['ownware', 'ownware-design'])
   })
 })

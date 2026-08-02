@@ -75,7 +75,7 @@ export function createPermissionHandlers(state: GatewayState) {
     // Walk every thread, pull its permission events. The number of threads
     // is bounded (tens to a few hundred), so a thread-by-thread scan is
     // acceptable here. If this grows, add a dedicated SQL query.
-    const threadsResult = state.listThreads(undefined, { limit: 1000, offset: 0 })
+    const threadsResult = await state.listThreads(undefined, { limit: 1000, offset: 0 })
     const threads = threadsResult.items
 
     interface PendingRequest {
@@ -93,9 +93,9 @@ export function createPermissionHandlers(state: GatewayState) {
     const records: PermissionRecord[] = []
 
     for (const thread of threads) {
-      const agents = state.listAgentsForThread(thread.id)
+      const agents = await state.listAgentsForThread(thread.id)
       for (const agent of agents) {
-        const events = state.listAgentEvents({
+        const events = await state.listAgentEvents({
           threadId: thread.id,
           agentId: agent.agentId,
         })
@@ -253,7 +253,7 @@ export function createPermissionHandlers(state: GatewayState) {
     for (const { threadId, companions } of state.iterSessionCompanions()) {
       const roots = companions.sessionAdditionalRoots ?? []
       if (roots.length === 0) continue
-      const thread = state.getThread(threadId)
+      const thread = await state.getThread(threadId)
       groups.push({
         threadId,
         threadTitle: thread?.title ?? null,
@@ -317,7 +317,7 @@ export function createPermissionHandlers(state: GatewayState) {
       // disk `removed` flag is the canonical return signal.
       for (const { threadId, companions } of state.iterSessionCompanions()) {
         if (!companions.zoneManager) continue
-        const thread = state.getThread(threadId)
+        const thread = await state.getThread(threadId)
         if (thread?.profileId !== body.profileId) continue
         companions.zoneManager.revokeExpansion(body.toolPattern)
       }

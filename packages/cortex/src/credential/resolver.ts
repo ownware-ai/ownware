@@ -15,7 +15,7 @@
  *
  *   3. Spend gate (LLM only). If the credential is `category: 'llm'`
  *      AND has a `spendCap` configured, call
- *      `spend-tracker.checkSpendCap` with `ctx.estimatedCostUsd`.
+ *      the selected adapter's spend repository with `ctx.estimatedCostUsd`.
  *      Pre-flight failure → `SPEND_CAP_EXCEEDED`. Audit row records
  *      the cap value + estimated cost so users can see why.
  *
@@ -30,9 +30,10 @@
  *      TTL is configurable; default 5 min. Handles past expiry are
  *      pruned lazily on the next dereference.
  *
- *   6. Audit row written in the same call (D7).
+ *   6. Audit row written before a successful handle is returned (D7).
  *
- *   7. `lastUsedAt` updated on the credential row.
+ *   7. `lastUsedAt` updated best-effort on the credential row. Audit and
+ *      metadata are separate durable operations; neither claims atomicity.
  *
  * Plaintext discipline: no plaintext value crosses ANY of the steps
  * above. The value materialises only at injector time
@@ -50,11 +51,13 @@ import {
   type OpaqueCredentialHandle,
   type ResolveContext,
 } from '@ownware/loom'
-import type { CredentialAuditLog } from './audit.js'
 import type { Credential } from './schema.js'
-import { checkSpendCap } from './spend-tracker.js'
 import type { CredentialStore } from './store/index.js'
 import type { TrustGate } from './trust-gate.js'
+import type {
+  CredentialAuditRepository,
+  CredentialSpendRepository,
+} from '../storage/security-repositories.js'
 
 // ---------------------------------------------------------------------------
 // Internal handle map
@@ -82,8 +85,8 @@ const DEFAULT_HANDLE_TTL_MS = 5 * 60 * 1000
 
 export interface GatewayCredentialResolverDeps {
   readonly store: CredentialStore
-  readonly audit: CredentialAuditLog
-  readonly spendDb: import('better-sqlite3').Database
+  readonly audit: CredentialAuditRepository
+  readonly spend: CredentialSpendRepository
   readonly trustGate?: TrustGate
   /** Override the handle TTL (tests). */
   readonly handleTtlMs?: number
@@ -95,8 +98,8 @@ export interface GatewayCredentialResolverDeps {
 
 export class GatewayCredentialResolver implements CredentialResolver {
   private readonly store: CredentialStore
-  private readonly audit: CredentialAuditLog
-  private readonly spendDb: import('better-sqlite3').Database
+  private readonly audit: CredentialAuditRepository
+  private readonly spend: CredentialSpendRepository
   private readonly trustGate: TrustGate | undefined
   private readonly handleTtlMs: number
   private readonly handles = new Map<string, ResolvedHandleEntry>()
@@ -104,7 +107,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
   constructor(deps: GatewayCredentialResolverDeps) {
     this.store = deps.store
     this.audit = deps.audit
-    this.spendDb = deps.spendDb
+    this.spend = deps.spend
     this.trustGate = deps.trustGate
     this.handleTtlMs = deps.handleTtlMs ?? DEFAULT_HANDLE_TTL_MS
   }
@@ -184,7 +187,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
         credential.status === 'expired' ? 'EXPIRED'
           : credential.status === 'revoked' ? 'REVOKED'
             : 'ERROR'
-      this.audit.recordEvent({
+      await this.audit.recordEvent({
         credentialId: credential.id,
         eventType: 'resolve',
         outcome: 'denied',
@@ -211,7 +214,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
     if (credential.authType !== 'oauth2' && credential.expiresAt !== undefined) {
       const expiresAt = Date.parse(credential.expiresAt)
       if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: credential.id,
           eventType: 'resolve',
           outcome: 'denied',
@@ -242,7 +245,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
         // Per D5: estimator MUST supply a real number. A missing
         // estimate fails CLOSED — we'd rather block a real call than
         // silently bypass the cap.
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: credential.id,
           eventType: 'resolve',
           outcome: 'error',
@@ -258,9 +261,13 @@ export class GatewayCredentialResolver implements CredentialResolver {
           'estimatedCostUsd was not supplied',
         )
       }
-      const spendResult = checkSpendCap(this.spendDb, credential.id, credential.spendCap, estimate)
+      const spendResult = await this.spend.check(
+        credential.id,
+        credential.spendCap,
+        estimate,
+      )
       if (spendResult.status === 'denied') {
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: credential.id,
           eventType: 'resolve',
           outcome: 'denied',
@@ -290,7 +297,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
       if (this.trustGate === undefined) {
         // Configuration bug — trust:high requires a gate. Fail
         // CLOSED rather than silently allow.
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: credential.id,
           eventType: 'resolve',
           outcome: 'error',
@@ -316,7 +323,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
         },
       })
       if (decision === 'denied') {
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: credential.id,
           eventType: 'resolve',
           outcome: 'denied',
@@ -341,7 +348,7 @@ export class GatewayCredentialResolver implements CredentialResolver {
       expiresAt,
     })
 
-    this.audit.recordEvent({
+    await this.audit.recordEvent({
       credentialId: credential.id,
       eventType: 'resolve',
       outcome: 'ok',
@@ -409,11 +416,14 @@ export class GatewayCredentialResolver implements CredentialResolver {
    * Safe to call with `actualCostUsd: 0` to record a "called but
    * free-tier" event.
    */
-  recordActualCost(handle: OpaqueCredentialHandle, actualCostUsd: number): void {
+  async recordActualCost(
+    handle: OpaqueCredentialHandle,
+    actualCostUsd: number,
+  ): Promise<void> {
     if (!Number.isFinite(actualCostUsd) || actualCostUsd < 0) return
     const entry = this.handles.get(handle.token)
     if (!entry) return
-    this.audit.recordEvent({
+    await this.audit.recordEvent({
       credentialId: entry.credentialId,
       eventType: 'resolve',
       outcome: 'ok',

@@ -4,12 +4,12 @@ import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
-  type RunIdempotencyStore,
 } from '../idempotency.js'
+import type { IdempotencyRepository } from '../../storage/security-repositories.js'
+import type { SourceDeletionRepository } from '../../storage/source-repositories.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 import {
   SourceDeletionPlanError,
-  type SourceDeletionStore,
 } from '../source-deletion-store.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -19,8 +19,8 @@ const CreateDeletionSchema = z.object({
 const EmptyBodySchema = z.object({}).strict()
 
 export function createSourceDeletionHandler(
-  deletions: SourceDeletionStore,
-  idempotency: RunIdempotencyStore,
+  deletions: SourceDeletionRepository,
+  idempotency: IdempotencyRepository,
   wakeWorker: () => void,
 ): (
   req: IncomingMessage,
@@ -55,7 +55,7 @@ export function createSourceDeletionHandler(
       key: idempotencyKey,
     }
     const input = { sourceId, expectedRevision: parsed.data.expectedRevision }
-    const claim = idempotency.claim({ ...key, input })
+    const claim = await idempotency.claim({ ...key, input })
     if (claim.kind === 'replay') {
       res.setHeader('Idempotency-Replayed', 'true')
       wakeWorker()
@@ -77,22 +77,22 @@ export function createSourceDeletionHandler(
     }
 
     try {
-      const plan = deletions.plan({
+      const plan = await deletions.plan({
         workspaceId: principal.workspaceId,
         profileId: principal.profileId,
         sourceId,
         expectedRevision: parsed.data.expectedRevision,
       })
-      const result = deletions.getPublicByJobScoped(
+      const result = await deletions.getPublicByJobScoped(
         plan.jobId, principal.workspaceId, principal.profileId,
       )
       if (!result) throw new Error('Source deletion projection unavailable')
-      idempotency.complete({ ...key, statusCode: 202, result })
+      await idempotency.complete({ ...key, statusCode: 202, result })
       wakeWorker()
       sendJSON(res, 202, result)
     } catch (error) {
       if (error instanceof SourceDeletionPlanError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         if (error.code === 'source_not_found') {
           sendError(res, 404, 'Source not found.', 'source_not_found', 'not_found')
           return
@@ -108,14 +108,14 @@ export function createSourceDeletionHandler(
         )
         return
       }
-      idempotency.markIndeterminate(key)
+      await idempotency.markIndeterminate(key)
       throw error
     }
   }
 }
 
 export function createGetSourceDeletionHandler(
-  deletions: SourceDeletionStore,
+  deletions: SourceDeletionRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -131,7 +131,9 @@ export function createGetSourceDeletionHandler(
     }
     const jobId = params['jobId'] ?? ''
     const deletion = UUID.test(jobId)
-      ? deletions.getPublicByJobScoped(jobId, principal.workspaceId, principal.profileId)
+      ? await deletions.getPublicByJobScoped(
+        jobId, principal.workspaceId, principal.profileId,
+      )
       : null
     if (!deletion) {
       sendError(res, 404, 'Source deletion not found.',
@@ -143,7 +145,7 @@ export function createGetSourceDeletionHandler(
 }
 
 export function createCancelSourceDeletionHandler(
-  deletions: SourceDeletionStore,
+  deletions: SourceDeletionRepository,
   wakeWorker: () => void,
 ): (
   req: IncomingMessage,
@@ -160,7 +162,7 @@ export function createCancelSourceDeletionHandler(
     }
     const jobId = params['jobId'] ?? ''
     const result = UUID.test(jobId)
-      ? deletions.requestCancellation(
+      ? await deletions.requestCancellation(
         jobId, principal.workspaceId, principal.profileId,
       )
       : 'missing'
@@ -179,7 +181,7 @@ export function createCancelSourceDeletionHandler(
         'source_deletion_irreversible', 'invalid_request')
       return
     }
-    const deletion = deletions.getPublicByJobScoped(
+    const deletion = await deletions.getPublicByJobScoped(
       jobId, principal.workspaceId, principal.profileId,
     )
     if (!deletion) {
@@ -196,7 +198,7 @@ export function createCancelSourceDeletionHandler(
 }
 
 export function createRetrySourceDeletionHandler(
-  deletions: SourceDeletionStore,
+  deletions: SourceDeletionRepository,
   wakeWorker: () => void,
 ): (
   req: IncomingMessage,
@@ -213,7 +215,7 @@ export function createRetrySourceDeletionHandler(
     }
     const jobId = params['jobId'] ?? ''
     const result = UUID.test(jobId)
-      ? deletions.retryPartialScoped(
+      ? await deletions.retryPartialScoped(
         jobId, principal.workspaceId, principal.profileId,
       )
       : 'missing'
@@ -227,7 +229,7 @@ export function createRetrySourceDeletionHandler(
         'source_deletion_not_partial', 'invalid_request')
       return
     }
-    const deletion = deletions.getPublicByJobScoped(
+    const deletion = await deletions.getPublicByJobScoped(
       jobId, principal.workspaceId, principal.profileId,
     )
     if (!deletion) throw new Error('Source deletion retry projection unavailable')

@@ -5,22 +5,18 @@
  * Pipedream, Zapier, and every future external OAuth source uses the same
  * row shape and the same `pending → ready | failed | expired` state machine.
  *
- * The store is a pure module of typed functions over a `Database.Database`
+ * This is a physical SQLite repository over an adapter-owned handle.
  * handle. It performs no I/O beyond the given handle, owns no singletons,
  * and is safe to instantiate per-test against a fresh temp db. All rows
  * are Zod-validated at the SQLite boundary so a rogue write (or a future
  * migration bug) is caught immediately.
  *
- * Production wiring:
- *   const store = new ConnectorConnectionsStore(state.rawDbHandle)
- *
- * Test wiring:
- *   const store = new ConnectorConnectionsStore(new Database(':memory:'))
- *   runMigrations(store.db, MIGRATIONS) // or use CortexDatabase
+ * Production construction belongs only in the SQLite repository factory.
+ * Physical SQLite tests may still construct it against a disposable handle.
  */
 
 import { randomUUID } from 'node:crypto'
-import type { Database } from 'better-sqlite3'
+import type { SqliteDatabase } from '../../storage/sqlite-driver.js'
 import { z } from 'zod'
 import { CONNECTION_SESSION_HANDLE_PATTERN } from './session-vault.js'
 
@@ -278,7 +274,7 @@ export type ConnectionTransitionResult = ConnectionRow & {
 // ---------------------------------------------------------------------------
 
 export class ConnectorConnectionsStore {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   /**
    * Insert (or idempotently update) a `pending` row.

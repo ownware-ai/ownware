@@ -20,7 +20,7 @@
  * Slice 5 (this engine does not reschedule them yet — it fires once).
  */
 
-import type { SqliteScheduleStore } from './store.js'
+import type { ScheduleRepository } from '../storage/platform-repositories.js'
 import type { ScheduleDto, ScheduleRunDto, ScheduleState, RunStatus } from './types.js'
 import { computeNextRun, graceMs, type CadenceContext } from './cadence.js'
 import { DEFAULT_SAFETY_LEVEL, type SafetyLevel } from './safety.js'
@@ -94,7 +94,7 @@ export type StartProfileRunFn = (params: {
 }) => Promise<{ readonly threadId: string; readonly done: Promise<unknown> }>
 
 export interface ScheduleRunnerDeps {
-  readonly store: SqliteScheduleStore
+  readonly store: ScheduleRepository
   readonly startProfileRun: StartProfileRunFn
   /** Is a (previous) run on this thread still active? (overlap policy) */
   readonly isRunning: (threadId: string) => boolean
@@ -109,25 +109,25 @@ export interface ScheduleRunnerDeps {
   /** Count of approvals a finished run parked (8d) → a clean run that held
    *  drafts is classified 'needs-approval' instead of a bare success. Default
    *  none (always 0). */
-  readonly pendingApprovalsForRun?: (runId: string) => number
+  readonly pendingApprovalsForRun?: (runId: string) => number | Promise<number>
   /** Outbound delivery seam (Slice 8). `finalText` reads the run's final
    *  assistant text (the payload); `sink` is looked up PER DELIVERY so the
    *  host can register it after boot (channels start after the gateway). */
   readonly delivery?: {
-    readonly finalText: (threadId: string) => string | null
+    readonly finalText: (threadId: string) => string | null | Promise<string | null>
     readonly sink: () => ScheduleDeliverySink | null
   }
 }
 
 export class ScheduleRunner {
-  private readonly store: SqliteScheduleStore
+  private readonly store: ScheduleRepository
   private readonly startProfileRun: StartProfileRunFn
   private readonly isRunning: (threadId: string) => boolean
   private readonly cadenceCtx: CadenceContext
   private readonly now: () => number
   private readonly tickIntervalMs: number
   private readonly onError: (err: unknown, context: string) => void
-  private readonly pendingApprovalsForRun?: (runId: string) => number
+  private readonly pendingApprovalsForRun?: (runId: string) => number | Promise<number>
   private readonly delivery?: ScheduleRunnerDeps['delivery']
 
   private timer: ReturnType<typeof setInterval> | null = null
@@ -148,14 +148,14 @@ export class ScheduleRunner {
   }
 
   /** Start: reconcile orphaned runs, sweep once (boot catch-up), then tick. */
-  start(): void {
+  async start(): Promise<void> {
     try {
-      const n = this.store.failInterruptedRuns(this.now())
+      const n = await this.store.failInterruptedRuns(this.now())
       if (n > 0) console.warn(`[schedule-runner] reconciled ${n} interrupted run(s) on boot`)
     } catch (err) {
       this.onError(err, 'boot reconcile')
     }
-    void this.tickOnce()
+    await this.tickOnce()
     this.timer = setInterval(() => void this.tickOnce(), this.tickIntervalMs)
     if (typeof this.timer.unref === 'function') this.timer.unref()
   }
@@ -179,10 +179,10 @@ export class ScheduleRunner {
    * null if the schedule doesn't exist.
    */
   async runNow(scheduleId: string): Promise<ScheduleRunDto | null> {
-    const schedule = this.store.get(scheduleId)
+    const schedule = await this.store.get(scheduleId)
     if (schedule == null) return null
     const now = this.now()
-    const run = this.store.recordRun({
+    const run = await this.store.recordRun({
       scheduleId,
       scheduledFor: now,
       runStatus: 'running',
@@ -206,9 +206,9 @@ export class ScheduleRunner {
     this.ticking = true
     try {
       const now = this.now()
-      for (const schedule of this.store.getDue(now)) {
+      for (const schedule of await this.store.getDue(now)) {
         try {
-          this.fire(schedule, now)
+          await this.fire(schedule, now)
         } catch (err) {
           this.onError(err, `fire schedule ${schedule.id}`)
         }
@@ -220,7 +220,7 @@ export class ScheduleRunner {
 
   // -- internals ------------------------------------------------------------
 
-  private fire(schedule: ScheduleDto, now: number): void {
+  private async fire(schedule: ScheduleDto, now: number): Promise<void> {
     const scheduledFor = schedule.nextRunAt
     if (scheduledFor == null) return // defensive — getDue already filtered
 
@@ -229,9 +229,9 @@ export class ScheduleRunner {
     const nextRun = computeNextRun(schedule, now, this.cadenceCtx)
     const nextState: ScheduleState = nextRun == null ? 'completed' : 'scheduled'
 
-    const skip = (reason: string): void => {
+    const skip = async (reason: string): Promise<void> => {
       // Atomic: record the skip + advance the cursor in one transaction.
-      this.store.recordRunAndAdvance({
+      await this.store.recordRunAndAdvance({
         run: {
           scheduleId: schedule.id,
           scheduledFor,
@@ -246,7 +246,7 @@ export class ScheduleRunner {
 
     // 1) Catch-up policy: don't run late if the user chose skip / window.
     if (isCatchUp && schedule.catchUpPolicy === 'skip') {
-      skip('asleep-caught-up')
+      await skip('asleep-caught-up')
       return
     }
     if (isCatchUp && schedule.catchUpPolicy === 'window') {
@@ -258,20 +258,20 @@ export class ScheduleRunner {
           ? schedule.catchUpWindowMs
           : Number.POSITIVE_INFINITY
       if (overdueMs >= win) {
-        skip('asleep-caught-up')
+        await skip('asleep-caught-up')
         return
       }
     }
 
     // 2) Overlap: don't pile a new run on a still-running previous one.
-    if (schedule.overlapPolicy === 'skip-if-running' && this.previousRunActive(schedule)) {
-      skip('previous-still-running')
+    if (schedule.overlapPolicy === 'skip-if-running' && await this.previousRunActive(schedule)) {
+      await skip('previous-still-running')
       return
     }
 
     // 3) Record the run + advance the durable cursor in ONE transaction,
     //    BEFORE dispatching (at-most-once across a crash).
-    const run = this.store.recordRunAndAdvance({
+    const run = await this.store.recordRunAndAdvance({
       run: {
         scheduleId: schedule.id,
         scheduledFor,
@@ -314,7 +314,7 @@ export class ScheduleRunner {
     } catch (err) {
       this.onError(err, `startProfileRun for schedule ${schedule.id}`)
       const errorMessage = err instanceof Error ? err.message : String(err)
-      this.store.updateRun(runId, {
+      await this.store.updateRun(runId, {
         runStatus: 'failed-to-run',
         finishedAt: this.now(),
         errorMessage,
@@ -327,7 +327,7 @@ export class ScheduleRunner {
 
     // Link the thread immediately so "click the run → open the thread" and
     // the overlap check work even while the run is still in flight.
-    this.store.updateRun(runId, { threadId })
+    await this.store.updateRun(runId, { threadId })
 
     // The run's REAL terminal verdict comes from the resolved RunResult
     // (status: completed | error | aborted) — NOT the thread status, which
@@ -344,10 +344,10 @@ export class ScheduleRunner {
     // A clean completion that parked ≥1 draft is 'needs-approval', not a bare
     // success — the user still has to act on it (Slice 8d). A failure stays a
     // failure regardless of any drafts.
-    if (runStatus === 'succeeded' && (this.pendingApprovalsForRun?.(runId) ?? 0) > 0) {
+    if (runStatus === 'succeeded' && (await this.pendingApprovalsForRun?.(runId) ?? 0) > 0) {
       runStatus = 'needs-approval'
     }
-    this.store.updateRun(runId, {
+    await this.store.updateRun(runId, {
       runStatus,
       finishedAt: this.now(),
       ...(outcome.errorMessage != null ? { errorMessage: outcome.errorMessage } : {}),
@@ -381,13 +381,13 @@ export class ScheduleRunner {
         quietOnEmpty: schedule.quietOnEmpty,
       })
       if (!notify) {
-        this.store.updateRun(runId, { deliveryStatus: 'not-delivered' })
+        await this.store.updateRun(runId, { deliveryStatus: 'not-delivered' })
         return
       }
 
       const sink = this.delivery?.sink() ?? null
       if (sink == null) {
-        this.store.updateRun(runId, {
+        await this.store.updateRun(runId, {
           deliveryStatus: 'not-delivered',
           ...(runStatus === 'succeeded'
             ? {
@@ -400,7 +400,7 @@ export class ScheduleRunner {
         return
       }
 
-      const text = this.deliveryText(schedule, runId, threadId, runStatus, errorMessage)
+      const text = await this.deliveryText(schedule, runId, threadId, runStatus, errorMessage)
       await sink({
         channel: deliver.channel,
         target: deliver.target,
@@ -411,10 +411,10 @@ export class ScheduleRunner {
         profileId: schedule.profileId,
         runStatus,
       })
-      this.store.updateRun(runId, { deliveryStatus: 'delivered' })
+      await this.store.updateRun(runId, { deliveryStatus: 'delivered' })
     } catch (err) {
       this.onError(err, `deliver run ${runId} (${deliver.channel}:${deliver.target})`)
-      this.store.updateRun(runId, {
+      await this.store.updateRun(runId, {
         deliveryStatus: 'not-delivered',
         ...(runStatus === 'succeeded'
           ? {
@@ -428,19 +428,21 @@ export class ScheduleRunner {
 
   /** The message a channel receives — the agent's real text when there is
    *  one, an honest status line when there isn't. */
-  private deliveryText(
+  private async deliveryText(
     schedule: ScheduleDto,
     runId: string,
     threadId: string | null,
     runStatus: RunStatus,
     errorMessage: string | null,
-  ): string {
-    const finalText = threadId != null ? (this.delivery?.finalText(threadId) ?? null) : null
+  ): Promise<string> {
+    const finalText = threadId != null
+      ? (await this.delivery?.finalText(threadId) ?? null)
+      : null
     switch (runStatus) {
       case 'succeeded':
         return finalText ?? `"${schedule.name}" ran, but produced no text output.`
       case 'needs-approval': {
-        const held = this.pendingApprovalsForRun?.(runId) ?? 0
+        const held = await this.pendingApprovalsForRun?.(runId) ?? 0
         const note =
           held > 0
             ? `Holding ${held} action(s) for your approval.`
@@ -456,9 +458,9 @@ export class ScheduleRunner {
     }
   }
 
-  private previousRunActive(schedule: ScheduleDto): boolean {
+  private async previousRunActive(schedule: ScheduleDto): Promise<boolean> {
     if (schedule.lastRunId == null) return false
-    const prev = this.store.getRun(schedule.lastRunId)
+    const prev = await this.store.getRun(schedule.lastRunId)
     if (prev?.threadId == null) return false
     return this.isRunning(prev.threadId)
   }

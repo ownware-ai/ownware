@@ -9,9 +9,10 @@ package-specific detail — read that too when you're inside a package.
 > a symlink to its sibling `AGENTS.md`, so all coding agents (Claude Code, Codex,
 > Cursor, Copilot) read the same guidance. **Edit `AGENTS.md` only**; when adding a
 > new guide, add the sibling symlink (`ln -s AGENTS.md CLAUDE.md`).
-> ⚠️ Not every `AGENTS.md` is a repo guide: files under `profiles/**` and
+> ⚠️ Not every `AGENTS.md` is a repo guide. Files under `profiles/**` and
 > `packages/cortex/profiles/**` are **product artifacts** — each agent profile's own
-> instructions. Never treat those as coding guides or add symlinks there.
+> instructions. `.catalyst/learning/**` holds cloned third-party repos carrying their
+> own guide files. Never treat either as a coding guide or add symlinks there.
 > `bun run check:guides` enforces all of this.
 
 > **Owner-only rules (private):** an `OWNER.md` at the repo root — present only in the
@@ -88,11 +89,17 @@ the wrong way across a layer, that's a signal the code belongs in a different pa
 ```
 ownware/
 ├── packages/
-│   ├── loom/       @ownware/loom   — the agent engine        (has its own CLAUDE.md)
-│   ├── cortex/     @ownware/cortex — the kernel + gateway     (has its own CLAUDE.md;
+│   ├── loom/       @ownware/loom   — the agent engine        (has its own AGENTS.md)
+│   ├── cortex/     @ownware/cortex — the kernel + gateway     (has its own AGENTS.md;
 │   │                              gateway/ and tests/framework/ have theirs too)
 │   ├── client/     @ownware/client — zero-dep client SDK for the gateway wire contract
 │   │                              (HTTP + SSE, browser + Node; ships spec/openapi.yaml + asyncapi.yaml)
+│   ├── cli/        @ownware/cli    — terminal chat client; a thin client of the wire
+│   │                              contract, never in-core (has its own AGENTS.md)
+│   ├── ui/         @ownware/ui     — zero-dep, framework-agnostic reducer turning
+│   │                              gateway events into renderable chat state
+│   ├── react/      @ownware/react  — React chat kit: headless live-agent hook + drop-in
+│   │                              chat and agent-workspace components (built on ui/)
 │   └── ownware/       ownware         — the umbrella package (one import for the quickstart surface)
 ├── adapters/
 │   └── shuttle/    @ownware/shuttle — messaging channel adapters (Slack/Telegram/WhatsApp/Discord/SMS);
@@ -109,7 +116,7 @@ ownware/
 
 ```bash
 bun install          # install the workspace
-bun run build        # build loom → cortex → ownware → client → shuttle (in order)
+bun run build        # loom → cortex → ownware → client → ui → react → shuttle → cli
 bun run typecheck    # typecheck every package
 bun run test         # run every package's suite
 bun run smoke        # keyless first-run canary: boot + health + models
@@ -121,7 +128,7 @@ provider key); they self-skip without one.
 
 Data lives in `~/.ownware/` (`OWNWARE_DATA_DIR` to override). `OWNWARE_*` env vars configure
 host/port/TLS/auth. Native deps in the tree: `better-sqlite3`, `node-pty`, `sharp`,
-`playwright`, `@vscode/ripgrep`.
+`playwright-core`, `@vscode/ripgrep`.
 
 ---
 
@@ -224,7 +231,7 @@ authoritative fact or describe the result as the limited signal it really is.
   (`packages/loom/AGENTS.md`, `packages/cortex/AGENTS.md`,
   `packages/cortex/src/gateway/AGENTS.md`, the `tests/framework/AGENTS.md`s).
 - **How to version, changelog, and publish to npm** → [`RELEASE.md`](RELEASE.md)
-  (Changesets, fixed versioning across all 5 packages, ordered `bun publish`; the docs
+  (Changesets, fixed versioning across all 8 published packages, ordered `bun publish`; the docs
   website deploys separately via Cloudflare Pages, never npm-versioned).
 - **The vision, positioning, plan** → `.catalyst/story/` — start at
   `00-MASTER-PLAN.md`; the sequenced build order + OSS/paid boundary is
@@ -233,7 +240,7 @@ authoritative fact or describe the result as the limited signal it really is.
   `CONVENTIONS.md` = the work discipline).
 - **Studies of other systems** → `.catalyst/learning/`.
 
-> **Rule of thumb:** architecture docs and package `CLAUDE.md` describe *what
+> **Rule of thumb:** architecture docs and package `AGENTS.md` describe *what
 > currently is*; `.catalyst/work/` describes *what we're doing/did*; `.catalyst/story/`
 > describes *where we're going*. Keep them in their lanes.
 

@@ -28,7 +28,7 @@
     "rebuild:node": "npm rebuild better-sqlite3 node-pty",
     "promote": "bun run scripts/promote-profile.ts",
     "build": "tsc && mkdir -p dist/connector/detection && cp src/connector/detection/known-apps.json dist/connector/detection/known-apps.json",
-    "bundle:gateway": "bun build dist/gateway/server.js --outfile dist/gateway-bundle.mjs --target node --format esm --external better-sqlite3 --external node-pty --external chokidar --external bindings --external fsevents --external playwright-core --external playwright --external chromium-bidi --external sharp --external @img/sharp-darwin-arm64 --external @img/sharp-darwin-x64 --external @img/sharp-linux-arm64 --external @img/sharp-linux-x64 --external @img/sharp-win32-x64 --external @img/sharp-libvips-darwin-arm64 --external @img/sharp-libvips-darwin-x64 --external @img/sharp-libvips-linux-arm64 --external @img/sharp-libvips-linux-x64 --external @vscode/ripgrep",
+    "bundle:gateway": "bun build dist/gateway/server.js --outfile dist/gateway-bundle.mjs --target node --format esm --external better-sqlite3 --external pg --external node-pty --external chokidar --external bindings --external fsevents --external playwright-core --external playwright --external chromium-bidi --external sharp --external @img/sharp-darwin-arm64 --external @img/sharp-darwin-x64 --external @img/sharp-linux-arm64 --external @img/sharp-linux-x64 --external @img/sharp-win32-x64 --external @img/sharp-libvips-darwin-arm64 --external @img/sharp-libvips-darwin-x64 --external @img/sharp-libvips-linux-arm64 --external @img/sharp-libvips-linux-x64 --external @vscode/ripgrep",
     "dev": "tsc --build && node --watch --watch-path=dist dist/gateway/server.js",
     "dev:watch": "tsc --watch",
     "gateway": "node dist/gateway/server.js",
@@ -82,10 +82,20 @@
     "@img/sharp-libvips-linux-arm64": "1.2.4",
     "@img/sharp-libvips-linux-x64": "1.2.4"
   },
+  "peerDependencies": {
+    "pg": "^8.22.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/node-forge": "^1.3.14",
+    "@types/pg": "^8.20.3",
+    "pg": "^8.22.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },

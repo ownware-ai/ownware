@@ -61,7 +61,9 @@ export const ConnectorStatusEventSchema = z.object({
 export type ConnectorStatusEvent = z.infer<typeof ConnectorStatusEventSchema>
 
 /** Listener contract — receives already-validated events. */
-export type ConnectorStatusListener = (event: ConnectorStatusEvent) => void
+export type ConnectorStatusListener = (
+  event: ConnectorStatusEvent,
+) => void | Promise<void>
 
 /** Unsubscribe handle, idempotent. */
 export type Unsubscribe = () => void
@@ -114,6 +116,31 @@ export class ConnectorStatusBus {
    * or null when the transition was a no-op (status unchanged).
    */
   emit(input: EmitInput): ConnectorStatusEvent | null {
+    const event = this.prepareEvent(input)
+    if (event === null) return null
+    this.emitter.emit(EVENT_NAME, event)
+    return event
+  }
+
+  /**
+   * Publish a transition and wait until every current subscriber has
+   * finished handling it. Listener failures remain isolated because this
+   * bus is a live hint, but the returned promise is a real completion
+   * barrier for callers whose next action depends on async subscribers.
+   *
+   * `emit()` remains the synchronous compatibility API for transports that
+   * only need best-effort fan-out. Storage-backed coordination paths use this
+   * method so a repository read cannot race the next customer request.
+   */
+  async emitAndWait(input: EmitInput): Promise<ConnectorStatusEvent | null> {
+    const event = this.prepareEvent(input)
+    if (event === null) return null
+    const listeners = this.emitter.listeners(EVENT_NAME) as ConnectorStatusListener[]
+    await Promise.allSettled(listeners.map((listener) => listener(event)))
+    return event
+  }
+
+  private prepareEvent(input: EmitInput): ConnectorStatusEvent | null {
     const key = `${input.source}:${input.connectorId}`
     const prior =
       input.previousStatus !== undefined
@@ -142,7 +169,6 @@ export class ConnectorStatusBus {
     ConnectorStatusEventSchema.parse(event)
 
     this.lastStatus.set(key, input.status)
-    this.emitter.emit(EVENT_NAME, event)
     return event
   }
 

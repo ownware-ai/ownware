@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import {
   CSV_DATA_VIEW_IMPLEMENTATION,
   CSV_DATA_VIEW_MAX_CELL_BYTES,
@@ -178,7 +178,7 @@ interface JobRow {
 
 export class SourceDataViewStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly quota: SourceQuotaPolicy = new SourceQuotaPolicy(db),
   ) {}
 

@@ -20,15 +20,18 @@ import {
   CandidateDeleteRejected,
   type CandidateRetirer,
 } from '../../profile/candidate-retirer.js'
-import type { CandidateStore } from '../candidate-store.js'
-import type { GatewayRunStore } from '../run-store.js'
+import type { CandidateRecord } from '../candidate-store.js'
+import type { CandidateRepository } from '../../storage/platform-repositories.js'
 import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
   type IdempotencySnapshot,
-  type RunIdempotencyStore,
 } from '../idempotency.js'
+import type {
+  IdempotencyRepository,
+  RunRepository,
+} from '../../storage/security-repositories.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 
 export const CANDIDATE_UPLOAD_MAX_FILES = 1_000
@@ -99,7 +102,7 @@ export const validateCandidate = createValidateCandidateHandler()
 const CANDIDATE_ID_PATTERN = /^sha256:[0-9a-f]{64}$/
 
 export function createGetCandidateHandler(
-  store: CandidateStore,
+  store: CandidateRepository,
 ): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const candidateId = params['candidateId']
@@ -108,17 +111,17 @@ export function createGetCandidateHandler(
         'candidate_identity_invalid', 'invalid_request')
       return
     }
-    const candidate = store.get(candidateId)
+    const candidate = await store.get(candidateId)
     if (!candidate || !isReadableCandidateScope(req, candidate.profileId)) {
       sendError(res, 404, 'Candidate not found.', 'candidate_not_found', 'not_found')
       return
     }
-    sendJSON(res, 200, projectCandidate(store, candidate))
+    sendJSON(res, 200, await projectCandidate(store, candidate))
   }
 }
 
 export function createListCandidatesHandler(
-  store: CandidateStore,
+  store: CandidateRepository,
 ): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const profileId = params['profileId']
@@ -128,14 +131,16 @@ export function createListCandidatesHandler(
     }
     sendJSON(res, 200, {
       profileId,
-      items: store.list(profileId).map((candidate) => projectCandidate(store, candidate)),
+      items: await Promise.all((await store.list(profileId)).map(
+        (candidate) => projectCandidate(store, candidate),
+      )),
     })
   }
 }
 
 export function createGetDeploymentHandler(
-  store: CandidateStore,
-  runs: GatewayRunStore,
+  store: CandidateRepository,
+  runs: RunRepository,
 ): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const profileId = params['profileId']
@@ -144,7 +149,7 @@ export function createGetDeploymentHandler(
         'profile_deployment_not_found', 'not_found')
       return
     }
-    const deployment = store.getActive(profileId)
+    const deployment = await store.getActive(profileId)
     if (!deployment) {
       sendError(res, 404, 'Profile deployment not found.',
         'profile_deployment_not_found', 'not_found')
@@ -157,7 +162,7 @@ export function createGetDeploymentHandler(
       routingState: deployment.routingState,
       health: deployment.health,
       healthObservedAt: deployment.healthObservedAt,
-      activeRunCount: runs.countActiveForProfile(profileId),
+      activeRunCount: await runs.countActiveForProfile(profileId),
       updatedAt: deployment.updatedAt,
     })
   }
@@ -165,7 +170,7 @@ export function createGetDeploymentHandler(
 
 export function createDeleteCandidateHandler(
   retirer: CandidateRetirer,
-  store: CandidateStore,
+  store: CandidateRepository,
 ): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const candidateId = params['candidateId']
@@ -174,7 +179,7 @@ export function createDeleteCandidateHandler(
         'candidate_identity_invalid', 'invalid_request')
       return
     }
-    const candidate = store.get(candidateId)
+    const candidate = await store.get(candidateId)
     if (!candidate || !isReadableCandidateScope(req, candidate.profileId)) {
       sendError(res, 404, 'Candidate not found.', 'candidate_not_found', 'not_found')
       return
@@ -201,7 +206,7 @@ export function createDeleteCandidateHandler(
 
 export function createPauseProfileHandler(
   deployment: CandidateDeploymentManager,
-  idempotency: RunIdempotencyStore,
+  idempotency: IdempotencyRepository,
 ): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const profileId = params['profileId']
@@ -212,7 +217,7 @@ export function createPauseProfileHandler(
       return
     }
     if (!isProfileInPrincipalScope(req, profileId, res)) return
-    const fence = claimDeploymentMutation(
+    const fence = await claimDeploymentMutation(
       req, res, idempotency, 'profiles.pause', { profileId, ...body },
     )
     if (!fence) return
@@ -222,14 +227,14 @@ export function createPauseProfileHandler(
       return
     }
     try {
-      const result = deployment.pause({
+      const result = await deployment.pause({
         profileId,
         expectedDeploymentRevision: body.expectedDeploymentRevision,
       })
-      idempotency.complete({ ...fence.key, statusCode: 200, result })
+      await idempotency.complete({ ...fence.key, statusCode: 200, result })
       sendJSON(res, 200, result)
     } catch (error) {
-      idempotency.markIndeterminate(fence.key)
+      await idempotency.markIndeterminate(fence.key)
       sendDeploymentError(res, error, 'pause')
     }
   }
@@ -237,7 +242,7 @@ export function createPauseProfileHandler(
 
 export function createResumeProfileHandler(
   deployment: CandidateDeploymentManager,
-  idempotency: RunIdempotencyStore,
+  idempotency: IdempotencyRepository,
 ): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
   return async (req, res, params): Promise<void> => {
     const profileId = params['profileId']
@@ -248,7 +253,7 @@ export function createResumeProfileHandler(
       return
     }
     if (!isProfileInPrincipalScope(req, profileId, res)) return
-    const fence = claimDeploymentMutation(
+    const fence = await claimDeploymentMutation(
       req, res, idempotency, 'profiles.resume', { profileId, ...body },
     )
     if (!fence) return
@@ -262,10 +267,10 @@ export function createResumeProfileHandler(
         profileId,
         expectedDeploymentRevision: body.expectedDeploymentRevision,
       })
-      idempotency.complete({ ...fence.key, statusCode: 200, result })
+      await idempotency.complete({ ...fence.key, statusCode: 200, result })
       sendJSON(res, 200, result)
     } catch (error) {
-      idempotency.markIndeterminate(fence.key)
+      await idempotency.markIndeterminate(fence.key)
       sendDeploymentError(res, error, 'resume')
     }
   }
@@ -599,15 +604,17 @@ function isReadableCandidateScope(req: IncomingMessage, profileId: string): bool
   return principal?.kind !== 'delegated' || principal.profileId === profileId
 }
 
-function projectCandidate(
-  store: CandidateStore,
-  candidate: NonNullable<ReturnType<CandidateStore['get']>>,
-): Record<string, unknown> {
-  const deletion = store.getDeletion(candidate.candidateId)
-  const eligibility = store.deletionEligibility({
+async function projectCandidate(
+  store: CandidateRepository,
+  candidate: CandidateRecord,
+): Promise<Record<string, unknown>> {
+  const [deletion, eligibility] = await Promise.all([
+    store.getDeletion(candidate.candidateId),
+    store.deletionEligibility({
     profileId: candidate.profileId,
     candidateId: candidate.candidateId,
-  })
+    }),
+  ])
   return {
     candidateId: candidate.candidateId,
     profileId: candidate.profileId,
@@ -669,16 +676,16 @@ function sendDeploymentError(
   )
 }
 
-function claimDeploymentMutation(
+async function claimDeploymentMutation(
   req: IncomingMessage,
   res: ServerResponse,
-  store: RunIdempotencyStore,
+  store: IdempotencyRepository,
   operation: 'profiles.pause' | 'profiles.resume',
   input: unknown,
-): {
+): Promise<{
   readonly key: { principalKey: string; operation: string; key: string }
   readonly replay?: { statusCode: number; result: IdempotencySnapshot }
-} | null {
+} | null> {
   const header = req.headers['idempotency-key']
   const idempotencyKey = Array.isArray(header) ? undefined : header
   if (!idempotencyKey || !isValidIdempotencyKey(idempotencyKey)) {
@@ -692,7 +699,7 @@ function claimDeploymentMutation(
     operation,
     key: idempotencyKey,
   }
-  const claim = store.claim({ ...key, input })
+  const claim = await store.claim({ ...key, input })
   if (claim.kind === 'claimed') return { key }
   if (claim.kind === 'replay') return { key, replay: claim }
   if (claim.kind === 'in_progress') res.setHeader('Retry-After', '1')

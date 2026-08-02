@@ -15,7 +15,7 @@
  *     reached only through the Conductor's board_write tool.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import {
   TASK_STATUS_TRANSITIONS,
   TEAM_TASK_STATUSES,
@@ -242,7 +242,7 @@ export interface UpdateTaskStructureInput {
 // ---------------------------------------------------------------------------
 
 export class TeamStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   // ── Teams ────────────────────────────────────────────────────────
 

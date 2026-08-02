@@ -21,7 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { ChannelGateSpec } from './channel-procedures.js'
 
 export const CHANNEL_JOB_MAX_ATTEMPTS = 3 as const
@@ -231,7 +231,7 @@ interface ChannelJobRow {
 }
 
 export class ChannelJobStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   enqueue(input: EnqueueChannelJobInput, now: number = Date.now()): ChannelJob {
     if (!NAME_SHAPE.test(input.operation)) {

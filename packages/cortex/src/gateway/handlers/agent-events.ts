@@ -38,9 +38,8 @@ import type { BusEvent, Unsubscribe } from '../event-bus.js'
 import { ROOT_AGENT_ID } from '../event-bus.js'
 import { trace, traceEnabled } from '../trace.js'
 import { authorizePrincipalScope, getRequestPrincipal } from '../auth/scoped-principal.js'
-import type { GatewayRunStore } from '../run-store.js'
+import type { RunRepository } from '../../storage/security-repositories.js'
 import { principalContinuityKey } from '../idempotency.js'
-import { ThreadPrincipalBindingStore } from '../thread-principal-binding.js'
 import type {
   StreamStartEvent,
   StreamReplayCompleteEvent,
@@ -171,19 +170,19 @@ function toStreamShutdownEvent(
   }
 }
 
-export function createAgentEventHandlers(state: GatewayState, runStore?: GatewayRunStore) {
-  const threadPrincipalBindings = new ThreadPrincipalBindingStore(state.rawDbHandle)
+export function createAgentEventHandlers(state: GatewayState, runStore?: RunRepository) {
+  const threadPrincipalBindings = state.securityRepositories.threadBindings
 
-  function delegatedThreadAccessAllowed(
+  async function delegatedThreadAccessAllowed(
     req: IncomingMessage,
     threadId: string,
     profileId: string,
     workspaceId: string | undefined,
-  ): boolean {
+  ): Promise<boolean> {
     const principal = getRequestPrincipal(req)
     if (principal?.kind !== 'delegated') return true
     return authorizePrincipalScope(req, { workspaceId, profileId }) &&
-      threadPrincipalBindings.allows(threadId, principalContinuityKey(principal))
+      await threadPrincipalBindings.allows(threadId, principalContinuityKey(principal))
   }
 
   /**
@@ -200,7 +199,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     const threadId = params['threadId']!
     const agentId = params['agentId']!
 
-    const thread = state.getThreadAnywhere(threadId)
+    const thread = await state.getThreadAnywhere(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -211,7 +210,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
           workspaceId: thread.workspaceId ?? undefined,
           profileId: thread.profileId,
         }) ||
-        !delegatedThreadAccessAllowed(
+        !await delegatedThreadAccessAllowed(
           req,
           threadId,
           thread.profileId,
@@ -236,8 +235,10 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
       sendError(res, 400, 'Thread cursor is outside the supported integer range', 'cursor_invalid', 'invalid_request')
       return
     }
-    const maxSeqAtStart = state.getAgentEventMaxSeq(threadId, agentId)
-    const firstRetained = state.getAgentEventMinSeq(threadId, agentId, -1)
+    const [maxSeqAtStart, firstRetained] = await Promise.all([
+      state.getAgentEventMaxSeq(threadId, agentId),
+      state.getAgentEventMinSeq(threadId, agentId, -1),
+    ])
     const earliestRetainedCursor = firstRetained === null
       ? (maxSeqAtStart === 0 ? 0 : null)
       : firstRetained - 1
@@ -469,19 +470,23 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     const resetIdleTimer = () => {
       if (isRootAgent) return // root chat tab: never idle-close
       if (idleTimer) clearTimeout(idleTimer)
-      idleTimer = setTimeout(() => {
+      idleTimer = setTimeout(async () => {
         if (aborted) return
         // Constant-time existence check — the previous implementation
         // pulled up to HISTORY_MAX_EVENTS rows just to look for one
         // event type, which scaled badly for long-lived sub-agents.
-        const hasTerminal = state.hasAgentEventOfType(
-          threadId, agentId, 'agent.complete',
-        )
-        if (hasTerminal) {
-          void enqueueWrite('done', toStreamDoneEvent('complete')).finally(() => {
-            onClose()
-            if (!res.writableEnded) res.end()
-          })
+        try {
+          const hasTerminal = await state.hasAgentEventOfType(
+            threadId, agentId, 'agent.complete',
+          )
+          if (hasTerminal) {
+            void enqueueWrite('done', toStreamDoneEvent('complete')).finally(() => {
+              onClose()
+              if (!res.writableEnded) res.end()
+            })
+          }
+        } catch (error) {
+          console.error('[gateway] sub-agent terminal check failed:', error)
         }
       }, IDLE_CLOSE_MS)
     }
@@ -494,7 +499,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
       // once. The `seq > since` filter is handled at the SQL layer.
       let cursor = since
       while (!aborted) {
-        const rows = state.listAgentEvents({
+        const rows = await state.listAgentEvents({
           threadId,
           agentId,
           since: cursor,
@@ -599,7 +604,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const snapshot = runStore?.get(params['runId']!) ?? null
+    const snapshot = await runStore?.get(params['runId']!) ?? null
     if (!snapshot) {
       sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
       return
@@ -607,7 +612,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     if (!authorizePrincipalScope(req, {
       workspaceId: snapshot.workspaceId ?? undefined,
       profileId: snapshot.profileId,
-    }) || !delegatedThreadAccessAllowed(
+    }) || !await delegatedThreadAccessAllowed(
       req,
       snapshot.threadId,
       snapshot.profileId,
@@ -635,14 +640,17 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
       return
     }
 
-    const currentEnd = snapshot.endSeq ?? state.getAgentEventMaxSeq(snapshot.threadId, ROOT_AGENT_ID)
+    const currentEnd = snapshot.endSeq ?? await state.getAgentEventMaxSeq(
+      snapshot.threadId,
+      ROOT_AGENT_ID,
+    )
     if (since > currentEnd) {
       sendError(res, 409, 'Cursor is ahead of this run', 'cursor_ahead', 'invalid_request', {
         runEndSeq: currentEnd,
       })
       return
     }
-    const firstRetained = state.getAgentEventMinSeq(
+    const firstRetained = await state.getAgentEventMinSeq(
       snapshot.threadId,
       ROOT_AGENT_ID,
       snapshot.startSeq,
@@ -683,12 +691,12 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     })
     let cursor = since
     while (cursor < currentEnd) {
-      const rows = state.listAgentEvents({
+      const rows = (await state.listAgentEvents({
         threadId: snapshot.threadId,
         agentId: ROOT_AGENT_ID,
         since: cursor,
         limit: 500,
-      }).filter((row) => row.seq <= currentEnd)
+      })).filter((row) => row.seq <= currentEnd)
       if (rows.length === 0) break
       for (const row of rows) {
         const payload = projectPublicRunEvent(row.payload as Record<string, unknown>)
@@ -727,7 +735,7 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     const threadId = params['threadId']!
     const agentId = params['agentId']!
 
-    const thread = state.getThreadAnywhere(threadId)
+    const thread = await state.getThreadAnywhere(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
@@ -737,19 +745,22 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     const sinceParam = url.searchParams.get('since')
     const since = sinceParam && /^\d+$/.test(sinceParam) ? parseInt(sinceParam, 10) : 0
 
-    const events = state.listAgentEvents({
-      threadId,
-      agentId,
-      since,
-      limit: HISTORY_MAX_EVENTS,
-    })
+    const [events, maxSeq] = await Promise.all([
+      state.listAgentEvents({
+        threadId,
+        agentId,
+        since,
+        limit: HISTORY_MAX_EVENTS,
+      }),
+      state.getAgentEventMaxSeq(threadId, agentId),
+    ])
 
     sendJSON(res, 200, {
       threadId,
       agentId,
       since,
       count: events.length,
-      maxSeq: state.getAgentEventMaxSeq(threadId, agentId),
+      maxSeq,
       events: events.map(e => ({
         seq: e.seq,
         type: e.type,
@@ -773,12 +784,12 @@ export function createAgentEventHandlers(state: GatewayState, runStore?: Gateway
     params: Record<string, string>,
   ): Promise<void> {
     const threadId = params['threadId']!
-    const thread = state.getThreadAnywhere(threadId)
+    const thread = await state.getThreadAnywhere(threadId)
     if (!thread) {
       sendError(res, 404, `Thread "${threadId}" not found`)
       return
     }
-    const agents = state.listAgentsForThread(threadId)
+    const agents = await state.listAgentsForThread(threadId)
     sendJSON(res, 200, {
       threadId,
       count: agents.length,

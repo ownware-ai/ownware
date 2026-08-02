@@ -36,6 +36,13 @@ function makeFakeSession(): { pty: PtyLike; emit: (s: string) => void; writes: s
   }
 }
 
+async function waitForWrites(writes: readonly string[], count: number = 1): Promise<void> {
+  for (let attempt = 0; attempt < 10 && writes.length < count; attempt += 1) {
+    await Promise.resolve()
+  }
+  expect(writes.length).toBeGreaterThanOrEqual(count)
+}
+
 /**
  * The runner generates a fresh random nonce per command and bakes it into the
  * single combined write. Tests can't predict it, so they read it back from the
@@ -89,7 +96,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     // One write only — the second-write race was the hang bug.
     expect(writes.length).toBe(1)
     const w = writes[0]!
@@ -114,7 +121,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const w = writes[0]!
     const nonce = nonceOf(w)
     emit(completion(w, nonce, 'hello', 0))
@@ -136,7 +143,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const w = writes[0]!
     const nonce = nonceOf(w)
     // zsh-style prompt prefixing the echoed line — still before the start marker.
@@ -155,7 +162,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 1_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const w = writes[0]!
     emit(completion(w, nonceOf(w), '', 1))
     const result = await promise
@@ -171,7 +178,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 1_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const w = writes[0]!
     emit(completion(w, nonceOf(w), '\x1b[0;32mgreen-file\x1b[0m', 0))
     const result = await promise
@@ -188,7 +195,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const w = writes[0]!
     const nonce = nonceOf(w)
     // Output prints a marker-shaped line with the WRONG nonce — must be ignored.
@@ -214,8 +221,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       signal: new AbortController().signal,
     })
 
-    await Promise.resolve()
-    await Promise.resolve()
+    await waitForWrites(writes)
     // One write per command now (not two).
     expect(writes.length).toBe(1)
     const wa = writes[0]!
@@ -225,8 +231,7 @@ describe('PtyShellRunner (fake PTY)', () => {
     const resA = await a
     expect(resA.output).toBe('A')
 
-    await Promise.resolve()
-    await Promise.resolve()
+    await waitForWrites(writes, 2)
     expect(writes.length).toBe(2)
     const wb = writes[1]!
     expect(wb).toContain('echo B')
@@ -248,7 +253,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 50,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const nonce = nonceOf(writes[0]!)
     // Let the timeout fire → Ctrl+C + a rescue end-marker with code 124.
     await new Promise((r) => setTimeout(r, 80))
@@ -273,7 +278,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 5_000,
       signal: ctrl.signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     const nonce = nonceOf(writes[0]!)
     ctrl.abort()
     await new Promise((r) => setTimeout(r, 30))
@@ -300,7 +305,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     // Clean: just the command + Enter, no printf marker noise.
     expect(writes.length).toBe(1)
     expect(writes[0]).toBe('echo hi\r')
@@ -325,7 +330,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     // Stray startup precmd D (no preceding C) — must be ignored.
     emit(`\x1b]633;D;${nonce};0\x07`)
     expect(writes.length).toBe(1)
@@ -337,7 +342,7 @@ describe('PtyShellRunner (fake PTY)', () => {
   })
 
   it('OSC mode: captures non-zero exit from the D marker', async () => {
-    const { pty, emit } = makeFakeSession()
+    const { pty, emit, writes } = makeFakeSession()
     const nonce = 'cxosc789'
     const runner = new PtyShellRunner({
       resolveSession: () => pty,
@@ -349,7 +354,7 @@ describe('PtyShellRunner (fake PTY)', () => {
       timeoutMs: 2_000,
       signal: new AbortController().signal,
     })
-    await Promise.resolve()
+    await waitForWrites(writes)
     emit(`false\r\n\x1b]633;C;${nonce}\x07\r\n\x1b]633;D;${nonce};1\x07`)
     const result = await promise
     expect(result.exitCode).toBe(1)

@@ -103,7 +103,7 @@ describe('Contract: scoped source jobs', () => {
       disableSourceWorker: true,
       profiles: [{ name: 'other', tools: { preset: 'none' } }],
     })
-    workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Source job contract').id
+    workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Source job contract')).id
     token = await issue(workspaceId, 'source-job-client')
     sourceId = await registerSource()
     firstVersionId = await uploadVersion(
@@ -715,9 +715,9 @@ describe('Contract: scoped source jobs', () => {
     const resourceId = gw.state.rawDbHandle.prepare(`
       SELECT resource_id FROM source_derived_resources WHERE source_id = ?
     `).pluck().get(sourceId) as string
-    const otherWorkspaceId = gw.state.createWorkspace(
+    const otherWorkspaceId = (await gw.state.createWorkspace(
       `${gw.tmpDir}/other-job`, 'Other job',
-    ).id
+    )).id
     const deniedTokens = [
       await issue(otherWorkspaceId, 'other-workspace-source-job-client'),
       await issue(workspaceId, 'other-profile-source-job-client', 'other'),

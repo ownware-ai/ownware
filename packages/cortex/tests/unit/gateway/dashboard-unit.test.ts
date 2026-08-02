@@ -19,12 +19,12 @@ import type { DashboardRange } from '../../../src/gateway/types.js'
 let state: GatewayState
 let tempDir: string
 
-function seedUsageRecords(count: number, opts?: {
+async function seedUsageRecords(count: number, opts?: {
   profileId?: string
   daysAgo?: number
   durationMs?: number
   success?: boolean
-}): void {
+}): Promise<void> {
   const profileId = opts?.profileId ?? 'test-profile'
   const daysAgo = opts?.daysAgo ?? 0
   const durationMs = opts?.durationMs ?? 500
@@ -32,7 +32,7 @@ function seedUsageRecords(count: number, opts?: {
 
   for (let i = 0; i < count; i++) {
     const createdDate = new Date(Date.now() - (daysAgo * 86400 * 1000) - (i * 60000))
-    state.addUsageRecord({
+    await state.addUsageRecord({
       profileId,
       model: `anthropic:claude-sonnet-4-20250514`,
       provider: 'anthropic',
@@ -60,10 +60,10 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('getKPIs', () => {
-  it('returns 4 KPI cards with sparklines of 12 points', () => {
-    seedUsageRecords(10, { profileId: 'alpha' })
+  it('returns 4 KPI cards with sparklines of 12 points', async () => {
+    await seedUsageRecords(10, { profileId: 'alpha' })
 
-    const kpis = state.getKPIs('7d')
+    const kpis = await state.getKPIs('7d')
     expect(kpis.range).toBe('7d')
     expect(kpis.cards).toHaveLength(4)
 
@@ -77,10 +77,10 @@ describe('getKPIs', () => {
     }
   })
 
-  it('returns delta as null when previous period has no data', () => {
+  it('returns delta as null when previous period has no data', async () => {
     // Only seed current period data
-    seedUsageRecords(5)
-    const kpis = state.getKPIs('7d')
+    await seedUsageRecords(5)
+    const kpis = await state.getKPIs('7d')
 
     // With no prior data, delta should be null (not NaN or Infinity)
     for (const card of kpis.cards) {
@@ -90,15 +90,15 @@ describe('getKPIs', () => {
     }
   })
 
-  it('uses hourly bucketing for 24h range', () => {
-    seedUsageRecords(5)
-    const kpis = state.getKPIs('24h')
+  it('uses hourly bucketing for 24h range', async () => {
+    await seedUsageRecords(5)
+    const kpis = await state.getKPIs('24h')
     expect(kpis.range).toBe('24h')
     expect(kpis.cards).toHaveLength(4)
   })
 
-  it('handles empty database without errors', () => {
-    const kpis = state.getKPIs('7d')
+  it('handles empty database without errors', async () => {
+    const kpis = await state.getKPIs('7d')
     expect(kpis.cards).toHaveLength(4)
     for (const card of kpis.cards) {
       expect(card.value).toBe(0)
@@ -113,9 +113,9 @@ describe('getKPIs', () => {
 // ---------------------------------------------------------------------------
 
 describe('getUsageTimeSeries', () => {
-  it('returns 24 hourly buckets for 24h range', () => {
-    seedUsageRecords(3)
-    const buckets = state.getUsageTimeSeries('24h')
+  it('returns 24 hourly buckets for 24h range', async () => {
+    await seedUsageRecords(3)
+    const buckets = await state.getUsageTimeSeries('24h')
     expect(buckets).toHaveLength(24)
     // Buckets should be in chronological order
     for (let i = 1; i < buckets.length; i++) {
@@ -123,24 +123,24 @@ describe('getUsageTimeSeries', () => {
     }
   })
 
-  it('returns 7 daily buckets for 7d range', () => {
-    seedUsageRecords(3)
-    const buckets = state.getUsageTimeSeries('7d')
+  it('returns 7 daily buckets for 7d range', async () => {
+    await seedUsageRecords(3)
+    const buckets = await state.getUsageTimeSeries('7d')
     expect(buckets).toHaveLength(7)
   })
 
-  it('returns 30 daily buckets for 30d range', () => {
-    const buckets = state.getUsageTimeSeries('30d')
+  it('returns 30 daily buckets for 30d range', async () => {
+    const buckets = await state.getUsageTimeSeries('30d')
     expect(buckets).toHaveLength(30)
   })
 
-  it('returns 90 daily buckets for 90d range', () => {
-    const buckets = state.getUsageTimeSeries('90d')
+  it('returns 90 daily buckets for 90d range', async () => {
+    const buckets = await state.getUsageTimeSeries('90d')
     expect(buckets).toHaveLength(90)
   })
 
-  it('zero-fills days with no data', () => {
-    const buckets = state.getUsageTimeSeries('7d')
+  it('zero-fills days with no data', async () => {
+    const buckets = await state.getUsageTimeSeries('7d')
     for (const bucket of buckets) {
       expect(bucket.tokens).toBe(0)
       expect(bucket.cost).toBe(0)
@@ -148,9 +148,9 @@ describe('getUsageTimeSeries', () => {
     }
   })
 
-  it('aggregates tokens/cost/runs correctly for seeded data', () => {
-    seedUsageRecords(5)
-    const buckets = state.getUsageTimeSeries('7d')
+  it('aggregates tokens/cost/runs correctly for seeded data', async () => {
+    await seedUsageRecords(5)
+    const buckets = await state.getUsageTimeSeries('7d')
     const totalRuns = buckets.reduce((s, b) => s + b.runs, 0)
     expect(totalRuns).toBe(5)
     const totalTokens = buckets.reduce((s, b) => s + b.tokens, 0)
@@ -163,11 +163,11 @@ describe('getUsageTimeSeries', () => {
 // ---------------------------------------------------------------------------
 
 describe('getProfileBreakdown', () => {
-  it('groups by profile correctly', () => {
-    seedUsageRecords(5, { profileId: 'alpha' })
-    seedUsageRecords(3, { profileId: 'beta' })
+  it('groups by profile correctly', async () => {
+    await seedUsageRecords(5, { profileId: 'alpha' })
+    await seedUsageRecords(3, { profileId: 'beta' })
 
-    const breakdown = state.getProfileBreakdown()
+    const breakdown = await state.getProfileBreakdown()
     expect(breakdown).toHaveLength(2)
 
     const alpha = breakdown.find(r => r.profileId === 'alpha')
@@ -178,30 +178,30 @@ describe('getProfileBreakdown', () => {
     expect(beta!.runs).toBe(3)
   })
 
-  it('computes avgDurationMs from duration_ms column', () => {
-    seedUsageRecords(3, { profileId: 'fast', durationMs: 100 })
-    seedUsageRecords(3, { profileId: 'slow', durationMs: 1000 })
+  it('computes avgDurationMs from duration_ms column', async () => {
+    await seedUsageRecords(3, { profileId: 'fast', durationMs: 100 })
+    await seedUsageRecords(3, { profileId: 'slow', durationMs: 1000 })
 
-    const breakdown = state.getProfileBreakdown()
+    const breakdown = await state.getProfileBreakdown()
     const fast = breakdown.find(r => r.profileId === 'fast')
     const slow = breakdown.find(r => r.profileId === 'slow')
     expect(fast!.avgDurationMs).toBe(100)
     expect(slow!.avgDurationMs).toBe(1000)
   })
 
-  it('computes successRate between 0 and 1', () => {
-    seedUsageRecords(3, { profileId: 'good', success: true })
-    seedUsageRecords(3, { profileId: 'bad', success: false })
+  it('computes successRate between 0 and 1', async () => {
+    await seedUsageRecords(3, { profileId: 'good', success: true })
+    await seedUsageRecords(3, { profileId: 'bad', success: false })
 
-    const breakdown = state.getProfileBreakdown()
+    const breakdown = await state.getProfileBreakdown()
     const good = breakdown.find(r => r.profileId === 'good')
     const bad = breakdown.find(r => r.profileId === 'bad')
     expect(good!.successRate).toBe(1)
     expect(bad!.successRate).toBe(0)
   })
 
-  it('returns empty array with no data', () => {
-    expect(state.getProfileBreakdown()).toHaveLength(0)
+  it('returns empty array with no data', async () => {
+    expect(await state.getProfileBreakdown()).toHaveLength(0)
   })
 })
 
@@ -210,23 +210,23 @@ describe('getProfileBreakdown', () => {
 // ---------------------------------------------------------------------------
 
 describe('getRecentActivity', () => {
-  it('returns specified limit', () => {
-    seedUsageRecords(10)
-    const activity = state.getRecentActivity(5)
+  it('returns specified limit', async () => {
+    await seedUsageRecords(10)
+    const activity = await state.getRecentActivity(5)
     expect(activity).toHaveLength(5)
   })
 
-  it('orders by createdAt desc (newest first)', () => {
-    seedUsageRecords(5)
-    const activity = state.getRecentActivity(5)
+  it('orders by createdAt desc (newest first)', async () => {
+    await seedUsageRecords(5)
+    const activity = await state.getRecentActivity(5)
     for (let i = 1; i < activity.length; i++) {
       expect(activity[i]!.createdAt <= activity[i - 1]!.createdAt).toBe(true)
     }
   })
 
-  it('returns correct data shape', () => {
-    seedUsageRecords(1)
-    const [entry] = state.getRecentActivity(1)
+  it('returns correct data shape', async () => {
+    await seedUsageRecords(1)
+    const [entry] = await state.getRecentActivity(1)
     expect(entry).toBeDefined()
     expect(entry!.id).toBeTruthy()
     expect(entry!.profileId).toBe('test-profile')
@@ -263,25 +263,25 @@ describe('activity feed merging', () => {
 // ---------------------------------------------------------------------------
 
 describe('storage stats', () => {
-  it('returns correct counts from SQLite tables', () => {
+  it('returns correct counts from SQLite tables', async () => {
     // Seed some data
-    const thread = state.createThread('test-profile')
-    state.addMessage(thread.id, {
+    const thread = await state.createThread('test-profile')
+    await state.addMessage(thread.id, {
       id: 'msg_001',
       role: 'user',
       content: 'Hello',
       timestamp: new Date().toISOString(),
     })
-    seedUsageRecords(3)
+    await seedUsageRecords(3)
 
-    const stats = state.getStorageStats()
+    const stats = await state.getStorageStats()
     expect(stats.threadCount).toBeGreaterThanOrEqual(1)
     expect(stats.messageCount).toBeGreaterThanOrEqual(1)
     expect(stats.usageRecordCount).toBe(3)
   })
 
-  it('returns zeros for empty database', () => {
-    const stats = state.getStorageStats()
+  it('returns zeros for empty database', async () => {
+    const stats = await state.getStorageStats()
     expect(stats.threadCount).toBe(0)
     expect(stats.messageCount).toBe(0)
     expect(stats.usageRecordCount).toBe(0)
@@ -320,19 +320,19 @@ describe('clearEventLogs', () => {
 // ---------------------------------------------------------------------------
 
 describe('exportAllData', () => {
-  it('returns all user data', () => {
+  it('returns all user data', async () => {
     // Seed some data
-    const thread = state.createThread('test-profile')
-    state.addMessage(thread.id, {
+    const thread = await state.createThread('test-profile')
+    await state.addMessage(thread.id, {
       id: 'msg_001',
       role: 'user',
       content: 'Hello',
       timestamp: new Date().toISOString(),
     })
-    state.createWorkspace('/tmp/test-ws', 'Test WS')
-    seedUsageRecords(2)
+    await state.createWorkspace('/tmp/test-ws', 'Test WS')
+    await seedUsageRecords(2)
 
-    const data = state.exportAllData()
+    const data = await state.exportAllData()
     expect(data.threads.length).toBeGreaterThanOrEqual(1)
     expect(data.workspaces.length).toBeGreaterThanOrEqual(1)
     expect(data.messages[thread.id]).toHaveLength(1)

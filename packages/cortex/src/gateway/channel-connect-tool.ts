@@ -26,14 +26,15 @@ import type {
   ConnectorToolProvider,
   ConnectorToolProviderResult,
 } from '../connector/providers/types.js'
-import type { ChannelJob, ChannelJobStore } from './channel-job-store.js'
+import type { ChannelJob } from './channel-job-store.js'
 import { ChannelJobConflictError } from './channel-job-store.js'
 import type { ChannelProcedureRegistry } from './channel-procedures.js'
+import type { ChannelJobRepository } from '../storage/platform-repositories.js'
 
 const POLL_MS = 250
 
 export interface ChannelConnectToolDeps {
-  readonly jobs: ChannelJobStore
+  readonly jobs: ChannelJobRepository
   readonly procedures: ChannelProcedureRegistry
   /** Nudge the worker so a fresh/resumed job starts without the poll delay. */
   readonly wake: () => void
@@ -91,8 +92,8 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
         }
       }
 
-      let job = deps.jobs
-        .listForProfile(deps.profileId)
+      let job = (await deps.jobs
+        .listForProfile(deps.profileId))
         .find((j) => j.operation === operation && j.terminalAt === null) ?? null
       if (job) {
         yield { message: 'Resuming the connection already in progress' }
@@ -106,7 +107,7 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
           }
         }
         try {
-          job = deps.jobs.enqueue({
+          job = await deps.jobs.enqueue({
             profileId: deps.profileId,
             operation,
             channelKind: procedure.channelKind,
@@ -119,7 +120,7 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
           })
         } catch (error) {
           if (error instanceof ChannelJobConflictError) {
-            job = deps.jobs.get(error.existingJobId)
+            job = await deps.jobs.get(error.existingJobId)
           } else {
             throw error
           }
@@ -131,17 +132,17 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
 
       let lastWorkLineSeq = 0
       for (;;) {
-        const current = deps.jobs.get(job.jobId)
+        const current = await deps.jobs.get(job.jobId)
         if (!current) return { content: 'The connection job disappeared.', isError: true }
 
         // Stream new work lines as they land.
-        for (const line of deps.jobs.workLines(job.jobId)) {
+        for (const line of await deps.jobs.workLines(job.jobId)) {
           if (line.seq <= lastWorkLineSeq) continue
           lastWorkLineSeq = line.seq
           yield { message: line.detail ? `${line.title} — ${line.detail}` : line.title }
         }
 
-        if (current.terminalAt !== null) return summarize(deps.jobs, current)
+        if (current.terminalAt !== null) return await summarize(deps.jobs, current)
 
         if (current.state === 'waiting_for_input' && current.gate) {
           const gate = current.gate
@@ -152,7 +153,7 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
           ].join('\n')
           const approved = await ctx.requestPermission(gate.title, detail)
           if (approved) {
-            deps.jobs.respondToGate(job.jobId, {
+            await deps.jobs.respondToGate(job.jobId, {
               gateId: gate.id,
               action: 'approve',
               actor: 'owner',
@@ -168,7 +169,7 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
               isError: false,
             }
           }
-          deps.jobs.respondToGate(job.jobId, {
+          await deps.jobs.respondToGate(job.jobId, {
             gateId: gate.id,
             action: 'deny',
             actor: 'owner',
@@ -189,8 +190,8 @@ export function createConnectChannelTool(deps: ChannelConnectToolDeps): Tool {
   })
 }
 
-function summarize(jobs: ChannelJobStore, job: ChannelJob): ToolResult {
-  const receipts = jobs.receiptsForJob(job.jobId)
+async function summarize(jobs: ChannelJobRepository, job: ChannelJob): Promise<ToolResult> {
+  const receipts = await jobs.receiptsForJob(job.jobId)
   const receiptLines = receipts.map((r) => `✓ ${r.title}`).join('\n')
   switch (job.state) {
     case 'succeeded':

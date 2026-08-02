@@ -46,7 +46,7 @@ describe('Contract: scoped source registration', () => {
       disableAuth: false,
       profiles: [{ name: 'other', tools: { preset: 'none' } }],
     })
-    workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Source contract').id
+    workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Source contract')).id
     const issued = await gw.client.post('/api/v1/auth/delegations', {
       delegateId: 'source-contract-client',
       workspaceId,
@@ -235,7 +235,7 @@ describe('Contract: scoped source registration', () => {
       }),
     })
     const source = SourceManifestSchema.parse(await created.json())
-    const otherWorkspaceId = gw.state.createWorkspace(`${gw.tmpDir}/other-workspace`, 'Other').id
+    const otherWorkspaceId = (await gw.state.createWorkspace(`${gw.tmpDir}/other-workspace`, 'Other')).id
     const issue = async (scopeWorkspaceId: string, profileId: string, delegateId: string) => {
       const response = await gw.client.post('/api/v1/auth/delegations', {
         delegateId,
@@ -270,7 +270,7 @@ describe('Contract: scoped source registration', () => {
   })
 
   it('starts empty and paginates a scoped catalog without merging equal metadata', async () => {
-    const pageWorkspaceId = gw.state.createWorkspace(`${gw.tmpDir}/page-workspace`, 'Page scope').id
+    const pageWorkspaceId = (await gw.state.createWorkspace(`${gw.tmpDir}/page-workspace`, 'Page scope')).id
     const issued = await gw.client.post('/api/v1/auth/delegations', {
       delegateId: 'source-page-client',
       workspaceId: pageWorkspaceId,

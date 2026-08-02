@@ -336,7 +336,7 @@ describe('ScheduleRunner — overlap + one-off + boot reconcile', () => {
     // Simulate a run that was interrupted mid-flight (left 'running').
     store.recordRun({ scheduleId: s.id, scheduledFor: clock, runStatus: 'running', startedAt: clock })
     const runner = makeRunner()
-    runner.start()
+    await runner.start()
     runner.stop() // don't leave a timer
     const runs = store.listRuns(s.id)
     expect(runs[0]!.runStatus).toBe('failed-to-run')

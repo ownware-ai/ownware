@@ -42,6 +42,7 @@ import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js
 import { TrustGate } from '../../../src/credential/trust-gate.js'
 import { __resetMasterKeyCacheForTests } from '../../../src/connector/credentials/vault.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
+import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqlite-security-repositories.js'
 
 let prevHome: string | undefined
 let tmpHome: string
@@ -68,7 +69,12 @@ beforeEach(() => {
   store = new DbCredentialBackend(db)
   audit = new CredentialAuditLog(db)
   trustGate = new TrustGate()
-  resolver = new GatewayCredentialResolver({ store, audit, spendDb: db, trustGate })
+  resolver = new GatewayCredentialResolver({
+    store,
+    audit,
+    spend: createSqliteCredentialSpendRepository(db),
+    trustGate,
+  })
 })
 afterEach(() => {
   db.close()
@@ -253,7 +259,11 @@ describe('GatewayCredentialResolver — trust gate', () => {
 
   it('throws APPROVAL_DENIED on a denied request — even when no trustGate is wired', async () => {
     await seed({ trust: 'high' })
-    const noGate = new GatewayCredentialResolver({ store, audit, spendDb: db })
+    const noGate = new GatewayCredentialResolver({
+      store,
+      audit,
+      spend: createSqliteCredentialSpendRepository(db),
+    })
     const error = await noGate.resolve('ANTHROPIC_API_KEY', ctx).catch(e => e)
     expect(error).toBeInstanceOf(CredentialDeniedError)
     expect((error as CredentialDeniedError).reason).toBe('APPROVAL_DENIED')
@@ -345,7 +355,11 @@ describe('GatewayCredentialResolver — handle lifecycle', () => {
     vi.useFakeTimers()
     try {
       const shortTtl = new GatewayCredentialResolver({
-        store, audit, spendDb: db, trustGate, handleTtlMs: 1_000,
+        store,
+        audit,
+        spend: createSqliteCredentialSpendRepository(db),
+        trustGate,
+        handleTtlMs: 1_000,
       })
       await seed({ value: 'sk-ant-XXXXXXXX-EXPR' })
       const handle = await shortTtl.resolve('ANTHROPIC_API_KEY', ctx)
@@ -368,7 +382,7 @@ describe('GatewayCredentialResolver — handle lifecycle', () => {
   it('recordActualCost writes a true-up audit row tagged trueUp: true', async () => {
     const c = await seed()
     const handle = await resolver.resolve('ANTHROPIC_API_KEY', ctx)
-    resolver.recordActualCost(handle, 0.42)
+    await resolver.recordActualCost(handle, 0.42)
     const events = audit.listEventsForCredential(c.id).events
     const trueUp = events.find(e => e.detail !== null && (e.detail as Record<string, unknown>)['trueUp'] === true)
     expect(trueUp).toBeDefined()
@@ -380,7 +394,7 @@ describe('GatewayCredentialResolver — handle lifecycle', () => {
     const handle = await resolver.resolve('ANTHROPIC_API_KEY', ctx)
     resolver.releaseHandle(handle)
     const before = audit.listEventsForCredential('cred_000000000000').total
-    resolver.recordActualCost(handle, 0.42)
+    await resolver.recordActualCost(handle, 0.42)
     const after = audit.listEventsForCredential('cred_000000000000').total
     expect(before).toBe(after)
   })

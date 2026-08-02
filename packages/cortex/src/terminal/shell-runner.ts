@@ -222,7 +222,7 @@ class CommandQueue {
 
 export interface PtyShellRunnerOptions {
   /** Returns the live PTY for a workspace or null if unavailable. */
-  readonly resolveSession: () => PtyLike | null
+  readonly resolveSession: () => PtyLike | null | Promise<PtyLike | null>
   /** Timeout grace window (ms) for reading output after Ctrl+C on
    *  timeout/abort. Default: 2000ms. */
   readonly recoveryGraceMs?: number
@@ -248,7 +248,7 @@ export class PtyShellRunner {
   }
 
   private async runImpl(input: RunInput): Promise<RunResult> {
-    const session = this.opts.resolveSession()
+    const session = await this.opts.resolveSession()
     if (session == null || session.exited != null) {
       return {
         output: '',

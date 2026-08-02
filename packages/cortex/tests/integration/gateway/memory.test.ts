@@ -182,7 +182,7 @@ describe('Proposal approval flow', () => {
   it('end-to-end: propose → list pending → accept (with edit) → appears in memories', async () => {
     // Use the in-process store as a stand-in for the agent's `remember` tool —
     // the wire shape from there forward is identical to a real session call.
-    const proposal = gateway.memorySystem.proposals.propose({
+    const proposal = await gateway.memorySystem.proposals.propose({
       profileId: PROFILE_ID,
       threadId: 'thread_test',
       content: 'User prefers tabs over spaces',
@@ -216,7 +216,7 @@ describe('Proposal approval flow', () => {
   })
 
   it('reject leaves no memory; reason is recorded', async () => {
-    const p = gateway.memorySystem.proposals.propose({
+    const p = await gateway.memorySystem.proposals.propose({
       profileId: PROFILE_ID,
       threadId: 't',
       content: 'wrong fact',
@@ -231,12 +231,12 @@ describe('Proposal approval flow', () => {
   })
 
   it('per-thread listing scopes correctly', async () => {
-    gateway.memorySystem.proposals.propose({
+    await gateway.memorySystem.proposals.propose({
       profileId: PROFILE_ID,
       threadId: 'thread_a',
       content: 'A',
     })
-    gateway.memorySystem.proposals.propose({
+    await gateway.memorySystem.proposals.propose({
       profileId: PROFILE_ID,
       threadId: 'thread_b',
       content: 'B',
@@ -247,7 +247,7 @@ describe('Proposal approval flow', () => {
   })
 
   it('double-accept returns 409', async () => {
-    const p = gateway.memorySystem.proposals.propose({
+    const p = await gateway.memorySystem.proposals.propose({
       profileId: PROFILE_ID,
       threadId: 't',
       content: 'X',

@@ -29,10 +29,10 @@ describe('public access grants across real Gateway restarts', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Access grant restart',
-    ).id
+    )).id
     const target = await seedPreparedText(gateway, workspaceId)
     const issued = await gateway.client.post('/api/v1/auth/delegations', {
       delegateId: 'access-grant-restart-reader',
@@ -141,9 +141,9 @@ describe('public access grants across real Gateway restarts', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir, 'Search grant restart',
-    ).id
+    )).id
     const target = await seedPreparedText(gateway, workspaceId)
     const issued = await gateway.client.post('/api/v1/auth/delegations', {
       delegateId: 'search-grant-restart-client',

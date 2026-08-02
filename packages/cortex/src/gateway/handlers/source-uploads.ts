@@ -4,17 +4,19 @@ import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
-  type RunIdempotencyStore,
 } from '../idempotency.js'
+import type { IdempotencyRepository } from '../../storage/security-repositories.js'
+import type {
+  SourceRepository,
+  SourceUploadRepository,
+} from '../../storage/source-repositories.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
-import type { SourceStore } from '../source-store.js'
 import {
   SOURCE_UPLOAD_MAX_CHUNK_BYTES,
   SOURCE_UPLOAD_MAX_CHUNKS,
   SOURCE_UPLOAD_MAX_BYTES,
   SourceUploadRefreshConflictError,
   SourceUploadTargetNotFoundError,
-  type SourceUploadStore,
 } from '../source-upload-store.js'
 import { SourceByteStore, SourceByteStoreError } from '../source-byte-store.js'
 import { SourceQuotaExceededError } from '../source-quota-policy.js'
@@ -30,9 +32,9 @@ const UploadSessionInputSchema = z.object({
 }).strict()
 
 export function createSourceUploadSessionHandler(
-  sources: SourceStore,
-  uploads: SourceUploadStore,
-  idempotency: RunIdempotencyStore,
+  sources: SourceRepository,
+  uploads: SourceUploadRepository,
+  idempotency: IdempotencyRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -46,7 +48,9 @@ export function createSourceUploadSessionHandler(
       return
     }
     const sourceId = params['sourceId'] ?? ''
-    const source = sources.getScoped(sourceId, principal.workspaceId, principal.profileId)
+    const source = await sources.getScoped(
+      sourceId, principal.workspaceId, principal.profileId,
+    )
     if (!source) {
       sendError(res, 404, 'Source not found.', 'source_not_found', 'not_found')
       return
@@ -74,7 +78,7 @@ export function createSourceUploadSessionHandler(
     }
     const principalKey = principalContinuityKey(principal)
     const key = { principalKey, operation: 'source_uploads.create', key: idempotencyKey }
-    const claim = idempotency.claim({ ...key, input: { sourceId, ...parsed.data } })
+    const claim = await idempotency.claim({ ...key, input: { sourceId, ...parsed.data } })
     if (claim.kind === 'replay') {
       res.setHeader('Idempotency-Replayed', 'true')
       sendJSON(res, claim.statusCode, claim.result)
@@ -90,25 +94,25 @@ export function createSourceUploadSessionHandler(
       return
     }
     try {
-      const result = uploads.create({
+      const result = await uploads.create({
         sourceId,
         workspaceId: principal.workspaceId,
         profileId: principal.profileId,
         principalKey,
         ...parsed.data,
       })
-      idempotency.complete({ ...key, statusCode: 201, result })
+      await idempotency.complete({ ...key, statusCode: 201, result })
       sendJSON(res, 201, result)
     } catch (error) {
       if (error instanceof SourceQuotaExceededError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         sendError(res, 409, 'Source quota does not allow this operation.',
           'source_quota_exceeded', 'invalid_request', {
             resourceClass: error.resourceClass,
           })
         return
       }
-      idempotency.markIndeterminate(key)
+      await idempotency.markIndeterminate(key)
       if (error instanceof SourceUploadTargetNotFoundError) {
         sendError(res, 404, 'Source not found.', 'source_not_found', 'not_found')
         return
@@ -119,7 +123,7 @@ export function createSourceUploadSessionHandler(
 }
 
 export function createWriteSourceUploadChunkHandler(
-  uploads: SourceUploadStore,
+  uploads: SourceUploadRepository,
   bytes: SourceByteStore,
 ): (
   req: IncomingMessage,
@@ -135,7 +139,7 @@ export function createWriteSourceUploadChunkHandler(
     }
     const uploadId = params['uploadId'] ?? ''
     const principalKey = principalContinuityKey(principal)
-    const initial = uploads.getScoped(
+    const initial = await uploads.getScoped(
       uploadId, principal.workspaceId, principal.profileId, principalKey,
     )
     if (!initial) {
@@ -181,12 +185,12 @@ export function createWriteSourceUploadChunkHandler(
         return
       }
       const result = await bytes.withUploadLock(uploadId, async () => {
-        const session = uploads.getScoped(
+        const session = await uploads.getScoped(
           uploadId, principal.workspaceId, principal.profileId, principalKey,
         )
         if (!session || session.state !== 'open') return { kind: 'closed' } as const
         if (requestedOffset < session.offset) {
-          const prior = uploads.findChunk(uploadId, requestedOffset)
+          const prior = await uploads.findChunk(uploadId, requestedOffset)
           return prior && prior.byteCount === received.byteCount &&
             prior.checksum === received.checksum
             ? { kind: 'replay', session } as const
@@ -200,7 +204,7 @@ export function createWriteSourceUploadChunkHandler(
         await bytes.reconcile(uploadId, session.offset)
         await bytes.append(uploadId, received)
         try {
-          const advanced = uploads.advanceChunk(uploadId, session.offset, received)
+          const advanced = await uploads.advanceChunk(uploadId, session.offset, received)
           return { kind: 'accepted', session, advanced } as const
         } catch (error) {
           await bytes.reconcile(uploadId, session.offset)
@@ -243,7 +247,7 @@ export function createWriteSourceUploadChunkHandler(
 }
 
 export function createCompleteSourceUploadHandler(
-  uploads: SourceUploadStore,
+  uploads: SourceUploadRepository,
   bytes: SourceByteStore,
 ): (
   req: IncomingMessage,
@@ -260,15 +264,18 @@ export function createCompleteSourceUploadHandler(
     const uploadId = params['uploadId'] ?? ''
     const principalKey = principalContinuityKey(principal)
     const result = await bytes.withUploadLock(uploadId, async () => {
-      const session = uploads.getScoped(
+      const session = await uploads.getScoped(
         uploadId, principal.workspaceId, principal.profileId, principalKey,
       )
       if (!session) return { kind: 'missing' } as const
       if (session.state === 'completed') {
-        return { kind: 'replay', version: uploads.getCompletedVersion(uploadId)! } as const
+        return {
+          kind: 'replay',
+          version: (await uploads.getCompletedVersion(uploadId))!,
+        } as const
       }
       if (session.state === 'failed' && session.code === 'source_upload_refresh_conflict') {
-        const actual = uploads.getCurrentSourceIdentity(session.sourceId)
+        const actual = await uploads.getCurrentSourceIdentity(session.sourceId)
         if (actual) {
           return {
             kind: 'refresh_conflict',
@@ -297,10 +304,10 @@ export function createCompleteSourceUploadHandler(
           inspected = await bytes.inspectStaging(uploadId, session.declaredMediaType)
           if (inspected.byteCount !== session.expectedBytes ||
               inspected.checksum !== session.expectedChecksum) {
-            uploads.markFailed(uploadId, 'source_upload_verification_failed')
+            await uploads.markFailed(uploadId, 'source_upload_verification_failed')
             return { kind: 'verification_failed' } as const
           }
-          versionId = uploads.beginCompletion(uploadId)
+          versionId = await uploads.beginCompletion(uploadId)
           objectKey = await bytes.place(uploadId, session.sourceId, versionId)
         } else {
           if (!versionId) throw new Error('Completing upload has no pending version')
@@ -310,7 +317,7 @@ export function createCompleteSourceUploadHandler(
         }
         let version
         try {
-          version = uploads.finishCompletion(uploadId, {
+          version = await uploads.finishCompletion(uploadId, {
             versionId: versionId!,
             checksum: inspected.checksum,
             verifiedMediaType: inspected.verifiedMediaType,
@@ -322,16 +329,18 @@ export function createCompleteSourceUploadHandler(
           try {
             await bytes.discardPlaced(objectKey)
           } catch {
-            uploads.markFailed(uploadId, 'source_upload_cleanup_failed')
+            await uploads.markFailed(uploadId, 'source_upload_cleanup_failed')
             return { kind: 'cleanup_failed' } as const
           }
-          uploads.markFailedAfterVerifiedCleanup(uploadId, 'source_upload_refresh_conflict')
+          await uploads.markFailedAfterVerifiedCleanup(
+            uploadId, 'source_upload_refresh_conflict',
+          )
           return { kind: 'refresh_conflict', error } as const
         }
         return { kind: 'completed', version } as const
       } catch (error) {
         if (error instanceof SourceByteStoreError) {
-          uploads.markFailed(uploadId, 'source_upload_verification_failed')
+          await uploads.markFailed(uploadId, 'source_upload_verification_failed')
           return { kind: 'verification_failed' } as const
         }
         throw error
@@ -368,7 +377,7 @@ export function createCompleteSourceUploadHandler(
 }
 
 export function createGetSourceVersionHandler(
-  uploads: SourceUploadStore,
+  uploads: SourceUploadRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -381,7 +390,7 @@ export function createGetSourceVersionHandler(
         'source_scoped_principal_required', 'auth')
       return
     }
-    const version = uploads.getVersionScoped(
+    const version = await uploads.getVersionScoped(
       params['sourceId'] ?? '', params['sourceVersionId'] ?? '',
       principal.workspaceId, principal.profileId,
     )

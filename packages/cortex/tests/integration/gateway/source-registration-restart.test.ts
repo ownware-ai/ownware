@@ -18,7 +18,7 @@ describe('source registration across a real Gateway restart', () => {
   it('replays one registration and retains scoped safe reads', async () => {
     const gateway = await createTestGateway({ disableAuth: false })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(gateway.tmpDir, 'Restart source').id
+    const workspaceId = (await gateway.state.createWorkspace(gateway.tmpDir, 'Restart source')).id
     const issued = await gateway.client.post('/api/v1/auth/delegations', {
       delegateId: 'restart-source-client',
       workspaceId,

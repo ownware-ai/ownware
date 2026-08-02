@@ -48,7 +48,7 @@ describe('Contract: scoped source deletions', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({ disableAuth: false, disableSourceWorker: true })
-    workspaceId = gw.state.createWorkspace(gw.tmpDir, 'Source deletion contract').id
+    workspaceId = (await gw.state.createWorkspace(gw.tmpDir, 'Source deletion contract')).id
     token = await issue(workspaceId, 'deletion-client', [
       'source_deletions.create', 'source_deletions.read',
       'source_deletions.cancel', 'source_deletions.retry', 'sources.read',
@@ -267,10 +267,10 @@ describe('Contract: scoped source deletions', () => {
     `).get(sourceId)).toEqual({ count: 0 })
     const created = DeletionSchema.parse(await (await createDeletion(sourceId, 1, key)).json())
 
-    const otherWorkspace = gw.state.createWorkspace(
+    const otherWorkspace = (await gw.state.createWorkspace(
       join(gw.tmpDir, 'other-deletion-scope'),
       'Other deletion scope',
-    ).id
+    )).id
     const wrongScope = await issue(otherWorkspace, 'wrong-scope', [
       'source_deletions.create', 'source_deletions.read',
     ])

@@ -74,7 +74,7 @@ describe('Contract: Workspaces', () => {
   })
 
   it('GET /workspaces/:id returns WorkspaceDetail', async () => {
-    const ws = gw.state.createWorkspace(gw.tmpDir + '_detail', 'Detail WS')
+    const ws = await gw.state.createWorkspace(gw.tmpDir + '_detail', 'Detail WS')
     const r = await gw.client.get<Record<string, unknown>>(`/api/v1/workspaces/${ws.id}`)
     expect(r.status).toBe(200)
     expect(r.body['id']).toBe(ws.id)
@@ -89,7 +89,7 @@ describe('Contract: Workspaces', () => {
   })
 
   it('PUT /workspaces/:id updates fields', async () => {
-    const ws = gw.state.createWorkspace(gw.tmpDir + '_update', 'Original')
+    const ws = await gw.state.createWorkspace(gw.tmpDir + '_update', 'Original')
     const r = await gw.client.put<{ name: string; pinned: boolean }>(
       `/api/v1/workspaces/${ws.id}`,
       { name: 'Updated', pinned: true },
@@ -100,7 +100,7 @@ describe('Contract: Workspaces', () => {
   })
 
   it('DELETE /workspaces/:id removes workspace', async () => {
-    const ws = gw.state.createWorkspace(gw.tmpDir + '_delete', 'Delete me')
+    const ws = await gw.state.createWorkspace(gw.tmpDir + '_delete', 'Delete me')
     const del = await gw.client.delete(`/api/v1/workspaces/${ws.id}`)
     expect(del.status).toBe(204)
 
@@ -109,9 +109,9 @@ describe('Contract: Workspaces', () => {
   })
 
   it('GET /workspaces/:id/threads returns thread array', async () => {
-    const ws = gw.state.createWorkspace(gw.tmpDir + '_threads', 'WS with threads')
-    gw.state.createThread('mini', 'T1', ws.id)
-    gw.state.createThread('mini', 'T2', ws.id)
+    const ws = await gw.state.createWorkspace(gw.tmpDir + '_threads', 'WS with threads')
+    await gw.state.createThread('mini', 'T1', ws.id)
+    await gw.state.createThread('mini', 'T2', ws.id)
 
     const r = await gw.client.get<unknown[]>(`/api/v1/workspaces/${ws.id}/threads`)
     expect(r.status).toBe(200)

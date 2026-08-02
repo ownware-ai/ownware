@@ -19,7 +19,7 @@ describe('source upload across a real Gateway restart', () => {
   it('resumes at the durable chunk offset and completes one immutable version', async () => {
     const gateway = await createTestGateway({ disableAuth: false })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(gateway.tmpDir, 'Restart upload').id
+    const workspaceId = (await gateway.state.createWorkspace(gateway.tmpDir, 'Restart upload')).id
     const issued = await gateway.client.post('/api/v1/auth/delegations', {
       delegateId: 'restart-upload-client',
       workspaceId,
@@ -117,7 +117,7 @@ describe('source upload across a real Gateway restart', () => {
   it('retains the captured refresh fence and actual conflict truth across restart', async () => {
     const gateway = await createTestGateway({ disableAuth: false })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(gateway.tmpDir, 'Restart refresh').id
+    const workspaceId = (await gateway.state.createWorkspace(gateway.tmpDir, 'Restart refresh')).id
     const issued = await gateway.client.post('/api/v1/auth/delegations', {
       delegateId: 'restart-refresh-client',
       workspaceId,

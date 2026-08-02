@@ -134,7 +134,7 @@ describe('Agent events SSE — live tail + replay', () => {
     gw = await createTestGateway()
     // We don't run any actual agents, so a bare thread with no profile
     // is fine — the SSE handler only checks that the thread row exists.
-    const thread = gw.state.createThread('mini')
+    const thread = await gw.state.createThread('mini')
     threadId = thread.id
   }, 30_000)
 
@@ -145,7 +145,7 @@ describe('Agent events SSE — live tail + replay', () => {
   it('pure replay: connect after events are on disk, SSE emits them in order', async () => {
     const agentId = 'agent_replay_only'
     for (let i = 0; i < 5; i++) {
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`r${i}`))
+      await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`r${i}`))
     }
 
     const res = await fetch(
@@ -191,8 +191,8 @@ describe('Agent events SSE — live tail + replay', () => {
     const agentId = 'agent_live_tail'
     // Seed two events on disk before the connection opens (these test
     // the replay half), then after connecting push three more live.
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('pre-0'))
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('pre-1'))
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('pre-0'))
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('pre-1'))
 
     const res = await fetch(
       `${gw.baseUrl}/api/v1/threads/${threadId}/agents/${agentId}/events`,
@@ -204,10 +204,10 @@ describe('Agent events SSE — live tail + replay', () => {
     // then push the live events. We want the live events to arrive
     // through the bus, not the replay path.
     const livePushPromise = new Promise<void>(resolve => {
-      setTimeout(() => {
-        gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-0'))
-        gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-1'))
-        gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-2'))
+      setTimeout(async () => {
+        await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-0'))
+        await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-1'))
+        await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-2'))
         resolve()
       }, 200)
     })
@@ -239,7 +239,7 @@ describe('Agent events SSE — live tail + replay', () => {
   it('resume: connecting with ?since=N skips events already seen', async () => {
     const agentId = 'agent_resume_cursor'
     for (let i = 0; i < 6; i++) {
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`v${i}`))
+      await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`v${i}`))
     }
 
     // The agent now has seq 1..6 on disk. Reconnect with since=3 —
@@ -283,7 +283,7 @@ describe('Agent events SSE — live tail + replay', () => {
 
   it('rejects a malformed legacy thread cursor instead of replaying from zero', async () => {
     const agentId = 'agent_invalid_cursor'
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('must-not-replay'))
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('must-not-replay'))
 
     const res = await fetch(
       `${gw.baseUrl}/api/v1/threads/${threadId}/agents/${agentId}/events?since=not-a-cursor`,
@@ -300,7 +300,7 @@ describe('Agent events SSE — live tail + replay', () => {
   it('resume: since=max-seq returns no existing events, still tails live', async () => {
     const agentId = 'agent_resume_at_tail'
     for (let i = 0; i < 3; i++) {
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`t${i}`))
+      await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`t${i}`))
     }
 
     const res = await fetch(
@@ -311,7 +311,7 @@ describe('Agent events SSE — live tail + replay', () => {
 
     // After connecting, push one new event — we should only see that one.
     setTimeout(() => {
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('new-after'))
+      void gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('new-after'))
     }, 200)
 
     const events = await readSSEWithTimeout(res, {
@@ -327,7 +327,7 @@ describe('Agent events SSE — live tail + replay', () => {
 
   it('replay boundary marks liveTail=true when the thread still has an active runtime', async () => {
     const agentId = 'agent_live_runtime'
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('seed'))
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('seed'))
     gw.state.setRuntime(threadId, {} as any)
 
     const res = await fetch(
@@ -357,8 +357,8 @@ describe('Agent events SSE — live tail + replay', () => {
 
   it('concurrent subscribers: two SSE streams on the same agent both get every event', async () => {
     const agentId = 'agent_concurrent'
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('seed-0'))
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('seed-1'))
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('seed-0'))
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('seed-1'))
 
     const url = `${gw.baseUrl}/api/v1/threads/${threadId}/agents/${agentId}/events`
     const headers = { Authorization: `Bearer ${gw.token}` }
@@ -373,9 +373,9 @@ describe('Agent events SSE — live tail + replay', () => {
     expect(res1.status).toBe(200)
     expect(res2.status).toBe(200)
 
-    setTimeout(() => {
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-0'))
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-1'))
+    setTimeout(async () => {
+      await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-0'))
+      await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta('live-1'))
     }, 200)
 
     const [events1, events2] = await Promise.all([
@@ -405,12 +405,12 @@ describe('Agent events SSE — live tail + replay', () => {
     // threads until the client closes.
     const localGw = await createTestGateway()
     try {
-      const thread = localGw.state.createThread('mini')
+      const thread = await localGw.state.createThread('mini')
       // Simulate a completed prior run by flipping the thread to
       // 'completed' BEFORE the SSE opens. Then push one event so replay
       // has something to deliver.
-      localGw.state.updateThread(thread.id, { status: 'completed' })
-      localGw.state.eventIngestor.ingestParentEvent(thread.id, textDelta('prior-turn-0'))
+      await localGw.state.updateThread(thread.id, { status: 'completed' })
+      await localGw.state.eventIngestor.ingestParentEvent(thread.id, textDelta('prior-turn-0'))
 
       const res = await fetch(
         `${localGw.baseUrl}/api/v1/threads/${thread.id}/agents/${ROOT_AGENT_ID}/events`,
@@ -439,11 +439,11 @@ describe('Agent events SSE — live tail + replay', () => {
     // no runtime and no future events. The modal should close promptly.
     const localGw = await createTestGateway()
     try {
-      const thread = localGw.state.createThread('mini')
+      const thread = await localGw.state.createThread('mini')
       const agentId = 'sub_agent_terminal'
-      localGw.state.eventIngestor.ingestSubagentEvent(thread.id, agentId, textDelta('s0'))
-      localGw.state.eventIngestor.ingestSubagentEvent(thread.id, agentId, textDelta('s1'))
-      localGw.state.updateThread(thread.id, { status: 'completed' })
+      await localGw.state.eventIngestor.ingestSubagentEvent(thread.id, agentId, textDelta('s0'))
+      await localGw.state.eventIngestor.ingestSubagentEvent(thread.id, agentId, textDelta('s1'))
+      await localGw.state.updateThread(thread.id, { status: 'completed' })
 
       const res = await fetch(
         `${localGw.baseUrl}/api/v1/threads/${thread.id}/agents/${agentId}/events`,
@@ -473,8 +473,8 @@ describe('Agent events SSE — live tail + replay', () => {
     // state where status is still 'completed', root SSE must deliver.
     const localGw = await createTestGateway()
     try {
-      const thread = localGw.state.createThread('mini')
-      localGw.state.updateThread(thread.id, { status: 'completed' })
+      const thread = await localGw.state.createThread('mini')
+      await localGw.state.updateThread(thread.id, { status: 'completed' })
 
       const res = await fetch(
         `${localGw.baseUrl}/api/v1/threads/${thread.id}/agents/${ROOT_AGENT_ID}/events`,
@@ -485,7 +485,7 @@ describe('Agent events SSE — live tail + replay', () => {
       // After replay finishes, ingest a live event. Pre-fix this would
       // never arrive because the server already closed the socket.
       setTimeout(() => {
-        localGw.state.eventIngestor.ingestParentEvent(thread.id, textDelta('turn2-delta'))
+        void localGw.state.eventIngestor.ingestParentEvent(thread.id, textDelta('turn2-delta'))
       }, 200)
 
       const events = await readSSEWithTimeout(res, {
@@ -517,7 +517,7 @@ describe('Agent events SSE — live tail + replay', () => {
   it('emits stream.shutdown before gateway stop closes the SSE stream', async () => {
     const localGw = await createTestGateway()
     try {
-      const thread = localGw.state.createThread('mini')
+      const thread = await localGw.state.createThread('mini')
       const agentId = ROOT_AGENT_ID
 
       const res = await fetch(
@@ -556,9 +556,7 @@ describe('Agent events SSE — live tail + replay', () => {
     const agentId = 'agent_sanitized_error'
     const canary = 'secret-path-/private/customer.db'
     const listSpy = vi.spyOn(gw.state, 'listAgentEvents')
-      .mockImplementationOnce(() => {
-        throw new Error(canary)
-      })
+      .mockRejectedValueOnce(new Error(canary))
 
     try {
       const res = await fetch(
@@ -587,9 +585,9 @@ describe('Agent events SSE — live tail + replay', () => {
   it('history endpoint: JSON dump matches what the SSE stream replays', async () => {
     const agentId = 'agent_history_dump'
     for (let i = 0; i < 4; i++) {
-      gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`h${i}`))
+      await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, textDelta(`h${i}`))
     }
-    gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, turnEnd())
+    await gw.state.eventIngestor.ingestSubagentEvent(threadId, agentId, turnEnd())
 
     const histRes = await gw.client.get<{
       count: number

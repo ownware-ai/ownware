@@ -23,7 +23,7 @@
  *     in the adapter; this module is provider-agnostic.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { SpendCap } from './schema.js'
 
 // ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ export function periodStart(period: SpendCap['period'], now: Date = new Date()):
  * reconciled yet. Either column missing is treated as 0.
  */
 export function currentPeriodSpend(
-  db: Database.Database,
+  db: SqliteDatabase,
   credentialId: string,
   period: SpendCap['period'],
   now: Date = new Date(),
@@ -123,7 +123,7 @@ export type SpendCheckResult = SpendCheckOk | SpendCheckDenied
  * NOT pass `0` here.
  */
 export function checkSpendCap(
-  db: Database.Database,
+  db: SqliteDatabase,
   credentialId: string,
   cap: SpendCap,
   estimatedCostUsd: number,

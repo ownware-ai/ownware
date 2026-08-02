@@ -1,10 +1,11 @@
 /**
- * Gateway State — SQLite-backed persistence + in-memory runtime state.
+ * Gateway State — selected-adapter persistence + in-memory runtime state.
  *
  * Persisted (survives restart):
- *   - Threads → SQLite (ownware.db)
- *   - Messages → SQLite (ownware.db)
- *   - Usage records → SQLite (ownware.db)
+ *   - Threads, messages and usage records → selected storage adapter
+ *   - Credentials, grants, principals and run authority → selected storage adapter
+ *   - Sources, uploads, source jobs and deletion authority → selected storage adapter
+ *   - Connectors, channels, schedules, tasks, teams, memory and candidates → selected storage adapter
  *
  * In-memory only (lost on restart):
  *   - Sessions → live Loom Session objects (can't be serialized)
@@ -14,6 +15,7 @@
 import type { Session, MCPManager, RunningChrome, DeferredChromeLauncher } from '@ownware/loom'
 import type { LoomEvent } from '@ownware/loom'
 import { HumanInTheLoop, ZoneManager } from '@ownware/loom'
+import { randomBytes } from 'node:crypto'
 import type { CredentialHITL } from '../credential/hitl.js'
 import type { ThreadCredentialRuntime } from '../credential/runtime.js'
 import type { HITLLike } from './hitl-registry.js'
@@ -30,8 +32,72 @@ import { CortexDatabase } from './db/database.js'
 import { EventBus } from './event-bus.js'
 import { EventIngestor } from './event-ingestor.js'
 import { redactEventForStorage } from './redact-event.js'
+import type {
+  StorageAdapter,
+  StorageHealth,
+  StorageKind,
+  StorageLifecycleState,
+} from '../storage/contracts.js'
+import { SqliteStorageAdapter } from '../storage/sqlite-adapter.js'
+import { PostgreSqlStorageAdapter } from '../storage/postgresql-adapter.js'
+import type { ValidatedStoragePlan } from '../storage/config.js'
+import type {
+  AgentEventRepository,
+  CoreStorageRepositories,
+} from '../storage/core-repositories.js'
+import { createSqliteCoreRepositories } from '../storage/sqlite-core-repositories.js'
+import { createPostgreSqlCoreRepositories } from '../storage/postgresql-core-repositories.js'
+import type {
+  SecurityRepositories,
+  SecurityTransactionRepositories,
+} from '../storage/security-repositories.js'
+import {
+  createSqliteSecurityRepositories,
+  createSqliteSecurityTransactionRepositories,
+} from '../storage/sqlite-security-repositories.js'
+import {
+  createPostgreSqlSecurityRepositories,
+  createPostgreSqlSecurityTransactionRepositories,
+} from '../storage/postgresql-security-repositories.js'
+import type { SourceRepositories } from '../storage/source-repositories.js'
+import { createSqliteSourceRepositories } from '../storage/sqlite-source-repositories.js'
+import { createPostgreSqlSourceRepositories } from '../storage/postgresql-source-repositories.js'
+import type { PlatformRepositories } from '../storage/platform-repositories.js'
+import { createSqlitePlatformRepositories } from '../storage/sqlite-platform-repositories.js'
+import { createPostgreSqlPlatformRepositories } from '../storage/postgresql-platform-repositories.js'
+import type { GatewayRepositories } from '../storage/gateway-repositories.js'
+import { createSqliteGatewayRepositories } from '../storage/sqlite-gateway-repositories.js'
+import { createPostgreSqlGatewayRepositories } from '../storage/postgresql-gateway-repositories.js'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
+import type { EvidenceSearchCache } from './evidence-search-cache.js'
+import type { SourceQuotaLimits } from './source-quota-policy.js'
+import { MemoryEventBus } from '../memory/event-bus.js'
+import { TaskEventBus } from '../tasks/event-bus.js'
 
 const MAX_EVENT_LOG_SIZE = 2000
+
+interface GatewayStorageRepositories {
+  readonly core: CoreStorageRepositories
+  readonly security: SecurityRepositories
+  readonly sources: SourceRepositories
+  readonly platform: PlatformRepositories
+  readonly gateway: GatewayRepositories
+}
+
+function deferredRepository<T extends object>(resolve: () => T): T {
+  return new Proxy(Object.create(null) as T, {
+    get(_target, property) {
+      return (...args: readonly unknown[]) => {
+        const repository = resolve()
+        const method = Reflect.get(repository, property)
+        if (typeof method !== 'function') {
+          throw new TypeError(`Storage repository method is unavailable (${String(property)}).`)
+        }
+        return Reflect.apply(method, repository, args)
+      }
+    },
+  })
+}
 
 export interface EventLogEntry {
   readonly event: LoomEvent
@@ -40,6 +106,8 @@ export interface EventLogEntry {
 
 /** Runtime context for a thread's active session. */
 export interface ThreadRuntime {
+  /** Profile identity captured when the runtime is installed. */
+  readonly profileId?: string
   /**
    * Present for the built-in Ownware loop. External executions deliberately
    * omit it so the kernel cannot accidentally depend on engine internals.
@@ -134,7 +202,19 @@ export interface SessionCompanions {
 }
 
 export class GatewayState {
-  private readonly db: CortexDatabase
+  private readonly storage: StorageAdapter<
+    GatewayStorageRepositories,
+    SecurityTransactionRepositories
+  >
+  private readonly sqliteStorage: SqliteStorageAdapter<
+    GatewayStorageRepositories,
+    SecurityTransactionRepositories
+  > | null
+  private readonly core: CoreStorageRepositories
+  private readonly security: SecurityRepositories
+  private readonly sources: SourceRepositories
+  private readonly platform: PlatformRepositories
+  private readonly gateway: GatewayRepositories
   private readonly sessions = new Map<string, Session>()
   private readonly sessionCandidateIds = new Map<string, string | null>()
   private readonly runtimes = new Map<string, ThreadRuntime>()
@@ -188,40 +268,190 @@ export class GatewayState {
    * started and a real SIGTERM→SIGKILL if it did.
    */
   private readonly chromeLaunchers = new Map<string, DeferredChromeLauncher>()
+  /** Process-local invalidation buses; durable stores publish only after commit. */
+  readonly taskEventBus = new TaskEventBus()
+  readonly memoryEventBus = new MemoryEventBus()
   /**
    * Per-(thread, agent) live event bus. Long-lived — one per gateway.
    * SSE handlers subscribe here to tail live events after replaying
-   * the durable log from SQLite.
+   * the durable log from the selected storage adapter.
    */
   readonly eventBus = new EventBus()
   /**
-   * Single write path for every parent/subagent event. Writes to SQLite
+   * Single write path for every parent/subagent event. Writes to durable storage
    * then publishes to the bus — "live is always a suffix of disk".
    */
   readonly eventIngestor: EventIngestor
 
-  constructor(dbPath?: string) {
-    this.db = new CortexDatabase(dbPath)
-    this.eventIngestor = new EventIngestor(this.db, this.eventBus)
+  constructor(dbPath?: string, options: {
+    readonly permissionHashSecret?: string
+    readonly evidenceSearchCache?: EvidenceSearchCache
+    readonly sourceQuotaLimits?: SourceQuotaLimits
+    /** Internal validated plan supplied by OwnwareGateway. */
+    readonly storagePlan?: ValidatedStoragePlan
+  } = {}) {
+    const permissionHashSecret = options.permissionHashSecret ?? randomBytes(32).toString('hex')
+    const plan = options.storagePlan ?? {
+      kind: 'sqlite' as const,
+      path: dbPath,
+      summary: { kind: 'sqlite' as const, location: 'file' as const },
+    }
+    if (plan.kind === 'sqlite') {
+      const storage = new SqliteStorageAdapter<
+        GatewayStorageRepositories,
+        SecurityTransactionRepositories
+      >({
+        dbPath: plan.path,
+        // Preserve the existing constructor-time SQLite failure contract.
+        openMode: 'eager',
+        repositories: {
+          createRoot: (context) => ({
+            core: createSqliteCoreRepositories(context),
+            security: createSqliteSecurityRepositories(context, {
+              permissionHashSecret,
+              ...(options.evidenceSearchCache !== undefined
+                ? { evidenceSearchCache: options.evidenceSearchCache }
+                : {}),
+            }),
+            sources: createSqliteSourceRepositories(context, {
+              ...(options.sourceQuotaLimits !== undefined
+                ? { quotaLimits: options.sourceQuotaLimits }
+                : {}),
+              ...(options.evidenceSearchCache !== undefined
+                ? { evidenceSearchCache: options.evidenceSearchCache }
+                : {}),
+            }),
+            platform: createSqlitePlatformRepositories(context, {
+              taskEvents: this.taskEventBus,
+              memoryEvents: this.memoryEventBus,
+            }),
+            gateway: createSqliteGatewayRepositories(context),
+          }),
+          createTransaction: createSqliteSecurityTransactionRepositories,
+        },
+      })
+      this.storage = storage
+      this.sqliteStorage = storage
+    } else {
+      this.storage = new PostgreSqlStorageAdapter<
+        GatewayStorageRepositories,
+        SecurityTransactionRepositories
+      >({
+        plan,
+        repositories: {
+          createRoot: (context) => ({
+            core: createPostgreSqlCoreRepositories(context),
+            security: createPostgreSqlSecurityRepositories(context, {
+              permissionHashSecret,
+              ...(options.evidenceSearchCache !== undefined
+                ? { evidenceSearchCache: options.evidenceSearchCache }
+                : {}),
+            }),
+            sources: createPostgreSqlSourceRepositories(context, {
+              ...(options.sourceQuotaLimits !== undefined
+                ? { quotaLimits: options.sourceQuotaLimits }
+                : {}),
+              ...(options.evidenceSearchCache !== undefined
+                ? { evidenceSearchCache: options.evidenceSearchCache }
+                : {}),
+            }),
+            platform: createPostgreSqlPlatformRepositories(context, {
+              taskEvents: this.taskEventBus,
+              memoryEvents: this.memoryEventBus,
+            }),
+            gateway: createPostgreSqlGatewayRepositories(context),
+          }),
+          createTransaction: createPostgreSqlSecurityTransactionRepositories,
+        },
+      })
+      this.sqliteStorage = null
+    }
+    const root = (): GatewayStorageRepositories => this.storage.repositories
+    this.core = {
+      threads: deferredRepository(() => root().core.threads),
+      messages: deferredRepository(() => root().core.messages),
+      usage: deferredRepository(() => root().core.usage),
+      events: deferredRepository(() => root().core.events),
+    }
+    this.security = {
+      credentials: deferredRepository(() => root().security.credentials),
+      credentialAudit: deferredRepository(() => root().security.credentialAudit),
+      credentialSpend: deferredRepository(() => root().security.credentialSpend),
+      credentialMigrations: deferredRepository(() => root().security.credentialMigrations),
+      principals: deferredRepository(() => root().security.principals),
+      threadBindings: deferredRepository(() => root().security.threadBindings),
+      runs: deferredRepository(() => root().security.runs),
+      idempotency: deferredRepository(() => root().security.idempotency),
+      accessGrants: deferredRepository(() => root().security.accessGrants),
+      oauthRefresh: deferredRepository(() => root().security.oauthRefresh),
+      codexThreadReferences: deferredRepository(() => root().security.codexThreadReferences),
+    }
+    this.sources = {
+      sources: deferredRepository(() => root().sources.sources),
+      uploads: deferredRepository(() => root().sources.uploads),
+      jobs: deferredRepository(() => root().sources.jobs),
+      dataViews: deferredRepository(() => root().sources.dataViews),
+      deletions: deferredRepository(() => root().sources.deletions),
+      get quotaLimits() { return root().sources.quotaLimits },
+    }
+    this.platform = {
+      connectorConnections: deferredRepository(() => root().platform.connectorConnections),
+      channelJobs: deferredRepository(() => root().platform.channelJobs),
+      schedules: deferredRepository(() => root().platform.schedules),
+      approvals: deferredRepository(() => root().platform.approvals),
+      tasks: deferredRepository(() => root().platform.tasks),
+      memories: deferredRepository(() => root().platform.memories),
+      memoryProposals: deferredRepository(() => root().platform.memoryProposals),
+      userIdentity: deferredRepository(() => root().platform.userIdentity),
+      candidates: deferredRepository(() => root().platform.candidates),
+      teams: deferredRepository(() => root().platform.teams),
+    }
+    this.gateway = {
+      workspaces: deferredRepository(() => root().gateway.workspaces),
+      mcpServers: deferredRepository(() => root().gateway.mcpServers),
+      localProfile: deferredRepository(() => root().gateway.localProfile),
+      settings: deferredRepository(() => root().gateway.settings),
+      profileMetadata: deferredRepository(() => root().gateway.profileMetadata),
+      appState: deferredRepository(() => root().gateway.appState),
+      auditLog: deferredRepository(() => root().gateway.auditLog),
+      diagnostics: deferredRepository(() => root().gateway.diagnostics),
+    }
+    this.eventIngestor = new EventIngestor(this.core.events, this.eventBus)
+  }
+
+  /** Async startup seam; idempotent for every supported storage adapter. */
+  initializeStorage(): Promise<void> {
+    return this.storage.initialize()
+  }
+
+  storageHealth(): Promise<StorageHealth> {
+    return this.storage.health()
+  }
+
+  get storageKind(): StorageKind {
+    return this.storage.kind
+  }
+
+  get storageLifecycleState(): StorageLifecycleState {
+    return this.storage.lifecycleState
   }
 
   /**
-   * Raw main-db handle. Exposed for connector-owned tables
-   * (`connector_connections`, future vendor catalogues that we own)
-   * that ship their own CRUD module instead of growing CortexDatabase.
-   * See `CortexDatabase.rawMainHandle` for the rationale.
+   * @deprecated Internal SQLite compatibility surface for physical tests and
+   * legacy consumers. Product code must use the async repository ports. No
+   * equivalent will be added to another storage adapter.
    */
-  get rawDbHandle(): import('better-sqlite3').Database {
-    return this.db.rawMainHandle
+  get rawDbHandle(): SqliteDatabase {
+    return this.requireSqliteDatabase().rawMainHandle
   }
 
-  // ── Agent events (SQLite-backed, fed by EventIngestor) ────────────────
+  // ── Agent events (selected storage, fed by EventIngestor) ─────────────
 
   /**
    * Look up a thread by id.
    */
-  getThreadAnywhere(id: string): Thread | undefined {
-    return this.db.getThread(id)
+  getThreadAnywhere(id: string): Promise<Thread | undefined> {
+    return this.core.threads.get(id)
   }
 
   /** Read events for a specific agent stream. */
@@ -231,12 +461,12 @@ export class GatewayState {
     since?: number
     limit?: number
   }) {
-    return this.db.listAgentEvents(params)
+    return this.core.events.list(params)
   }
 
   /** Latest seq number for an agent's stream. 0 if none. */
-  getAgentEventMaxSeq(threadId: string, agentId: string): number {
-    return this.db.getAgentEventMaxSeq(threadId, agentId)
+  getAgentEventMaxSeq(threadId: string, agentId: string): Promise<number> {
+    return this.core.events.maxSeq(threadId, agentId)
   }
 
   getAgentEventMinSeq(
@@ -244,8 +474,8 @@ export class GatewayState {
     agentId: string,
     afterSeq: number,
     throughSeq?: number,
-  ): number | null {
-    return this.db.getAgentEventMinSeq(threadId, agentId, afterSeq, throughSeq)
+  ): Promise<number | null> {
+    return this.core.events.minSeq(threadId, agentId, afterSeq, throughSeq)
   }
 
   /**
@@ -253,53 +483,105 @@ export class GatewayState {
    * The client uses this as the SSE `?since` cursor on hydrate so an
    * in-flight turn reconnects without losing turn.start.
    */
-  getLastTurnEndSeq(threadId: string, agentId: string): number {
-    return this.db.getLastTurnEndSeq(threadId, agentId)
+  getLastTurnEndSeq(threadId: string, agentId: string): Promise<number> {
+    return this.core.events.lastTurnEndSeq(threadId, agentId)
   }
 
   /** True iff the agent has ever emitted an event of the given type. */
-  hasAgentEventOfType(threadId: string, agentId: string, type: string): boolean {
-    return this.db.hasAgentEventOfType(threadId, agentId, type)
+  hasAgentEventOfType(threadId: string, agentId: string, type: string): Promise<boolean> {
+    return this.core.events.hasType(threadId, agentId, type)
   }
 
   /** List every agent_id that has events on a thread. */
   listAgentsForThread(threadId: string) {
-    return this.db.listAgentsForThread(threadId)
+    return this.core.events.listAgents(threadId)
   }
 
   // ── Retention helpers (main db only) ──────────────────────────────────
 
   /** Terminal threads whose updated_at is older than the cutoff. */
-  listTerminalThreadsOlderThan(cutoffIso: string): string[] {
-    return this.db.listTerminalThreadsOlderThan(cutoffIso)
+  listTerminalThreadsOlderThan(cutoffIso: string): Promise<string[]> {
+    return this.core.events.listTerminalThreadsOlderThan(cutoffIso)
   }
 
   /** Delete every agent_events row for one thread. Returns rows deleted. */
-  pruneAgentEvents(threadId: string): number {
-    return this.db.pruneAgentEvents(threadId)
+  pruneAgentEvents(threadId: string): Promise<number> {
+    return this.core.events.pruneRootStream(threadId)
   }
 
-  /** Raw database handle — used by the retention module. */
+  countAgentEvents(): Promise<number> {
+    return this.core.events.count()
+  }
+
+  /** Backend-neutral event repository for retention and other services. */
+  get eventRepository(): AgentEventRepository {
+    return this.core.events
+  }
+
+  /**
+   * @deprecated Internal SQLite compatibility surface. Product code must use
+   * repository ports; this concrete object will be removed in a major release.
+   */
   get rawDatabase(): CortexDatabase {
-    return this.db
+    return this.requireSqliteDatabase()
   }
 
-  // ── Thread CRUD (SQLite-backed) ─────────────────────────────────────
-
-  createThread(profileId: string, title?: string, workspaceId?: string): Thread {
-    return this.db.createThread(profileId, title, workspaceId)
+  /** Backend-neutral async repositories for security and run authority. */
+  get securityRepositories(): SecurityRepositories {
+    return this.security
   }
 
-  getThread(id: string): Thread | undefined {
-    return this.db.getThread(id)
+  /** Backend-neutral async repositories for source metadata and durable work. */
+  get sourceRepositories(): SourceRepositories {
+    return this.sources
   }
 
-  listThreads(profileId?: string, opts?: { limit?: number; offset?: number }): PaginatedResult<Thread> {
-    return this.db.listThreads(profileId, opts)
+  /** Backend-neutral async repositories for the remaining persistent subsystems. */
+  get platformRepositories(): PlatformRepositories {
+    return this.platform
   }
 
-  updateThread(id: string, updates: Partial<Pick<Thread, 'title' | 'status' | 'messageCount' | 'totalTokens' | 'totalCost'>>): Thread | undefined {
-    return this.db.updateThread(id, updates)
+  /**
+   * Establish a delegated thread and its one-way principal binding in one
+   * adapter-owned write transaction. A caller never observes an unbound thread.
+   */
+  createDelegatedThread(
+    profileId: string,
+    workspaceId: string | undefined,
+    principalKey: string,
+  ): Promise<Thread> {
+    return this.storage.transaction(
+      { mode: 'write', isolation: 'serializable', retry: 'never' },
+      (tx) => tx.repositories.threadAuthority.createAndBind(
+        profileId,
+        workspaceId,
+        principalKey,
+      ),
+    )
+  }
+
+  // ── Thread CRUD (backend-neutral async repository) ─────────────────
+
+  createThread(profileId: string, title?: string, workspaceId?: string): Promise<Thread> {
+    return this.core.threads.create(profileId, title, workspaceId)
+  }
+
+  getThread(id: string): Promise<Thread | undefined> {
+    return this.core.threads.get(id)
+  }
+
+  listThreads(
+    profileId?: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<PaginatedResult<Thread>> {
+    return this.core.threads.list(profileId, opts)
+  }
+
+  updateThread(
+    id: string,
+    updates: Partial<Pick<Thread, 'title' | 'status' | 'messageCount' | 'totalTokens' | 'totalCost'>>,
+  ): Promise<Thread | undefined> {
+    return this.core.threads.update(id, updates)
   }
 
   /**
@@ -307,15 +589,20 @@ export class GatewayState {
    * Called by the run handler after model resolution so a refresh /
    * restart restores the user's last brain pick. Idempotent.
    */
-  setThreadModel(id: string, model: string): void {
-    this.db.setThreadModel(id, model)
+  setThreadModel(id: string, model: string): Promise<void> {
+    return this.core.threads.setModel(id, model)
   }
 
-  recoverOrphanedThreads(): number {
-    return this.db.recoverOrphanedThreads()
+  recoverOrphanedThreads(): Promise<number> {
+    return this.core.threads.recoverOrphaned()
   }
 
-  deleteThread(id: string): boolean {
+  async deleteThread(id: string): Promise<boolean> {
+    // Establish the durable fact first. A failed delete must not tear down a
+    // live session while leaving the thread present in storage.
+    const deleted = await this.core.threads.delete(id)
+    if (!deleted) return false
+
     // Credential runtime cleanup first — must happen BEFORE we drop the
     // companion entry, because the runtime needs the vault reference it
     // holds to remove this thread's `runtime_<id>_*` vault files.
@@ -342,8 +629,7 @@ export class GatewayState {
     // paths are idempotent and no-op cleanly when nothing was launched.
     void this.shutdownChromeLaunchForThread(id)
     void this.shutdownChromeLauncherForThread(id)
-    // Delete from DB (cascades to messages)
-    return this.db.deleteThread(id)
+    return true
   }
 
   // ── MCP manager lifecycle (Hazard 21) ────────────────────────────────
@@ -553,9 +839,8 @@ export class GatewayState {
 
   /** Check if any thread with this profileId has an active runtime. */
   hasActiveRuntime(profileId: string): boolean {
-    for (const [threadId] of this.runtimes) {
-      const thread = this.db.getThread(threadId)
-      if (thread?.profileId === profileId) return true
+    for (const runtime of this.runtimes.values()) {
+      if (runtime.profileId === profileId) return true
     }
     return false
   }
@@ -565,14 +850,14 @@ export class GatewayState {
     return this.runtimes.size
   }
 
-  // ── Message management (SQLite-backed) ──────────────────────────────
+  // ── Message management (backend-neutral async repository) ──────────
 
-  addMessage(threadId: string, msg: ThreadMessage): void {
-    this.db.addMessage(threadId, msg)
+  addMessage(threadId: string, msg: ThreadMessage): Promise<void> {
+    return this.core.messages.add(threadId, msg)
   }
 
-  getMessages(threadId: string): ThreadMessage[] {
-    return this.db.getMessages(threadId)
+  getMessages(threadId: string): Promise<ThreadMessage[]> {
+    return this.core.messages.list(threadId)
   }
 
   patchMessageSubAgent(threadId: string, agentId: string, patch: {
@@ -581,11 +866,11 @@ export class GatewayState {
     durationMs?: number
     toolCount?: number
     turnCount?: number
-  }): boolean {
-    return this.db.patchMessageSubAgent(threadId, agentId, patch)
+  }): Promise<boolean> {
+    return this.core.messages.patchSubAgent(threadId, agentId, patch)
   }
 
-  // ── Usage tracking (SQLite-backed) ──────────────────────────────────
+  // ── Usage tracking (backend-neutral async repository) ──────────────
 
   addUsageRecord(record: {
     threadId?: string
@@ -597,34 +882,34 @@ export class GatewayState {
     costUsd: number
     durationMs?: number
     success?: boolean
-  }): void {
-    this.db.addUsageRecord(record)
+  }): Promise<void> {
+    return this.core.usage.add(record)
   }
 
   getUsageSummary(profileId?: string) {
-    return this.db.getUsageSummary(profileId)
+    return this.core.usage.summary(profileId)
   }
 
-  // ── Workspace management (SQLite-backed) ────────────────────────────
+  // ── Workspace management (selected storage adapter) ─────────────────
 
-  createWorkspace(path: string, name?: string): Workspace {
-    return this.db.createWorkspace(path, name)
+  createWorkspace(path: string, name?: string): Promise<Workspace> {
+    return this.gateway.workspaces.create(path, name)
   }
 
-  getWorkspace(id: string): Workspace | undefined {
-    return this.db.getWorkspace(id)
+  getWorkspace(id: string): Promise<Workspace | undefined> {
+    return this.gateway.workspaces.get(id)
   }
 
-  getWorkspaceByPath(path: string): Workspace | undefined {
-    return this.db.getWorkspaceByPath(path)
+  getWorkspaceByPath(path: string): Promise<Workspace | undefined> {
+    return this.gateway.workspaces.getByPath(path)
   }
 
-  listWorkspaces(status?: 'active' | 'archived', opts?: { limit?: number; offset?: number }): PaginatedResult<Workspace> {
-    return this.db.listWorkspaces(status, opts)
+  listWorkspaces(status?: 'active' | 'archived', opts?: { limit?: number; offset?: number }): Promise<PaginatedResult<Workspace>> {
+    return this.gateway.workspaces.list(status, opts)
   }
 
-  getWorkspaceDetail(id: string): WorkspaceDetail | undefined {
-    return this.db.getWorkspaceDetail(id)
+  getWorkspaceDetail(id: string): Promise<WorkspaceDetail | undefined> {
+    return this.gateway.workspaces.detail(id)
   }
 
   updateWorkspace(
@@ -636,128 +921,138 @@ export class GatewayState {
       lastProfileId?: string
       activeProducts?: readonly string[]
     },
-  ): Workspace | undefined {
-    return this.db.updateWorkspace(id, updates)
+  ): Promise<Workspace | undefined> {
+    return this.gateway.workspaces.update(id, updates)
   }
 
-  deleteWorkspace(id: string): boolean {
-    return this.db.deleteWorkspace(id)
+  deleteWorkspace(id: string): Promise<boolean> {
+    return this.gateway.workspaces.delete(id)
   }
 
-  touchWorkspace(id: string): void {
-    this.db.touchWorkspace(id)
+  touchWorkspace(id: string): Promise<void> {
+    return this.gateway.workspaces.touch(id)
   }
 
-  listThreadsByWorkspace(workspaceId: string): Thread[] {
-    return this.db.listThreadsByWorkspace(workspaceId)
+  listThreadsByWorkspace(workspaceId: string): Promise<Thread[]> {
+    return this.gateway.workspaces.listThreads(workspaceId)
   }
 
-  // ── MCP Server management (SQLite-backed) ──────────────────────────
+  // ── MCP Server management (selected storage adapter) ───────────────
 
-  createMCPServer(server: Parameters<typeof this.db.createMCPServer>[0]): MCPServerRecord {
-    return this.db.createMCPServer(server)
+  createMCPServer(server: {
+    id: string
+    name: string
+    transport: string
+    url?: string
+    command?: string
+    args?: readonly string[]
+    env?: Record<string, string>
+    headers?: Record<string, string>
+    registryId?: string
+  }): Promise<MCPServerRecord> {
+    return this.gateway.mcpServers.create(server)
   }
 
-  getMCPServer(id: string): MCPServerRecord | undefined {
-    return this.db.getMCPServer(id)
+  getMCPServer(id: string): Promise<MCPServerRecord | undefined> {
+    return this.gateway.mcpServers.get(id)
   }
 
-  listMCPServers(opts?: { limit?: number; offset?: number }): PaginatedResult<MCPServerRecord> {
-    return this.db.listMCPServers(opts)
+  listMCPServers(opts?: { limit?: number; offset?: number }): Promise<PaginatedResult<MCPServerRecord>> {
+    return this.gateway.mcpServers.list(opts)
   }
 
-  updateMCPServer(id: string, updates: { name?: string; status?: string; toolCount?: number; error?: string | null; toolsJson?: string | null }): MCPServerRecord | undefined {
-    return this.db.updateMCPServer(id, updates)
+  updateMCPServer(id: string, updates: { name?: string; status?: string; toolCount?: number; error?: string | null; toolsJson?: string | null }): Promise<MCPServerRecord | undefined> {
+    return this.gateway.mcpServers.update(id, updates)
   }
 
-  deleteMCPServer(id: string): boolean {
-    return this.db.deleteMCPServer(id)
+  deleteMCPServer(id: string): Promise<boolean> {
+    return this.gateway.mcpServers.delete(id)
   }
 
-  assignServerToProfile(serverId: string, profileId: string): void {
-    this.db.assignServerToProfile(serverId, profileId)
+  assignServerToProfile(serverId: string, profileId: string): Promise<void> {
+    return this.gateway.mcpServers.assignToProfile(serverId, profileId)
   }
 
-  removeServerFromProfile(serverId: string, profileId: string): boolean {
-    return this.db.removeServerFromProfile(serverId, profileId)
+  removeServerFromProfile(serverId: string, profileId: string): Promise<boolean> {
+    return this.gateway.mcpServers.removeFromProfile(serverId, profileId)
   }
 
-  getServersForProfile(profileId: string): MCPServerRecord[] {
-    return this.db.getServersForProfile(profileId)
+  getServersForProfile(profileId: string): Promise<MCPServerRecord[]> {
+    return this.gateway.mcpServers.listForProfile(profileId)
   }
 
-  // ── Dashboard (SQLite aggregation + in-memory runtime) ─────────────
+  // ── Dashboard (storage aggregation + in-memory runtime) ────────────
 
-  getDashboardStats(): DashboardStats {
-    const stats = this.db.getDashboardStats()
+  async getDashboardStats(): Promise<DashboardStats> {
+    const stats = await this.core.usage.dashboardStats()
     // Enrich with live runtime data
     return { ...stats, activeAgents: this.runtimes.size }
   }
 
-  getUsageTimeSeries(range: DashboardRange = '7d'): UsageBucket[] {
-    return this.db.getUsageTimeSeries(range)
+  getUsageTimeSeries(range: DashboardRange = '7d'): Promise<UsageBucket[]> {
+    return this.core.usage.timeSeries(range)
   }
 
-  getKPIs(range: DashboardRange = '7d'): DashboardKPIs {
-    return this.db.getKPIs(range)
+  getKPIs(range: DashboardRange = '7d'): Promise<DashboardKPIs> {
+    return this.core.usage.kpis(range)
   }
 
-  getProfileBreakdown(): ProfileBreakdownRow[] {
-    return this.db.getProfileBreakdown()
+  getProfileBreakdown(): Promise<ProfileBreakdownRow[]> {
+    return this.core.usage.profileBreakdown()
   }
 
-  getRecentActivity(limit: number = 20): RecentActivityRow[] {
-    return this.db.getRecentActivity(limit)
+  getRecentActivity(limit: number = 20): Promise<RecentActivityRow[]> {
+    return this.core.usage.recentActivity(limit)
   }
 
-  incrementProfileUsage(profileId: string, cost: number): void {
-    this.db.incrementProfileUsage(profileId, cost)
+  incrementProfileUsage(profileId: string, cost: number): Promise<void> {
+    return this.core.usage.incrementProfile(profileId, cost)
   }
 
-  // ── Local Profile (SQLite-backed) ───────────────────────────────────
+  // ── Local Profile (selected storage adapter) ────────────────────────
 
-  createLocalProfile(displayName: string, avatarUrl?: string): LocalProfile {
-    return this.db.createLocalProfile(displayName, avatarUrl)
+  createLocalProfile(displayName: string, avatarUrl?: string): Promise<LocalProfile> {
+    return this.gateway.localProfile.create(displayName, avatarUrl)
   }
 
-  getLocalProfile(): LocalProfile | undefined {
-    return this.db.getLocalProfile()
+  getLocalProfile(): Promise<LocalProfile | undefined> {
+    return this.gateway.localProfile.get()
   }
 
-  updateLocalProfile(id: string, updates: { displayName?: string; avatarUrl?: string | null }): LocalProfile | undefined {
-    return this.db.updateLocalProfile(id, updates)
+  updateLocalProfile(id: string, updates: { displayName?: string; avatarUrl?: string | null }): Promise<LocalProfile | undefined> {
+    return this.gateway.localProfile.update(id, updates)
   }
 
-  // ── User Settings (SQLite-backed) ──────────────────────────────────
+  // ── User Settings (selected storage adapter) ───────────────────────
 
-  getSetting(key: string): UserSettings | undefined {
-    return this.db.getSetting(key)
+  getSetting(key: string): Promise<UserSettings | undefined> {
+    return this.gateway.settings.get(key)
   }
 
-  setSetting(key: string, value: string): UserSettings {
-    return this.db.setSetting(key, value)
+  setSetting(key: string, value: string): Promise<UserSettings> {
+    return this.gateway.settings.set(key, value)
   }
 
-  getAllSettings(): UserSettings[] {
-    return this.db.getAllSettings()
+  getAllSettings(): Promise<UserSettings[]> {
+    return this.gateway.settings.list()
   }
 
-  deleteSetting(key: string): boolean {
-    return this.db.deleteSetting(key)
+  deleteSetting(key: string): Promise<boolean> {
+    return this.gateway.settings.delete(key)
   }
 
-  // ── Profile Metadata (SQLite-backed) ──────────────────────────────
+  // ── Profile Metadata (selected storage adapter) ───────────────────
 
-  getProfileMetadata(profileId: string): ProfileMetadata | undefined {
-    return this.db.getProfileMetadata(profileId)
+  getProfileMetadata(profileId: string): Promise<ProfileMetadata | undefined> {
+    return this.gateway.profileMetadata.get(profileId)
   }
 
-  setProfileMetadata(profileId: string, updates: { icon?: string | null; color?: string | null; category?: string | null }): ProfileMetadata {
-    return this.db.setProfileMetadata(profileId, updates)
+  setProfileMetadata(profileId: string, updates: { icon?: string | null; color?: string | null; category?: string | null }): Promise<ProfileMetadata> {
+    return this.gateway.profileMetadata.set(profileId, updates)
   }
 
-  listProfileMetadata(): ProfileMetadata[] {
-    return this.db.listProfileMetadata()
+  listProfileMetadata(): Promise<ProfileMetadata[]> {
+    return this.gateway.profileMetadata.list()
   }
 
   // (Desktop pane/history proxy methods removed with the legacy desktop shell.)
@@ -768,22 +1063,22 @@ export class GatewayState {
    * `null` when the user hasn't dragged the shell splitter yet —
    * the client falls back to its computed default in that case.
    */
-  getWorkspaceSideTrackWidth(workspaceId: string): number | null {
-    return this.db.getWorkspaceSideTrackWidth(workspaceId)
+  getWorkspaceSideTrackWidth(workspaceId: string): Promise<number | null> {
+    return this.gateway.appState.getWorkspaceSideTrackWidth(workspaceId)
   }
 
-  setWorkspaceSideTrackWidth(workspaceId: string, widthPx: number): void {
-    this.db.setWorkspaceSideTrackWidth(workspaceId, widthPx)
+  setWorkspaceSideTrackWidth(workspaceId: string, widthPx: number): Promise<void> {
+    return this.gateway.appState.setWorkspaceSideTrackWidth(workspaceId, widthPx)
   }
 
-  // ── App State (SQLite-backed) ─────────────────────────────────────
+  // ── App State (selected storage adapter) ──────────────────────────
 
-  getAppState(key: string): AppState | undefined {
-    return this.db.getAppState(key)
+  getAppState(key: string): Promise<AppState | undefined> {
+    return this.gateway.appState.get(key)
   }
 
-  setAppState(key: string, value: string): AppState {
-    return this.db.setAppState(key, value)
+  setAppState(key: string, value: string): Promise<AppState> {
+    return this.gateway.appState.set(key, value)
   }
 
   /**
@@ -811,10 +1106,10 @@ export class GatewayState {
     )
   }
 
-  // ── Audit Log (SQLite-backed) ─────────────────────────────────────
+  // ── Audit Log (selected storage adapter) ──────────────────────────
 
-  addAuditLog(entry: { action: string; entityType: string; entityId?: string; detail?: string; ipAddress?: string }): AuditLogEntry {
-    return this.db.addAuditLog(entry)
+  addAuditLog(entry: { action: string; entityType: string; entityId?: string; detail?: string; ipAddress?: string }): Promise<AuditLogEntry> {
+    return this.gateway.auditLog.add(entry)
   }
 
   // ── Event log (in-memory — debug data, not worth persisting) ────────
@@ -851,12 +1146,17 @@ export class GatewayState {
 
   // ── Storage stats + data export ─────────────────────────────────────
 
-  getStorageStats(): { threadCount: number; messageCount: number; usageRecordCount: number } {
-    return this.db.getStorageStats()
+  getStorageStats(): Promise<{
+    databaseSizeBytes: number
+    threadCount: number
+    messageCount: number
+    usageRecordCount: number
+  }> {
+    return this.gateway.diagnostics.stats()
   }
 
   get dbPath(): string {
-    return this.db.dbPath
+    return this.requireSqliteDatabase().dbPath
   }
 
   /** Count total event log entries across all threads. */
@@ -885,8 +1185,8 @@ export class GatewayState {
   }
 
   /** Export all user data for portability. */
-  exportAllData(): ReturnType<typeof this.db.exportAllData> {
-    return this.db.exportAllData()
+  exportAllData() {
+    return this.gateway.diagnostics.exportAll()
   }
 
   // ── Session persistence (crash recovery) ────────────────────────────
@@ -902,13 +1202,29 @@ export class GatewayState {
 
   // ── Utility ──────────────────────────────────────────────────────────
 
-  get threadCount(): number {
-    return this.db.threadCount
+  threadCount(): Promise<number> {
+    return this.gateway.diagnostics.threadCount()
   }
 
   close(): void {
     this.eventBus.clear()
-    this.db.close()
+    if (this.sqliteStorage === null) {
+      throw new Error('GatewayState.close() is SQLite-only; use closeStorage() for PostgreSQL.')
+    }
+    this.sqliteStorage.closeSynchronouslyForLegacyCaller()
+  }
+
+  async closeStorage(): Promise<void> {
+    this.eventBus.clear()
+    await this.eventIngestor.drain()
+    await this.storage.close()
+  }
+
+  private requireSqliteDatabase(): CortexDatabase {
+    if (this.sqliteStorage === null) {
+      throw new Error('This compatibility surface is available only with SQLite storage.')
+    }
+    return this.sqliteStorage.legacyDatabase
   }
 
   /**

@@ -9,14 +9,16 @@ import { SourceByteStoreError } from './source-byte-store.js'
 import { CsvDataViewError } from './csv-data-view.js'
 import type {
   SourceDataViewJobClaim,
-  SourceDataViewStore,
 } from './source-data-view-store.js'
 import { SOURCE_DATA_VIEW_JOB_LEASE_MS } from './source-data-view-store.js'
 import type {
   SourceJobClaim,
   SourceJobCheckpointResult,
-  SourceJobStore,
 } from './source-job-store.js'
+import type {
+  SourceDataViewRepository,
+  SourceJobRepository,
+} from '../storage/source-repositories.js'
 
 export const SOURCE_INSPECTION_MAX_BYTES = 16 * 1024 * 1024
 export const SOURCE_INSPECTION_TIMEOUT_MS = 5_000
@@ -60,10 +62,10 @@ export class SourceJobWorker {
   private drainPromise: Promise<number> | null = null
 
   constructor(
-    private readonly jobs: SourceJobStore,
+    private readonly jobs: SourceJobRepository,
     private readonly bytes: SourceJobReader,
     private readonly options: SourceJobWorkerOptions,
-    private readonly dataViews?: SourceDataViewStore,
+    private readonly dataViews?: SourceDataViewRepository,
   ) {}
 
   start(): void {
@@ -107,21 +109,21 @@ export class SourceJobWorker {
 
   async runOne(fixedNow?: number): Promise<boolean> {
     const currentTime = fixedNow === undefined ? () => Date.now() : () => fixedNow
-    if (this.jobs.confirmNextUnclaimedCancellation(currentTime())) return true
-    const claim = this.jobs.claimNext(this.options.workerId, currentTime())
+    if (await this.jobs.confirmNextUnclaimedCancellation(currentTime())) return true
+    const claim = await this.jobs.claimNext(this.options.workerId, currentTime())
     if (claim) {
       await this.execute(claim, currentTime)
       return true
     }
     if (!this.dataViews || !isDataViewWorkerBytes(this.bytes)) return false
-    const cancellation = this.dataViews.claimNextCancellation(
+    const cancellation = await this.dataViews.claimNextCancellation(
       dataViewWorkerId(this.options.workerId, '-data-view-cancel'), currentTime(),
     )
     if (cancellation) {
       await this.executeDataViewCancellation(cancellation, this.bytes, currentTime)
       return true
     }
-    const dataViewClaim = this.dataViews.claimNext(
+    const dataViewClaim = await this.dataViews.claimNext(
       dataViewWorkerId(this.options.workerId, '-data-view'), currentTime(),
     )
     if (!dataViewClaim) return false
@@ -134,18 +136,20 @@ export class SourceJobWorker {
     bytes: SourceJobReader & SourceDataViewWorkerBytes,
     currentTime: () => number,
   ): Promise<void> {
+    let renewal: Promise<unknown> | null = null
     const heartbeat = setInterval(() => {
-      try {
-        this.dataViews!.renewClaim(claim.jobId, claim.claimToken)
-      } catch {
-        // The next durable mutation observes the lease truth.
-      }
+      if (renewal) return
+      renewal = Promise.resolve().then(() =>
+        this.dataViews!.renewClaim(claim.jobId, claim.claimToken))
+        .catch(() => undefined)
+        .finally(() => { renewal = null })
     }, Math.floor(SOURCE_DATA_VIEW_JOB_LEASE_MS / 3))
     heartbeat.unref()
     try {
       await this.executeDataViewClaim(claim, bytes, currentTime)
     } finally {
       clearInterval(heartbeat)
+      await renewal
     }
   }
 
@@ -155,14 +159,16 @@ export class SourceJobWorker {
     currentTime: () => number,
   ): Promise<void> {
     const store = this.dataViews!
-    const target = store.getClaimedTarget(claim.jobId, claim.claimToken, currentTime())
+    const target = await store.getClaimedTarget(
+      claim.jobId, claim.claimToken, currentTime(),
+    )
     if (!target) {
       if (await this.cleanupOwnedDataView(claim, bytes, currentTime())) {
-        store.confirmCancelled(claim.jobId, claim.claimToken, currentTime())
+        await store.confirmCancelled(claim.jobId, claim.claimToken, currentTime())
       }
       return
     }
-    if (claim.checkpoint < 1 && store.advanceCheckpoint(
+    if (claim.checkpoint < 1 && await store.advanceCheckpoint(
       claim.jobId, claim.claimToken, 0, 1, currentTime(),
     ) !== 'advanced') return
 
@@ -171,48 +177,48 @@ export class SourceJobWorker {
       artifact = await bytes.prepareCsvDataViewArtifact(target)
     } catch (error) {
       if (await this.cleanupOwnedDataView(claim, bytes, currentTime()) &&
-          store.confirmCancelled(
+          await store.confirmCancelled(
             claim.jobId, claim.claimToken, currentTime(),
           ) === 'cancelled') return
-      this.finishDataViewFailure(claim, error, currentTime())
+      await this.finishDataViewFailure(claim, error, currentTime())
       return
     }
-    if (claim.checkpoint < 2 && store.advanceCheckpoint(
+    if (claim.checkpoint < 2 && await store.advanceCheckpoint(
       claim.jobId, claim.claimToken, 1, 2, currentTime(),
     ) !== 'advanced') {
       if (await this.cleanupOwnedDataView(claim, bytes, currentTime())) {
-        store.confirmCancelled(claim.jobId, claim.claimToken, currentTime())
+        await store.confirmCancelled(claim.jobId, claim.claimToken, currentTime())
       }
       return
     }
-    if (claim.checkpoint < 3 && store.advanceCheckpoint(
+    if (claim.checkpoint < 3 && await store.advanceCheckpoint(
       claim.jobId, claim.claimToken, 2, 3, currentTime(),
     ) !== 'advanced') {
       if (await this.cleanupOwnedDataView(claim, bytes, currentTime())) {
-        store.confirmCancelled(claim.jobId, claim.claimToken, currentTime())
+        await store.confirmCancelled(claim.jobId, claim.claimToken, currentTime())
       }
       return
     }
     try {
-      const published = store.publish(
+      const published = await store.publish(
         claim.jobId, claim.claimToken, artifact, currentTime(),
       )
       if (published === 'finished') return
       if (await this.cleanupOwnedDataView(claim, bytes, currentTime())) {
-        if (store.confirmCancelled(
+        if (await store.confirmCancelled(
           claim.jobId, claim.claimToken, currentTime(),
         ) === 'cancelled') return
-        store.finishFailed(
+        await store.finishFailed(
           claim.jobId, claim.claimToken, 'data_view_publication_conflict', currentTime(),
         )
       }
     } catch (error) {
       const cleaned = await this.cleanupOwnedDataView(claim, bytes, currentTime())
       if (!cleaned) return
-      if (store.confirmCancelled(
+      if (await store.confirmCancelled(
         claim.jobId, claim.claimToken, currentTime(),
       ) === 'cancelled') return
-      this.finishDataViewFailure(claim, error, currentTime())
+      await this.finishDataViewFailure(claim, error, currentTime())
     }
   }
 
@@ -221,41 +227,43 @@ export class SourceJobWorker {
     bytes: SourceDataViewWorkerBytes,
     currentTime: () => number,
   ): Promise<void> {
+    let renewal: Promise<unknown> | null = null
     const heartbeat = setInterval(() => {
-      try {
-        this.dataViews!.renewClaim(claim.jobId, claim.claimToken)
-      } catch {
-        // Cleanup and cancellation confirmation remain lease-fenced.
-      }
+      if (renewal) return
+      renewal = Promise.resolve().then(() =>
+        this.dataViews!.renewClaim(claim.jobId, claim.claimToken))
+        .catch(() => undefined)
+        .finally(() => { renewal = null })
     }, Math.floor(SOURCE_DATA_VIEW_JOB_LEASE_MS / 3))
     heartbeat.unref()
     try {
       if (await this.cleanupOwnedDataView(claim, bytes, currentTime())) {
-        this.dataViews!.confirmCancelled(
+        await this.dataViews!.confirmCancelled(
           claim.jobId, claim.claimToken, currentTime(),
         )
       }
     } finally {
       clearInterval(heartbeat)
+      await renewal
     }
   }
 
-  private finishDataViewFailure(
+  private async finishDataViewFailure(
     claim: SourceDataViewJobClaim,
     error: unknown,
     now: number,
-  ): void {
+  ): Promise<void> {
     const store = this.dataViews!
     const deterministic = dataViewFailureCode(error)
     if (deterministic) {
-      store.finishFailed(claim.jobId, claim.claimToken, deterministic, now)
+      await store.finishFailed(claim.jobId, claim.claimToken, deterministic, now)
       return
     }
     if (claim.attempt >= claim.maxAttempts) {
-      store.finishFailed(claim.jobId, claim.claimToken, 'data_view_unavailable', now)
+      await store.finishFailed(claim.jobId, claim.claimToken, 'data_view_unavailable', now)
       return
     }
-    store.deferUntil(
+    await store.deferUntil(
       claim.jobId, claim.claimToken, now + SOURCE_INSPECTION_RETRY_MS, now,
     )
   }
@@ -266,7 +274,7 @@ export class SourceJobWorker {
     now: number,
   ): Promise<boolean> {
     const store = this.dataViews!
-    if (!store.fenceUnpublishedArtifactCleanup(
+    if (!await store.fenceUnpublishedArtifactCleanup(
       claim.jobId, claim.claimToken, claim.dataViewId, now,
     )) return false
     try {
@@ -277,7 +285,7 @@ export class SourceJobWorker {
         claim.sourceId, claim.sourceVersionId, claim.dataViewId,
       )
     } catch {
-      store.finishFailed(
+      await store.finishFailed(
         claim.jobId, claim.claimToken, 'artifact_cleanup_failed', now,
       )
       return false
@@ -290,13 +298,13 @@ export class SourceJobWorker {
   ): Promise<void> {
     const targetTime = currentTime()
     const target = claim.operation === 'inspect_format'
-      ? this.jobs.getClaimedInspectionTarget(claim.jobId, claim.claimToken, targetTime)
-      : this.jobs.getClaimedPreparationTarget(claim.jobId, claim.claimToken, targetTime)
+      ? await this.jobs.getClaimedInspectionTarget(claim.jobId, claim.claimToken, targetTime)
+      : await this.jobs.getClaimedPreparationTarget(claim.jobId, claim.claimToken, targetTime)
     if (!target) {
-      this.confirmCancellation(claim, targetTime)
+      await this.confirmCancellation(claim, targetTime)
       return
     }
-    if (!this.advanceTo(claim, 1, currentTime())) return
+    if (!await this.advanceTo(claim, 1, currentTime())) return
 
     let inspected: InspectedSourceBytes
     try {
@@ -311,21 +319,21 @@ export class SourceJobWorker {
         },
       )
     } catch (error) {
-      this.handleReadFailure(claim, error, currentTime())
+      await this.handleReadFailure(claim, error, currentTime())
       return
     }
 
     if (inspected.byteCount !== target.expectedByteCount ||
         inspected.checksum !== target.expectedChecksum ||
         inspected.verifiedMediaType !== target.verifiedMediaType) {
-      this.finishOrRetry(
+      await this.finishOrRetry(
         claim, 'failed', 'source_object_mismatch', currentTime(),
       )
       return
     }
-    if (!this.advanceTo(claim, 2, currentTime())) return
-    if (!this.advanceTo(claim, 3, currentTime())) return
-    this.finishOrRetry(
+    if (!await this.advanceTo(claim, 2, currentTime())) return
+    if (!await this.advanceTo(claim, 3, currentTime())) return
+    await this.finishOrRetry(
       claim,
       'succeeded',
       claim.operation === 'inspect_format' ? 'inspection_complete' : 'preparation_complete',
@@ -333,36 +341,36 @@ export class SourceJobWorker {
     )
   }
 
-  private advanceTo(
+  private async advanceTo(
     claim: SourceJobClaim,
     checkpoint: number,
     now: number,
-  ): boolean {
+  ): Promise<boolean> {
     if (claim.checkpoint >= checkpoint) return true
-    const result = this.jobs.advanceCheckpoint(
+    const result = await this.jobs.advanceCheckpoint(
       claim.jobId,
       claim.claimToken,
       checkpoint - 1,
       checkpoint,
       now,
     )
-    if (result !== 'advanced') this.handleLostClaim(claim, result, now)
+    if (result !== 'advanced') await this.handleLostClaim(claim, result, now)
     return result === 'advanced'
   }
 
-  private handleReadFailure(
+  private async handleReadFailure(
     claim: SourceJobClaim,
     error: unknown,
     now: number,
-  ): void {
+  ): Promise<void> {
     const code = error instanceof SourceByteStoreError
       ? byteFailureCode(error.code, claim.operation) : null
     if (code) {
-      this.finishOrRetry(claim, 'failed', code, now)
+      await this.finishOrRetry(claim, 'failed', code, now)
       return
     }
     if (claim.attempt >= claim.maxAttempts) {
-      this.finishOrRetry(
+      await this.finishOrRetry(
         claim,
         'failed',
         claim.operation === 'inspect_format'
@@ -371,49 +379,49 @@ export class SourceJobWorker {
       )
       return
     }
-    const result = this.jobs.deferUntil(
+    const result = await this.jobs.deferUntil(
       claim.jobId,
       claim.claimToken,
       now + SOURCE_INSPECTION_RETRY_MS,
       now,
     )
-    if (result !== 'deferred') this.confirmCancellation(claim, now)
+    if (result !== 'deferred') await this.confirmCancellation(claim, now)
   }
 
-  private handleLostClaim(
+  private async handleLostClaim(
     claim: SourceJobClaim,
     _result: SourceJobCheckpointResult,
     now: number,
-  ): void {
-    this.confirmCancellation(claim, now)
+  ): Promise<void> {
+    await this.confirmCancellation(claim, now)
   }
 
-  private confirmCancellation(claim: SourceJobClaim, now: number): void {
-    this.jobs.confirmCancelled(claim.jobId, claim.claimToken, now)
+  private async confirmCancellation(claim: SourceJobClaim, now: number): Promise<void> {
+    await this.jobs.confirmCancelled(claim.jobId, claim.claimToken, now)
   }
 
-  private finishOrRetry(
+  private async finishOrRetry(
     claim: SourceJobClaim,
     outcome: 'succeeded' | 'partial' | 'failed',
     code: string,
     now: number,
-  ): void {
+  ): Promise<void> {
     try {
       const result = claim.operation === 'inspect_format'
-        ? this.jobs.finishInspection(claim.jobId, claim.claimToken, outcome, code, now)
-        : this.jobs.finishPreparation(claim.jobId, claim.claimToken, outcome, code, now)
-      if (result !== 'finished') this.confirmCancellation(claim, now)
+        ? await this.jobs.finishInspection(claim.jobId, claim.claimToken, outcome, code, now)
+        : await this.jobs.finishPreparation(claim.jobId, claim.claimToken, outcome, code, now)
+      if (result !== 'finished') await this.confirmCancellation(claim, now)
     } catch {
       if (claim.attempt >= claim.maxAttempts) {
         try {
           const unavailable = claim.operation === 'inspect_format'
             ? 'inspection_unavailable' : 'preparation_unavailable'
           if (claim.operation === 'inspect_format') {
-            this.jobs.finishInspection(
+            await this.jobs.finishInspection(
               claim.jobId, claim.claimToken, 'failed', unavailable, now,
             )
           } else {
-            this.jobs.finishPreparation(
+            await this.jobs.finishPreparation(
               claim.jobId, claim.claimToken, 'failed', unavailable, now,
             )
           }
@@ -423,7 +431,7 @@ export class SourceJobWorker {
         return
       }
       try {
-        this.jobs.deferUntil(
+        await this.jobs.deferUntil(
           claim.jobId,
           claim.claimToken,
           now + SOURCE_INSPECTION_RETRY_MS,

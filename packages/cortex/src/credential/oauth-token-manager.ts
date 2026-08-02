@@ -43,7 +43,6 @@
  * provable against a local fake issuer — no real account, no network.
  */
 
-import type { CredentialAuditLog } from './audit.js'
 import {
   OAuthTokenDecodeError,
   decodeOAuthTokenSet,
@@ -56,12 +55,15 @@ import {
 } from './oauth-token.js'
 import type { CredentialInjector } from './injector.js'
 import type {
-  OAuthRefreshCoordinator,
   OAuthRefreshLease,
 } from './oauth-refresh-coordinator.js'
 import type { GatewayCredentialResolver } from './resolver.js'
 import type { CredentialStore } from './store/index.js'
 import type { CredentialWriteCondition } from './store/types.js'
+import type {
+  CredentialAuditRepository,
+  OAuthRefreshRepository,
+} from '../storage/security-repositories.js'
 
 // ---------------------------------------------------------------------------
 // The injected refresh call
@@ -235,11 +237,11 @@ export interface OAuthTokenManagerDeps {
   readonly resolver: GatewayCredentialResolver
   /** Dereferences the resolver's handle into the value, for one bounded use. */
   readonly injector: CredentialInjector
-  readonly audit: CredentialAuditLog
+  readonly audit: CredentialAuditRepository
   readonly credentialId: string
   readonly refresh: RefreshTokenFn
   /** Durable, credential-scoped refresh lease authority. */
-  readonly refreshCoordinator: OAuthRefreshCoordinator
+  readonly refreshCoordinator: OAuthRefreshRepository
   /**
    * Refresh-ahead skew in ms — a token within this window of its declared
    * expiry is refreshed pre-emptively so the refresh happens before a request
@@ -279,10 +281,10 @@ export class OAuthTokenManager {
   private readonly store: CredentialStore
   private readonly resolver: GatewayCredentialResolver
   private readonly injector: CredentialInjector
-  private readonly audit: CredentialAuditLog
+  private readonly audit: CredentialAuditRepository
   private readonly credentialId: string
   private readonly refresh: RefreshTokenFn
-  private readonly refreshCoordinator: OAuthRefreshCoordinator
+  private readonly refreshCoordinator: OAuthRefreshRepository
   private readonly expirySkewMs: number
   private readonly now: () => number
   private readonly refreshLeaseMs: number
@@ -401,7 +403,7 @@ export class OAuthTokenManager {
       if (err instanceof OAuthTokenDecodeError) {
         // Wrong shape in the row (most likely an API key saved as oauth2).
         // Record it — this is a wiring bug someone must see, not a transient.
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: this.credentialId,
           eventType: 'refresh',
           outcome: 'error',
@@ -433,7 +435,7 @@ export class OAuthTokenManager {
     const deadline = this.coordinationNow() + this.refreshWaitTimeoutMs
     while (true) {
       const now = this.coordinationNow()
-      const result = this.refreshCoordinator.tryAcquire(
+      const result = await this.refreshCoordinator.tryAcquire(
         this.credentialId,
         now,
         this.refreshLeaseMs,
@@ -452,34 +454,34 @@ export class OAuthTokenManager {
   private async refreshWithLease(ctx: TokenRequestContext): Promise<OAuthTokenSet> {
     let lease = await this.acquireRefreshLease()
     let leaseLost = false
-    let renewing = false
+    let heartbeatRenewal: Promise<void> | null = null
     const heartbeatMs = Math.max(10, Math.floor(this.refreshLeaseMs / 3))
     const heartbeat = setInterval(() => {
-      if (renewing || leaseLost) return
-      renewing = true
-      try {
-        const renewed = this.refreshCoordinator.renew(
-          lease,
-          this.coordinationNow(),
-          this.refreshLeaseMs,
-        )
+      if (heartbeatRenewal !== null || leaseLost) return
+      const renewal = this.refreshCoordinator.renew(
+        lease,
+        this.coordinationNow(),
+        this.refreshLeaseMs,
+      ).then((renewed) => {
         if (renewed === null) leaseLost = true
         else lease = renewed
-      } catch {
+      }).catch(() => {
         leaseLost = true
-      } finally {
-        renewing = false
-      }
+      }).finally(() => {
+        if (heartbeatRenewal === renewal) heartbeatRenewal = null
+      })
+      heartbeatRenewal = renewal
     }, heartbeatMs)
     heartbeat.unref?.()
 
-    const assertLease = (): void => {
+    const assertLease = async (): Promise<void> => {
+      if (heartbeatRenewal !== null) await heartbeatRenewal
       if (leaseLost) {
         throw new OAuthRefreshCoordinationError(this.credentialId, 'lease-lost')
       }
       let renewed: OAuthRefreshLease | null
       try {
-        renewed = this.refreshCoordinator.renew(
+        renewed = await this.refreshCoordinator.renew(
           lease,
           this.coordinationNow(),
           this.refreshLeaseMs,
@@ -504,13 +506,13 @@ export class OAuthTokenManager {
       }
 
       if (!isRenewable(current.token)) {
-        assertLease()
+        await assertLease()
         await this.markUnhealthy(
           current.condition,
           'expired',
           'access token expired and no refresh token was issued — reconnect the account',
         )
-        this.audit.recordEvent({
+        await this.audit.recordEvent({
           credentialId: this.credentialId,
           eventType: 'refresh',
           outcome: 'denied',
@@ -528,8 +530,9 @@ export class OAuthTokenManager {
       return await this.performRefresh(current, ctx, assertLease)
     } finally {
       clearInterval(heartbeat)
+      if (heartbeatRenewal !== null) await heartbeatRenewal
       try {
-        this.refreshCoordinator.release(lease)
+        await this.refreshCoordinator.release(lease)
       } catch {
         // Expiry/takeover already fences this owner. Cleanup failure is not
         // permission to change the outcome of the token operation.
@@ -540,7 +543,7 @@ export class OAuthTokenManager {
   private async performRefresh(
     snapshot: StoredOAuthTokenSnapshot,
     ctx: TokenRequestContext,
-    assertLease: () => void,
+    assertLease: () => Promise<void>,
   ): Promise<OAuthTokenSet> {
     // isRenewable() was checked by the caller; the non-null assertion is safe
     // because the token set was validated by decode.
@@ -557,13 +560,13 @@ export class OAuthTokenManager {
     }
 
     if (outcome.result === 'denied') {
-      assertLease()
+      await assertLease()
       await this.markUnhealthy(
         snapshot.condition,
         'revoked',
         `authorization server refused the refresh (${outcome.reason}) — reconnect the account`,
       )
-      this.audit.recordEvent({
+      await this.audit.recordEvent({
         credentialId: this.credentialId,
         eventType: 'refresh',
         outcome: 'denied',
@@ -577,7 +580,7 @@ export class OAuthTokenManager {
 
     if (outcome.result === 'failed') {
       // Credential deliberately untouched — the grant may be fine.
-      this.audit.recordEvent({
+      await this.audit.recordEvent({
         credentialId: this.credentialId,
         eventType: 'refresh',
         outcome: 'error',
@@ -602,7 +605,7 @@ export class OAuthTokenManager {
     })
     const encoded = encodeOAuthTokenSet(merged)
 
-    assertLease()
+    await assertLease()
     let updateResult
     try {
       updateResult = await this.store.updateIfUnchanged(
@@ -630,7 +633,7 @@ export class OAuthTokenManager {
       throw new OAuthRefreshStaleWriteError(this.credentialId)
     }
 
-    this.audit.recordEvent({
+    await this.audit.recordEvent({
       credentialId: this.credentialId,
       eventType: 'refresh',
       outcome: 'ok',

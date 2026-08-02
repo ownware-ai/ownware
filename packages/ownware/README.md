@@ -39,6 +39,13 @@ await ownware.start()
 Talk to it from anywhere with [`@ownware/client`](https://www.npmjs.com/package/@ownware/client)
 (zero-dep, Node + browser).
 
+SQLite is the zero-configuration storage default. A library deployment can
+explicitly select tenant-owned PostgreSQL 16–18 by installing the optional
+`pg` peer and passing `storage` to `OwnwareGateway`; it never falls back across
+adapters. Provisioning, TLS, backup/restore, transfer, performance and the
+single-gateway limit are documented in
+[`docs/gateway/storage.md`](https://github.com/ownware-ai/ownware/blob/main/docs/gateway/storage.md).
+
 ## What's inside
 
 `ownware` re-exports the curated surface of two packages:

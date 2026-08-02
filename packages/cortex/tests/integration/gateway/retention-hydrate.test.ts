@@ -38,10 +38,10 @@ describe('Retention → Hydrate E2E', () => {
 
   it('pruned terminal thread still hydrates from messages; SSE closes gracefully', async () => {
     // ── 1. Seed a thread with a full turn ──────────────────────────────
-    const thread = gw.state.createThread('mini', 'archived thread')
+    const thread = await gw.state.createThread('mini', 'archived thread')
 
     // User message (what run.ts handler would write).
-    gw.state.addMessage(thread.id, {
+    await gw.state.addMessage(thread.id, {
       id: 'msg_user_1',
       role: 'user',
       content: 'explain x',
@@ -50,7 +50,7 @@ describe('Retention → Hydrate E2E', () => {
 
     // Assistant turn with every rich field so we can prove the snapshot
     // is complete after events are gone.
-    gw.state.addMessage(thread.id, {
+    await gw.state.addMessage(thread.id, {
       id: 'msg_asst_1',
       role: 'assistant',
       content: 'here is x',
@@ -81,16 +81,16 @@ describe('Retention → Hydrate E2E', () => {
     })
 
     // Matching raw events on disk — these get pruned.
-    gw.state.eventIngestor.ingestParentEvent(thread.id, { type: 'turn.start', turnIndex: 0, timestamp: Date.now() } as LoomEvent)
-    gw.state.eventIngestor.ingestParentEvent(thread.id, { type: 'text.delta', turnIndex: 0, text: 'here is x' } as LoomEvent)
-    gw.state.eventIngestor.ingestParentEvent(thread.id, { type: 'turn.end', turnIndex: 0, stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0, model: 'test', costUsd: 0.01 }, timestamp: Date.now() } as LoomEvent)
+    await gw.state.eventIngestor.ingestParentEvent(thread.id, { type: 'turn.start', turnIndex: 0, timestamp: Date.now() } as LoomEvent)
+    await gw.state.eventIngestor.ingestParentEvent(thread.id, { type: 'text.delta', turnIndex: 0, text: 'here is x' } as LoomEvent)
+    await gw.state.eventIngestor.ingestParentEvent(thread.id, { type: 'turn.end', turnIndex: 0, stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0, model: 'test', costUsd: 0.01 }, timestamp: Date.now() } as LoomEvent)
 
     // Mark terminal then backdate the raw root events past the
     // retention window. Post-2026-04-22 stream audit, retention keys
     // off `agent_events.created_at` (INTEGER ms) rather than
     // `threads.updated_at`, so the backdate must land on the event
     // rows themselves.
-    gw.state.updateThread(thread.id, { status: 'completed' })
+    await gw.state.updateThread(thread.id, { status: 'completed' })
     gw.state.rawDatabase.rawMainHandle
       .prepare(`UPDATE agent_events SET created_at = ?
                 WHERE thread_id = ? AND agent_id = 'root'`)
@@ -112,7 +112,7 @@ describe('Retention → Hydrate E2E', () => {
     expect(retentionBody.stats.rowsDeleted).toBeGreaterThanOrEqual(3)
 
     // agent_events for this thread should be gone.
-    const rawAfter = gw.state.listAgentEvents({
+    const rawAfter = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: 'root',
     })

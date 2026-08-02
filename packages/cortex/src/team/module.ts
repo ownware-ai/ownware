@@ -1,8 +1,7 @@
 /**
  * TeamModule — the team vertical's composition root.
  *
- * Constructed once at gateway boot over the shared SQLite handle (the
- * SqliteTaskStore / ConnectorConnectionsStore pattern). Owns:
+ * Constructed once at gateway boot over the platform repository contract. Owns:
  *
  *   - the TeamStore + TeamScheduler
  *   - conductor profile registration (in-memory, re-done every boot —
@@ -40,8 +39,8 @@ import { conductorProfileId, materializeConductor } from './conductor.js'
 import { createConductorTools } from './conductor-tools.js'
 import { createTeamEventBus, type TeamEventBus } from './event-bus.js'
 import { TeamScheduler } from './scheduler.js'
-import { TeamStore } from './store.js'
 import type { CreateTeamInput, Team, TeamRun, UpdateTeamInput } from './schema.js'
+import type { TeamRepository } from '../storage/platform-repositories.js'
 
 export interface TeamModuleDeps {
   readonly state: GatewayState
@@ -52,14 +51,14 @@ export interface TeamModuleDeps {
 }
 
 export class TeamModule {
-  readonly store: TeamStore
+  readonly store: TeamRepository
   readonly scheduler: TeamScheduler
   /** Invalidation hints — folded into the multiplexed /api/v1/events SSE. */
   readonly events: TeamEventBus
   private readonly checkpointDir: string
 
   constructor(private readonly deps: TeamModuleDeps) {
-    this.store = new TeamStore(deps.state.rawDbHandle)
+    this.store = deps.state.platformRepositories.teams
     this.events = createTeamEventBus()
     this.checkpointDir = join(deps.dataDir, 'team-checkpoints')
     this.scheduler = new TeamScheduler({
@@ -78,13 +77,13 @@ export class TeamModule {
    * registrations don't survive restarts) and resume active runs.
    */
   async boot(): Promise<void> {
-    for (const team of this.store.listTeams()) {
+    for (const team of await this.store.listTeams()) {
       this.registerConductor(team)
     }
-    for (const run of this.store.listActiveRuns()) {
+    for (const run of await this.store.listActiveRuns()) {
       try {
         await this.ensureConductorSession(run)
-        this.scheduler.resumeRun(run.id)
+        await this.scheduler.resumeRun(run.id)
       } catch (err) {
         const classified = classifyError(err)
         console.error(
@@ -100,19 +99,19 @@ export class TeamModule {
 
   // ── Team CRUD (store + conductor registration kept in lockstep) ──
 
-  createTeam(input: CreateTeamInput): Team {
+  async createTeam(input: CreateTeamInput): Promise<Team> {
     this.assertMemberProfilesExist(input.members.map((m) => m.profileId))
-    const team = this.store.createTeam(input)
+    const team = await this.store.createTeam(input)
     this.registerConductor(team)
     this.events.emit({ scope: 'teams' })
     return team
   }
 
-  updateTeam(id: string, input: UpdateTeamInput): Team | null {
+  async updateTeam(id: string, input: UpdateTeamInput): Promise<Team | null> {
     if (input.members !== undefined) {
       this.assertMemberProfilesExist(input.members.map((m) => m.profileId))
     }
-    const team = this.store.updateTeam(id, input)
+    const team = await this.store.updateTeam(id, input)
     if (team) {
       // Re-materialize: charter / roster / model changes shape the
       // conductor's SOUL. Existing SESSIONS keep their old prompt until
@@ -124,14 +123,14 @@ export class TeamModule {
     return team
   }
 
-  deleteTeam(id: string): boolean {
-    const active = this.store
-      .listRunsForTeam(id)
+  async deleteTeam(id: string): Promise<boolean> {
+    const active = (await this.store
+      .listRunsForTeam(id))
       .filter((r) => r.status === 'active')
     for (const run of active) {
-      this.scheduler.cancelRun(run.id, 'Team was deleted while the run was active.')
+      await this.scheduler.cancelRun(run.id, 'Team was deleted while the run was active.')
     }
-    const deleted = this.store.deleteTeam(id)
+    const deleted = await this.store.deleteTeam(id)
     if (deleted) this.events.emit({ scope: 'teams' })
     return deleted
   }
@@ -166,9 +165,9 @@ export class TeamModule {
     teamId: string,
     workspaceId: string | null,
   ): Promise<{ run: TeamRun; conductorProfileId: string; model: string }> {
-    const team = this.store.getTeam(teamId)
+    const team = await this.store.getTeam(teamId)
     if (!team) throw new Error(`Team "${teamId}" not found`)
-    if (workspaceId !== null && !this.deps.state.getWorkspace(workspaceId)) {
+    if (workspaceId !== null && !await this.deps.state.getWorkspace(workspaceId)) {
       throw new Error(`Workspace "${workspaceId}" not found`)
     }
 
@@ -177,8 +176,12 @@ export class TeamModule {
       this.registerConductor(team)
     }
 
-    const thread = this.deps.state.createThread(profileId, `${team.displayName} — run`, workspaceId ?? undefined)
-    const run = this.store.createRun(teamId, thread.id, workspaceId)
+    const thread = await this.deps.state.createThread(
+      profileId,
+      `${team.displayName} — run`,
+      workspaceId ?? undefined,
+    )
+    const run = await this.store.createRun(teamId, thread.id, workspaceId)
     await this.ensureConductorSession(run)
 
     const profile = await this.deps.registry.get(profileId)
@@ -196,7 +199,7 @@ export class TeamModule {
       return
     }
 
-    const team = this.store.getTeam(run.teamId)
+    const team = await this.store.getTeam(run.teamId)
     if (!team) throw new Error(`Team "${run.teamId}" not found for run "${run.id}"`)
 
     const profileId = conductorProfileId(team.id)
@@ -206,7 +209,7 @@ export class TeamModule {
     const profile = await registry.get(profileId)
 
     const workspacePath = run.workspaceId !== null
-      ? state.getWorkspace(run.workspaceId)?.path ?? null
+      ? (await state.getWorkspace(run.workspaceId))?.path ?? null
       : null
 
     // No toolProviders, no memory system, no panes: the conductor's

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import { AccessGrantStore } from './access-grant-store.js'
 import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import { SOURCE_JOB_LEASE_MS, SOURCE_JOB_MAX_ATTEMPTS } from './source-job-store.js'
@@ -156,7 +156,7 @@ interface DeletionTombstoneRow {
 
 export class SourceDeletionStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     private readonly evidenceSearchCache?: EvidenceSearchCache,
   ) {}
 

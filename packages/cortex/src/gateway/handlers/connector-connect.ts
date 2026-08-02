@@ -46,7 +46,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { readJSON, sendError, sendJSON } from '../router.js'
 import type { ConnectorRegistry } from '../../connector/registry.js'
-import type { ConnectorConnectionsStore } from '../../connector/connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type { ConnectionCompletionManager } from '../../connector/completion/manager.js'
 import type { ComposioClient } from '../../connector/composio/client.js'
 import {
@@ -71,7 +71,7 @@ export type ConnectConnectorBody = z.infer<typeof ConnectConnectorBodySchema>
 
 export interface ConnectorConnectHandlersDeps {
   readonly registry: ConnectorRegistry
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   readonly completionManager: ConnectionCompletionManager
   readonly connectionSessions: ConnectionSessionVault
   /**
@@ -275,14 +275,14 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
     }
 
     // Idempotency: return the existing live row if there is one.
-    const existing = deps.connections.findActive(connectorId, COMPOSIO_SOURCE, entityId)
+    const existing = await deps.connections.findActive(connectorId, COMPOSIO_SOURCE, entityId)
     if (existing) {
       const handle = connectionSessionHandle(existing.metadata)
       if (existing.status === 'ready') {
         if (handle !== null) {
           try {
             await deps.connectionSessions.remove(handle)
-            deps.connections.markReady({ connectionId: existing.connectionId })
+            await deps.connections.markReady({ connectionId: existing.connectionId })
           } catch {
             sendError(res, 500, 'The completed connection session could not be safely cleared.')
             return
@@ -334,7 +334,7 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
           return
         }
       }
-      deps.connections.markExpired(
+      await deps.connections.markExpired(
         existing.connectionId,
         'Connection setup session is unavailable. Please retry.',
       )
@@ -485,7 +485,7 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
 
     let row
     try {
-      row = deps.connections.upsertPending({
+      row = await deps.connections.upsertPending({
         connectionId: link.connected_account_id,
         connectorId,
         source: COMPOSIO_SOURCE,
@@ -540,14 +540,14 @@ export function createConnectorConnectHandlers(deps: ConnectorConnectHandlersDep
 
     // Dispatch for polling.
     try {
-      deps.completionManager.dispatch(row.connectionId)
+      await deps.completionManager.dispatch(row.connectionId)
     } catch {
       // The dispatch manager throws if no listener is registered for the
       // source. This is a programmer error at boot time, but we surface
       // it honestly rather than leaving a pending row without a poller.
       try {
         await deps.connectionSessions.remove(sessionHandle)
-        deps.connections.markFailed({
+        await deps.connections.markFailed({
           connectionId: row.connectionId,
           reason: 'Connection completion is temporarily unavailable. Please retry.',
         })

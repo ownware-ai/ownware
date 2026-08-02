@@ -205,7 +205,7 @@ describe('Message persistence — complex messages', () => {
     const state = gateway.state
 
     // User message
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'msg_user_001',
       role: 'user',
       content: 'Fix the login bug in auth.ts',
@@ -216,7 +216,7 @@ describe('Message persistence — complex messages', () => {
     })
 
     // Assistant message with tools + thinking
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'msg_asst_001',
       role: 'assistant',
       content: 'I found the bug in auth.ts line 42. The token check is inverted.',
@@ -244,7 +244,7 @@ describe('Message persistence — complex messages', () => {
     })
 
     // Assistant message with subAgents
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'msg_asst_002',
       role: 'assistant',
       content: 'I ran the tests and they all pass now.',
@@ -273,7 +273,7 @@ describe('Message persistence — complex messages', () => {
     })
 
     // System message (compaction notice)
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'msg_sys_001',
       role: 'system',
       content: 'Context compacted: 45000 → 12000 tokens (summarize)',
@@ -281,7 +281,7 @@ describe('Message persistence — complex messages', () => {
     })
 
     // Error message
-    state.addMessage(thread.id, {
+    await state.addMessage(thread.id, {
       id: 'msg_err_001',
       role: 'error',
       content: 'Rate limit exceeded. Retrying in 5 seconds.',
@@ -376,13 +376,13 @@ describe('Persistence across gateway restart', () => {
     })
     const thread = await createRes.json()
 
-    gw1.state.addMessage(thread.id, {
+    await gw1.state.addMessage(thread.id, {
       id: 'msg_survive_1',
       role: 'user',
       content: 'This message must survive a restart',
       timestamp: new Date().toISOString(),
     })
-    gw1.state.addMessage(thread.id, {
+    await gw1.state.addMessage(thread.id, {
       id: 'msg_survive_2',
       role: 'assistant',
       content: 'I will persist across restarts',
@@ -391,7 +391,7 @@ describe('Persistence across gateway restart', () => {
       timestamp: new Date().toISOString(),
     })
 
-    gw1.state.updateThread(thread.id, { messageCount: 2, totalTokens: 150 })
+    await gw1.state.updateThread(thread.id, { messageCount: 2, totalTokens: 150 })
 
     // Stop gateway 1
     await gw1.stop()
@@ -529,13 +529,13 @@ describe('Data integrity', () => {
     // Create thread with messages
     const { body: thread } = await post('/api/v1/threads', { profileId: 'integrity-test' })
 
-    gateway.state.addMessage(thread.id, {
+    await gateway.state.addMessage(thread.id, {
       id: 'msg_cascade_1', role: 'user', content: 'msg 1', timestamp: new Date().toISOString(),
     })
-    gateway.state.addMessage(thread.id, {
+    await gateway.state.addMessage(thread.id, {
       id: 'msg_cascade_2', role: 'assistant', content: 'msg 2', timestamp: new Date().toISOString(),
     })
-    gateway.state.addMessage(thread.id, {
+    await gateway.state.addMessage(thread.id, {
       id: 'msg_cascade_3', role: 'user', content: 'msg 3', timestamp: new Date().toISOString(),
     })
 
@@ -561,7 +561,7 @@ describe('Data integrity', () => {
     // Small delay
     await new Promise(r => setTimeout(r, 50))
 
-    gateway.state.updateThread(thread.id, { title: 'Updated Title' })
+    await gateway.state.updateThread(thread.id, { title: 'Updated Title' })
     const { body: fetched } = await get(`/api/v1/threads/${thread.id}`)
 
     expect(fetched.title).toBe('Updated Title')

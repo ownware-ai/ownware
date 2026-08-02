@@ -1,6 +1,6 @@
 import { rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { CandidateStore } from '../gateway/candidate-store.js'
+import type { CandidateRepository } from '../storage/platform-repositories.js'
 
 export interface CandidateDeletionResult {
   readonly candidateId: string
@@ -31,7 +31,7 @@ export class CandidateRetirer {
 
   constructor(private readonly options: {
     readonly candidatesRoot: string
-    readonly store: CandidateStore
+    readonly store: CandidateRepository
     readonly removeDirectory?: (path: string) => Promise<void>
     readonly pathExists?: (path: string) => Promise<boolean>
   }) {
@@ -52,7 +52,7 @@ export class CandidateRetirer {
     readonly profileId: string
     readonly candidateId: string
   }): Promise<CandidateDeletionResult> {
-    const claim = this.options.store.beginDeletion(input)
+    const claim = await this.options.store.beginDeletion(input)
     if (claim.status === 'already_deleted') {
       return {
         ...input,
@@ -82,7 +82,7 @@ export class CandidateRetirer {
       exists = true
     }
     if (exists) {
-      this.options.store.markDeleteFailed(input.candidateId, 'candidate_delete_failed')
+      await this.options.store.markDeleteFailed(input.candidateId, 'candidate_delete_failed')
       return {
         ...input,
         state: 'delete_failed',
@@ -92,7 +92,7 @@ export class CandidateRetirer {
       }
     }
 
-    this.options.store.markDeleted(input.candidateId)
+    await this.options.store.markDeleted(input.candidateId)
     return {
       ...input,
       state: 'deleted',
@@ -104,7 +104,7 @@ export class CandidateRetirer {
 }
 
 function deletionRejected(
-  status: Exclude<ReturnType<CandidateStore['beginDeletion']>['status'], 'started' | 'already_deleted'>,
+  status: Exclude<Awaited<ReturnType<CandidateRepository['beginDeletion']>>['status'], 'started' | 'already_deleted'>,
 ): CandidateDeleteRejected {
   const codes = {
     not_found: 'candidate_delete_not_found',

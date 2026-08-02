@@ -36,6 +36,7 @@ import {
   makeStaticApiKeyProvider,
 } from '../../../src/credential/provider-binding.js'
 import { GatewayCredentialResolver } from '../../../src/credential/resolver.js'
+import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqlite-security-repositories.js'
 import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js'
 import { __resetMasterKeyCacheForTests } from '../../../src/connector/credentials/vault.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
@@ -63,7 +64,11 @@ beforeEach(() => {
   for (const m of MIGRATIONS) db.exec(m.sql)
   store = new DbCredentialBackend(db)
   audit = new CredentialAuditLog(db)
-  resolver = new GatewayCredentialResolver({ store, audit, spendDb: db })
+  resolver = new GatewayCredentialResolver({
+    store,
+    audit,
+    spend: createSqliteCredentialSpendRepository(db),
+  })
   injector = new CredentialInjector(resolver)
 })
 afterEach(() => {

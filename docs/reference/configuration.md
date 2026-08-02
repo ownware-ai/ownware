@@ -20,9 +20,22 @@ optional — the zero-config default is a safe, keyless, loopback gateway.
 
 | Env var | Default | What it does |
 |---|---|---|
-| `OWNWARE_DATA_DIR` | `~/.ownware` | Where everything lives: SQLite DB, credential vault, gateway token, TLS certs, channels. Delete it to reset. |
+| `OWNWARE_DATA_DIR` | `~/.ownware` | Local state root: default SQLite DB, source bytes, credential key material, gateway token, TLS certs, and channels. PostgreSQL deployments still require and must back up this directory. |
 | `OWNWARE_HOST` | `127.0.0.1` | Bind address. Anything non-loopback triggers the [bind-safety invariant](../gateway/exposing.md) (auth + TLS forced). |
 | `OWNWARE_PORT` / `GATEWAY_PORT` | `3011` | Gateway port. |
+
+## Storage
+
+SQLite is the zero-configuration default. PostgreSQL is an explicit
+`OwnwareGateway` library selection; setting a PostgreSQL URL by itself does not
+change the backend or make `ownware serve` use it. See [Gateway storage](../gateway/storage.md)
+for provisioning, TLS, backup/restore, offline transfer, and the single-gateway
+support boundary.
+
+| Env var | Default | What it does |
+|---|---|---|
+| `OWNWARE_POSTGRES_URL` | — | Runtime connection secret resolved only when `storage.kind` is `postgresql` and `runtimeConnection.source` is `environment`. |
+| `OWNWARE_POSTGRES_MIGRATION_URL` | — | Conventional separate migration-role secret; select it with `migrationConnection: { source: 'environment', variable: 'OWNWARE_POSTGRES_MIGRATION_URL' }`. |
 
 ## Security & exposure
 
@@ -89,6 +102,39 @@ new OwnwareGateway({
 })
 ```
 
+Storage selection is a strict discriminated union. This production PostgreSQL
+example keeps connection material in the environment and verifies TLS:
+
+```ts
+new OwnwareGateway({
+  profilesDir: './profiles',
+  dataDir: '/srv/ownware/data',
+  storage: {
+    kind: 'postgresql',
+    runtimeConnection: { source: 'environment' },
+    migrationConnection: {
+      source: 'environment',
+      variable: 'OWNWARE_POSTGRES_MIGRATION_URL',
+    },
+    tls: { mode: 'verify-full', ca: { source: 'system' } },
+    pool: {
+      maxConnections: 10,
+      connectionTimeoutMs: 5_000,
+      statementTimeoutMs: 30_000,
+      lockTimeoutMs: 5_000,
+      migrationTimeoutMs: 120_000,
+      shutdownTimeoutMs: 5_000,
+    },
+  },
+})
+```
+
+The optional `pg@^8.22.0` peer is needed only for this selection. SQLite needs
+no PostgreSQL package or service. Unknown fields, conflicting `dbPath` +
+`storage`, unsafe remote plaintext, missing secrets, and unknown adapter kinds
+fail before the listener starts.
+
 `ownware serve` flags map 1:1: `--profiles`, `--data-dir`, `--host`, `--port`,
 `--tls` / `--no-tls`, plus `--no-channels` (skip booting stored channels
-in-process).
+in-process). It currently uses SQLite; use `OwnwareGateway` for explicit
+PostgreSQL selection.

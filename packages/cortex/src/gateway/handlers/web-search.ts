@@ -163,7 +163,7 @@ export function createWebSearchHandlers(deps: WebSearchHandlersDeps) {
     }
 
     try {
-      service.setUserChoice(providerId)
+      await service.setUserChoice(providerId)
     } catch (e) {
       sendError(res, 400, e instanceof Error ? e.message : String(e))
       return
@@ -175,7 +175,7 @@ export function createWebSearchHandlers(deps: WebSearchHandlersDeps) {
     // actually changed (user clicked "Save" with the already-active
     // provider and the same key state).
     if (statusBus) {
-      statusBus.emit({
+      await statusBus.emitAndWait({
         connectorId: 'web_search',
         source: 'builtin',
         status: resolved.status,

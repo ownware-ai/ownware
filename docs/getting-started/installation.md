@@ -74,7 +74,11 @@ You should get back JSON containing a `threadId` — the run has started. Stream
 
 ## Where data lives
 
-Everything the gateway stores (threads, credential vault, memory) lives in `~/.ownware/` on your machine. Override with `OWNWARE_DATA_DIR`. Delete the folder to reset everything.
+By default, gateway records and local artifacts live under `~/.ownware/` on
+your machine. Override with `OWNWARE_DATA_DIR`. Production library deployments
+may explicitly select tenant-owned PostgreSQL; they still require the local
+data directory for source bytes and key material. See [Gateway storage](../gateway/storage.md)
+before backing up, restoring, transferring, or resetting either backend.
 
 > **Warning** — the gateway defaults to TLS on. `tls: false` (as in the quickstart) is for localhost only; before exposing an agent beyond loopback, keep TLS on and read [Exposing the gateway](../gateway/exposing.md).
 

@@ -32,7 +32,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { sendError, sendJSON } from '../router.js'
 import type { ConnectorRegistry } from '../../connector/registry.js'
-import type { ConnectorConnectionsStore } from '../../connector/connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type { ConnectorStatusBus } from '../../connector/status-bus.js'
 import type { ComposioClient } from '../../connector/composio/client.js'
 import type { ConnectionCompletionManager } from '../../connector/completion/manager.js'
@@ -44,7 +44,7 @@ import { ConnectorError } from '../../connector/errors.js'
 
 export interface ConnectorDisconnectHandlersDeps {
   readonly registry: ConnectorRegistry
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   readonly statusBus: ConnectorStatusBus
   readonly completionManager: Pick<ConnectionCompletionManager, 'cancel'>
   readonly connectionSessions: Pick<ConnectionSessionVault, 'remove'>
@@ -139,7 +139,7 @@ export function createConnectorDisconnectHandlers(
           sendError(res, 501, 'Composio is not configured on this gateway.')
           return
         }
-        const active = connections.findActive(connector.id, 'composio', entityId)
+        const active = await connections.findActive(connector.id, 'composio', entityId)
         if (!active) {
           // Nothing to revoke locally; return 204 so the client's
           // optimistic "disconnected" UI doesn't get rolled back.
@@ -188,14 +188,14 @@ export function createConnectorDisconnectHandlers(
               : 'Composio revoke failed'
         }
 
-        connections.markRevoked(
+        await connections.markRevoked(
           active.connectionId,
           vendorError === null
             ? REVOKE_REASON
             : `${REVOKE_REASON} (provider revocation unconfirmed)`,
           vendorError === null,
         )
-        statusBus.emit({
+        await statusBus.emitAndWait({
           connectorId: connector.id,
           source: 'composio',
           status: 'needs_setup',

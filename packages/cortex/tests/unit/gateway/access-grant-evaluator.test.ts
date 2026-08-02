@@ -31,9 +31,9 @@ afterEach(async () => {
 })
 
 describe('AccessGrantEvaluator', () => {
-  it('allows one complete match and returns only safe cache identity', () => {
+  it('allows one complete match and returns only safe cache identity', async () => {
     const grant = grants.create(grantInput(), 100)
-    expect(evaluator.evaluate(context(), 500)).toEqual({
+    expect(await evaluator.evaluate(context(), 500)).toEqual({
       decision: 'allow',
       code: 'grant_matched',
       evaluatorVersion: 'access_grant.v1',
@@ -43,7 +43,7 @@ describe('AccessGrantEvaluator', () => {
     })
   })
 
-  it('collapses every scope, consent, and autonomy mismatch to one safe denial', () => {
+  it('collapses every scope, consent, and autonomy mismatch to one safe denial', async () => {
     grants.create(grantInput(), 100)
     const mismatches: AccessEvaluationContext[] = [
       { ...context(), workspaceId: 'workspace.other' },
@@ -60,7 +60,7 @@ describe('AccessGrantEvaluator', () => {
       { ...context(), autonomy: 'act' },
     ]
     for (const mismatch of mismatches) {
-      expect(evaluator.evaluate(mismatch, 500)).toEqual({
+      expect(await evaluator.evaluate(mismatch, 500)).toEqual({
         decision: 'deny',
         code: 'no_matching_grant',
         evaluatorVersion: 'access_grant.v1',
@@ -68,33 +68,33 @@ describe('AccessGrantEvaluator', () => {
     }
   })
 
-  it('enforces effective time, expiry, and append-only revocation immediately', () => {
+  it('enforces effective time, expiry, and append-only revocation immediately', async () => {
     const grant = grants.create(grantInput(), 100)
-    expect(evaluator.evaluate(context(), 99)).toMatchObject({
+    expect(await evaluator.evaluate(context(), 99)).toMatchObject({
       decision: 'deny', code: 'no_matching_grant',
     })
-    expect(evaluator.evaluate(context(), 100)).toMatchObject({ decision: 'allow' })
-    expect(evaluator.evaluate(context(), 1_000)).toMatchObject({
+    expect(await evaluator.evaluate(context(), 100)).toMatchObject({ decision: 'allow' })
+    expect(await evaluator.evaluate(context(), 1_000)).toMatchObject({
       decision: 'deny', code: 'no_matching_grant',
     })
-    expect(evaluator.evaluate(context(), 500)).toMatchObject({ decision: 'allow' })
+    expect(await evaluator.evaluate(context(), 500)).toMatchObject({ decision: 'allow' })
     grants.revoke({
       grantId: grant.grantId,
       workspaceId: grant.workspaceId,
       profileId: grant.profileId,
       expectedRevision: 1,
     }, 501)
-    expect(evaluator.evaluate(context(), 501)).toEqual({
+    expect(await evaluator.evaluate(context(), 501)).toEqual({
       decision: 'deny',
       code: 'no_matching_grant',
       evaluatorVersion: 'access_grant.v1',
     })
   })
 
-  it('applies hard-floor denial before storage under every permission and autonomy mode', () => {
+  it('applies hard-floor denial before storage under every permission and autonomy mode', async () => {
     for (const permissionMode of ['auto', 'ask', 'deny', 'allowlist'] as const) {
       for (const autonomy of ['observe', 'recommend', 'draft', 'act'] as const) {
-        expect(evaluator.evaluate({
+        expect(await evaluator.evaluate({
           ...context(),
           autonomy,
           permissionMode,
@@ -109,7 +109,7 @@ describe('AccessGrantEvaluator', () => {
     database.rawMainHandle.exec('DROP TABLE access_grant_revisions')
     for (const permissionMode of ['auto', 'ask', 'deny', 'allowlist'] as const) {
       for (const autonomy of ['observe', 'recommend', 'draft', 'act'] as const) {
-        expect(evaluator.evaluate({
+        expect(await evaluator.evaluate({
           ...context(),
           permissionMode,
           autonomy,
@@ -121,7 +121,7 @@ describe('AccessGrantEvaluator', () => {
     }
   })
 
-  it('prefers a bounded lower-autonomy match deterministically', () => {
+  it('prefers a bounded lower-autonomy match deterministically', async () => {
     grants.create({
       ...grantInput(),
       fieldScope: { mode: 'all' },
@@ -130,39 +130,39 @@ describe('AccessGrantEvaluator', () => {
       expiresAt: 900,
     }, 100)
     const bounded = grants.create(grantInput(), 101)
-    expect(evaluator.evaluate(context(), 500)).toMatchObject({
+    expect(await evaluator.evaluate(context(), 500)).toMatchObject({
       decision: 'allow',
       grantId: bounded.grantId,
       grantRevision: 1,
     })
   })
 
-  it('fails closed on malformed trusted context without querying grants', () => {
+  it('fails closed on malformed trusted context without querying grants', async () => {
     const invalid = {
       ...context(),
       subjectId: 'person\nother',
     }
     database.rawMainHandle.exec('DROP TABLE access_grant_revisions')
-    expect(evaluator.evaluate(invalid, 500)).toEqual({
+    expect(await evaluator.evaluate(invalid, 500)).toEqual({
       decision: 'deny',
       code: 'context_invalid',
       evaluatorVersion: 'access_grant.v1',
     })
   })
 
-  it('rejects ambiguous empty and whole-resource scope requests', () => {
+  it('rejects ambiguous empty and whole-resource scope requests', async () => {
     grants.create(grantInput(), 100)
-    expect(evaluator.evaluate({
+    expect(await evaluator.evaluate({
       ...context(),
       fieldScope: { mode: 'list', ids: [] },
     }, 500)).toMatchObject({ decision: 'deny', code: 'context_invalid' })
-    expect(evaluator.evaluate({
+    expect(await evaluator.evaluate({
       ...context(),
       fieldScope: { mode: 'all' },
     }, 500)).toMatchObject({ decision: 'deny', code: 'no_matching_grant' })
   })
 
-  it('unions positive grants while revoking each identity independently', () => {
+  it('unions positive grants while revoking each identity independently', async () => {
     const first = grants.create(grantInput(), 100)
     const second = grants.create(grantInput(), 101)
     grants.revoke({
@@ -171,7 +171,7 @@ describe('AccessGrantEvaluator', () => {
       profileId: first.profileId,
       expectedRevision: 1,
     }, 500)
-    expect(evaluator.evaluate(context(), 500)).toMatchObject({
+    expect(await evaluator.evaluate(context(), 500)).toMatchObject({
       decision: 'allow', grantId: second.grantId,
     })
     grants.revoke({
@@ -180,12 +180,12 @@ describe('AccessGrantEvaluator', () => {
       profileId: second.profileId,
       expectedRevision: 1,
     }, 501)
-    expect(evaluator.evaluate(context(), 501)).toMatchObject({
+    expect(await evaluator.evaluate(context(), 501)).toMatchObject({
       decision: 'deny', code: 'no_matching_grant',
     })
   })
 
-  it('supports explicit whole-resource, nullable-channel, and no-consent fences', () => {
+  it('supports explicit whole-resource, nullable-channel, and no-consent fences', async () => {
     const autonomyLevels = ['observe', 'recommend', 'draft', 'act'] as const
     for (const autonomyCeiling of autonomyLevels) {
       grants.create({
@@ -197,7 +197,7 @@ describe('AccessGrantEvaluator', () => {
         autonomyCeiling,
       }, 100)
       for (const autonomy of autonomyLevels) {
-        const decision = evaluator.evaluate({
+        const decision = await evaluator.evaluate({
           ...context(),
           channel: null,
           fieldScope: { mode: 'all' },
@@ -228,7 +228,7 @@ describe('AccessGrantEvaluator', () => {
     }
   })
 
-  it('evaluates a generated cross-scope matrix with exactly one complete match', () => {
+  it('evaluates a generated cross-scope matrix with exactly one complete match', async () => {
     grants.create(grantInput(), 100)
     const dimensions: Array<Array<Partial<AccessEvaluationContext>>> = [
       [{ workspaceId: 'workspace.test' }, { workspaceId: 'workspace.other' }],
@@ -265,7 +265,7 @@ describe('AccessGrantEvaluator', () => {
     }
     let allowed = 0
     for (const overrides of cases) {
-      const decision = evaluator.evaluate({ ...context(), ...overrides }, 500)
+      const decision = await evaluator.evaluate({ ...context(), ...overrides }, 500)
       if (decision.decision === 'allow') allowed += 1
       else expect(decision.code).toBe('no_matching_grant')
     }
@@ -273,7 +273,7 @@ describe('AccessGrantEvaluator', () => {
     expect(allowed).toBe(1)
   })
 
-  it('fails closed when a persisted current revision is logically corrupt', () => {
+  it('fails closed when a persisted current revision is logically corrupt', async () => {
     const grant = grants.create(grantInput(), 100)
     database.rawMainHandle.pragma('ignore_check_constraints = ON')
     database.rawMainHandle.prepare(`
@@ -289,16 +289,16 @@ describe('AccessGrantEvaluator', () => {
       UPDATE access_grants SET current_revision = 2 WHERE grant_id = ?
     `).run(grant.grantId)
     database.rawMainHandle.pragma('ignore_check_constraints = OFF')
-    expect(evaluator.evaluate(context(), 500)).toEqual({
+    expect(await evaluator.evaluate(context(), 500)).toEqual({
       decision: 'deny',
       code: 'grant_state_invalid',
       evaluatorVersion: 'access_grant.v1',
     })
   })
 
-  it('fails closed with a safe code when live grant state is unavailable', () => {
+  it('fails closed with a safe code when live grant state is unavailable', async () => {
     database.rawMainHandle.exec('DROP TABLE access_grant_revisions')
-    expect(evaluator.evaluate(context(), 500)).toEqual({
+    expect(await evaluator.evaluate(context(), 500)).toEqual({
       decision: 'deny',
       code: 'grant_state_invalid',
       evaluatorVersion: 'access_grant.v1',

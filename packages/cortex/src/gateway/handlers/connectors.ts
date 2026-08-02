@@ -45,8 +45,8 @@ const SETTING_MCP_REGISTRY_ENABLED = 'connectors.mcp_registry_enabled'
  * tool's search-suggestion banners; that path retired 2026-05-12
  * alongside the search action.
  */
-function isMCPRegistryEnabled(settings: WebSearchSettingsStore): boolean {
-  return settings.getSetting(SETTING_MCP_REGISTRY_ENABLED)?.value === 'true'
+async function isMCPRegistryEnabled(settings: WebSearchSettingsStore): Promise<boolean> {
+  return (await settings.getSetting(SETTING_MCP_REGISTRY_ENABLED))?.value === 'true'
 }
 
 export interface ConnectorHandlersDeps {
@@ -306,8 +306,8 @@ export function createConnectorHandlers(deps: ConnectorHandlersDeps) {
  */
 export function createConnectorsHandler(profileRegistry: ProfileRegistry) {
   const noopStore: WebSearchSettingsStore = {
-    getSetting: () => undefined,
-    setSetting: () => undefined,
+    getSetting: async () => undefined,
+    setSetting: async () => undefined,
   }
   return createConnectorHandlers({ profileRegistry, settings: noopStore }).listConnectors
 }

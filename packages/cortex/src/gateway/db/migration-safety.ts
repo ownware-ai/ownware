@@ -12,14 +12,16 @@
  *   mode, where a raw copy can miss un-checkpointed pages. VACUUM INTO writes
  *   a consistent, defragmented single-file copy and is synchronous (fits the
  *   synchronous DB constructor). [E3]
- * - The two-instances-racing case (E5) cannot happen on desktop: the client holds
- *   `app.requestSingleInstanceLock()`, so exactly one gateway process runs.
- * - Schema version is recorded in BOTH `_migrations` (audit trail / source of
- *   truth) and the DB header `PRAGMA user_version` (instant read for the
- *   downgrade guard, no query needed). [R6/E15]
+ * - The current SQLite support envelope remains one gateway process per
+ *   database for ordinary runtime work. Startup itself uses an adapter-owned
+ *   lock database, so two library/server callers cannot race the snapshot,
+ *   migration or restore sequence. Desktop's single-instance lock is not part
+ *   of that proof. [E5]
+ * - `_migrations` is authoritative: startup validates its exact ordered
+ *   version/name prefix, plus immutable fingerprints from the opt-in migration
+ *   onward. `PRAGMA user_version` is only a non-authoritative header mirror.
  */
 
-import Database from 'better-sqlite3'
 import {
   mkdirSync,
   readdirSync,
@@ -31,11 +33,17 @@ import {
   existsSync,
 } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
+import { createHash } from 'node:crypto'
 import type { Migration } from './schema.js'
 import type { ErrorCategory, UserAction } from '../../errors/categories.js'
+import {
+  openSqliteDatabase,
+  type SqliteDatabase,
+} from '../../storage/sqlite-driver.js'
 
 const BACKUP_DIR_NAME = 'backups'
 const BACKUPS_TO_KEEP = 5
+const DEFAULT_MIGRATION_LOCK_TIMEOUT_MS = 5_000
 
 /**
  * A migration could not be applied safely. Carries a `category` so it routes
@@ -44,10 +52,109 @@ const BACKUPS_TO_KEEP = 5
  */
 export class MigrationSafetyError extends Error {
   readonly category: ErrorCategory = 'sqlite'
-  readonly userAction: UserAction = 'restart-app'
-  constructor(message: string, options?: { readonly cause?: unknown }) {
+  readonly userAction: UserAction
+  constructor(
+    message: string,
+    options?: {
+      readonly cause?: unknown
+      readonly userAction?: UserAction
+    },
+  ) {
     super(message, options)
     this.name = 'MigrationSafetyError'
+    this.userAction = options?.userAction ?? 'restart-app'
+  }
+}
+
+export interface SqliteMigrationLock {
+  /** Idempotent. A process crash also releases SQLite's operating-system lock. */
+  release(): void
+}
+
+export interface OpenDatabaseSafelyOptions {
+  /** Test seam and bounded startup policy; production defaults to five seconds. */
+  readonly migrationLockTimeoutMs?: number
+}
+
+/**
+ * A separate SQLite file lets migration/recovery hold one write reservation
+ * without blocking the main handle that applies migrations. SQLite owns the
+ * operating-system lock, so process exit releases it without stale PID files.
+ */
+export function sqliteMigrationLockPath(dbPath: string): string {
+  return `${dbPath}.migration-lock.sqlite`
+}
+
+/**
+ * Acquire the adapter-owned cross-process migration lock.
+ *
+ * The lock covers history inspection, snapshot, migration and recovery. It is
+ * intentionally not a claim that all gateway runtime work supports multiple
+ * processes; it proves only that startup schema effects cannot race.
+ */
+export function acquireSqliteMigrationLock(
+  dbPath: string,
+  timeoutMs: number = DEFAULT_MIGRATION_LOCK_TIMEOUT_MS,
+): SqliteMigrationLock {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
+    throw new MigrationSafetyError(
+      'Ownware could not establish its database update lock because the lock timeout is invalid.',
+      { userAction: 'contact-support' },
+    )
+  }
+
+  let lockDb: SqliteDatabase | null = null
+  try {
+    lockDb = openSqliteDatabase(sqliteMigrationLockPath(dbPath), {
+      timeout: timeoutMs,
+    })
+    lockDb.exec(`
+      CREATE TABLE IF NOT EXISTS ownware_migration_lock (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1)
+      )
+    `)
+    lockDb.exec('BEGIN IMMEDIATE')
+    // Materialize a write in the uncommitted transaction. This makes the
+    // effect boundary observable and prevents a runtime/driver optimization
+    // from treating an otherwise empty transaction as non-locking.
+    lockDb.prepare(`
+      INSERT INTO ownware_migration_lock (singleton) VALUES (1)
+      ON CONFLICT(singleton) DO UPDATE SET singleton = excluded.singleton
+    `).run()
+  } catch (error) {
+    try {
+      lockDb?.close()
+    } catch {
+      // A failed lock handle has no customer data and no further recovery.
+    }
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { readonly code?: unknown }).code ?? '')
+      : ''
+    const contended = code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED'
+    throw new MigrationSafetyError(
+      contended
+        ? 'Another Ownware process is currently checking or updating this data. Stop the other process or wait for it to finish, then try again.'
+        : 'Ownware could not establish the exclusive database update lock, so it stopped before changing your data.',
+    )
+  }
+
+  let active = true
+  return {
+    release(): void {
+      if (!active) return
+      active = false
+      try {
+        if (lockDb?.inTransaction) lockDb.exec('ROLLBACK')
+      } catch {
+        // Closing the handle below is the authoritative OS-lock release.
+      }
+      try {
+        lockDb?.close()
+      } catch {
+        // Best-effort close during startup unwind; process exit also releases it.
+      }
+      lockDb = null
+    },
   }
 }
 
@@ -119,28 +226,193 @@ function fileStamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
 
-function readSchemaVersion(db: Database.Database): number {
-  try {
-    const row = db
-      .prepare('SELECT MAX(version) as v FROM _migrations')
-      .get() as { v: number | null } | undefined
-    return row?.v ?? 0
-  } catch (err) {
-    // A genuinely brand-new database has no `_migrations` table yet → v0.
-    // But a CORRUPT file also fails this read, and masking that as "v0"
-    // is dangerous: the runner would then try to re-create every table on
-    // a malformed file, fail, and tell the user to reinstall — destroying
-    // recoverable data. Only the missing-table case means "fresh"; any
-    // other failure (corruption) must propagate so the caller can recover.
-    if (isMissingTableError(err)) return 0
-    throw err
-  }
+const MIGRATION_FINGERPRINT_FORMAT = 'ownware-sqlite-migration-v1'
+
+interface AppliedMigrationRow {
+  readonly version: unknown
+  readonly name: unknown
+  readonly fingerprint: unknown
 }
 
-/** better-sqlite3's "no such table: _migrations" — a brand-new, empty DB. */
-function isMissingTableError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase()
-  return msg.includes('no such table')
+interface AppliedMigrationHistory {
+  readonly tableExists: boolean
+  readonly hasFingerprintColumn: boolean
+  readonly rows: readonly AppliedMigrationRow[]
+}
+
+/** Fingerprint one immutable SQLite migration definition. */
+export function migrationFingerprint(migration: Migration): string {
+  const payload = JSON.stringify({
+    format: MIGRATION_FINGERPRINT_FORMAT,
+    version: migration.version,
+    name: migration.name,
+    sql: migration.sql,
+    destructiveReason: migration.destructive?.reason ?? null,
+    disableForeignKeysReason: migration.disableForeignKeys?.reason ?? null,
+    recordsFingerprint: migration.recordsFingerprint === true,
+  })
+  return `sha256:${createHash('sha256').update(payload).digest('hex')}`
+}
+
+function migrationHistoryMismatch(): MigrationSafetyError {
+  return new MigrationSafetyError(
+    `Ownware stopped before changing your data because this database's update ` +
+      `history does not match this version of the app. Your data is safe and ` +
+      `untouched — please contact support before trying to repair or reinstall it.`,
+    { userAction: 'contact-support' },
+  )
+}
+
+/** Validate the compiled manifest before it can interpret or mutate a DB. */
+export function validateMigrationManifest(migrations: readonly Migration[]): void {
+  const names = new Set<string>()
+  let fingerprintIntroducers = 0
+  for (let index = 0; index < migrations.length; index += 1) {
+    const migration = migrations[index]!
+    if (migration.version !== index + 1) throw migrationHistoryMismatch()
+    if (migration.name.trim().length === 0 || names.has(migration.name)) {
+      throw migrationHistoryMismatch()
+    }
+    if (migration.sql.trim().length === 0) throw migrationHistoryMismatch()
+    names.add(migration.name)
+    if (migration.recordsFingerprint === true) fingerprintIntroducers += 1
+  }
+  if (fingerprintIntroducers > 1) throw migrationHistoryMismatch()
+}
+
+function readAppliedMigrationHistory(db: SqliteDatabase): AppliedMigrationHistory {
+  // A corrupt sqlite_master query propagates to the corruption recovery path;
+  // only an actually absent table means a brand-new database.
+  const table = db.prepare(
+    `SELECT 1 AS present FROM sqlite_master
+     WHERE type = 'table' AND name = '_migrations'`,
+  ).get() as { present: number } | undefined
+  if (!table) return { tableExists: false, hasFingerprintColumn: false, rows: [] }
+
+  const columns = db.prepare(`PRAGMA table_info('_migrations')`).all() as Array<{
+    readonly name: unknown
+  }>
+  const names = new Set(columns.map((column) => column.name).filter(
+    (name): name is string => typeof name === 'string',
+  ))
+  if (!names.has('version') || !names.has('name')) throw migrationHistoryMismatch()
+
+  const hasFingerprintColumn = names.has('fingerprint')
+  const rows = db.prepare(
+    hasFingerprintColumn
+      ? `SELECT version, name, fingerprint FROM _migrations ORDER BY version ASC`
+      : `SELECT version, name, NULL AS fingerprint FROM _migrations ORDER BY version ASC`,
+  ).all() as AppliedMigrationRow[]
+  return { tableExists: true, hasFingerprintColumn, rows }
+}
+
+function validateAppliedMigrationHistory(
+  history: AppliedMigrationHistory,
+  migrations: readonly Migration[],
+): number {
+  if (!history.tableExists) return 0
+  // Migration 1 creates and records this table in one transaction. An existing
+  // empty audit table is therefore not a valid committed schema state.
+  if (history.rows.length === 0) throw migrationHistoryMismatch()
+
+  const targetVersion = migrations.at(-1)?.version ?? 0
+  const finalRow = history.rows.at(-1)
+  if (
+    finalRow != null &&
+    typeof finalRow.version === 'number' &&
+    Number.isSafeInteger(finalRow.version) &&
+    finalRow.version > targetVersion
+  ) {
+    throw new MigrationSafetyError(
+      `Your data was last used by a newer version of Ownware (database v${finalRow.version}, ` +
+        `this app supports up to v${targetVersion}). Your data is safe and untouched — ` +
+        `please install the latest version of Ownware to open it.`,
+    )
+  }
+
+  if (history.rows.length > migrations.length) throw migrationHistoryMismatch()
+  const fingerprintsFrom = migrations.find(
+    (migration) => migration.recordsFingerprint === true,
+  )?.version ?? Number.POSITIVE_INFINITY
+
+  for (let index = 0; index < history.rows.length; index += 1) {
+    const row = history.rows[index]!
+    const expected = migrations[index]
+    if (
+      expected == null ||
+      typeof row.version !== 'number' ||
+      !Number.isSafeInteger(row.version) ||
+      row.version !== expected.version ||
+      typeof row.name !== 'string' ||
+      row.name !== expected.name
+    ) {
+      throw migrationHistoryMismatch()
+    }
+
+    if (row.fingerprint != null) {
+      if (
+        typeof row.fingerprint !== 'string' ||
+        row.fingerprint !== migrationFingerprint(expected)
+      ) {
+        throw migrationHistoryMismatch()
+      }
+    } else if (row.version >= fingerprintsFrom) {
+      throw migrationHistoryMismatch()
+    }
+  }
+
+  if (
+    history.rows.some((row) => (
+      typeof row.version === 'number' && row.version >= fingerprintsFrom
+    )) && !history.hasFingerprintColumn
+  ) {
+    throw migrationHistoryMismatch()
+  }
+
+  const currentVersion = history.rows.at(-1)?.version
+  if (typeof currentVersion !== 'number') throw migrationHistoryMismatch()
+  return currentVersion
+}
+
+/**
+ * Read-only exact-history assertion for transfer/diagnostic callers.
+ * It never migrates, repairs or rewrites a receipt.
+ */
+export function assertCurrentSqliteMigrationHistory(
+  db: SqliteDatabase,
+  migrations: readonly Migration[],
+): number {
+  validateMigrationManifest(migrations)
+  const currentVersion = validateAppliedMigrationHistory(
+    readAppliedMigrationHistory(db),
+    migrations,
+  )
+  const compiledVersion = migrations.at(-1)?.version ?? 0
+  if (currentVersion !== compiledVersion) throw migrationHistoryMismatch()
+  return currentVersion
+}
+
+function insertAppliedMigration(db: SqliteDatabase, migration: Migration): void {
+  const columns = db.prepare(`PRAGMA table_info('_migrations')`).all() as Array<{
+    readonly name: unknown
+  }>
+  const hasFingerprintColumn = columns.some((column) => column.name === 'fingerprint')
+  if (migration.recordsFingerprint === true && !hasFingerprintColumn) {
+    // The opt-in migration must establish the durable receipt in the same
+    // transaction as its schema change. Succeeding now and failing only on the
+    // next restart would create a falsely acknowledged migration.
+    throw migrationHistoryMismatch()
+  }
+  if (hasFingerprintColumn) {
+    db.prepare(
+      `INSERT INTO _migrations (version, name, fingerprint) VALUES (?, ?, ?)`,
+    ).run(migration.version, migration.name, migrationFingerprint(migration))
+    return
+  }
+  db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
+    migration.version,
+    migration.name,
+  )
 }
 
 /**
@@ -207,7 +479,7 @@ function setAsideCorruptFile(dbPath: string): void {
  * to a `.partial` file and renames into place only on success. [R1, E2]
  */
 export function snapshotDatabase(
-  db: Database.Database,
+  db: SqliteDatabase,
   dbPath: string,
   version: number,
 ): string {
@@ -278,22 +550,15 @@ export function restoreSnapshot(backupPath: string, dbPath: string): void {
  * the latest version and the handle is still open and usable.
  */
 export function runMigrationsSafely(
-  db: Database.Database,
+  db: SqliteDatabase,
   dbPath: string,
   migrations: readonly Migration[],
 ): void {
-  const currentVersion = readSchemaVersion(db)
+  validateMigrationManifest(migrations)
+  const history = readAppliedMigrationHistory(db)
+  const currentVersion = validateAppliedMigrationHistory(history, migrations)
   const lastMigration = migrations.at(-1)
   const targetVersion = lastMigration ? lastMigration.version : 0
-
-  // R6 — DB written by a NEWER app than this code. Never write to it.
-  if (currentVersion > targetVersion) {
-    throw new MigrationSafetyError(
-      `Your data was last used by a newer version of Ownware (database v${currentVersion}, ` +
-        `this app supports up to v${targetVersion}). Your data is safe and untouched — ` +
-        `please install the latest version of Ownware to open it.`,
-    )
-  }
 
   const pending = migrations.filter((m) => m.version > currentVersion)
   if (pending.length === 0) {
@@ -344,10 +609,7 @@ export function runMigrationsSafely(
               )
             }
           }
-          db.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
-            migration.version,
-            migration.name,
-          )
+          insertAppliedMigration(db, migration)
         })()
       } finally {
         if (fkOff) db.pragma('foreign_keys = ON')
@@ -364,7 +626,8 @@ export function runMigrationsSafely(
       throw new Error(`integrity_check returned: ${String(integrity)}`)
     }
 
-    // R6/E15 — mirror the new version into the header for instant downgrade checks.
+    // R6/E15 — mirror the new version into the header for diagnostics. The
+    // ordered `_migrations` history above remains the authority.
     db.pragma(`user_version = ${targetVersion}`)
   } catch (err) {
     if (!snapshotPath) {
@@ -416,18 +679,18 @@ export function runMigrationsSafely(
  * Returns a live, migrated handle. Throws `MigrationSafetyError` only when
  * recovery is impossible (no backup, or the backup also won't open).
  */
-export function openDatabaseSafely(
+function openDatabaseSafelyUnlocked(
   dbPath: string,
-  configure: (db: Database.Database) => void,
+  configure: (db: SqliteDatabase) => void,
   migrations: readonly Migration[],
-): Database.Database {
-  const open = (): Database.Database => {
-    const db = new Database(dbPath)
+): SqliteDatabase {
+  const open = (): SqliteDatabase => {
+    const db = openSqliteDatabase(dbPath)
     configure(db)
     return db
   }
 
-  let db: Database.Database | null = null
+  let db: SqliteDatabase | null = null
   try {
     db = open()
     runMigrationsSafely(db, dbPath, migrations)
@@ -472,5 +735,26 @@ export function openDatabaseSafely(
         { cause: recoverErr },
       )
     }
+  }
+}
+
+/**
+ * Open, inspect, migrate and recover under the adapter's cross-process lock.
+ * No main-database handle is opened until the lock is held.
+ */
+export function openDatabaseSafely(
+  dbPath: string,
+  configure: (db: SqliteDatabase) => void,
+  migrations: readonly Migration[],
+  options: OpenDatabaseSafelyOptions = {},
+): SqliteDatabase {
+  const lock = acquireSqliteMigrationLock(
+    dbPath,
+    options.migrationLockTimeoutMs ?? DEFAULT_MIGRATION_LOCK_TIMEOUT_MS,
+  )
+  try {
+    return openDatabaseSafelyUnlocked(dbPath, configure, migrations)
+  } finally {
+    lock.release()
   }
 }

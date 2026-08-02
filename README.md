@@ -77,8 +77,10 @@ thing you pay for.
 
 - **Any model.** Anthropic, OpenAI, Google, OpenRouter — or fully local via
   [Ollama](https://ollama.com). The first answer works **without any API key**.
-- **Yours.** Self-hosted, your keys never leave your machine (encrypted vault),
-  all data in `~/.ownware/` on your box.
+- **Yours.** Self-hosted, your keys never leave your machine (encrypted vault).
+  SQLite is the zero-configuration default; library deployments can explicitly
+  select tenant-owned PostgreSQL while local protected artifacts stay on your
+  infrastructure.
 - **Safe by default.** Exposing beyond localhost force-enables auth + TLS; an
   unsafe bind refuses to boot. Dangerous tool calls pause and ask first.
 - **One wire contract.** The CLI, the SDK, Slack, your future app — all talk to the
@@ -189,9 +191,9 @@ Have a key? `ownware key add openai` (or `anthropic` · `google` · `openrouter`
 
 ### How deployment works (today)
 
-The gateway is deliberately **one ordinary Node process + one data folder**
-(`~/.ownware`). Deploying = running that same command on any machine — a VPS, a
-Raspberry Pi, a container:
+The default CLI deployment is deliberately **one ordinary Node process + one data
+folder** (`~/.ownware`) using SQLite. Deploying = running that same command on any
+machine — a VPS, a Raspberry Pi, a container:
 
 ```bash
 ownware serve --host 0.0.0.0 --port 3011
@@ -204,10 +206,11 @@ at boot, persisted at `~/.ownware/gateway-token`), TLS forced ON, and disabling 
 domains, put a reverse proxy or tunnel (Caddy, nginx, Tailscale, cloudflared) in front
 — [docs/gateway/exposing.md](docs/gateway/exposing.md).
 
-**Single-click deploy?** Not yet — honestly. Today it's *one command*, not one click.
-Because the platform is one process + one folder, one-click templates (Docker,
-Railway/Render/Fly buttons) are a thin wrapper and on the roadmap. If it runs Node, it
-runs Ownware now.
+Library deployments can instead use a tenant-owned PostgreSQL database; see
+[gateway storage](docs/gateway/storage.md). **Single-click deploy?** Not yet —
+honestly. Today it's *one command*, not one click. Templates for the default SQLite
+deployment are a thin wrapper and on the roadmap; PostgreSQL templates must also
+provision or connect the database. If it runs Node, it runs Ownware now.
 
 ## Step 3 — Talk to it (four doors, one contract)
 
@@ -363,8 +366,9 @@ bun run test         # every suite (LLM/network e2e lanes are env-gated)
 bun run smoke        # keyless first-run canary: boot + health + models
 ```
 
-Data lives in `~/.ownware/` (`OWNWARE_DATA_DIR` overrides). Security reports:
-[SECURITY.md](SECURITY.md).
+Local operational data lives in `~/.ownware/` (`OWNWARE_DATA_DIR` overrides); durable
+application state can use SQLite there or a tenant-owned PostgreSQL database. See
+[gateway storage](docs/gateway/storage.md). Security reports: [SECURITY.md](SECURITY.md).
 
 ## License
 

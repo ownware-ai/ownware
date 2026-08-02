@@ -1,9 +1,6 @@
 import { join } from 'node:path'
-import type {
-  CandidateStore,
-  DeploymentHealth,
-  DeploymentRoutingState,
-} from '../gateway/candidate-store.js'
+import type { DeploymentHealth, DeploymentRoutingState } from '../gateway/candidate-store.js'
+import type { CandidateRepository } from '../storage/platform-repositories.js'
 import { validateProfileCandidate } from './candidate.js'
 import { loadProfile, type LoadedProfile } from './loader.js'
 
@@ -26,11 +23,11 @@ export class CandidateActivationRejected extends Error {
 export class CandidateProfileResolver {
   constructor(private readonly options: {
     readonly candidatesRoot: string
-    readonly store: CandidateStore
+    readonly store: CandidateRepository
   }) {}
 
   async resolve(profileId: string): Promise<ResolvedCandidateProfile | null> {
-    const active = this.options.store.getActive(profileId)
+    const active = await this.options.store.getActive(profileId)
     if (!active) return null
     return this.resolveCandidate(profileId, active.candidateId)
   }
@@ -39,8 +36,8 @@ export class CandidateProfileResolver {
     profileId: string,
     candidateId: string,
   ): Promise<ResolvedCandidateProfile> {
-    const record = this.options.store.get(candidateId)
-    const activeId = this.options.store.getActive(profileId)?.candidateId ?? null
+    const record = await this.options.store.get(candidateId)
+    const activeId = (await this.options.store.getActive(profileId))?.candidateId ?? null
     if (!record || record.state !== 'ready') {
       throw new CandidateActivationRejected('candidate_not_ready', activeId)
     }
@@ -91,7 +88,7 @@ export interface CandidateRollbackResult {
 
 export class CandidateActivator {
   constructor(private readonly options: {
-    readonly store: CandidateStore
+    readonly store: CandidateRepository
     readonly resolver: CandidateProfileResolver
     readonly afterSwitch?: (profileId: string) => void | Promise<void>
   }) {}
@@ -102,7 +99,7 @@ export class CandidateActivator {
     readonly expectedActiveCandidateId: string | null
   }): Promise<CandidateActivationResult> {
     await this.options.resolver.resolveCandidate(input.profileId, input.candidateId)
-    const changed = this.options.store.compareAndSetActive(input)
+    const changed = await this.options.store.compareAndSetActive(input)
     if (changed.status === 'conflict') {
       throw new CandidateActivationRejected(
         'candidate_activation_conflict',
@@ -123,13 +120,13 @@ export class CandidateActivator {
       await this.options.afterSwitch?.(input.profileId)
     } catch {
       const observedAt = Date.now()
-      this.options.store.recordHealth({
+      await this.options.store.recordHealth({
         profileId: input.profileId,
         candidateId: activeCandidateId,
         health: 'degraded',
         observedAt,
       })
-      const actual = this.options.store.getActive(input.profileId)!
+      const actual = (await this.options.store.getActive(input.profileId))!
       return {
         state: 'activation_failed',
         changed: changed.status === 'activated',
@@ -144,13 +141,13 @@ export class CandidateActivator {
       }
     }
     const observedAt = Date.now()
-    this.options.store.recordHealth({
+    await this.options.store.recordHealth({
       profileId: input.profileId,
       candidateId: activeCandidateId,
       health: 'healthy',
       observedAt,
     })
-    const actual = this.options.store.getActive(input.profileId)!
+    const actual = (await this.options.store.getActive(input.profileId))!
     return {
       state: 'active',
       changed: changed.status === 'activated',
@@ -194,7 +191,7 @@ export class CandidateDeploymentRejected extends Error {
   constructor(
     readonly code: 'profile_not_deployed' | 'deployment_conflict' |
       'candidate_storage_inconsistent' | 'candidate_not_ready',
-    readonly actual: ReturnType<CandidateStore['getActive']>,
+    readonly actual: Awaited<ReturnType<CandidateRepository['getActive']>>,
   ) {
     super(code)
     this.name = 'CandidateDeploymentRejected'
@@ -203,16 +200,16 @@ export class CandidateDeploymentRejected extends Error {
 
 export class CandidateDeploymentManager {
   constructor(private readonly options: {
-    readonly store: CandidateStore
+    readonly store: CandidateRepository
     readonly resolver: CandidateProfileResolver
-    readonly activeRunCount: (profileId: string) => number
+    readonly activeRunCount: (profileId: string) => number | Promise<number>
   }) {}
 
-  pause(input: {
+  async pause(input: {
     readonly profileId: string
     readonly expectedDeploymentRevision: number
-  }): CandidateDeploymentResult {
-    const transition = this.options.store.compareAndSetRouting({
+  }): Promise<CandidateDeploymentResult> {
+    const transition = await this.options.store.compareAndSetRouting({
       profileId: input.profileId,
       expectedRevision: input.expectedDeploymentRevision,
       routingState: 'paused',
@@ -224,7 +221,7 @@ export class CandidateDeploymentManager {
     readonly profileId: string
     readonly expectedDeploymentRevision: number
   }): Promise<CandidateDeploymentResult> {
-    const current = this.options.store.getActive(input.profileId)
+    const current = await this.options.store.getActive(input.profileId)
     if (!current) throw new CandidateDeploymentRejected('profile_not_deployed', null)
     if (current.deploymentRevision !== input.expectedDeploymentRevision) {
       throw new CandidateDeploymentRejected('deployment_conflict', current)
@@ -233,13 +230,13 @@ export class CandidateDeploymentManager {
       await this.options.resolver.resolveCandidate(input.profileId, current.candidateId)
     } catch (error) {
       if (error instanceof CandidateActivationRejected) {
-        this.options.store.recordHealth({
+        await this.options.store.recordHealth({
           profileId: input.profileId,
           candidateId: current.candidateId,
           health: 'unhealthy',
           observedAt: Date.now(),
         })
-        const actual = this.options.store.getActive(input.profileId)
+        const actual = await this.options.store.getActive(input.profileId)
         throw new CandidateDeploymentRejected(
           error.code === 'candidate_not_ready' ? 'candidate_not_ready' :
             'candidate_storage_inconsistent',
@@ -248,19 +245,19 @@ export class CandidateDeploymentManager {
       }
       throw error
     }
-    const transition = this.options.store.compareAndSetRouting({
+    const transition = await this.options.store.compareAndSetRouting({
       profileId: input.profileId,
       expectedRevision: input.expectedDeploymentRevision,
       routingState: 'active',
     })
-    const result = this.toResult(input.profileId, transition)
-    this.options.store.recordHealth({
+    const result = await this.toResult(input.profileId, transition)
+    await this.options.store.recordHealth({
       profileId: input.profileId,
       candidateId: result.activeCandidateId,
       health: 'healthy',
       observedAt: Date.now(),
     })
-    const actual = this.options.store.getActive(input.profileId)!
+    const actual = (await this.options.store.getActive(input.profileId))!
     return {
       ...result,
       health: actual.health,
@@ -268,11 +265,11 @@ export class CandidateDeploymentManager {
     }
   }
 
-  private toResult(
+  private async toResult(
     profileId: string,
-    transition: ReturnType<CandidateStore['compareAndSetRouting']>,
-  ): CandidateDeploymentResult {
-    const actual = this.options.store.getActive(profileId)
+    transition: Awaited<ReturnType<CandidateRepository['compareAndSetRouting']>>,
+  ): Promise<CandidateDeploymentResult> {
+    const actual = await this.options.store.getActive(profileId)
     if (transition.status === 'not_deployed' || !actual) {
       throw new CandidateDeploymentRejected('profile_not_deployed', actual)
     }
@@ -288,7 +285,7 @@ export class CandidateDeploymentManager {
       routingState: actual.routingState,
       health: actual.health,
       healthObservedAt: actual.healthObservedAt,
-      activeRunCount: this.options.activeRunCount(profileId),
+      activeRunCount: await this.options.activeRunCount(profileId),
     }
   }
 }

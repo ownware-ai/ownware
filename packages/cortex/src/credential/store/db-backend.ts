@@ -21,7 +21,10 @@
  */
 
 import { createHash } from 'node:crypto'
-import type Database from 'better-sqlite3'
+import type {
+  SqliteDatabase,
+  SqliteStatement,
+} from '../../storage/sqlite-driver.js'
 import {
   decrypt as decryptV2OrV1,
   encryptV2,
@@ -157,9 +160,9 @@ function encryptedValueRevision(encryptedValue: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Construct against any `Database.Database`. Production callers pass
- * `state.rawDbHandle` (gateway state's escape-hatch accessor); tests
- * pass a fresh `new Database(':memory:')` with the migrations applied.
+ * Construct against an adapter-owned `SqliteDatabase`. Production
+ * construction is confined to the SQLite security-repository factory;
+ * focused backend tests may pass an isolated database with migrations applied.
  *
  * Holds prepared statements as members so the per-call cost is one
  * SQLite step, not a re-prepare. The handle's lifecycle is the
@@ -169,13 +172,13 @@ export class DbCredentialBackend implements CredentialBackend {
   readonly name = 'sqlite-credentials'
   readonly categories = ['llm', 'tool', 'oauth', 'mcp-server'] as const
 
-  private readonly db: Database.Database
-  private readonly stmtInsert: Database.Statement
-  private readonly stmtGet: Database.Statement
-  private readonly stmtUpdate: Database.Statement
-  private readonly stmtDelete: Database.Statement
+  private readonly db: SqliteDatabase
+  private readonly stmtInsert: SqliteStatement
+  private readonly stmtGet: SqliteStatement
+  private readonly stmtUpdate: SqliteStatement
+  private readonly stmtDelete: SqliteStatement
 
-  constructor(db: Database.Database) {
+  constructor(db: SqliteDatabase) {
     this.db = db
     this.stmtInsert = db.prepare(INSERT_SQL)
     this.stmtGet = db.prepare(`SELECT ${ALL_COLS} FROM credentials WHERE id = ?`)
@@ -449,7 +452,7 @@ export class DbCredentialBackend implements CredentialBackend {
       return { kind: 'updated', credential: validated }
     })
 
-    return txn()
+    return txn.immediate()
   }
 
   // -------------------------------------------------------------------------

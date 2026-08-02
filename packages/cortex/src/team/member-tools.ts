@@ -14,15 +14,15 @@ import {
   CompleteTaskInputSchema,
   MemberFileTaskInputSchema,
 } from './schema.js'
-import type { TeamStore } from './store.js'
+import type { TeamRepository } from '../storage/platform-repositories.js'
 
 export interface MemberToolDeps {
-  readonly store: TeamStore
+  readonly store: TeamRepository
   readonly runId: string
   readonly taskId: string
   readonly memberSlug: string
   /** Fired after every successful board mutation — wires the scheduler. */
-  readonly onBoardChange: () => void
+  readonly onBoardChange: () => void | Promise<void>
 }
 
 function err(content: string): { content: string; isError: true } {
@@ -63,12 +63,12 @@ export function createMemberTeamTools(deps: MemberToolDeps): Tool[] {
       if (!parsed.success) {
         return err(`complete_task input invalid: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
       }
-      const task = store.getTask(taskId)
+      const task = await store.getTask(taskId)
       if (!task) return err(`Your task vanished from the board — this is a kernel bug.`)
       if (task.status === 'done') return err(`T${task.seq} is already complete. Do not call complete_task again.`)
       try {
-        const updated = store.completeTask(memberSlug, taskId, parsed.data.result)
-        onBoardChange()
+        const updated = await store.completeTask(memberSlug, taskId, parsed.data.result)
+        await onBoardChange()
         return ok(`T${updated.seq} "${updated.title}" is done. Your turn is complete — end it now with a one-line confirmation.`)
       } catch (e) {
         return err(e instanceof Error ? e.message : String(e))
@@ -106,11 +106,11 @@ export function createMemberTeamTools(deps: MemberToolDeps): Tool[] {
       if (!parsed.success) {
         return err(`file_task input invalid: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
       }
-      const run = store.getRun(runId)
+      const run = await store.getRun(runId)
       if (!run || run.status !== 'active') {
         return err(`This run is no longer active; new work cannot be filed.`)
       }
-      const task = store.insertTask(runId, {
+      const task = await store.insertTask(runId, {
         kind: 'work',
         title: parsed.data.title,
         brief: parsed.data.brief,
@@ -120,7 +120,7 @@ export function createMemberTeamTools(deps: MemberToolDeps): Tool[] {
         filedBy: memberSlug,
         status: 'ready',
       })
-      onBoardChange()
+      await onBoardChange()
       return ok(`Filed T${task.seq} "${task.title}" (unassigned — the Conductor will route it). Continue your own task.`)
     },
   })
@@ -151,12 +151,12 @@ export function createMemberTeamTools(deps: MemberToolDeps): Tool[] {
       if (!parsed.success) {
         return err(`ask_team input invalid: ${parsed.error.issues.map((i) => i.message).join('; ')}`)
       }
-      const run = store.getRun(runId)
+      const run = await store.getRun(runId)
       if (!run || run.status !== 'active') {
         return err(`This run is no longer active; questions cannot be filed.`)
       }
-      const me = store.getTask(taskId)
-      const question = store.insertTask(runId, {
+      const me = await store.getTask(taskId)
+      const question = await store.insertTask(runId, {
         kind: 'question',
         title: parsed.data.question.length > 120 ? `${parsed.data.question.slice(0, 119)}…` : parsed.data.question,
         brief: parsed.data.context
@@ -167,7 +167,7 @@ export function createMemberTeamTools(deps: MemberToolDeps): Tool[] {
         filedBy: memberSlug,
         status: 'ready',
       })
-      onBoardChange()
+      await onBoardChange()
       return ok(
         `Question filed as T${question.seq}. If you can progress without the answer, continue; ` +
           `if you are fully blocked, end your turn now — you will be resumed when the answer lands.`,

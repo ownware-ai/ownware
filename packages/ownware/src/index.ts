@@ -13,7 +13,39 @@
 
 // ── Serve: the gateway (the whole backend in one class) ──────────────
 export { OwnwareGateway } from '@ownware/cortex'
-export type { GatewayOptions } from '@ownware/cortex'
+export {
+  OfflineTransferError,
+  PostgreSqlTransferPreflightError,
+  SqliteTransferFindingsError,
+  SqliteTransferPreflightError,
+  StorageConfigurationError,
+  preflightPostgreSqlTransferTarget,
+  preflightSqliteTransferSource,
+  transferOfflineSqliteToPostgreSql,
+} from '@ownware/cortex'
+export type {
+  GatewayOptions,
+  GatewayStorageSelection,
+  OfflineSqliteToPostgreSqlTransferOptions,
+  OfflineSqliteToPostgreSqlTransferReceipt,
+  OfflineTransferErrorCode,
+  OfflineTransferProgress,
+  PostgreSqlConnectionSource,
+  PostgreSqlPoolOptions,
+  PostgreSqlStorageOptions,
+  PostgreSqlTlsOptions,
+  PostgreSqlTransferPreflightErrorCode,
+  PostgreSqlTransferRuntimeAuthority,
+  PostgreSqlTransferTargetReceipt,
+  PostgreSqlTransferTargetState,
+  SqliteStorageOptions,
+  SqliteTransferFinding,
+  SqliteTransferPreflightErrorCode,
+  SqliteTransferSourceOptions,
+  SqliteTransferSourceReceipt,
+  StorageConfigurationErrorCode,
+  StoragePlanSummary,
+} from '@ownware/cortex'
 
 // ── Build: profiles → running agents ─────────────────────────────────
 export { loadProfile, assembleAgent, ProfileRegistry, ProfileSchema } from '@ownware/cortex'

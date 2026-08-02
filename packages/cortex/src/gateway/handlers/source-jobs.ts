@@ -4,17 +4,19 @@ import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
   isValidIdempotencyKey,
   principalContinuityKey,
-  type RunIdempotencyStore,
 } from '../idempotency.js'
+import type { IdempotencyRepository } from '../../storage/security-repositories.js'
+import type {
+  SourceDataViewRepository,
+  SourceJobRepository,
+} from '../../storage/source-repositories.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 import {
-  SourceJobStore,
   SourceJobTargetNotFoundError,
   SourcePreparationNotReadyError,
 } from '../source-job-store.js'
 import { SourceQuotaExceededError } from '../source-quota-policy.js'
 import {
-  SourceDataViewStore,
   SourceDataViewUnavailableError,
 } from '../source-data-view-store.js'
 
@@ -28,8 +30,8 @@ const CreateSourcePreparationSchema = z.object({
 const EmptyBodySchema = z.object({}).strict().nullable()
 
 export function createSourceJobHandler(
-  jobs: SourceJobStore,
-  idempotency: RunIdempotencyStore,
+  jobs: SourceJobRepository,
+  idempotency: IdempotencyRepository,
   wakeWorker: () => void,
 ): (
   req: IncomingMessage,
@@ -47,7 +49,7 @@ export function createSourceJobHandler(
     const sourceId = params['sourceId'] ?? ''
     const sourceVersionId = params['sourceVersionId'] ?? ''
     if (!UUID.test(sourceId) || !UUID.test(sourceVersionId) ||
-        !jobs.hasTargetScoped(
+        !await jobs.hasTargetScoped(
           sourceId, sourceVersionId, principal.workspaceId, principal.profileId,
         )) {
       sendError(res, 404, 'Source version not found.',
@@ -81,7 +83,7 @@ export function createSourceJobHandler(
       key: idempotencyKey,
     }
     const fencedInput = { sourceId, sourceVersionId, operation: parsed.data.operation }
-    const claim = idempotency.claim({ ...key, input: fencedInput })
+    const claim = await idempotency.claim({ ...key, input: fencedInput })
     if (claim.kind === 'replay') {
       res.setHeader('Idempotency-Replayed', 'true')
       wakeWorker()
@@ -103,24 +105,24 @@ export function createSourceJobHandler(
     }
 
     try {
-      const result = jobs.enqueue({
+      const result = await jobs.enqueue({
         workspaceId: principal.workspaceId,
         profileId: principal.profileId,
         ...fencedInput,
       })
-      idempotency.complete({ ...key, statusCode: 202, result })
+      await idempotency.complete({ ...key, statusCode: 202, result })
       wakeWorker()
       sendJSON(res, 202, result)
     } catch (error) {
       if (error instanceof SourceQuotaExceededError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         sendError(res, 409, 'Source quota does not allow this operation.',
           'source_quota_exceeded', 'invalid_request', {
             resourceClass: error.resourceClass,
           })
         return
       }
-      idempotency.markIndeterminate(key)
+      await idempotency.markIndeterminate(key)
       if (error instanceof SourceJobTargetNotFoundError) {
         sendError(res, 404, 'Source version not found.',
           'source_version_not_found', 'not_found')
@@ -132,8 +134,8 @@ export function createSourceJobHandler(
 }
 
 export function createGetSourceJobHandler(
-  jobs: SourceJobStore,
-  dataViews: SourceDataViewStore,
+  jobs: SourceJobRepository,
+  dataViews: SourceDataViewRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -149,8 +151,8 @@ export function createGetSourceJobHandler(
     }
     const jobId = params['jobId'] ?? ''
     const job = UUID.test(jobId)
-      ? jobs.getScoped(jobId, principal.workspaceId, principal.profileId) ??
-        dataViews.getJobScoped(jobId, principal.workspaceId, principal.profileId)
+      ? await jobs.getScoped(jobId, principal.workspaceId, principal.profileId) ??
+        await dataViews.getJobScoped(jobId, principal.workspaceId, principal.profileId)
       : null
     if (!job) {
       sendError(res, 404, 'Source job not found.', 'source_job_not_found', 'not_found')
@@ -161,9 +163,9 @@ export function createGetSourceJobHandler(
 }
 
 export function createSourcePreparationHandler(
-  jobs: SourceJobStore,
-  dataViews: SourceDataViewStore,
-  idempotency: RunIdempotencyStore,
+  jobs: SourceJobRepository,
+  dataViews: SourceDataViewRepository,
+  idempotency: IdempotencyRepository,
   wakeWorker: () => void,
 ): (
   req: IncomingMessage,
@@ -181,7 +183,7 @@ export function createSourcePreparationHandler(
     const sourceId = params['sourceId'] ?? ''
     const sourceVersionId = params['sourceVersionId'] ?? ''
     if (!UUID.test(sourceId) || !UUID.test(sourceVersionId) ||
-        !jobs.hasTargetScoped(
+        !await jobs.hasTargetScoped(
           sourceId, sourceVersionId, principal.workspaceId, principal.profileId,
         )) {
       sendError(res, 404, 'Source version not found.',
@@ -208,7 +210,7 @@ export function createSourcePreparationHandler(
       key: idempotencyKey,
     }
     const fencedInput = { sourceId, sourceVersionId, operation: parsed.data.operation }
-    const claim = idempotency.claim({ ...key, input: fencedInput })
+    const claim = await idempotency.claim({ ...key, input: fencedInput })
     if (claim.kind === 'replay') {
       res.setHeader('Idempotency-Replayed', 'true')
       wakeWorker()
@@ -236,14 +238,14 @@ export function createSourcePreparationHandler(
         sourceVersionId,
       }
       const result = parsed.data.operation === 'extract_text'
-        ? jobs.enqueuePreparation(target)
-        : dataViews.enqueue(target)
-      idempotency.complete({ ...key, statusCode: 202, result })
+        ? await jobs.enqueuePreparation(target)
+        : await dataViews.enqueue(target)
+      await idempotency.complete({ ...key, statusCode: 202, result })
       wakeWorker()
       sendJSON(res, 202, result)
     } catch (error) {
       if (error instanceof SourceQuotaExceededError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         sendError(res, 409, 'Source quota does not allow this operation.',
           'source_quota_exceeded', 'invalid_request', {
             resourceClass: error.resourceClass,
@@ -251,13 +253,13 @@ export function createSourcePreparationHandler(
         return
       }
       if (error instanceof SourceJobTargetNotFoundError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         sendError(res, 404, 'Source version not found.',
           'source_version_not_found', 'not_found')
         return
       }
       if (error instanceof SourcePreparationNotReadyError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         const status = error.code === 'source_media_unsupported' ? 422
           : error.code === 'source_authority_excluded' ? 403 : 409
         sendError(
@@ -270,7 +272,7 @@ export function createSourcePreparationHandler(
         return
       }
       if (error instanceof SourceDataViewUnavailableError) {
-        idempotency.abandon(key)
+        await idempotency.abandon(key)
         const status = dataViewPreparationStatus(error.code)
         sendError(
           res,
@@ -281,14 +283,14 @@ export function createSourcePreparationHandler(
         )
         return
       }
-      idempotency.markIndeterminate(key)
+      await idempotency.markIndeterminate(key)
       throw error
     }
   }
 }
 
 export function createGetSourceResourceHandler(
-  jobs: SourceJobStore,
+  jobs: SourceJobRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -304,7 +306,9 @@ export function createGetSourceResourceHandler(
     }
     const resourceId = params['resourceId'] ?? ''
     const resource = UUID.test(resourceId)
-      ? jobs.getResourceScoped(resourceId, principal.workspaceId, principal.profileId)
+      ? await jobs.getResourceScoped(
+        resourceId, principal.workspaceId, principal.profileId,
+      )
       : null
     if (!resource) {
       sendError(res, 404, 'Source resource not found.',
@@ -316,7 +320,7 @@ export function createGetSourceResourceHandler(
 }
 
 export function createGetSourceDataViewHandler(
-  dataViews: SourceDataViewStore,
+  dataViews: SourceDataViewRepository,
 ): (
   req: IncomingMessage,
   res: ServerResponse,
@@ -332,7 +336,9 @@ export function createGetSourceDataViewHandler(
     }
     const dataViewId = params['dataViewId'] ?? ''
     const view = UUID.test(dataViewId)
-      ? dataViews.getViewScoped(dataViewId, principal.workspaceId, principal.profileId)
+      ? await dataViews.getViewScoped(
+        dataViewId, principal.workspaceId, principal.profileId,
+      )
       : null
     if (!view) {
       sendError(res, 404, 'Data View not found.',
@@ -345,8 +351,8 @@ export function createGetSourceDataViewHandler(
 }
 
 export function createCancelSourceJobHandler(
-  jobs: SourceJobStore,
-  dataViews: SourceDataViewStore,
+  jobs: SourceJobRepository,
+  dataViews: SourceDataViewRepository,
   wakeWorker: () => void,
 ): (
   req: IncomingMessage,
@@ -365,9 +371,9 @@ export function createCancelSourceJobHandler(
     let result: 'requested' | 'already_requested' | 'terminal' | 'missing' = 'missing'
     let dataViewJob = false
     if (UUID.test(jobId)) {
-      result = jobs.requestCancel(jobId, principal.workspaceId, principal.profileId)
+      result = await jobs.requestCancel(jobId, principal.workspaceId, principal.profileId)
       if (result === 'missing') {
-        result = dataViews.requestCancel(
+        result = await dataViews.requestCancel(
           jobId, principal.workspaceId, principal.profileId,
         )
         dataViewJob = result !== 'missing'
@@ -383,8 +389,8 @@ export function createCancelSourceJobHandler(
       return
     }
     const job = dataViewJob
-      ? dataViews.getJobScoped(jobId, principal.workspaceId, principal.profileId)
-      : jobs.getScoped(jobId, principal.workspaceId, principal.profileId)
+      ? await dataViews.getJobScoped(jobId, principal.workspaceId, principal.profileId)
+      : await jobs.getScoped(jobId, principal.workspaceId, principal.profileId)
     if (!job) {
       sendError(res, 404, 'Source job not found.', 'source_job_not_found', 'not_found')
       return

@@ -8,7 +8,7 @@ import {
   PrincipalAuthError,
   type ScopedPrincipalService,
 } from '../auth/scoped-principal.js'
-import type { CandidateStore } from '../candidate-store.js'
+import type { CandidateRepository } from '../../storage/platform-repositories.js'
 
 const IssueSchema = z.object({
   delegateId: z.string().min(1).max(128),
@@ -30,7 +30,7 @@ export function createPrincipalHandlers(options: {
   readonly registry: ProfileRegistry
   readonly service: ScopedPrincipalService
   readonly authEnabled: boolean
-  readonly candidateStore?: CandidateStore
+  readonly candidateStore?: CandidateRepository
 }) {
   async function issue(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!options.authEnabled) {
@@ -47,14 +47,14 @@ export function createPrincipalHandlers(options: {
       sendError(res, 400, 'Delegation request is invalid', 'invalid_request', 'invalid_request')
       return
     }
-    if (!options.state.getWorkspace(parsed.data.workspaceId)) {
+    if (!await options.state.getWorkspace(parsed.data.workspaceId)) {
       sendError(res, 404, 'Requested workspace was not found', 'workspace_not_found', 'not_found')
       return
     }
     await options.registry.refreshUser()
     const knownLegacyProfile = options.registry.list()
       .some((profile) => profile.name === parsed.data.profileId)
-    const knownCandidateProfile = (options.candidateStore?.list(parsed.data.profileId).length ?? 0) > 0
+    const knownCandidateProfile = ((await options.candidateStore?.list(parsed.data.profileId))?.length ?? 0) > 0
     if (!knownLegacyProfile && !knownCandidateProfile) {
       sendError(res, 404, 'Requested profile was not found', 'profile_not_found', 'not_found')
       return
@@ -89,7 +89,7 @@ export function createPrincipalHandlers(options: {
       return
     }
     try {
-      const revoked = options.service.revoke(params['tokenId'], parsed.data.reason)
+      const revoked = await options.service.revoke(params['tokenId'], parsed.data.reason)
       if (!revoked) {
         sendError(res, 404, 'Delegation was not found or was already revoked', 'principal_not_found', 'not_found')
         return

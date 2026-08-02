@@ -50,7 +50,7 @@ function mockRes(): { res: ServerResponse; captured: Captured } {
 
 function stubState(deleted: boolean): GatewayState {
   return {
-    deleteWorkspace: vi.fn().mockReturnValue(deleted),
+    deleteWorkspace: vi.fn().mockResolvedValue(deleted),
   } as unknown as GatewayState
 }
 
@@ -72,7 +72,7 @@ describe('DELETE /api/v1/workspaces/:workspaceId — PTY cleanup', () => {
     ;(registry.dropWorkspace as ReturnType<typeof vi.fn>).mockImplementation(() => {
       calls.push('drop')
     })
-    ;(state.deleteWorkspace as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    ;(state.deleteWorkspace as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       calls.push('delete')
       return true
     })

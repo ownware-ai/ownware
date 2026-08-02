@@ -18,9 +18,9 @@ describe('Stress: Pagination limits', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({
-      seed: (state) => {
+      seed: async (state) => {
         for (let i = 0; i < TOTAL; i++) {
-          state.createThread('mini', `Stress thread ${i}`)
+          await state.createThread('mini', `Stress thread ${i}`)
         }
       },
     })
@@ -30,57 +30,57 @@ describe('Stress: Pagination limits', () => {
     await gw.stop()
   })
 
-  it(`Total threads = ${TOTAL}`, () => {
-    expect(gw.state.threadCount).toBe(TOTAL)
+  it(`Total threads = ${TOTAL}`, async () => {
+    expect(await gw.state.threadCount()).toBe(TOTAL)
   })
 
-  it('Default limit returns 50 items', () => {
-    const result = gw.state.listThreads()
+  it('Default limit returns 50 items', async () => {
+    const result = await gw.state.listThreads()
     expect(result.items.length).toBe(50)
     expect(result.total).toBe(TOTAL)
     expect(result.limit).toBe(50)
   })
 
-  it('Max limit (200) returns 200 items', () => {
-    const result = gw.state.listThreads(undefined, { limit: 200 })
+  it('Max limit (200) returns 200 items', async () => {
+    const result = await gw.state.listThreads(undefined, { limit: 200 })
     expect(result.items.length).toBe(200)
     expect(result.limit).toBe(200)
   })
 
-  it('Limit > 200 is capped at 200', () => {
-    const result = gw.state.listThreads(undefined, { limit: 999 })
+  it('Limit > 200 is capped at 200', async () => {
+    const result = await gw.state.listThreads(undefined, { limit: 999 })
     expect(result.items.length).toBe(200)
     expect(result.limit).toBe(200)
   })
 
-  it('Offset paging through entire dataset visits all threads', () => {
+  it('Offset paging through entire dataset visits all threads', async () => {
     const seen = new Set<string>()
     const limit = 200
     for (let offset = 0; offset < TOTAL; offset += limit) {
-      const result = gw.state.listThreads(undefined, { limit, offset })
+      const result = await gw.state.listThreads(undefined, { limit, offset })
       for (const t of result.items) seen.add(t.id)
     }
     expect(seen.size).toBe(TOTAL)
   })
 
-  it('No duplicates across pages', () => {
+  it('No duplicates across pages', async () => {
     const limit = 100
     const allIds: string[] = []
     for (let offset = 0; offset < TOTAL; offset += limit) {
-      const result = gw.state.listThreads(undefined, { limit, offset })
+      const result = await gw.state.listThreads(undefined, { limit, offset })
       for (const t of result.items) allIds.push(t.id)
     }
     expect(new Set(allIds).size).toBe(allIds.length)
   })
 
-  it('Offset = TOTAL returns empty items, correct total', () => {
-    const result = gw.state.listThreads(undefined, { limit: 50, offset: TOTAL })
+  it('Offset = TOTAL returns empty items, correct total', async () => {
+    const result = await gw.state.listThreads(undefined, { limit: 50, offset: TOTAL })
     expect(result.items.length).toBe(0)
     expect(result.total).toBe(TOTAL)
   })
 
-  it('Offset > TOTAL returns empty items, correct total', () => {
-    const result = gw.state.listThreads(undefined, { limit: 50, offset: TOTAL + 1000 })
+  it('Offset > TOTAL returns empty items, correct total', async () => {
+    const result = await gw.state.listThreads(undefined, { limit: 50, offset: TOTAL + 1000 })
     expect(result.items.length).toBe(0)
     expect(result.total).toBe(TOTAL)
   })

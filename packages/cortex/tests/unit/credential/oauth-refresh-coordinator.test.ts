@@ -18,6 +18,7 @@ import {
   type RefreshTokenFn,
 } from '../../../src/credential/oauth-token-manager.js'
 import { GatewayCredentialResolver } from '../../../src/credential/resolver.js'
+import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqlite-security-repositories.js'
 import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 
@@ -117,12 +118,12 @@ describe('durable OAuth refresh coordination', () => {
     const primaryResolver = new GatewayCredentialResolver({
       store: primaryStore,
       audit: primaryAudit,
-      spendDb: primary,
+      spend: createSqliteCredentialSpendRepository(primary),
     })
     const secondaryResolver = new GatewayCredentialResolver({
       store: secondaryStore,
       audit: secondaryAudit,
-      spendDb: secondary,
+      spend: createSqliteCredentialSpendRepository(secondary),
     })
 
     let calls = 0

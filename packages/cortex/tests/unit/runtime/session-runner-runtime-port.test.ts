@@ -61,7 +61,7 @@ describe('SessionRunner execution-runtime port', () => {
   })
 
   it('consumes the selected execution runtime instead of the cached Ownware session', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const session = new SilentLegacySession()
     const hitl = new HumanInTheLoop({ requestPermission: async () => 'allow' })
     const runtime = externalRuntime([
@@ -110,7 +110,7 @@ describe('SessionRunner execution-runtime port', () => {
     }).done
 
     expect(result.status).toBe('completed')
-    expect(state.getMessages(thread.id)).toContainEqual(expect.objectContaining({
+    expect(await state.getMessages(thread.id)).toContainEqual(expect.objectContaining({
       role: 'assistant',
       content: 'from external runtime',
     }))
@@ -119,7 +119,7 @@ describe('SessionRunner execution-runtime port', () => {
   })
 
   it('surfaces an unknown external event as a typed run error and never persists raw payload', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const runtime = externalRuntime([
       {
         kind: 'unknown',
@@ -141,10 +141,10 @@ describe('SessionRunner execution-runtime port', () => {
     }).done
 
     expect(result.status).toBe('error')
-    const errors = state.listAgentEvents({
+    const errors = (await state.listAgentEvents({
       threadId: thread.id,
       agentId: 'root',
-    }).filter((event) => event.type === 'error')
+    })).filter((event) => event.type === 'error')
     expect(errors).toHaveLength(1)
     expect(errors[0]?.payload).toMatchObject({
       code: 'runtime_unknown_event',
@@ -154,7 +154,7 @@ describe('SessionRunner execution-runtime port', () => {
   })
 
   it('records provider-authoritative interruption as aborted rather than completed or failed', async () => {
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const runtime = externalRuntime([
       {
         kind: 'canonical',
@@ -197,7 +197,7 @@ describe('SessionRunner execution-runtime port', () => {
     }).done
 
     expect(result.status).toBe('aborted')
-    expect(state.listAgentEvents({
+    expect(await state.listAgentEvents({
       threadId: thread.id,
       agentId: 'root',
     })).toContainEqual(expect.objectContaining({

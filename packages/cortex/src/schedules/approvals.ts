@@ -14,7 +14,7 @@
  * loudly (same discipline as the schedules store).
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -127,9 +127,9 @@ function newApprovalId(): string {
 // ---------------------------------------------------------------------------
 
 export class SqliteApprovalStore {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
 
-  constructor(db: Database.Database) {
+  constructor(db: SqliteDatabase) {
     this.db = db
   }
 

@@ -1,10 +1,10 @@
 import {
-  AccessGrantStore,
   type AccessAutonomy,
   type AccessConsent,
   type AccessGrantRevision,
   validateAccessContext,
 } from './access-grant-store.js'
+import type { AccessGrantRepository } from '../storage/security-repositories.js'
 
 export const ACCESS_GRANT_EVALUATOR_VERSION = 'access_grant.v1' as const
 
@@ -52,9 +52,12 @@ const AUTONOMY_RANK: Readonly<Record<AccessAutonomy, number>> = {
 }
 
 export class AccessGrantEvaluator {
-  constructor(private readonly grants: AccessGrantStore) {}
+  constructor(private readonly grants: AccessGrantRepository) {}
 
-  evaluate(context: AccessEvaluationContext, now: number = Date.now()): AccessEvaluation {
+  async evaluate(
+    context: AccessEvaluationContext,
+    now: number = Date.now(),
+  ): Promise<AccessEvaluation> {
     if (!Number.isSafeInteger(now) || now < 0 || !validHardFloor(context.hardFloor) ||
         !validateAccessContext(context)) {
       return deny('context_invalid')
@@ -64,7 +67,7 @@ export class AccessGrantEvaluator {
     }
     let candidates: readonly AccessGrantRevision[]
     try {
-      candidates = this.grants.findLiveCandidates(context, now)
+      candidates = await this.grants.findLiveCandidates(context, now)
     } catch {
       return deny('grant_state_invalid')
     }

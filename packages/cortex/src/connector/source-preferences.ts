@@ -20,9 +20,9 @@ import { isAliasLogicalKey } from './aliases.js'
  * `WebSearchSettingsStore`. `GatewayState` already implements it.
  */
 export interface SourcePreferencesStore {
-  getSetting(key: string): { value: string } | undefined
-  setSetting(key: string, value: string): unknown
-  deleteSetting(key: string): boolean
+  getSetting(key: string): Promise<{ value: string } | undefined>
+  setSetting(key: string, value: string): Promise<unknown>
+  deleteSetting(key: string): Promise<boolean>
 }
 
 /** Build the user_settings key for a given logical key. */
@@ -34,9 +34,9 @@ export class SourcePreferences {
   constructor(private readonly store: SourcePreferencesStore) {}
 
   /** Read the user's choice, or `null` if unset. */
-  get(logicalKey: string): string | null {
+  async get(logicalKey: string): Promise<string | null> {
     if (!isAliasLogicalKey(logicalKey)) return null
-    const row = this.store.getSetting(sourcePreferenceKey(logicalKey))
+    const row = await this.store.getSetting(sourcePreferenceKey(logicalKey))
     const v = row?.value
     return typeof v === 'string' && v.length > 0 ? v : null
   }
@@ -45,7 +45,7 @@ export class SourcePreferences {
    * Persist the user's choice. Throws on unknown logical keys so we
    * never stash garbage in user_settings.
    */
-  set(logicalKey: string, source: string): void {
+  async set(logicalKey: string, source: string): Promise<void> {
     if (!isAliasLogicalKey(logicalKey)) {
       throw new Error(`Unknown alias logical key: '${logicalKey}'`)
     }
@@ -53,14 +53,14 @@ export class SourcePreferences {
     if (trimmed.length === 0) {
       throw new Error('source must be a non-empty string')
     }
-    this.store.setSetting(sourcePreferenceKey(logicalKey), trimmed)
+    await this.store.setSetting(sourcePreferenceKey(logicalKey), trimmed)
   }
 
   /**
    * Clear any persisted choice for this logical key. Returns true when
    * a row was deleted.
    */
-  clear(logicalKey: string): boolean {
+  async clear(logicalKey: string): Promise<boolean> {
     if (!isAliasLogicalKey(logicalKey)) return false
     return this.store.deleteSetting(sourcePreferenceKey(logicalKey))
   }

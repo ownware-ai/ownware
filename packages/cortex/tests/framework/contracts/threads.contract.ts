@@ -103,8 +103,8 @@ describe('Contract: Threads', () => {
 
   it('GET /threads?profileId=X filters by profile', async () => {
     // Create distinct profiles via state seed
-    const t1 = gw.state.createThread('mini', 'profile-filter-1')
-    const t2 = gw.state.createThread('mini', 'profile-filter-2')
+    const t1 = await gw.state.createThread('mini', 'profile-filter-1')
+    const t2 = await gw.state.createThread('mini', 'profile-filter-2')
 
     const r = await gw.client.get('/api/v1/threads?profileId=mini', PaginatedThreadsSchema)
     expect(r.status).toBe(200)

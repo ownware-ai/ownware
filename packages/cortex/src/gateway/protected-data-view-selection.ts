@@ -10,8 +10,8 @@ import {
 } from './csv-data-view-selection.js'
 import { csvDataViewOrdinalId } from './csv-data-view.js'
 import { SourceByteStore } from './source-byte-store.js'
+import type { SourceDataViewRepository } from '../storage/source-repositories.js'
 import {
-  SourceDataViewStore,
   type ProtectedSourceDataViewTarget,
   type SourceDataViewManifest,
 } from './source-data-view-store.js'
@@ -87,7 +87,7 @@ const FIELD_ID = /^field\.[0-9a-f]{32}$/
 
 export class ProtectedDataViewSelectionService {
   constructor(
-    private readonly dataViews: SourceDataViewStore,
+    private readonly dataViews: SourceDataViewRepository,
     private readonly evaluator: AccessGrantEvaluator,
     private readonly bytes: SourceByteStore,
     private readonly evaluateHardFloor: ProtectedDataViewSelectionHardFloor,
@@ -99,10 +99,15 @@ export class ProtectedDataViewSelectionService {
   ): Promise<ProtectedDataViewSelectionResult> {
     const request = snapshotInput(input)
     if (!request || !validRequestShape(request)) throw unavailable()
-    const before = this.lookup(request)
+    const before = await this.lookup(request)
     if (!before) throw unavailable()
     const requested = resolveRequestedScope(request, before.manifest)
-    if (!requested || !this.isAllowed(request, before.manifest, requested, this.clock())) {
+    if (!requested || !await this.isAllowed(
+      request,
+      before.manifest,
+      requested,
+      this.clock(),
+    )) {
       throw unavailable()
     }
 
@@ -123,11 +128,11 @@ export class ProtectedDataViewSelectionService {
       throw unavailable()
     }
 
-    const after = this.lookup(request)
+    const after = await this.lookup(request)
     const observedAt = this.clock()
     if (!after || !sameTarget(before, after) ||
         !selectionMatches(selected, requested, after.manifest) ||
-        !this.isAllowed(request, after.manifest, requested, observedAt)) {
+        !await this.isAllowed(request, after.manifest, requested, observedAt)) {
       throw unavailable()
     }
 
@@ -153,9 +158,11 @@ export class ProtectedDataViewSelectionService {
     })
   }
 
-  private lookup(input: ProtectedDataViewSelectionInput): ProtectedSourceDataViewTarget | null {
+  private async lookup(
+    input: ProtectedDataViewSelectionInput,
+  ): Promise<ProtectedSourceDataViewTarget | null> {
     try {
-      return this.dataViews.getProtectedSelectionTargetScoped(
+      return await this.dataViews.getProtectedSelectionTargetScoped(
         input.dataViewId, input.workspaceId, input.profileId,
       )
     } catch {
@@ -163,19 +170,19 @@ export class ProtectedDataViewSelectionService {
     }
   }
 
-  private isAllowed(
+  private async isAllowed(
     input: ProtectedDataViewSelectionInput,
     manifest: SourceDataViewManifest,
     requested: RequestedScope,
     now: number,
-  ): boolean {
+  ): Promise<boolean> {
     let hardFloor: AccessEvaluationContext['hardFloor']
     try {
       hardFloor = this.evaluateHardFloor(policyContext(input, manifest, requested))
     } catch {
       return false
     }
-    return this.evaluator.evaluate({
+    return (await this.evaluator.evaluate({
       workspaceId: input.workspaceId,
       profileId: input.profileId,
       subjectId: input.subjectId,
@@ -190,7 +197,7 @@ export class ProtectedDataViewSelectionService {
       autonomy: 'observe',
       permissionMode: input.permissionMode,
       hardFloor,
-    }, now).decision === 'allow'
+    }, now)).decision === 'allow'
   }
 }
 

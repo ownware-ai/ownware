@@ -3,8 +3,8 @@ import { getRequestPrincipal } from '../auth/scoped-principal.js'
 import {
   ConnectionInventoryCursorNotFoundError,
   type ConnectionRow,
-  type ConnectorConnectionsStore,
 } from '../../connector/connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import { deriveLogicalKey } from '../../connector/logical-key.js'
 import { ConnectorSourceSchema } from '../../connector/schema.js'
 import { sendError, sendJSON } from '../router.js'
@@ -15,7 +15,7 @@ const DEFAULT_LIMIT = 50
 export const CONNECTION_LIST_MAX_LIMIT = 100
 
 export function createConnectionInventoryHandler(options: {
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   readonly entityId: string
   readonly authEnabled: boolean
 }): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -25,7 +25,7 @@ export function createConnectionInventoryHandler(options: {
     if (!page) return invalid(res)
 
     try {
-      const result = options.connections.listInventory(options.entityId, page)
+      const result = await options.connections.listInventory(options.entityId, page)
       res.setHeader('Cache-Control', 'no-store')
       sendJSON(res, 200, {
         items: result.items.map(projectConnection),

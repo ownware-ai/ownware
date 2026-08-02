@@ -306,11 +306,11 @@ describe('DELETE /api/v1/mcp/register/:id', () => {
     // Create a non-custom row directly via the state layer (simulating
     // the /profiles/:id/mcp flow which inserts without the custom
     // marker).
-    ;(gateway as unknown as { state: {
+    await (gateway as unknown as { state: {
       createMCPServer: (r: {
         id: string; name: string; transport: string;
         command?: string; registryId?: string;
-      }) => unknown
+      }) => Promise<unknown>
     } }).state.createMCPServer({
       id: 'not-a-custom-row',
       name: 'Not A Custom',

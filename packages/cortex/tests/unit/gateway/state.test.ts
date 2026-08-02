@@ -27,8 +27,8 @@ describe('GatewayState', () => {
   // ── Threads ──────────────────────────────────────────────────────────
 
   describe('threads', () => {
-    it('creates a thread with generated id', () => {
-      const thread = state.createThread('example')
+    it('creates a thread with generated id', async () => {
+      const thread = await state.createThread('example')
       expect(thread.id).toMatch(/^thread_[a-f0-9]{12}$/)
       expect(thread.profileId).toBe('example')
       expect(thread.status).toBe('active')
@@ -37,33 +37,33 @@ describe('GatewayState', () => {
       expect(thread.totalCost).toBe(0)
     })
 
-    it('creates a thread with title', () => {
-      const thread = state.createThread('example', 'My Chat')
+    it('creates a thread with title', async () => {
+      const thread = await state.createThread('example', 'My Chat')
       expect(thread.title).toBe('My Chat')
     })
 
-    it('creates a thread with null title by default', () => {
-      const thread = state.createThread('example')
+    it('creates a thread with null title by default', async () => {
+      const thread = await state.createThread('example')
       expect(thread.title).toBeNull()
     })
 
-    it('getThread returns created thread', () => {
-      const created = state.createThread('example')
-      const fetched = state.getThread(created.id)
+    it('getThread returns created thread', async () => {
+      const created = await state.createThread('example')
+      const fetched = await state.getThread(created.id)
       expect(fetched).toBeDefined()
       expect(fetched!.id).toBe(created.id)
     })
 
-    it('getThread returns undefined for unknown id', () => {
-      expect(state.getThread('nonexistent')).toBeUndefined()
+    it('getThread returns undefined for unknown id', async () => {
+      expect(await state.getThread('nonexistent')).toBeUndefined()
     })
 
-    it('listThreads returns all threads sorted by updatedAt desc', () => {
-      state.createThread('a')
-      state.createThread('b')
-      state.createThread('c')
+    it('listThreads returns all threads sorted by updatedAt desc', async () => {
+      await state.createThread('a')
+      await state.createThread('b')
+      await state.createThread('c')
 
-      const result = state.listThreads()
+      const result = await state.listThreads()
       const list = result.items
       expect(list).toHaveLength(3)
       expect(result.total).toBe(3)
@@ -73,62 +73,62 @@ describe('GatewayState', () => {
       }
     })
 
-    it('listThreads filters by profileId', () => {
-      state.createThread('profile-a')
-      state.createThread('profile-a')
-      state.createThread('profile-b')
+    it('listThreads filters by profileId', async () => {
+      await state.createThread('profile-a')
+      await state.createThread('profile-a')
+      await state.createThread('profile-b')
 
-      expect(state.listThreads('profile-a').items).toHaveLength(2)
-      expect(state.listThreads('profile-b').items).toHaveLength(1)
-      expect(state.listThreads('profile-c').items).toHaveLength(0)
-      expect(state.listThreads().items).toHaveLength(3) // no filter = all
+      expect((await state.listThreads('profile-a')).items).toHaveLength(2)
+      expect((await state.listThreads('profile-b')).items).toHaveLength(1)
+      expect((await state.listThreads('profile-c')).items).toHaveLength(0)
+      expect((await state.listThreads()).items).toHaveLength(3) // no filter = all
     })
 
-    it('updateThread modifies fields and updatedAt', () => {
-      const thread = state.createThread('example')
-      state.updateThread(thread.id, { title: 'Updated', status: 'completed', messageCount: 5 })
+    it('updateThread modifies fields and updatedAt', async () => {
+      const thread = await state.createThread('example')
+      await state.updateThread(thread.id, { title: 'Updated', status: 'completed', messageCount: 5 })
 
-      const updated = state.getThread(thread.id)!
+      const updated = (await state.getThread(thread.id))!
       expect(updated.title).toBe('Updated')
       expect(updated.status).toBe('completed')
       expect(updated.messageCount).toBe(5)
     })
 
-    it('updateThread returns undefined for unknown id', () => {
-      expect(state.updateThread('nope', { title: 'x' })).toBeUndefined()
+    it('updateThread returns undefined for unknown id', async () => {
+      expect(await state.updateThread('nope', { title: 'x' })).toBeUndefined()
     })
 
-    it('deleteThread removes thread and cascades to messages', () => {
-      const thread = state.createThread('example')
-      state.addMessage(thread.id, {
+    it('deleteThread removes thread and cascades to messages', async () => {
+      const thread = await state.createThread('example')
+      await state.addMessage(thread.id, {
         id: 'msg_1',
         role: 'user',
         content: 'hello',
         timestamp: new Date().toISOString(),
       })
 
-      expect(state.deleteThread(thread.id)).toBe(true)
-      expect(state.getThread(thread.id)).toBeUndefined()
-      expect(state.getMessages(thread.id)).toEqual([])
+      expect(await state.deleteThread(thread.id)).toBe(true)
+      expect(await state.getThread(thread.id)).toBeUndefined()
+      expect(await state.getMessages(thread.id)).toEqual([])
     })
 
-    it('deleteThread returns false for unknown id', () => {
-      expect(state.deleteThread('nope')).toBe(false)
+    it('deleteThread returns false for unknown id', async () => {
+      expect(await state.deleteThread('nope')).toBe(false)
     })
 
-    it('threadCount reflects current state', () => {
-      expect(state.threadCount).toBe(0)
-      state.createThread('a')
-      state.createThread('b')
-      expect(state.threadCount).toBe(2)
+    it('threadCount reflects current state', async () => {
+      expect(await state.threadCount()).toBe(0)
+      await state.createThread('a')
+      await state.createThread('b')
+      expect(await state.threadCount()).toBe(2)
     })
 
     it('threads persist — survive new GatewayState instance', async () => {
       const dbPath = join(tempDir, 'persist-test.db')
       const state1 = new GatewayState(dbPath)
 
-      const thread = state1.createThread('example', 'Persisted thread')
-      state1.addMessage(thread.id, {
+      const thread = await state1.createThread('example', 'Persisted thread')
+      await state1.addMessage(thread.id, {
         id: 'msg_1',
         role: 'user',
         content: 'this should survive restart',
@@ -139,11 +139,11 @@ describe('GatewayState', () => {
       // Create new instance pointing to same DB — simulates restart
       const state2 = new GatewayState(dbPath)
 
-      const threads = state2.listThreads()
+      const threads = await state2.listThreads()
       expect(threads.items).toHaveLength(1)
       expect(threads.items[0]!.title).toBe('Persisted thread')
 
-      const messages = state2.getMessages(thread.id)
+      const messages = await state2.getMessages(thread.id)
       expect(messages).toHaveLength(1)
       expect(messages[0]!.content).toBe('this should survive restart')
 
@@ -154,39 +154,39 @@ describe('GatewayState', () => {
   // ── Messages ─────────────────────────────────────────────────────────
 
   describe('messages', () => {
-    it('addMessage stores messages for thread', () => {
-      const thread = state.createThread('example')
-      state.addMessage(thread.id, {
+    it('addMessage stores messages for thread', async () => {
+      const thread = await state.createThread('example')
+      await state.addMessage(thread.id, {
         id: 'msg_1',
         role: 'user',
         content: 'hello',
         timestamp: new Date().toISOString(),
       })
-      state.addMessage(thread.id, {
+      await state.addMessage(thread.id, {
         id: 'msg_2',
         role: 'assistant',
         content: 'hi there',
         timestamp: new Date().toISOString(),
       })
 
-      const messages = state.getMessages(thread.id)
+      const messages = await state.getMessages(thread.id)
       expect(messages).toHaveLength(2)
       expect(messages[0]!.role).toBe('user')
       expect(messages[1]!.role).toBe('assistant')
     })
 
-    it('getMessages returns empty array for thread with no messages', () => {
-      const thread = state.createThread('example')
-      expect(state.getMessages(thread.id)).toEqual([])
+    it('getMessages returns empty array for thread with no messages', async () => {
+      const thread = await state.createThread('example')
+      expect(await state.getMessages(thread.id)).toEqual([])
     })
 
-    it('getMessages returns empty array for unknown thread', () => {
-      expect(state.getMessages('nope')).toEqual([])
+    it('getMessages returns empty array for unknown thread', async () => {
+      expect(await state.getMessages('nope')).toEqual([])
     })
 
-    it('stores messages with tools, subAgents, attachments', () => {
-      const thread = state.createThread('example')
-      state.addMessage(thread.id, {
+    it('stores messages with tools, subAgents, attachments', async () => {
+      const thread = await state.createThread('example')
+      await state.addMessage(thread.id, {
         id: 'msg_complex',
         role: 'assistant',
         content: 'I used some tools',
@@ -198,7 +198,7 @@ describe('GatewayState', () => {
         timestamp: new Date().toISOString(),
       })
 
-      const msgs = state.getMessages(thread.id)
+      const msgs = await state.getMessages(thread.id)
       expect(msgs).toHaveLength(1)
       expect(msgs[0]!.tools).toHaveLength(1)
       expect(msgs[0]!.tools![0]!.name).toBe('readFile')
@@ -212,9 +212,9 @@ describe('GatewayState', () => {
   // ── Usage tracking ──────────────────────────────────────────────────
 
   describe('usage', () => {
-    it('tracks usage records', () => {
-      const thread = state.createThread('example')
-      state.addUsageRecord({
+    it('tracks usage records', async () => {
+      const thread = await state.createThread('example')
+      await state.addUsageRecord({
         threadId: thread.id,
         profileId: 'example',
         model: 'claude-sonnet',
@@ -224,14 +224,14 @@ describe('GatewayState', () => {
         costUsd: 0.015,
       })
 
-      const summary = state.getUsageSummary('example')
+      const summary = await state.getUsageSummary('example')
       expect(summary.totalTokens).toBe(1500)
       expect(summary.totalCost).toBeCloseTo(0.015)
       expect(summary.requestCount).toBe(1)
     })
 
-    it('returns zero summary when no records', () => {
-      const summary = state.getUsageSummary('nonexistent')
+    it('returns zero summary when no records', async () => {
+      const summary = await state.getUsageSummary('nonexistent')
       expect(summary.totalTokens).toBe(0)
       expect(summary.totalCost).toBe(0)
       expect(summary.requestCount).toBe(0)
@@ -325,9 +325,9 @@ describe('GatewayState', () => {
 
     it('deleteThread kills the attached Chrome', async () => {
       const running = makeFakeRunning()
-      const thread = state.createThread('example')
+      const thread = await state.createThread('example')
       state.setChromeLaunch(thread.id, running as never)
-      state.deleteThread(thread.id)
+      await state.deleteThread(thread.id)
       // deleteThread schedules shutdown with `void`, so give the
       // microtask queue a turn to run before asserting.
       await new Promise(resolve => setImmediate(resolve))
@@ -427,10 +427,10 @@ describe('GatewayState', () => {
           running.stopCalls += 1
         },
       }
-      const thread = state.createThread('example')
+      const thread = await state.createThread('example')
       state.setChromeLauncher(thread.id, l as never)
       state.setChromeLaunch(thread.id, running as never)
-      state.deleteThread(thread.id)
+      await state.deleteThread(thread.id)
       await new Promise(resolve => setImmediate(resolve))
       expect(running.stopCalls).toBe(1)
       expect(l.stopCalls).toBe(1)

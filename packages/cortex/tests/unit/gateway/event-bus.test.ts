@@ -25,6 +25,7 @@ import type { LoomEvent } from '@ownware/loom'
 import { CortexDatabase } from '../../../src/gateway/db/database.js'
 import { EventBus, ROOT_AGENT_ID } from '../../../src/gateway/event-bus.js'
 import { EventIngestor } from '../../../src/gateway/event-ingestor.js'
+import { createSqliteCoreRepositoriesFromDatabase } from '../../../src/storage/sqlite-core-repositories.js'
 
 function makeTextDelta(text: string): LoomEvent {
   return { type: 'text.delta', text, turnIndex: 0 } as LoomEvent
@@ -122,7 +123,10 @@ describe('EventIngestor', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'cortex-ing-'))
     db = new CortexDatabase(join(tmpDir, 'test.db'))
     bus = new EventBus()
-    ingestor = new EventIngestor(db, bus)
+    ingestor = new EventIngestor(
+      createSqliteCoreRepositoriesFromDatabase(db).events,
+      bus,
+    )
     // Need a real thread row — foreign keys not enforced on agent_events
     // but the parent event path expects the thread to exist via gateway
     // state. The ingestor itself only touches agent_events so it's fine.
@@ -136,27 +140,27 @@ describe('EventIngestor', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('assigns monotonic seq numbers per (thread, agent) stream', () => {
-    const seq1 = ingestor.ingestParentEvent(threadId, makeTextDelta('a'))
-    const seq2 = ingestor.ingestParentEvent(threadId, makeTextDelta('b'))
-    const seq3 = ingestor.ingestParentEvent(threadId, makeTextDelta('c'))
+  it('assigns monotonic seq numbers per (thread, agent) stream', async () => {
+    const seq1 = await ingestor.ingestParentEvent(threadId, makeTextDelta('a'))
+    const seq2 = await ingestor.ingestParentEvent(threadId, makeTextDelta('b'))
+    const seq3 = await ingestor.ingestParentEvent(threadId, makeTextDelta('c'))
     expect(seq1).toBe(1)
     expect(seq2).toBe(2)
     expect(seq3).toBe(3)
   })
 
-  it('seq numbers are per-agent, not per-thread', () => {
-    const parentSeq = ingestor.ingestParentEvent(threadId, makeTextDelta('root'))
-    const childSeq = ingestor.ingestSubagentEvent(threadId, 'agent_x', makeTextDelta('child'))
+  it('seq numbers are per-agent, not per-thread', async () => {
+    const parentSeq = await ingestor.ingestParentEvent(threadId, makeTextDelta('root'))
+    const childSeq = await ingestor.ingestSubagentEvent(threadId, 'agent_x', makeTextDelta('child'))
     // Both should be seq 1 — they're on different (thread, agent) streams.
     expect(parentSeq).toBe(1)
     expect(childSeq).toBe(1)
 
-    const parentSeq2 = ingestor.ingestParentEvent(threadId, makeTextDelta('root2'))
+    const parentSeq2 = await ingestor.ingestParentEvent(threadId, makeTextDelta('root2'))
     expect(parentSeq2).toBe(2) // still increments the parent stream
   })
 
-  it('writes to DB and publishes to bus in order', () => {
+  it('writes to DB and publishes to bus in order', async () => {
     const received: Array<{ seq: number; text: string }> = []
     bus.subscribe(threadId, ROOT_AGENT_ID, entry => {
       received.push({
@@ -165,8 +169,8 @@ describe('EventIngestor', () => {
       })
     })
 
-    ingestor.ingestParentEvent(threadId, makeTextDelta('first'))
-    ingestor.ingestParentEvent(threadId, makeTextDelta('second'))
+    await ingestor.ingestParentEvent(threadId, makeTextDelta('first'))
+    await ingestor.ingestParentEvent(threadId, makeTextDelta('second'))
 
     expect(received).toEqual([
       { seq: 1, text: 'first' },
@@ -181,11 +185,11 @@ describe('EventIngestor', () => {
     expect(rows[1]!.seq).toBe(2)
   })
 
-  it('lifecycle rewrite: subagent-emitted agent.spawn lands on parent stream', () => {
+  it('lifecycle rewrite: subagent-emitted agent.spawn lands on parent stream', async () => {
     // A sub-agent's createGenerator yields an agent.spawn event tagged
     // with its own handle id. The ingestor must rewrite this onto the
     // parent stream so the client's main chat shows the "card" marker.
-    ingestor.ingestSubagentEvent(threadId, 'agent_child', makeAgentSpawn('agent_child', ROOT_AGENT_ID))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_child', makeAgentSpawn('agent_child', ROOT_AGENT_ID))
 
     const parentRows = db.listAgentEvents({ threadId, agentId: ROOT_AGENT_ID })
     const childRows = db.listAgentEvents({ threadId, agentId: 'agent_child' })
@@ -196,8 +200,8 @@ describe('EventIngestor', () => {
     expect(childRows).toHaveLength(0)
   })
 
-  it('lifecycle rewrite: subagent-emitted agent.complete lands on parent stream', () => {
-    ingestor.ingestSubagentEvent(threadId, 'agent_child', makeAgentComplete('agent_child'))
+  it('lifecycle rewrite: subagent-emitted agent.complete lands on parent stream', async () => {
+    await ingestor.ingestSubagentEvent(threadId, 'agent_child', makeAgentComplete('agent_child'))
 
     const parentRows = db.listAgentEvents({ threadId, agentId: ROOT_AGENT_ID })
     const childRows = db.listAgentEvents({ threadId, agentId: 'agent_child' })
@@ -207,11 +211,11 @@ describe('EventIngestor', () => {
     expect(childRows).toHaveLength(0)
   })
 
-  it('non-lifecycle subagent events stay on the child stream', () => {
+  it('non-lifecycle subagent events stay on the child stream', async () => {
     // text.delta and tool events must stay on the subagent's own stream
     // — they are the content the "View thread" modal needs.
-    ingestor.ingestSubagentEvent(threadId, 'agent_child', makeTextDelta('child text'))
-    ingestor.ingestSubagentEvent(threadId, 'agent_child', makeTextDelta(' more'))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_child', makeTextDelta('child text'))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_child', makeTextDelta(' more'))
 
     const parentRows = db.listAgentEvents({ threadId, agentId: ROOT_AGENT_ID })
     const childRows = db.listAgentEvents({ threadId, agentId: 'agent_child' })
@@ -222,12 +226,12 @@ describe('EventIngestor', () => {
     expect(texts).toEqual(['child text', ' more'])
   })
 
-  it('full subagent lifecycle: spawn → content → complete splits correctly', () => {
+  it('full subagent lifecycle: spawn → content → complete splits correctly', async () => {
     // Simulates the full event order a Loom subagent generator emits.
-    ingestor.ingestSubagentEvent(threadId, 'agent_x', makeAgentSpawn('agent_x', ROOT_AGENT_ID))
-    ingestor.ingestSubagentEvent(threadId, 'agent_x', makeTextDelta('hello '))
-    ingestor.ingestSubagentEvent(threadId, 'agent_x', makeTextDelta('world'))
-    ingestor.ingestSubagentEvent(threadId, 'agent_x', makeAgentComplete('agent_x'))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_x', makeAgentSpawn('agent_x', ROOT_AGENT_ID))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_x', makeTextDelta('hello '))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_x', makeTextDelta('world'))
+    await ingestor.ingestSubagentEvent(threadId, 'agent_x', makeAgentComplete('agent_x'))
 
     const parentRows = db.listAgentEvents({ threadId, agentId: ROOT_AGENT_ID })
     const childRows = db.listAgentEvents({ threadId, agentId: 'agent_x' })
@@ -240,9 +244,9 @@ describe('EventIngestor', () => {
     expect(childRows.map(r => (r.payload as { text: string }).text)).toEqual(['hello ', 'world'])
   })
 
-  it('listAgentEvents respects the `since` cursor for resume', () => {
+  it('listAgentEvents respects the `since` cursor for resume', async () => {
     for (let i = 0; i < 10; i++) {
-      ingestor.ingestParentEvent(threadId, makeTextDelta(`chunk-${i}`))
+      await ingestor.ingestParentEvent(threadId, makeTextDelta(`chunk-${i}`))
     }
 
     const firstHalf = db.listAgentEvents({ threadId, agentId: ROOT_AGENT_ID, since: 0, limit: 5 })
@@ -282,7 +286,7 @@ describe('EventIngestor', () => {
     // Now the "producer" writes. In a real run this is another async
     // context; here we run sequentially since it's all in-process.
     for (let i = 0; i < 5; i++) {
-      ingestor.ingestParentEvent(threadId, makeTextDelta(`p${i}`))
+      await ingestor.ingestParentEvent(threadId, makeTextDelta(`p${i}`))
     }
 
     // Now the "reader" does a DB read. Simulates replay.
@@ -298,7 +302,7 @@ describe('EventIngestor', () => {
     // Now a late write lands — the drain hasn't completed yet but
     // we've already noted lastReplayedSeq. The subscribe callback is
     // still buffering (draining=true), so the late write is captured.
-    ingestor.ingestParentEvent(threadId, makeTextDelta('late-arrival'))
+    await ingestor.ingestParentEvent(threadId, makeTextDelta('late-arrival'))
     const lateInBuffer = buffered.filter(e => e.seq > lastReplayedSeq)
     expect(lateInBuffer).toHaveLength(1)
     expect(lateInBuffer[0]!.text).toBe('late-arrival')
@@ -307,12 +311,15 @@ describe('EventIngestor', () => {
     draining = false
   })
 
-  it('subscribers survive writes from multiple ingestors simultaneously', () => {
+  it('subscribers survive writes from multiple ingestors simultaneously', async () => {
     // Verifies that seq assignment is atomic and doesn't collide
     // when two ingestors share the same bus + DB. This is a cheap
     // stand-in for the future case where a subagent and its parent
     // both write to the same thread concurrently.
-    const ing2 = new EventIngestor(db, bus)
+    const ing2 = new EventIngestor(
+      createSqliteCoreRepositoriesFromDatabase(db).events,
+      bus,
+    )
 
     const received: Array<{ seq: number; text: string }> = []
     bus.subscribe(threadId, ROOT_AGENT_ID, entry => {
@@ -322,13 +329,126 @@ describe('EventIngestor', () => {
       })
     })
 
-    for (let i = 0; i < 5; i++) {
-      ingestor.ingestParentEvent(threadId, makeTextDelta(`a${i}`))
-      ing2.ingestParentEvent(threadId, makeTextDelta(`b${i}`))
-    }
+    await Promise.all(Array.from({ length: 5 }, async (_, i) => {
+      await Promise.all([
+        ingestor.ingestParentEvent(threadId, makeTextDelta(`a${i}`)),
+        ing2.ingestParentEvent(threadId, makeTextDelta(`b${i}`)),
+      ])
+    }))
 
     // 10 total writes, seq 1..10, no collisions, no gaps.
     const seqs = received.map(r => r.seq)
     expect(seqs).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  })
+
+  it('publishes only after a separate connection can read the committed row', async () => {
+    const observer = new CortexDatabase(join(tmpDir, 'test.db'))
+    try {
+      const visibleAtPublish: number[] = []
+      bus.subscribe(threadId, ROOT_AGENT_ID, entry => {
+        const rows = observer.listAgentEvents({
+          threadId,
+          agentId: ROOT_AGENT_ID,
+          since: entry.seq - 1,
+        })
+        if (rows.some(row => row.seq === entry.seq)) visibleAtPublish.push(entry.seq)
+      })
+
+      await ingestor.ingestParentEvent(threadId, makeTextDelta('committed-first'))
+      expect(visibleAtPublish).toEqual([1])
+    } finally {
+      observer.close()
+    }
+  })
+
+  it('does not publish a failed insert or consume its sequence number', async () => {
+    const secretCanary = 'customer-secret-forced-storage-failure'
+    const published: number[] = []
+    bus.subscribe(threadId, ROOT_AGENT_ID, entry => published.push(entry.seq))
+    db.rawMainHandle.exec(`
+      CREATE TRIGGER fail_synthetic_agent_event
+      BEFORE INSERT ON agent_events
+      WHEN NEW.type = 'test.synthetic_failure'
+      BEGIN
+        SELECT RAISE(FAIL, '${secretCanary}');
+      END
+    `)
+
+    const failure = await ingestor.ingestParentEvent(threadId, {
+      type: 'test.synthetic_failure',
+    } as unknown as LoomEvent).catch((error: unknown) => error)
+    expect(failure).toMatchObject({
+      name: 'StorageRepositoryError',
+      code: 'write_failed',
+      kind: 'sqlite',
+      domain: 'events',
+      operation: 'append',
+      retryable: false,
+    })
+    expect(String(failure)).not.toContain(secretCanary)
+    expect(published).toEqual([])
+    expect(db.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID)).toBe(0)
+
+    db.rawMainHandle.exec('DROP TRIGGER fail_synthetic_agent_event')
+    await expect(
+      ingestor.ingestParentEvent(threadId, makeTextDelta('after-failure')),
+    ).resolves.toBe(1)
+    expect(published).toEqual([1])
+  })
+
+  it('fails closed on SQLite full and read-only faults, then resumes without a gap', async () => {
+    const secretCanary = 'customer-secret-storage-fault-payload'
+    const published: Array<{ readonly seq: number; readonly type: string }> = []
+    bus.subscribe(threadId, ROOT_AGENT_ID, ({ seq, event }) => {
+      published.push({ seq, type: event.type })
+    })
+
+    const pageCount = db.rawMainHandle.pragma('page_count', { simple: true }) as number
+    const pageSize = db.rawMainHandle.pragma('page_size', { simple: true }) as number
+    const freePages = db.rawMainHandle.pragma('freelist_count', { simple: true }) as number
+    db.rawMainHandle.pragma(`max_page_count = ${pageCount}`)
+    const diskFullFailure = await ingestor.ingestParentEvent(threadId, {
+      type: 'test.sqlite_full',
+      turnIndex: 0,
+      text: `${secretCanary}${'x'.repeat((freePages + 8) * pageSize)}`,
+    } as unknown as LoomEvent).catch((error: unknown) => error)
+    expect(diskFullFailure).toMatchObject({
+      name: 'StorageRepositoryError',
+      code: 'write_failed',
+      kind: 'sqlite',
+      domain: 'events',
+      operation: 'append',
+      retryable: false,
+    })
+    expect(String(diskFullFailure)).not.toContain(secretCanary)
+    expect(published).toEqual([])
+    expect(db.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID)).toBe(0)
+    db.rawMainHandle.pragma('max_page_count = 1073741823')
+
+    db.rawMainHandle.pragma('query_only = ON')
+    const readOnlyFailure = await ingestor.ingestParentEvent(threadId, {
+      type: 'test.sqlite_readonly',
+      turnIndex: 0,
+      text: secretCanary,
+    } as unknown as LoomEvent).catch((error: unknown) => error)
+    expect(readOnlyFailure).toMatchObject({
+      name: 'StorageRepositoryError',
+      code: 'write_failed',
+      kind: 'sqlite',
+      domain: 'events',
+      operation: 'append',
+      retryable: false,
+    })
+    expect(String(readOnlyFailure)).not.toContain(secretCanary)
+    expect(published).toEqual([])
+    expect(db.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID)).toBe(0)
+
+    db.rawMainHandle.pragma('query_only = OFF')
+    await expect(ingestor.ingestParentEvent(
+      threadId,
+      makeTextDelta('authority-restored'),
+    )).resolves.toBe(1)
+    expect(published).toEqual([{ seq: 1, type: 'text.delta' }])
+    expect(db.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID)).toBe(1)
   })
 })

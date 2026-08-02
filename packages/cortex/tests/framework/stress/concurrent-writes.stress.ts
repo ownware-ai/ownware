@@ -28,8 +28,8 @@ describe('Stress: Concurrent writes', () => {
     const promises: Promise<void>[] = []
     for (let i = 0; i < 100; i++) {
       promises.push(
-        Promise.resolve().then(() => {
-          gw.state.addUsageRecord({
+        Promise.resolve().then(async () => {
+          await gw.state.addUsageRecord({
             profileId: 'concurrent-usage',
             model: 'm', provider: 'p',
             inputTokens: 1, outputTokens: 1, costUsd: 0.001,
@@ -39,18 +39,18 @@ describe('Stress: Concurrent writes', () => {
     }
     await Promise.all(promises)
 
-    const breakdown = gw.state.getProfileBreakdown()
+    const breakdown = await gw.state.getProfileBreakdown()
     const row = breakdown.find(r => r.profileId === 'concurrent-usage')!
     expect(row.runs).toBe(100)
   })
 
   it('100 concurrent addMessage on same thread — message_count atomic', async () => {
-    const t = gw.state.createThread('mini', 'concurrent-msg')
+    const t = await gw.state.createThread('mini', 'concurrent-msg')
     const promises: Promise<void>[] = []
     for (let i = 0; i < 100; i++) {
       promises.push(
-        Promise.resolve().then(() => {
-          gw.state.addMessage(t.id, {
+        Promise.resolve().then(async () => {
+          await gw.state.addMessage(t.id, {
             id: `msg_concur_${i}`,
             role: 'user',
             content: `Message ${i}`,
@@ -61,23 +61,23 @@ describe('Stress: Concurrent writes', () => {
     }
     await Promise.all(promises)
 
-    const updated = gw.state.getThread(t.id)!
+    const updated = (await gw.state.getThread(t.id))!
     expect(updated.messageCount).toBe(100)
-    expect(gw.state.getMessages(t.id).length).toBe(100)
+    expect((await gw.state.getMessages(t.id)).length).toBe(100)
   })
 
   it('100 concurrent incrementProfileUsage — useCount atomic', async () => {
     const promises: Promise<void>[] = []
     for (let i = 0; i < 100; i++) {
       promises.push(
-        Promise.resolve().then(() => {
-          gw.state.incrementProfileUsage('concurrent-profile', 0.01)
+        Promise.resolve().then(async () => {
+          await gw.state.incrementProfileUsage('concurrent-profile', 0.01)
         }),
       )
     }
     await Promise.all(promises)
 
-    const meta = gw.state.getProfileMetadata('concurrent-profile')!
+    const meta = (await gw.state.getProfileMetadata('concurrent-profile'))!
     expect(meta.useCount).toBe(100)
     expect(meta.totalCost).toBeCloseTo(1.0)
   })

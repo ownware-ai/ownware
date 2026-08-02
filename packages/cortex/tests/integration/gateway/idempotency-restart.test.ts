@@ -53,6 +53,6 @@ describe('run idempotency across a real Gateway restart', () => {
     expect(replayResponse.status).toBe(200)
     expect(replayResponse.headers.get('idempotency-replayed')).toBe('true')
     expect(await replayResponse.json()).toMatchObject({ threadId: first.threadId })
-    expect(restarted.state.listThreads(undefined, { limit: 10_000 }).items).toHaveLength(1)
+    expect((await restarted.state.listThreads(undefined, { limit: 10_000 })).items).toHaveLength(1)
   }, 20_000)
 })

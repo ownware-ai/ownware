@@ -32,6 +32,7 @@ import {
   InjectorHandleUnknownError,
 } from '../../../src/credential/injector.js'
 import { GatewayCredentialResolver } from '../../../src/credential/resolver.js'
+import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqlite-security-repositories.js'
 import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js'
 import { __resetMasterKeyCacheForTests } from '../../../src/connector/credentials/vault.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
@@ -60,7 +61,11 @@ beforeEach(() => {
   for (const m of MIGRATIONS) db.exec(m.sql)
   store = new DbCredentialBackend(db)
   audit = new CredentialAuditLog(db)
-  resolver = new GatewayCredentialResolver({ store, audit, spendDb: db })
+  resolver = new GatewayCredentialResolver({
+    store,
+    audit,
+    spend: createSqliteCredentialSpendRepository(db),
+  })
   injector = new CredentialInjector(resolver)
 })
 afterEach(() => {
@@ -130,7 +135,10 @@ describe('CredentialInjector — injectEnvForChild', () => {
     vi.useFakeTimers()
     try {
       const shortTtl = new GatewayCredentialResolver({
-        store, audit, spendDb: db, handleTtlMs: 1_000,
+        store,
+        audit,
+        spend: createSqliteCredentialSpendRepository(db),
+        handleTtlMs: 1_000,
       })
       const shortInjector = new CredentialInjector(shortTtl)
       await store.save({

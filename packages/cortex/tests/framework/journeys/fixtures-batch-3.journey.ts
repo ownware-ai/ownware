@@ -23,9 +23,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { createTestGateway, type TestGateway } from '../harness/index.js'
 
 const HAS_KEY = !!process.env['ANTHROPIC_API_KEY'] && !process.env['ANTHROPIC_API_KEY']!.includes('OWNWARE_TEST_DUMMY')
@@ -58,18 +56,18 @@ async function runToCompletion(
 // Shared sub-agent verification — use in every scenario in this batch
 // ---------------------------------------------------------------------------
 
-function assertSubagents(
+async function assertSubagents(
   gw: TestGateway,
   threadId: string,
   expectedSpawnCount: number,
-): Array<{ agentId: string; parentAgentId: string | null; eventCount: number }> {
-  const rootEvents = gw.state.listAgentEvents({ threadId, agentId: 'root' })
+): Promise<Array<{ agentId: string; parentAgentId: string | null; eventCount: number }>> {
+  const rootEvents = await gw.state.listAgentEvents({ threadId, agentId: 'root' })
   const spawnCalls = rootEvents.filter(
     e => e.type === 'tool.call.start' && (e.payload as { toolName: string }).toolName === 'agent_spawn',
   )
   expect(spawnCalls.length).toBeGreaterThanOrEqual(expectedSpawnCount)
 
-  const agents = gw.state.listAgentsForThread(threadId)
+  const agents = await gw.state.listAgentsForThread(threadId)
   const subagents = agents.filter(a => a.agentId !== 'root')
   expect(subagents.length).toBeGreaterThanOrEqual(expectedSpawnCount)
   for (const sa of subagents) {
@@ -87,13 +85,12 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   beforeAll(async () => {
     gw = await createTestGateway({
       useBundledProfiles: true,
-      dbPath: join(homedir(), '.ownware', 'ownware.db'),
     })
     // Ensure the fixture workspace directory exists on disk so agent
     // tool calls (shell, readFile, glob) have a real cwd to operate in.
     mkdirSync(WORKSPACE_PATH, { recursive: true })
-    const existing = gw.state.getWorkspaceByPath(WORKSPACE_PATH)
-    const ws = existing ?? gw.state.createWorkspace(WORKSPACE_PATH, 'fixture-sandbox')
+    const existing = await gw.state.getWorkspaceByPath(WORKSPACE_PATH)
+    const ws = existing ?? (await gw.state.createWorkspace(WORKSPACE_PATH, 'fixture-sandbox'))
     wsId = ws.id
   }, 30_000)
 
@@ -104,7 +101,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 1/12 — subagent-single ────────────────────────────────────────────────
 
   it('fixture:subagent-single — one explore helper', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-single] One explore helper',
       wsId,
@@ -121,14 +118,14 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const subagents = assertSubagents(gw, thread.id, 1)
+    const subagents = await assertSubagents(gw, thread.id, 1)
 
     // Explore helper should have used filesystem tools.
     // Soft check: rate-limit errors can produce error-only child logs.
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: subagents[0]!.agentId,
     })
@@ -143,7 +140,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 2/12 — subagent-parallel-2 ────────────────────────────────────────────
 
   it('fixture:subagent-parallel-2 — two helpers in parallel', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-parallel-2] Two helpers in parallel',
       wsId,
@@ -162,16 +159,16 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    assertSubagents(gw, thread.id, 2)
+    await assertSubagents(gw, thread.id, 2)
   }, 240_000)
 
   // ── 3/12 — subagent-parallel-3 ────────────────────────────────────────────
 
   it('fixture:subagent-parallel-3 — three helpers in parallel', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-parallel-3] Three helpers in parallel',
       wsId,
@@ -191,16 +188,16 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    assertSubagents(gw, thread.id, 3)
+    await assertSubagents(gw, thread.id, 3)
   }, 240_000)
 
   // ── 4/12 — subagent-parallel-5 ────────────────────────────────────────────
 
   it('fixture:subagent-parallel-5 — five helpers stress test', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-parallel-5] Five helpers stress test',
       wsId,
@@ -220,11 +217,11 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
     // Model may spawn fewer than 5 — assert ≥3 as minimum valid fixture
-    const agents = gw.state.listAgentsForThread(thread.id)
+    const agents = await gw.state.listAgentsForThread(thread.id)
     const subagents = agents.filter(a => a.agentId !== 'root')
     const actualSpawnCount = subagents.length
 
@@ -244,7 +241,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 5/12 — subagent-with-tools ────────────────────────────────────────────
 
   it('fixture:subagent-with-tools — helper uses filesystem tools', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-with-tools] Helper uses filesystem tools',
       wsId,
@@ -260,14 +257,14 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const subagents = assertSubagents(gw, thread.id, 1)
+    const subagents = await assertSubagents(gw, thread.id, 1)
 
     // The explore helper must have used readFile or grep.
     // Soft check: rate-limit errors produce 4-event error logs.
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: subagents[0]!.agentId,
     })
@@ -283,7 +280,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 6/12 — subagent-sequential ────────────────────────────────────────────
 
   it('fixture:subagent-sequential — two helpers one after another', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-sequential] Two helpers one after another',
       wsId,
@@ -301,14 +298,14 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const subagents = assertSubagents(gw, thread.id, 2)
+    const subagents = await assertSubagents(gw, thread.id, 2)
 
     // Both sub-agents must have real content
     for (const sa of subagents) {
-      const childEvents = gw.state.listAgentEvents({
+      const childEvents = await gw.state.listAgentEvents({
         threadId: thread.id,
         agentId: sa.agentId,
       })
@@ -319,7 +316,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 7/12 — subagent-background ────────────────────────────────────────────
 
   it('fixture:subagent-background — background helper, parent continues', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-background] Background helper, parent continues',
       wsId,
@@ -336,7 +333,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
     // Parent should produce text — but background spawn may consume the whole turn.
@@ -352,7 +349,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
     expect(spawnCalls.length).toBeGreaterThanOrEqual(1)
 
     // Sub-agent should exist in the event log
-    const agents = gw.state.listAgentsForThread(thread.id)
+    const agents = await gw.state.listAgentsForThread(thread.id)
     const subagents = agents.filter(a => a.agentId !== 'root')
     if (subagents.length > 0) {
       // Background may or may not be supported; if it ran, it has events
@@ -369,7 +366,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 8/12 — subagent-error ─────────────────────────────────────────────────
 
   it('fixture:subagent-error — helper with invalid subagent_type', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-error] Helper with invalid subagent_type',
       wsId,
@@ -384,7 +381,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
     // Either: tool.call.end with isError=true, OR no spawn at all (model refused)
@@ -403,7 +400,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
     }
 
     // Log actual outcome for the report
-    const agents = gw.state.listAgentsForThread(thread.id)
+    const agents = await gw.state.listAgentsForThread(thread.id)
     const subagents = agents.filter(a => a.agentId !== 'root')
     console.log(`[fixture:subagent-error] Spawn attempts: ${toolEnds.length}, Sub-agents created: ${subagents.length}`)
   }, 240_000)
@@ -411,7 +408,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 9/12 — subagent-explore-deep ─────────────────────────────────────────
 
   it('fixture:subagent-explore-deep — explore helper does thorough analysis', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-explore-deep] Explore helper does thorough analysis',
       wsId,
@@ -428,14 +425,14 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const subagents = assertSubagents(gw, thread.id, 1)
+    const subagents = await assertSubagents(gw, thread.id, 1)
 
     // Deep analysis = multiple tool calls in the sub-agent.
     // Soft check: rate-limit errors produce 4-event error logs.
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: subagents[0]!.agentId,
     })
@@ -452,7 +449,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 10/12 — subagent-planner ──────────────────────────────────────────────
 
   it('fixture:subagent-planner — planner helper designs architecture', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-planner] Planner helper designs architecture',
       wsId,
@@ -468,14 +465,14 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const subagents = assertSubagents(gw, thread.id, 1)
+    const subagents = await assertSubagents(gw, thread.id, 1)
 
     // Planner should produce text output.
     // Soft check: rate-limit errors produce error-only child logs.
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: subagents[0]!.agentId,
     })
@@ -496,7 +493,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 11/12 — subagent-verifier ─────────────────────────────────────────────
 
   it('fixture:subagent-verifier — verifier helper runs checks', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-verifier] Verifier helper runs checks',
       wsId,
@@ -513,14 +510,14 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const subagents = assertSubagents(gw, thread.id, 1)
+    const subagents = await assertSubagents(gw, thread.id, 1)
 
     // Verifier should have used shell or readFile tools.
     // Soft check: rate-limit errors produce error-only child logs.
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: subagents[0]!.agentId,
     })
@@ -535,7 +532,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
   // ── 12/12 — subagent-nested-attempt ──────────────────────────────────────
 
   it('fixture:subagent-nested-attempt — attempt nested sub-agents', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:subagent-nested-attempt] Attempt nested sub-agents',
       wsId,
@@ -550,10 +547,10 @@ describe.skipIf(!HAS_KEY)('Fixture batch 3 — Sub-Agents', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
-    const agents = gw.state.listAgentsForThread(thread.id)
+    const agents = await gw.state.listAgentsForThread(thread.id)
     const subagents = agents.filter(a => a.agentId !== 'root')
 
     // At minimum the outer explore helper should have spawned

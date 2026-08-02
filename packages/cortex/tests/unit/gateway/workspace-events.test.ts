@@ -337,7 +337,7 @@ describe('workspace handlers — fan out CRUD events to the bus', () => {
   })
 
   it('emits action=updated after PUT /workspaces/:id', async () => {
-    const seeded = state.createWorkspace(workspacePath, 'project')
+    const seeded = await state.createWorkspace(workspacePath, 'project')
     received.length = 0
     const { res, captured } = mockRes()
     await handlers.update(
@@ -355,7 +355,7 @@ describe('workspace handlers — fan out CRUD events to the bus', () => {
     // Archived is split out from updated so subscribers may want to
     // drop the row from active-only views without a refetch (chunk
     // F1a). The handler decides this by inspecting the post-write row.
-    const seeded = state.createWorkspace(workspacePath, 'project')
+    const seeded = await state.createWorkspace(workspacePath, 'project')
     received.length = 0
     const { res } = mockRes()
     await handlers.update(
@@ -372,8 +372,8 @@ describe('workspace handlers — fan out CRUD events to the bus', () => {
     // Reactivation path: POST with the same path while the row is
     // archived flips it back to active. That's a state transition;
     // emit `updated` so subscribers re-fetch the active list.
-    const seeded = state.createWorkspace(workspacePath, 'project')
-    state.updateWorkspace(seeded.id, { status: 'archived' })
+    const seeded = await state.createWorkspace(workspacePath, 'project')
+    await state.updateWorkspace(seeded.id, { status: 'archived' })
     received.length = 0
     const { res, captured } = mockRes()
     await handlers.create(
@@ -390,7 +390,7 @@ describe('workspace handlers — fan out CRUD events to the bus', () => {
     // touchWorkspace bumps lastOpenedAt but the list query doesn't
     // sort on that. Emitting here would thrash the cache on every
     // window-focus refetch.
-    state.createWorkspace(workspacePath, 'project')
+    await state.createWorkspace(workspacePath, 'project')
     received.length = 0
     const { res, captured } = mockRes()
     await handlers.create(
@@ -402,7 +402,7 @@ describe('workspace handlers — fan out CRUD events to the bus', () => {
   })
 
   it('emits action=deleted on DELETE /workspaces/:id', async () => {
-    const seeded = state.createWorkspace(workspacePath, 'project')
+    const seeded = await state.createWorkspace(workspacePath, 'project')
     received.length = 0
     const { res, captured } = mockRes()
     await handlers.remove(

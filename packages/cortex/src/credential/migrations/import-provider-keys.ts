@@ -34,7 +34,7 @@
 
 import { scryptSync } from 'node:crypto'
 import { hostname, userInfo } from 'node:os'
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../../storage/sqlite-driver.js'
 import { decryptValue } from '../../gateway/db/database.js'
 import type { CredentialBackend } from '../store/types.js'
 
@@ -126,7 +126,7 @@ export interface ImportProviderKeysOptions {
  * boot — re-runs become flag-checks and return immediately.
  */
 export async function importProviderKeysIntoCredentials(
-  db: Database.Database,
+  db: SqliteDatabase,
   backend: CredentialBackend,
   options: ImportProviderKeysOptions = {},
 ): Promise<ProviderKeysImportResult> {
@@ -230,7 +230,7 @@ export async function importProviderKeysIntoCredentials(
   return { ran: true, imported, alreadyPresent, errors }
 }
 
-function setFlag(db: Database.Database): void {
+function setFlag(db: SqliteDatabase): void {
   const now = new Date().toISOString()
   db.prepare(`
     INSERT INTO app_state (key, value, updated_at)

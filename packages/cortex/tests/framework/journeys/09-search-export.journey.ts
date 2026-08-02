@@ -17,22 +17,22 @@ describe('Journey: 09 Search + Export', () => {
 
   beforeAll(async () => {
     gw = await createTestGateway({
-      seed: (state) => {
-        state.createThread('mini', 'Aurora Project Brainstorm')
-        state.createThread('mini', 'Beta Bug Investigation')
-        state.createThread('mini', 'Aurora Production Issues')
+      seed: async (state) => {
+        await state.createThread('mini', 'Aurora Project Brainstorm')
+        await state.createThread('mini', 'Beta Bug Investigation')
+        await state.createThread('mini', 'Aurora Production Issues')
       },
     })
     // Create a thread we'll add a message to and export
-    const t = gw.state.createThread('mini', 'Export Test Thread')
+    const t = await gw.state.createThread('mini', 'Export Test Thread')
     exportThreadId = t.id
-    gw.state.addMessage(exportThreadId, {
+    await gw.state.addMessage(exportThreadId, {
       id: 'msg_export_1',
       role: 'user',
       content: 'Hello, please summarize this',
       timestamp: new Date().toISOString(),
     })
-    gw.state.addMessage(exportThreadId, {
+    await gw.state.addMessage(exportThreadId, {
       id: 'msg_export_2',
       role: 'assistant',
       content: 'Here is the summary you requested.',

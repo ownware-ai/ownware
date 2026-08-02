@@ -40,7 +40,7 @@ import type {
 import { makeCanonicalConnectorId } from '../schema.js'
 import { deriveLogicalKey } from '../logical-key.js'
 import type { ConnectorSourceProvider } from '../registry.js'
-import type { ConnectorConnectionsStore } from '../connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type { ConnectorStatusBus } from '../status-bus.js'
 import type { LoadedProfile } from '../../profile/loader.js'
 import type { ComposioToolkitSummary } from './client.js'
@@ -73,7 +73,7 @@ export interface ComposioSourceOptions {
    * tool adapter). `null` when Composio is not configured.
    */
   readonly catalogCache: ComposioCatalogCache | null
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   readonly statusBus: ConnectorStatusBus
   /**
    * Read-only profile lookup used by `listForProfile` to resolve
@@ -123,7 +123,7 @@ export function createComposioSource(
 
 interface InternalOpts {
   readonly catalogCache: ComposioCatalogCache
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   readonly statusBus: ConnectorStatusBus
   readonly entityId: string
   readonly profileReader: ComposioProfileReader | null
@@ -163,7 +163,7 @@ class ComposioSourceProvider implements PaginatedConnectorSource {
 
   async listGlobal(): Promise<Connector[]> {
     const toolkits = await this.opts.catalogCache.listToolkits()
-    return toolkits.map((t) => this.toConnector(t))
+    return Promise.all(toolkits.map((t) => this.toConnector(t)))
   }
 
   /**
@@ -184,7 +184,7 @@ class ComposioSourceProvider implements PaginatedConnectorSource {
   } = {}): Promise<ConnectorPage> {
     const page = await this.opts.catalogCache.listPage(params)
     return {
-      items: page.items.map((t) => this.toConnector(t)),
+      items: await Promise.all(page.items.map((t) => this.toConnector(t))),
       nextCursor: page.nextCursor,
     }
   }
@@ -213,13 +213,13 @@ class ComposioSourceProvider implements PaginatedConnectorSource {
 
     const declaredSet = new Set(declaredSlugs)
     const toolkits = await this.opts.catalogCache.listToolkits()
-    return toolkits
+    return Promise.all(toolkits
       .filter((t) => declaredSet.has(t.slug))
-      .map((t) => this.toConnector(t))
+      .map((t) => this.toConnector(t)))
   }
 
-  private toConnector(item: ComposioToolkitSummary): Connector {
-    const active = this.opts.connections.findActive(
+  private async toConnector(item: ComposioToolkitSummary): Promise<Connector> {
+    const active = await this.opts.connections.findActive(
       item.slug,
       'composio',
       this.opts.entityId,

@@ -1,8 +1,8 @@
 import type {
   SourceDeletionClaim,
   SourceDeletionInventoryEntry,
-  SourceDeletionStore,
 } from './source-deletion-store.js'
+import type { SourceDeletionRepository } from '../storage/source-repositories.js'
 import { SOURCE_JOB_LEASE_MS } from './source-job-store.js'
 
 export const SOURCE_DELETION_POLL_MS = 250
@@ -34,7 +34,7 @@ export class SourceDeletionWorker {
   private drainPromise: Promise<number> | null = null
 
   constructor(
-    private readonly deletions: SourceDeletionStore,
+    private readonly deletions: SourceDeletionRepository,
     private readonly bytes: SourceDeletionByteRemover,
     private readonly options: SourceDeletionWorkerOptions,
   ) {}
@@ -64,10 +64,10 @@ export class SourceDeletionWorker {
 
   async runOne(fixedNow?: number): Promise<boolean> {
     const currentTime = fixedNow === undefined ? () => Date.now() : () => fixedNow
-    if (this.deletions.confirmNextCancellation(currentTime())) return true
-    const recovery = this.deletions.recoverExpiredClaims(currentTime())
+    if (await this.deletions.confirmNextCancellation(currentTime())) return true
+    const recovery = await this.deletions.recoverExpiredClaims(currentTime())
     if (recovery.requeued > 0 || recovery.partial > 0) return true
-    const claim = this.deletions.claimNext(this.options.workerId, currentTime())
+    const claim = await this.deletions.claimNext(this.options.workerId, currentTime())
     if (!claim) return false
     await this.execute(claim, currentTime)
     return true
@@ -92,18 +92,20 @@ export class SourceDeletionWorker {
     claim: SourceDeletionClaim,
     currentTime: () => number,
   ): Promise<void> {
+    let renewal: Promise<unknown> | null = null
     const heartbeat = setInterval(() => {
-      try {
-        this.deletions.renewClaim(claim.jobId, claim.claimToken)
-      } catch {
-        // The next durable mutation observes the lease truth.
-      }
+      if (renewal) return
+      renewal = Promise.resolve().then(() =>
+        this.deletions.renewClaim(claim.jobId, claim.claimToken))
+        .catch(() => undefined)
+        .finally(() => { renewal = null })
     }, Math.floor(SOURCE_JOB_LEASE_MS / 3))
     heartbeat.unref()
     try {
       await this.executeClaim(claim, currentTime)
     } finally {
       clearInterval(heartbeat)
+      await renewal
     }
   }
 
@@ -113,21 +115,21 @@ export class SourceDeletionWorker {
   ): Promise<void> {
     let checkpoint = claim.checkpoint
     if (checkpoint === 0) {
-      if (this.deletions.startDestruction(
+      if (await this.deletions.startDestruction(
         claim.jobId, claim.claimToken, currentTime(),
       ) !== 'advanced') return
       checkpoint = 1
     }
 
-    const inventory = this.deletions.getInventoryEntries(claim.jobId)
+    const inventory = await this.deletions.getInventoryEntries(claim.jobId)
     for (const artifact of inventory) {
       if (artifact.state === 'verified_absent') continue
-      if (!this.deletions.renewClaim(
+      if (!await this.deletions.renewClaim(
         claim.jobId, claim.claimToken, currentTime(),
       )) return
       try {
         const requested = await this.removeArtifact(claim, artifact, currentTime())
-        if (requested && this.deletions.markArtifact(
+        if (requested && await this.deletions.markArtifact(
           claim.jobId,
           claim.claimToken,
           artifact.kind,
@@ -141,15 +143,15 @@ export class SourceDeletionWorker {
     }
 
     if (checkpoint < 2) {
-      if (this.deletions.advanceCheckpoint(
+      if (await this.deletions.advanceCheckpoint(
         claim.jobId, claim.claimToken, 1, 2, currentTime(),
       ) !== 'advanced') return
       checkpoint = 2
     }
 
-    for (const artifact of this.deletions.getInventoryEntries(claim.jobId)) {
+    for (const artifact of await this.deletions.getInventoryEntries(claim.jobId)) {
       if (artifact.state === 'verified_absent') continue
-      if (!this.deletions.renewClaim(
+      if (!await this.deletions.renewClaim(
         claim.jobId, claim.claimToken, currentTime(),
       )) return
       let absent = false
@@ -158,7 +160,7 @@ export class SourceDeletionWorker {
       } catch {
         absent = false
       }
-      if (this.deletions.markArtifact(
+      if (await this.deletions.markArtifact(
         claim.jobId,
         claim.claimToken,
         artifact.kind,
@@ -169,11 +171,11 @@ export class SourceDeletionWorker {
     }
 
     if (checkpoint < 3) {
-      if (this.deletions.advanceCheckpoint(
+      if (await this.deletions.advanceCheckpoint(
         claim.jobId, claim.claimToken, 2, 3, currentTime(),
       ) !== 'advanced') return
     }
-    this.deletions.finish(claim.jobId, claim.claimToken, currentTime())
+    await this.deletions.finish(claim.jobId, claim.claimToken, currentTime())
   }
 
   private async removeArtifact(
@@ -184,27 +186,27 @@ export class SourceDeletionWorker {
     switch (artifact.kind) {
       case 'immutable_original':
       case 'placed_candidate':
-        if (!this.deletions.versionLocatorMatches(
+        if (!await this.deletions.versionLocatorMatches(
           claim.jobId, artifact.kind, artifact.id,
         )) return false
         await this.bytes.removeVersionArtifacts(claim.sourceId, artifact.id)
         return true
       case 'upload_staging':
         await this.bytes.removeUploadArtifacts(artifact.id)
-        return this.deletions.removeControlArtifact(
+        return await this.deletions.removeControlArtifact(
           claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
         )
       case 'derived_resource':
       case 'source_job':
       case 'idempotency_replay':
       case 'grant_mutation_replay':
-        return this.deletions.removeControlArtifact(
+        return await this.deletions.removeControlArtifact(
           claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
         )
       case 'access_grant_revocation':
-        return this.deletions.ensureGrantRevoked(claim.jobId, artifact.id, now)
+        return await this.deletions.ensureGrantRevoked(claim.jobId, artifact.id, now)
       case 'data_view': {
-        const locator = this.deletions.dataViewLocator(claim.jobId, artifact.id)
+        const locator = await this.deletions.dataViewLocator(claim.jobId, artifact.id)
         if (!locator) return false
         await this.bytes.removeDataViewArtifact(
           locator.sourceId, locator.sourceVersionId, artifact.id,
@@ -212,12 +214,12 @@ export class SourceDeletionWorker {
         if (!await this.bytes.dataViewArtifactAbsent(
           locator.sourceId, locator.sourceVersionId, artifact.id,
         )) return false
-        return this.deletions.removeControlArtifact(
+        return await this.deletions.removeControlArtifact(
           claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
         )
       }
       case 'retrieval_cache':
-        return this.deletions.removeRetrievalCacheArtifact(
+        return await this.deletions.removeRetrievalCacheArtifact(
           claim.jobId, claim.claimToken, artifact.id, now,
         )
       case 'search_index':
@@ -233,48 +235,48 @@ export class SourceDeletionWorker {
     switch (artifact.kind) {
       case 'immutable_original':
       case 'placed_candidate':
-        if (!this.deletions.versionLocatorMatches(
+        if (!await this.deletions.versionLocatorMatches(
           claim.jobId, artifact.kind, artifact.id,
         )) return false
         return await this.bytes.versionArtifactsAbsent(claim.sourceId, artifact.id) &&
-          this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+          await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       case 'upload_staging': {
         if (!await this.bytes.uploadArtifactsAbsent(artifact.id)) return false
-        if (!this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
-          this.deletions.removeControlArtifact(
+        if (!await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
+          await this.deletions.removeControlArtifact(
             claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
           )
         }
-        return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+        return await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       }
       case 'derived_resource':
       case 'idempotency_replay':
       case 'grant_mutation_replay':
-        return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+        return await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       case 'source_job':
-        if (!this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
-          this.deletions.removeControlArtifact(
+        if (!await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
+          await this.deletions.removeControlArtifact(
             claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
           )
         }
-        return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+        return await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       case 'access_grant_revocation':
-        return this.deletions.grantRevocationEffective(claim.jobId, artifact.id)
+        return await this.deletions.grantRevocationEffective(claim.jobId, artifact.id)
       case 'data_view': {
-        const locator = this.deletions.dataViewLocator(claim.jobId, artifact.id)
+        const locator = await this.deletions.dataViewLocator(claim.jobId, artifact.id)
         if (!locator) return false
         if (!await this.bytes.dataViewArtifactAbsent(
           locator.sourceId, locator.sourceVersionId, artifact.id,
         )) return false
-        if (!this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
-          this.deletions.removeControlArtifact(
+        if (!await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)) {
+          await this.deletions.removeControlArtifact(
             claim.jobId, claim.claimToken, artifact.kind, artifact.id, now,
           )
         }
-        return this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
+        return await this.deletions.controlArtifactAbsent(artifact.kind, artifact.id)
       }
       case 'retrieval_cache':
-        return this.deletions.retrievalCacheArtifactAbsent(claim.jobId, artifact.id)
+        return await this.deletions.retrievalCacheArtifactAbsent(claim.jobId, artifact.id)
       case 'search_index':
         return false
     }

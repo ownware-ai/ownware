@@ -79,11 +79,12 @@ export {
   type RememberToolDeps,
 } from './remember-tool.js'
 
-import type Database from 'better-sqlite3'
 import { MemoryEventBus } from './event-bus.js'
-import { SqliteMemoryStore } from './store.js'
-import { SqliteMemoryProposalsStore } from './proposals.js'
-import { SqliteUserIdentityStore } from './identity-store.js'
+import type {
+  MemoryProposalRepository,
+  MemoryRepository,
+  UserIdentityRepository,
+} from '../storage/platform-repositories.js'
 
 /**
  * Convenience wiring — one bag of stores backed by a single SQLite
@@ -92,16 +93,8 @@ import { SqliteUserIdentityStore } from './identity-store.js'
  * every store and SSE consumers receive a unified stream.
  */
 export interface MemorySystem {
-  readonly memories: SqliteMemoryStore
-  readonly proposals: SqliteMemoryProposalsStore
-  readonly identity: SqliteUserIdentityStore
+  readonly memories: MemoryRepository
+  readonly proposals: MemoryProposalRepository
+  readonly identity: UserIdentityRepository
   readonly bus: MemoryEventBus
-}
-
-export function createMemorySystem(db: Database.Database): MemorySystem {
-  const bus = new MemoryEventBus()
-  const memories = new SqliteMemoryStore(db, bus)
-  const proposals = new SqliteMemoryProposalsStore(db, memories, bus)
-  const identity = new SqliteUserIdentityStore(db, bus)
-  return { memories, proposals, identity, bus }
 }

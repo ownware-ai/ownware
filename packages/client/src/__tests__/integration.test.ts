@@ -180,7 +180,7 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
   })
 
   it('owner delegates one capability and revocation is immediate', async () => {
-    const workspace = gateway.state.createWorkspace(dir, 'Client delegation')
+    const workspace = await gateway.state.createWorkspace(dir, 'Client delegation')
     const issued = await ownware.issueDelegation({
       delegateId: 'client-integration',
       workspaceId: workspace.id,
@@ -204,7 +204,10 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
 
   it('a delegated validator validates portable bytes without registering a profile', async () => {
     const before = (await gateway.registry.list()).length
-    const workspace = gateway.state.createWorkspace(join(dir, 'candidate-workspace'), 'Client candidate validation')
+    const workspace = await gateway.state.createWorkspace(
+      join(dir, 'candidate-workspace'),
+      'Client candidate validation',
+    )
     const issued = await ownware.issueDelegation({
       delegateId: 'client-candidate-validator',
       workspaceId: workspace.id,
@@ -295,7 +298,10 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
   })
 
   it('a delegated client registers and reads one safe source manifest', async () => {
-    const workspace = gateway.state.createWorkspace(join(dir, 'source-workspace'), 'Client source')
+    const workspace = await gateway.state.createWorkspace(
+      join(dir, 'source-workspace'),
+      'Client source',
+    )
     const issued = await ownware.issueDelegation({
       delegateId: 'client-source-registration',
       subjectId: 'person.sdk-synthetic',
@@ -577,7 +583,10 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
   })
 
   it('prepares a strict CSV Data View through only the public SDK contract', async () => {
-    const workspace = gateway.state.createWorkspace(join(dir, 'data-view-workspace'), 'Client Data View')
+    const workspace = await gateway.state.createWorkspace(
+      join(dir, 'data-view-workspace'),
+      'Client Data View',
+    )
     const issued = await ownware.issueDelegation({
       delegateId: 'client-data-view-preparation',
       subjectId: 'person.synthetic-data-view',
@@ -815,12 +824,12 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
   it('run() replays one durable idempotency key without creating a second thread', async () => {
     const idempotencyKey = '22222222-2222-4222-8222-222222222222'
     const input = { profileId: 'test-agent', prompt: 'one logical turn', idempotencyKey }
-    const before = gateway.state.listThreads(undefined, { limit: 10_000 }).items.length
+    const before = (await gateway.state.listThreads(undefined, { limit: 10_000 })).items.length
     const first = await ownware.run(input)
     const second = await ownware.run(input)
     const conflict = await ownware.run({ ...input, prompt: 'different turn' })
       .catch((error: unknown) => error)
-    const after = gateway.state.listThreads(undefined, { limit: 10_000 }).items.length
+    const after = (await gateway.state.listThreads(undefined, { limit: 10_000 })).items.length
     expect(second.threadId).toBe(first.threadId)
     expect(second.runId).toBe(first.runId)
     expect(conflict).toBeInstanceOf(OwnwareError)

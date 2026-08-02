@@ -13,7 +13,7 @@ afterEach(async () => {
 
 describe('public request limits contract', () => {
   it('returns a typed 413 before mutation when JSON exceeds 10 MiB', async () => {
-    const before = gateway.state.listThreads(undefined, { limit: 10_000 }).items.length
+    const before = (await gateway.state.listThreads(undefined, { limit: 10_000 })).items.length
     const response = await fetch(`${gateway.baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: {
@@ -31,6 +31,6 @@ describe('public request limits contract', () => {
       correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       limitBytes: 10 * 1024 * 1024,
     })
-    expect(gateway.state.listThreads(undefined, { limit: 10_000 }).items).toHaveLength(before)
+    expect((await gateway.state.listThreads(undefined, { limit: 10_000 })).items).toHaveLength(before)
   })
 })

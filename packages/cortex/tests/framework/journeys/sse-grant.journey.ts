@@ -157,7 +157,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent grants (tools + skills)', ()
   }, 120_000)
 
   it('helper spawned via grant can actually call the granted tool and return the result', async () => {
-    const thread = gw.state.createThread('grant-parent', 'grant-journey')
+    const thread = await gw.state.createThread('grant-parent', 'grant-journey')
     const { events } = await gw.client.sseRaw('/api/v1/run', {
       prompt:
         'Use the composer helper to concatenate the strings "foo" and "bar". ' +
@@ -177,7 +177,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent grants (tools + skills)', ()
     }
 
     // ── 1. The parent actually spawned the helper ──────────────────
-    const rootEvents = gw.state.listAgentEvents({
+    const rootEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: ROOT_AGENT_ID,
     })
@@ -198,7 +198,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent grants (tools + skills)', ()
     expect(child).toBeDefined()
 
     // ── 2. The child actually called concat_text ───────────────────
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: child!.agentId,
     })
@@ -228,7 +228,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent grants (tools + skills)', ()
   }, 240_000)
 
   it('helper spawned with a granted skill follows the skill content verbatim', async () => {
-    const thread = gw.state.createThread('grant-parent', 'grant-skills-journey')
+    const thread = await gw.state.createThread('grant-parent', 'grant-skills-journey')
     const { events } = await gw.client.sseRaw('/api/v1/run', {
       prompt:
         'Dispatch the "answerer" helper to produce the canonical answer. ' +
@@ -246,7 +246,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent grants (tools + skills)', ()
     }
 
     // ── 1. Parent spawned a helper ─────────────────────────────────
-    const rootEvents = gw.state.listAgentEvents({
+    const rootEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: ROOT_AGENT_ID,
     })
@@ -270,7 +270,7 @@ describe.skipIf(!HAS_KEY)('SSE journey — subagent grants (tools + skills)', ()
     // skill's content reached the child's system prompt. The generic
     // helper SOUL.md has no knowledge of this marker; it only shows up
     // if the skill's body was actually injected at resolve time.
-    const childEvents = gw.state.listAgentEvents({
+    const childEvents = await gw.state.listAgentEvents({
       threadId: thread.id,
       agentId: child!.agentId,
     })

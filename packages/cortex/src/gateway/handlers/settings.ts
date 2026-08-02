@@ -14,7 +14,7 @@ export function createSettingsHandlers(state: GatewayState) {
 
   // GET /api/v1/settings
   async function getSettings(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const all = state.getAllSettings()
+    const all = await state.getAllSettings()
 
     // Group by section: key format is "section.name" → { section: { name: value } }
     const grouped: Record<string, Record<string, string>> = {}
@@ -52,11 +52,11 @@ export function createSettingsHandlers(state: GatewayState) {
 
     const data = parsed.data
     for (const [key, value] of Object.entries(data)) {
-      state.setSetting(`${section}.${key}`, value)
+      await state.setSetting(`${section}.${key}`, value)
     }
 
     // Return the full section
-    const all = state.getAllSettings()
+    const all = await state.getAllSettings()
     const sectionSettings: Record<string, string> = {}
     for (const s of all) {
       if (s.key.startsWith(`${section}.`)) {

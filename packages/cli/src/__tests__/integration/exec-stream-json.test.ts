@@ -106,17 +106,17 @@ afterAll(async () => {
   rmSync(tempRoot, { recursive: true, force: true })
 })
 
-function startScriptedRun(label: string) {
+async function startScriptedRun(label: string) {
   const wsDir = join(tempRoot, label.replace(/[^a-z0-9]+/gi, '-'))
   mkdirSync(wsDir, { recursive: true })
-  const workspace = gateway.state.createWorkspace(wsDir, label)
-  const thread = gateway.state.createThread('test-agent', label, workspace.id)
+  const workspace = await gateway.state.createWorkspace(wsDir, label)
+  const thread = await gateway.state.createThread('test-agent', label, workspace.id)
   const hitl = new HumanInTheLoop({ timeoutMs: 10_000 })
   hitl.onApprovalNeeded(() => {})
   const session = new ScriptedSession(hitl) as unknown as Session
   gateway.state.setSession(thread.id, session)
   gateway.state.setRuntime(thread.id, { session, hitl, zoneManager: null } as never)
-  const run = gateway.runStore.create({
+  const run = await gateway.runStore.create({
     threadId: thread.id,
     workspaceId: workspace.id,
     profileId: 'test-agent',
@@ -148,7 +148,7 @@ function asyncApiDeclaredTypes(): Set<string> {
 
 describe('exec — headless NDJSON contract (S4)', () => {
   it('stream-json lines conform to the AsyncAPI channel; approvals auto-deny', async () => {
-    const { threadId, runId, handle } = startScriptedRun('stream json flow')
+    const { threadId, runId, handle } = await startScriptedRun('stream json flow')
     let stdout = ''
     let stderr = ''
     const code = await streamExec(client, {
@@ -191,7 +191,7 @@ describe('exec — headless NDJSON contract (S4)', () => {
   }, 20_000)
 
   it('json format emits one final object; text format streams plain text', async () => {
-    const first = startScriptedRun('json flow')
+    const first = await startScriptedRun('json flow')
     let jsonOut = ''
     const jsonCode = await streamExec(client, {
       runId: first.runId,
@@ -208,7 +208,7 @@ describe('exec — headless NDJSON contract (S4)', () => {
     expect(result['threadId']).toBe(first.threadId)
     expect(String(result['text'])).toContain('Starting.')
 
-    const second = startScriptedRun('text flow')
+    const second = await startScriptedRun('text flow')
     let textOut = ''
     const textCode = await streamExec(client, {
       runId: second.runId,

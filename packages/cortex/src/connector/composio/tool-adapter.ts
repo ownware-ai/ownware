@@ -75,7 +75,7 @@ import type {
   ConnectorToolProviderResult,
 } from '../providers/types.js'
 import type { LoadedProfile } from '../../profile/loader.js'
-import type { ConnectorConnectionsStore } from '../connections/store.js'
+import type { ConnectorConnectionsRepository } from '../../storage/platform-repositories.js'
 import type {
   ComposioClient,
   ComposioTool,
@@ -117,7 +117,7 @@ const EMPTY_SCHEMA: JsonSchema = {
 export interface ComposioToolProviderOptions {
   readonly client: ComposioClient
   readonly catalogCache: ComposioCatalogCache
-  readonly connections: ConnectorConnectionsStore
+  readonly connections: ConnectorConnectionsRepository
   /**
    * Install-scoped identity governing "my" connections. Required and
    * non-empty — callers resolve via `InstallIdentity.resolve()` at
@@ -144,7 +144,7 @@ export interface ComposioToolProviderOptions {
    * the Composio side — preventing double-tool coverage of the same
    * logical app. When omitted, every row is kept (legacy behaviour).
    */
-  readonly shouldEmitForAppId?: (appId: string) => boolean
+  readonly shouldEmitForAppId?: (appId: string) => boolean | Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------
@@ -155,10 +155,10 @@ export class ComposioToolProvider implements ConnectorToolProvider {
   readonly source = 'composio'
   private readonly client: ComposioClient
   private readonly catalogCache: ComposioCatalogCache
-  private readonly connections: ConnectorConnectionsStore
+  private readonly connections: ConnectorConnectionsRepository
   private readonly entityId: string
   private readonly logFn: (line: string) => void
-  private readonly shouldEmitForAppId: (appId: string) => boolean
+  private readonly shouldEmitForAppId: (appId: string) => boolean | Promise<boolean>
   /**
    * Single source of truth for "what identifier do we send to Composio
    * at execute-time?" — see src/connector/identity/resolver.ts. Holding
@@ -250,7 +250,7 @@ export class ComposioToolProvider implements ConnectorToolProvider {
    * first chat session after a restart sees real tools.
    */
   async warmAllReady(): Promise<void> {
-    const ready = this.connections.listActiveByStatus('composio', 'ready', this.entityId)
+    const ready = await this.connections.listActiveByStatus('composio', 'ready', this.entityId)
     if (ready.length === 0) return
     await Promise.all(
       ready.map((row) => this.warmToolsForToolkit(row.connectorId)),
@@ -348,7 +348,7 @@ export class ComposioToolProvider implements ConnectorToolProvider {
       // now (user has MCP + Composio for the same logical app, MCP wins),
       // skip — the winning source contributes the tools. Prevents double-
       // registration with colliding names.
-      if (!this.shouldEmitForAppId(appId)) continue
+      if (!await this.shouldEmitForAppId(appId)) continue
 
       // ── No-auth path (2026-05-27) ───────────────────────────────────
       //
@@ -410,7 +410,7 @@ export class ComposioToolProvider implements ConnectorToolProvider {
         continue
       }
 
-      const active = this.connections.findActive(appId, 'composio', this.entityId)
+      const active = await this.connections.findActive(appId, 'composio', this.entityId)
       if (active?.status === 'ready' && active.authConfigId) {
         // Route identity through the resolver — never derive inline.
         // The resolver reads vendor-frozen columns (vendor_account_id,

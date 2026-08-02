@@ -23,9 +23,9 @@ function freshState(): GatewayState {
 }
 
 describe('GatewayState event log', () => {
-  it('stores raw events with timestamps', () => {
+  it('stores raw events with timestamps', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     const event = { type: 'text.delta', text: 'Hello', turnIndex: 0 } as LoomEvent
 
     state.logEvent(thread.id, event)
@@ -36,9 +36,9 @@ describe('GatewayState event log', () => {
     expect(log[0]!.ts).toBeGreaterThan(0)
   })
 
-  it('filters by event type', () => {
+  it('filters by event type', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
 
     state.logEvent(thread.id, { type: 'text.delta', text: 'Hi', turnIndex: 0 } as LoomEvent)
     state.logEvent(
@@ -51,9 +51,9 @@ describe('GatewayState event log', () => {
     expect(filtered).toHaveLength(2)
   })
 
-  it('filters by agentId', () => {
+  it('filters by agentId', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
 
     state.logEvent(
       thread.id,
@@ -71,7 +71,7 @@ describe('GatewayState event log', () => {
 
   it('filters by since timestamp', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
 
     state.logEvent(thread.id, { type: 'text.delta', text: 'Old', turnIndex: 0 } as LoomEvent)
     const cutoff = Date.now() + 1
@@ -83,9 +83,9 @@ describe('GatewayState event log', () => {
     expect((filtered[0]!.event as { text: string }).text).toBe('New')
   })
 
-  it('respects limit parameter', () => {
+  it('respects limit parameter', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
 
     for (let i = 0; i < 10; i++) {
       state.logEvent(thread.id, { type: 'text.delta', text: `msg${i}`, turnIndex: 0 } as LoomEvent)
@@ -96,9 +96,9 @@ describe('GatewayState event log', () => {
     expect((limited[0]!.event as { text: string }).text).toBe('msg7')
   })
 
-  it('enforces max 2000 events per thread', () => {
+  it('enforces max 2000 events per thread', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
 
     for (let i = 0; i < 2100; i++) {
       state.logEvent(thread.id, { type: 'text.delta', text: `msg${i}`, turnIndex: 0 } as LoomEvent)
@@ -114,12 +114,12 @@ describe('GatewayState event log', () => {
     expect(state.getEventLog('nonexistent')).toEqual([])
   })
 
-  it('clears event log when thread is deleted', () => {
+  it('clears event log when thread is deleted', async () => {
     const state = freshState()
-    const thread = state.createThread('test')
+    const thread = await state.createThread('test')
     state.logEvent(thread.id, { type: 'text.delta', text: 'Hi', turnIndex: 0 } as LoomEvent)
 
-    state.deleteThread(thread.id)
+    await state.deleteThread(thread.id)
     expect(state.getEventLog(thread.id)).toEqual([])
   })
 })

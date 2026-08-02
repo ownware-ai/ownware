@@ -19,7 +19,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { sendError, sendJSON, readJSON } from '../router.js'
-import type { SqliteScheduleStore } from '../../schedules/store.js'
+import type { ScheduleRepository } from '../../storage/platform-repositories.js'
 import type { ScheduleDto, ScheduleRunDto } from '../../schedules/types.js'
 import {
   CadenceKindSchema,
@@ -143,7 +143,7 @@ const UpdateScheduleRequestSchema = z
   .strict()
 
 export interface ScheduleHandlerDeps {
-  readonly store: SqliteScheduleStore
+  readonly store: ScheduleRepository
   /** Fire a schedule immediately; null if it doesn't exist. */
   readonly runNow: (scheduleId: string) => Promise<ScheduleRunDto | null>
 }
@@ -159,12 +159,12 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
       sendError(res, 400, `Invalid schedule: ${parsed.error.message}`)
       return
     }
-    let schedule = store.create(parsed.data)
+    let schedule = await store.create(parsed.data)
     // The server owns the cadence math: if the caller didn't pin a first fire
     // time, compute it from the cadence so the schedule is live immediately.
     if (parsed.data.nextRunAt == null && schedule.nextRunAt == null) {
       const next = computeNextRun(schedule, Date.now())
-      if (next != null) schedule = store.advance(schedule.id, { nextRunAt: next }) ?? schedule
+      if (next != null) schedule = await store.advance(schedule.id, { nextRunAt: next }) ?? schedule
     }
     sendJSON(res, 201, { schedule })
   }
@@ -177,7 +177,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const profileId = url.searchParams.get('profileId') ?? undefined
     const enabledOnly = url.searchParams.get('enabledOnly') === '1'
-    const schedules = store.list({
+    const schedules = await store.list({
       ...(profileId != null ? { profileId } : {}),
       ...(enabledOnly ? { enabledOnly: true } : {}),
     })
@@ -190,7 +190,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const schedule = store.get(params['id'] ?? '')
+    const schedule = await store.get(params['id'] ?? '')
     if (schedule == null) {
       sendError(res, 404, `Schedule "${params['id']}" not found`)
       return
@@ -210,7 +210,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
       sendError(res, 400, `Invalid update: ${parsed.error.message}`)
       return
     }
-    const schedule = store.update(params['id'] ?? '', parsed.data)
+    const schedule = await store.update(params['id'] ?? '', parsed.data)
     if (schedule == null) {
       sendError(res, 404, `Schedule "${params['id']}" not found`)
       return
@@ -224,7 +224,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
-    const ok = store.delete(params['id'] ?? '')
+    const ok = await store.delete(params['id'] ?? '')
     if (!ok) {
       sendError(res, 404, `Schedule "${params['id']}" not found`)
       return
@@ -238,7 +238,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
       res: ServerResponse,
       params: Record<string, string>,
     ): Promise<void> => {
-      const schedule = store.setEnabled(params['id'] ?? '', enabled)
+      const schedule = await store.setEnabled(params['id'] ?? '', enabled)
       if (schedule == null) {
         sendError(res, 404, `Schedule "${params['id']}" not found`)
         return
@@ -269,14 +269,14 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     params: Record<string, string>,
   ): Promise<void> {
     const id = params['id'] ?? ''
-    if (store.get(id) == null) {
+    if (await store.get(id) == null) {
       sendError(res, 404, `Schedule "${id}" not found`)
       return
     }
     const url = new URL(req.url ?? '/', 'http://localhost')
     const limitRaw = Number(url.searchParams.get('limit'))
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 500) : 50
-    sendJSON(res, 200, { runs: store.listRuns(id, limit) })
+    sendJSON(res, 200, { runs: await store.listRuns(id, limit) })
   }
 
   // GET /api/v1/schedules/occurrences?from=&to=&profileId=
@@ -307,7 +307,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
       return
     }
     const profileId = url.searchParams.get('profileId') ?? undefined
-    const schedules = store.list({
+    const schedules = await store.list({
       enabledOnly: true,
       ...(profileId != null ? { profileId } : {}),
     })
@@ -338,7 +338,7 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     const limitRaw = Number(url.searchParams.get('limit'))
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : 50
     const runningOnly = url.searchParams.get('status') === 'running'
-    sendJSON(res, 200, { runs: store.listRecentRuns(limit, { runningOnly }) })
+    sendJSON(res, 200, { runs: await store.listRecentRuns(limit, { runningOnly }) })
   }
 
   // POST /api/v1/schedules/preview — next N fire times for an unsaved cadence.

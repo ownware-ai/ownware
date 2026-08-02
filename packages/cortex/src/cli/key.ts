@@ -16,8 +16,7 @@
 
 import { createInterface } from 'node:readline'
 import { Writable } from 'node:stream'
-import { CortexDatabase } from '../gateway/db/database.js'
-import { createCredentialStore } from '../credential/store/index.js'
+import { GatewayState } from '../gateway/state.js'
 import { LLM_PROVIDERS, llmProviderById } from '../gateway/llm-providers.js'
 
 const PROVIDER_IDS = LLM_PROVIDERS.map((d) => d.providerId).join(' | ')
@@ -49,9 +48,10 @@ export async function keyCommand(argv: string[]): Promise<void> {
   const [sub, ...rest] = argv
   if (sub !== 'add' && sub !== 'list' && sub !== 'remove') usage()
 
-  const db = new CortexDatabase()
+  const state = new GatewayState()
   try {
-    const store = createCredentialStore(db.rawMainHandle)
+    await state.initializeStorage()
+    const store = state.securityRepositories.credentials
 
     if (sub === 'list') {
       const rows = await store.list({ category: 'llm' })
@@ -114,6 +114,6 @@ export async function keyCommand(argv: string[]): Promise<void> {
     }
     console.log('  A running `ownware serve` picks it up on its next start.')
   } finally {
-    db.close()
+    await state.closeStorage()
   }
 }

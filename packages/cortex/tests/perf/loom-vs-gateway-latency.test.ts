@@ -118,9 +118,16 @@ function benchAppend(): Stats {
   const dir = mkdtempSync(join(tmpdir(), 'bench-append-'))
   try {
     const db = new CortexDatabase(join(dir, 'a.db'))
+    // Agent-event streams are owned by durable threads. The old benchmark
+    // invented thread ids, which stopped measuring once that FK invariant was
+    // enforced. Seed the authoritative parent rows instead of disabling it.
+    const threadIds = Array.from(
+      { length: Math.ceil(Math.max(APPEND_N, 2_000) / APPEND_ROTATE) },
+      () => db.createThread('bench').id,
+    )
     const payload = { type: 'text.delta', text: 'a representative streamed token chunk' }
     const mk = (i: number) => ({
-      threadId: `thread_${Math.floor(i / APPEND_ROTATE)}`,
+      threadId: threadIds[Math.floor(i / APPEND_ROTATE)]!,
       agentId: 'root',
       parentAgentId: null as string | null,
       type: 'text.delta',

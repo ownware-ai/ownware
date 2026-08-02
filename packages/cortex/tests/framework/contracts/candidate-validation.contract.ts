@@ -20,7 +20,7 @@ describe('Contract: side-effect-free candidate validation', () => {
 
   it('lets a delegated validator obtain a deterministic identity without installing or registering', async () => {
     const beforeProfiles = (await gateway.gateway.registry.list()).length
-    const workspace = gateway.gateway.state.createWorkspace(gateway.tmpDir, 'Candidate validation')
+    const workspace = await gateway.gateway.state.createWorkspace(gateway.tmpDir, 'Candidate validation')
     const issued = await gateway.client.post('/api/v1/auth/delegations', {
       delegateId: 'candidate-validator',
       workspaceId: workspace.id,
@@ -164,7 +164,7 @@ describe('Contract: side-effect-free candidate validation', () => {
       body: JSON.stringify({ files }),
     })
     const candidateId = (await validation.json() as { candidateId: string }).candidateId
-    const workspace = gateway.gateway.state.createWorkspace(
+    const workspace = await gateway.gateway.state.createWorkspace(
       `${gateway.tmpDir}/stage-workspace`,
       'Candidate stage',
     )
@@ -230,7 +230,7 @@ describe('Contract: side-effect-free candidate validation', () => {
 
   it('runs and catalogs a candidate-only profile without a legacy registry directory', async () => {
     await mkdir(`${gateway.tmpDir}/candidate-only-workspace`, { recursive: true })
-    const workspace = gateway.gateway.state.createWorkspace(
+    const workspace = await gateway.gateway.state.createWorkspace(
       `${gateway.tmpDir}/candidate-only-workspace`,
       'Candidate-only profile',
     )
@@ -295,7 +295,7 @@ describe('Contract: side-effect-free candidate validation', () => {
 
   it('compare-and-set activation pins each run and rebuilds a cached thread for the next candidate', async () => {
     await mkdir(`${gateway.tmpDir}/activation-workspace`, { recursive: true })
-    const workspace = gateway.gateway.state.createWorkspace(
+    const workspace = await gateway.gateway.state.createWorkspace(
       `${gateway.tmpDir}/activation-workspace`,
       'Candidate activation',
     )

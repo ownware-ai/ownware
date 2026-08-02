@@ -42,8 +42,8 @@ export const WEB_SEARCH_SETTING_KEY = 'connector.web_search.providerId'
  * the service unit-testable with a tiny in-memory stub (no DB required).
  */
 export interface WebSearchSettingsStore {
-  getSetting(key: string): { value: string } | undefined
-  setSetting(key: string, value: string): unknown
+  getSetting(key: string): Promise<{ value: string } | undefined>
+  setSetting(key: string, value: string): Promise<unknown>
 }
 
 export interface WebSearchServiceOptions {
@@ -72,8 +72,8 @@ export class WebSearchService {
   }
 
   /** Load the user's persisted choice, if any. */
-  getUserChoice(): string | null {
-    const row = this.settings.getSetting(WEB_SEARCH_SETTING_KEY)
+  async getUserChoice(): Promise<string | null> {
+    const row = await this.settings.getSetting(WEB_SEARCH_SETTING_KEY)
     return row?.value ?? null
   }
 
@@ -82,11 +82,11 @@ export class WebSearchService {
    * usable — resolution will fall through if the key is missing.
    * Validation of the provider id (known) happens at the handler layer.
    */
-  setUserChoice(providerId: string): void {
+  async setUserChoice(providerId: string): Promise<void> {
     if (!getWebSearchProvider(providerId)) {
       throw new Error(`Unknown web-search provider: ${providerId}`)
     }
-    this.settings.setSetting(WEB_SEARCH_SETTING_KEY, providerId)
+    await this.settings.setSetting(WEB_SEARCH_SETTING_KEY, providerId)
   }
 
   /** Persist an API key for a provider into the vault under the reserved id. */
@@ -117,7 +117,7 @@ export class WebSearchService {
     }
 
     const result = resolveWebSearchProvider({
-      userSetting: this.getUserChoice(),
+      userSetting: await this.getUserChoice(),
       env,
       vaultKeys,
     })

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 
 export type SourceQuotaResourceClass =
   | 'source_registrations'
@@ -62,7 +62,7 @@ interface SourceQuotaUsage {
 
 export class SourceQuotaPolicy {
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: SqliteDatabase,
     readonly limits: SourceQuotaLimits = DEFAULT_SOURCE_QUOTA_LIMITS,
   ) {}
 

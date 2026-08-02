@@ -52,7 +52,7 @@ export function createWorkspaceHandlers(
   async function list(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
     const status = url.searchParams.get('status') as 'active' | 'archived' | null
-    sendJSON(res, 200, state.listWorkspaces(status ?? undefined))
+    sendJSON(res, 200, await state.listWorkspaces(status ?? undefined))
   }
 
   // POST /api/v1/workspaces
@@ -87,12 +87,12 @@ export function createWorkspaceHandlers(
     }
 
     // Check for duplicate
-    const existing = state.getWorkspaceByPath(absPath)
+    const existing = await state.getWorkspaceByPath(absPath)
     if (existing) {
       // Reactivate if archived, otherwise return existing
       if (existing.status === 'archived') {
-        const updated = state.updateWorkspace(existing.id, { status: 'active' })
-        state.touchWorkspace(existing.id)
+        const updated = await state.updateWorkspace(existing.id, { status: 'active' })
+        await state.touchWorkspace(existing.id)
         // Audit #2 C2 / F1a: reactivation is a state transition out
         // of archived — surface it so subscribers re-fetch the list.
         eventBus?.emit({ workspaceId: existing.id, action: 'updated' })
@@ -103,13 +103,13 @@ export function createWorkspaceHandlers(
       // bumps lastOpenedAt but the list query doesn't sort on that, so
       // we intentionally do NOT emit here. Emitting would cause every
       // window-focus refetch to thrash the cache.
-      state.touchWorkspace(existing.id)
+      await state.touchWorkspace(existing.id)
       sendJSON(res, 200, existing)
       return
     }
 
     const name = body.name ?? basename(absPath)
-    const ws = state.createWorkspace(absPath, name)
+    const ws = await state.createWorkspace(absPath, name)
 
     // (The product-manifest-driven default-profile stamp was removed with
     // the legacy product catalog.)
@@ -124,12 +124,12 @@ export function createWorkspaceHandlers(
   // GET /api/v1/workspaces/:workspaceId
   async function get(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const id = params['workspaceId']!
-    const detail = state.getWorkspaceDetail(id)
+    const detail = await state.getWorkspaceDetail(id)
     if (!detail) {
       sendError(res, 404, `Workspace "${id}" not found`)
       return
     }
-    state.touchWorkspace(id)
+    await state.touchWorkspace(id)
     sendJSON(res, 200, detail)
   }
 
@@ -151,7 +151,7 @@ export function createWorkspaceHandlers(
     }
     const body = parsed.data
 
-    const updated = state.updateWorkspace(id, body)
+    const updated = await state.updateWorkspace(id, body)
     if (!updated) {
       sendError(res, 404, `Workspace "${id}" not found`)
       return
@@ -183,7 +183,7 @@ export function createWorkspaceHandlers(
       // eslint-disable-next-line no-console
       console.warn(`[workspaces] dropWorkspace(${id}) threw:`, err)
     }
-    const deleted = state.deleteWorkspace(id)
+    const deleted = await state.deleteWorkspace(id)
     if (!deleted) {
       sendError(res, 404, `Workspace "${id}" not found`)
       return
@@ -198,12 +198,12 @@ export function createWorkspaceHandlers(
   // GET /api/v1/workspaces/:workspaceId/threads
   async function listThreads(_req: IncomingMessage, res: ServerResponse, params: Record<string, string>): Promise<void> {
     const id = params['workspaceId']!
-    const ws = state.getWorkspace(id)
+    const ws = await state.getWorkspace(id)
     if (!ws) {
       sendError(res, 404, `Workspace "${id}" not found`)
       return
     }
-    sendJSON(res, 200, state.listThreadsByWorkspace(id))
+    sendJSON(res, 200, await state.listThreadsByWorkspace(id))
   }
 
   // (The desktop-only browse / history / file-tree endpoints were removed

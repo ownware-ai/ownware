@@ -14,7 +14,7 @@
  * per thread). A composite index covers each path.
  */
 
-import type Database from 'better-sqlite3'
+import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import {
   MemoryKindSchema,
   ProposalStatusSchema,
@@ -85,12 +85,12 @@ export interface AcceptInput {
 }
 
 export class SqliteMemoryProposalsStore {
-  private readonly db: Database.Database
+  private readonly db: SqliteDatabase
   private readonly bus: MemoryEventBus | null
   private readonly memories: SqliteMemoryStore
 
   constructor(
-    db: Database.Database,
+    db: SqliteDatabase,
     memories: SqliteMemoryStore,
     bus: MemoryEventBus | null = null,
   ) {
@@ -243,7 +243,7 @@ export class SqliteMemoryProposalsStore {
     let memory!: Memory
 
     const txn = this.db.transaction(() => {
-      memory = this.memories.create({
+      memory = this.memories.createWithoutPublish({
         profileId: existing.profileId,
         content: finalContent,
         kind: finalKind,
@@ -264,6 +264,15 @@ export class SqliteMemoryProposalsStore {
     const refreshed = this.getById(id)
     if (!refreshed) throw new Error(`Proposal ${id} disappeared after accept`)
 
+    // Both invalidations happen strictly after the transaction committed.
+    // A rollback must never announce a memory or resolved proposal that does
+    // not exist in durable state.
+    this.bus?.emit({
+      type: 'memory.changed',
+      profileId: existing.profileId,
+      memoryId: memory.id,
+      at: now,
+    })
     this.bus?.emit({
       type: 'memory.proposal.resolved',
       profileId: existing.profileId,

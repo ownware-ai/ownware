@@ -32,10 +32,10 @@ describe('source deletion plan across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Source deletion restart',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',
@@ -175,10 +175,10 @@ describe('source deletion plan across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Source deletion worker restart',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',
@@ -277,10 +277,10 @@ describe('source deletion plan across a real Gateway restart', () => {
       disableSourceWorker: true,
     })
     cleanupDir = gateway.tmpDir
-    const workspaceId = gateway.state.createWorkspace(
+    const workspaceId = (await gateway.state.createWorkspace(
       gateway.tmpDir,
       'Data View deletion restart',
-    ).id
+    )).id
     const source = new SourceStore(gateway.state.rawDbHandle).create({
       workspaceId,
       profileId: 'mini',

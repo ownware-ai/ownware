@@ -97,8 +97,8 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
     // Ensure the fixture workspace directory exists on disk so agent
     // tool calls (shell, readFile, glob) have a real cwd to operate in.
     mkdirSync(WORKSPACE_PATH, { recursive: true })
-    const existing = gw.state.getWorkspaceByPath(WORKSPACE_PATH)
-    const ws = existing ?? gw.state.createWorkspace(WORKSPACE_PATH, 'fixture-sandbox')
+    const existing = await gw.state.getWorkspaceByPath(WORKSPACE_PATH)
+    const ws = existing ?? (await gw.state.createWorkspace(WORKSPACE_PATH, 'fixture-sandbox'))
     wsId = ws.id
   }, 30_000)
 
@@ -109,7 +109,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 1/12 — perm-single-allow ──────────────────────────────────────────────
 
   it('fixture:perm-single-allow — single write permission, approved', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:perm-single-allow] Single write permission, approved',
       wsId,
@@ -122,7 +122,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
     expect(rootEvents.some(e => e.type === 'permission.request')).toBe(true)
 
@@ -144,7 +144,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 2/12 — perm-single-deny ───────────────────────────────────────────────
 
   it('fixture:perm-single-deny — single write permission, denied', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:perm-single-deny] Single write permission, denied',
       wsId,
@@ -157,7 +157,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
     expect(rootEvents.some(e => e.type === 'permission.request')).toBe(true)
 
@@ -174,7 +174,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 3/12 — perm-allow-always ──────────────────────────────────────────────
 
   it('fixture:perm-allow-always — permission with "allow always"', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:perm-allow-always] Permission with "allow always"',
       wsId,
@@ -188,7 +188,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
     expect(rootEvents.some(e => e.type === 'permission.request')).toBe(true)
 
@@ -207,7 +207,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 4/12 — perm-queued-sequential ────────────────────────────────────────
 
   it('fixture:perm-queued-sequential — multiple permissions in sequence', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:perm-queued-sequential] Multiple permissions in sequence',
       wsId,
@@ -223,7 +223,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
     const permRequests = rootEvents.filter(e => e.type === 'permission.request')
@@ -236,7 +236,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 5/12 — multi-turn-simple ──────────────────────────────────────────────
 
   it('fixture:multi-turn-simple — three-turn conversation', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:multi-turn-simple] Three-turn conversation',
       wsId,
@@ -258,7 +258,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const turnEnds = rootEvents.filter(e => e.type === 'turn.end')
     expect(turnEnds.length).toBeGreaterThanOrEqual(3)
     expect(rootEvents.some(e => e.type === 'text.delta')).toBe(true)
@@ -268,7 +268,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 6/12 — multi-turn-with-tools ─────────────────────────────────────────
 
   it('fixture:multi-turn-with-tools — multi-turn with tools each turn', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:multi-turn-with-tools] Multi-turn with tools each turn',
       wsId,
@@ -290,7 +290,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const turnEnds = rootEvents.filter(e => e.type === 'turn.end')
     expect(turnEnds.length).toBeGreaterThanOrEqual(3)
 
@@ -305,7 +305,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 7/12 — multi-turn-context ─────────────────────────────────────────────
 
   it('fixture:multi-turn-context — multi-turn builds on context', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:multi-turn-context] Multi-turn builds on context',
       wsId,
@@ -323,7 +323,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const turnEnds = rootEvents.filter(e => e.type === 'turn.end')
     expect(turnEnds.length).toBeGreaterThanOrEqual(2)
 
@@ -345,7 +345,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 8/12 — system-error-recovery ─────────────────────────────────────────
 
   it('fixture:system-error-recovery — tool error then recovery', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:system-error-recovery] Tool error then recovery',
       wsId,
@@ -359,7 +359,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
     const toolEnds = rootEvents.filter(e => e.type === 'tool.call.end')
@@ -376,7 +376,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 9/12 — system-security-block ─────────────────────────────────────────
 
   it('fixture:system-security-block — security block event', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:system-security-block] Security block event',
       wsId,
@@ -388,7 +388,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)
 
     const hadSecurityBlock = rootEvents.some(e => e.type === 'security.block')
@@ -411,7 +411,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 10/12 — full-session-receipt ─────────────────────────────────────────
 
   it('fixture:full-session-receipt — complete session with receipt', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:full-session-receipt] Complete session with receipt',
       wsId,
@@ -423,7 +423,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
 
     expect(rootEvents.some(e => e.type === 'session.start')).toBe(true)
 
@@ -449,7 +449,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 11/12 — multi-turn-long-session ──────────────────────────────────────
 
   it('fixture:multi-turn-long-session — long session, 4 turns', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:multi-turn-long-session] Long session, 4 turns',
       wsId,
@@ -476,7 +476,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
     const turnEnds = rootEvents.filter(e => e.type === 'turn.end')
     expect(turnEnds.length).toBeGreaterThanOrEqual(4)
 
@@ -488,7 +488,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
   // ── 12/12 — idle-complete-state ───────────────────────────────────────────
 
   it('fixture:idle-complete-state — simple complete conversation for idle state', async () => {
-    const thread = gw.state.createThread(
+    const thread = await gw.state.createThread(
       'coder',
       '[fixture:idle-complete-state] Simple complete conversation for idle state',
       wsId,
@@ -500,7 +500,7 @@ describe.skipIf(!HAS_KEY)('Fixture batch 4 — Polish', () => {
       wsId,
     )
 
-    const rootEvents = gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    const rootEvents = await gw.state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
 
     expect(rootEvents.some(e => e.type === 'session.start')).toBe(true)
     expect(rootEvents.some(e => e.type === 'turn.end')).toBe(true)

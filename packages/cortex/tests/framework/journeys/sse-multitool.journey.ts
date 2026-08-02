@@ -44,8 +44,8 @@ describe.skipIf(!HAS_KEY)('SSE Pattern 4: Multiple tool calls', () => {
 
   it('agent reads multiple files in one task → multiple tool calls', async () => {
     // Workspace points to the sandbox so all tool calls are confined there
-    const ws = gw.state.createWorkspace(sandboxPath, 'sandbox-ws')
-    const thread = gw.state.createThread('coder', 'multi-tool', ws.id)
+    const ws = await gw.state.createWorkspace(sandboxPath, 'sandbox-ws')
+    const thread = await gw.state.createThread('coder', 'multi-tool', ws.id)
 
     // Stream raw so we can auto-approve any permission requests mid-stream
     const { events } = await gw.client.sseRaw('/api/v1/run', {
