@@ -35,6 +35,7 @@ export type {
   TaskPackScopeKind,
   TaskPackScopeDecision,
   TaskPackTask,
+  TaskPackDisplay,
   TaskPackScope,
   TaskPackCatalogEntry,
   TaskPackCatalog,

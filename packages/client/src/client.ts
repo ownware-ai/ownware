@@ -1149,6 +1149,15 @@ export interface TaskPackTask {
   readonly examples: readonly string[]
 }
 
+export interface TaskPackDisplay {
+  readonly category: string
+  readonly accent: 'blue' | 'red' | 'green' | 'amber' | 'violet' | 'slate'
+  /** Sanitized, geometry-only SVG source suitable for rendering as the pack icon. */
+  readonly iconSvg: string
+  /** Canonical 256px PNG for richer composer/task surfaces; absent on older manifests. */
+  readonly composerIconDataUrl: string | null
+}
+
 export interface TaskPackScope {
   readonly taskPackId: string
   readonly scopeKind: TaskPackScopeKind
@@ -1165,6 +1174,7 @@ export interface TaskPackCatalogEntry {
   readonly description: string
   readonly availableVersions: readonly string[]
   readonly effectiveVersion: string | null
+  readonly display: TaskPackDisplay | null
   readonly tasks: readonly TaskPackTask[]
   readonly scopes: readonly TaskPackScope[]
 }

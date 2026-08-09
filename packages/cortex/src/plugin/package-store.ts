@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { crc32, inflateSync } from 'node:zlib'
 import {
   lstat,
   mkdir,
@@ -37,6 +38,25 @@ const MAX_SKILL_DESCRIPTION_BYTES = 1_024
 const MAX_SKILL_TRIGGER_BYTES = 512
 const MAX_SKILL_INVOKED_BYTES = 128 * 1024
 const MAX_SKILL_TOOL_RULES = 128
+const MAX_ICON_BYTES = 32 * 1024
+const MAX_COMPOSER_ICON_BYTES = 256 * 1024
+const MAX_SCRIPT_BYTES = 256 * 1024
+const MAX_SCHEMA_BYTES = 128 * 1024
+const MAX_TASK_RESOURCE_BYTES = 8 * 1024 * 1024
+
+const SVG_ATTRIBUTES = {
+  svg: new Set(['xmlns', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity']),
+  g: new Set(['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity']),
+  path: new Set(['d', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity']),
+  rect: new Set(['x', 'y', 'width', 'height', 'rx', 'ry', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity']),
+  circle: new Set(['cx', 'cy', 'r', 'fill', 'stroke', 'stroke-width', 'opacity']),
+  ellipse: new Set(['cx', 'cy', 'rx', 'ry', 'fill', 'stroke', 'stroke-width', 'opacity']),
+  line: new Set(['x1', 'y1', 'x2', 'y2', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'opacity']),
+  polyline: new Set(['points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity']),
+  polygon: new Set(['points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity']),
+} as const
+
+type PassiveSvgElement = keyof typeof SVG_ATTRIBUTES
 
 interface InspectedFile {
   readonly path: string
@@ -49,7 +69,20 @@ interface InspectedPackage {
   readonly packageSha256: string
 }
 
+export interface PluginPackageDisplay {
+  readonly category: string
+  readonly accent: 'blue' | 'red' | 'green' | 'amber' | 'violet' | 'slate'
+  readonly iconSvg: string
+  readonly composerIconDataUrl: string | null
+}
+
 type PluginTask = PluginManifest['tasks'][number]
+
+type PluginTaskResource = {
+  readonly kind: 'script' | 'template' | 'schema' | 'asset'
+  readonly path: string
+  readonly description: string
+}
 
 async function statIfExists(path: string): Promise<Awaited<ReturnType<typeof stat>> | null> {
   try {
@@ -106,9 +139,41 @@ function packageDigest(files: readonly InspectedFile[]): string {
   return `sha256:${hash.digest('hex')}`
 }
 
+function taskResources(task: PluginTask): readonly PluginTaskResource[] {
+  return 'resources' in task ? task.resources : []
+}
+
+function inspectTaskResources(
+  task: PluginTask,
+  files: readonly InspectedFile[],
+): readonly PluginTaskResource[] {
+  const resources = taskResources(task)
+  for (const resource of resources) {
+    const file = files.find(candidate => candidate.path === resource.path)
+    if (file === undefined) throw new PluginPackageIntegrityError('corrupt')
+    const limit = resource.kind === 'script'
+      ? MAX_SCRIPT_BYTES
+      : resource.kind === 'schema'
+        ? MAX_SCHEMA_BYTES
+        : MAX_TASK_RESOURCE_BYTES
+    if (file.bytes.byteLength > limit) throw new PluginPackageIntegrityError('limit_exceeded')
+    if (resource.kind === 'script') decodeUtf8(file.bytes)
+    if (resource.kind === 'schema') {
+      try {
+        JSON.parse(decodeUtf8(file.bytes))
+      } catch (error) {
+        if (error instanceof PluginPackageIntegrityError) throw error
+        throw new PluginPackageIntegrityError('corrupt')
+      }
+    }
+  }
+  return resources
+}
+
 function loadTaskSkill(
   task: PluginTask,
   files: readonly InspectedFile[],
+  resourceRoot?: string,
 ): SkillDefinition {
   const skillFile = files.find(file => file.path === `${task.skill}/SKILL.md`)
   if (skillFile === undefined) throw new PluginPackageIntegrityError('corrupt')
@@ -139,13 +204,200 @@ function loadTaskSkill(
     const content = decodeUtf8(file.bytes)
     return `### ${path}\n\n${content.trim()}`
   })
-  const content = references.length === 0
-    ? loaded.content
-    : `${loaded.content.trim()}\n\n## Bundled references\n\n${references.join('\n\n')}`
+  const resources = inspectTaskResources(task, files)
+  const sections = [loaded.content.trim()]
+  if (references.length > 0) {
+    sections.push(`## Bundled references\n\n${references.join('\n\n')}`)
+  }
+  if (resources.length > 0 && resourceRoot !== undefined) {
+    const lines = resources.map(resource => {
+      const absolute = join(resourceRoot, ...resource.path.split('/'))
+      return `- ${resource.kind}: ${JSON.stringify(absolute)} — ${resource.description}`
+    })
+    sections.push([
+      '## Verified package resources',
+      '',
+      'These immutable files were verified with this task pack. Read or execute only the files needed for the request; never edit them in place.',
+      '',
+      ...lines,
+    ].join('\n'))
+  }
+  const content = sections.join('\n\n')
   if (Buffer.byteLength(content, 'utf8') > MAX_SKILL_INVOKED_BYTES) {
     throw new PluginPackageIntegrityError('limit_exceeded')
   }
-  return references.length === 0 ? loaded : { ...loaded, content }
+  return sections.length === 1 ? loaded : { ...loaded, content }
+}
+
+function validSvgAttribute(name: string, value: string): boolean {
+  if (name === 'xmlns') return value === 'http://www.w3.org/2000/svg'
+  if (name === 'viewBox') return value === '0 0 24 24'
+  if (name === 'd') return value.length > 0 && /^[MmLlHhVvCcSsQqTtAaZz0-9+.,\-\s]+$/.test(value)
+  if (name === 'points') return value.length > 0 && /^[0-9+.,\-\s]+$/.test(value)
+  if (name === 'fill' || name === 'stroke') {
+    return value === 'none' || value === 'currentColor' || /^#[0-9a-fA-F]{3,8}$/.test(value)
+  }
+  if (name === 'stroke-linecap') return ['butt', 'round', 'square'].includes(value)
+  if (name === 'stroke-linejoin') return ['arcs', 'bevel', 'miter', 'miter-clip', 'round'].includes(value)
+  return /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)
+}
+
+/** Parse the deliberately tiny, geometry-only SVG subset accepted for catalog icons. */
+function isPassiveIconSvg(svg: string): boolean {
+  if (/[&\u0000]|[^\x09\x0a\x0d\x20-\x7e]/.test(svg)) return false
+  const tags = /<[^>]*>/g
+  const stack: PassiveSvgElement[] = []
+  let cursor = 0
+  let sawRoot = false
+  let closedRoot = false
+  let match: RegExpExecArray | null
+  while ((match = tags.exec(svg)) !== null) {
+    if (svg.slice(cursor, match.index).trim() !== '' || closedRoot) return false
+    cursor = tags.lastIndex
+    const token = match[0]
+    const closing = /^<\/([a-z][a-z0-9]*)\s*>$/.exec(token)
+    if (closing !== null) {
+      const element = closing[1] as PassiveSvgElement
+      if (stack.pop() !== element) return false
+      if (element === 'svg') closedRoot = true
+      continue
+    }
+
+    const opening = /^<([a-z][a-z0-9]*)([\s\S]*?)(\/?)>$/.exec(token)
+    if (opening === null) return false
+    const element = opening[1] as PassiveSvgElement
+    if (!(element in SVG_ATTRIBUTES)) return false
+    if (!sawRoot) {
+      if (element !== 'svg') return false
+      sawRoot = true
+    } else if (stack.length === 0 || element === 'svg') {
+      return false
+    }
+
+    const attributes = opening[2] ?? ''
+    const allowed = SVG_ATTRIBUTES[element] as ReadonlySet<string>
+    const seen = new Set<string>()
+    const attributePattern = /([a-z][a-zA-Z0-9-]*)\s*=\s*(["'])([^"'<>]*)\2/g
+    let attributeCursor = 0
+    let attribute: RegExpExecArray | null
+    while ((attribute = attributePattern.exec(attributes)) !== null) {
+      if (attributes.slice(attributeCursor, attribute.index).trim() !== '') return false
+      attributeCursor = attributePattern.lastIndex
+      const name = attribute[1]!
+      const value = attribute[3]!
+      if (seen.has(name) || !allowed.has(name) || !validSvgAttribute(name, value)) return false
+      seen.add(name)
+    }
+    if (attributes.slice(attributeCursor).trim() !== '') return false
+    if (element === 'svg' && !seen.has('viewBox')) return false
+
+    if (opening[3] === '/') {
+      if (element === 'svg') closedRoot = true
+    } else {
+      stack.push(element)
+    }
+  }
+  return sawRoot && closedRoot && stack.length === 0 && svg.slice(cursor).trim() === ''
+}
+
+function isCanonicalComposerPng(png: Buffer): boolean {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  if (png.byteLength < 57 || !png.subarray(0, 8).equals(signature)) return false
+  let cursor = 8
+  let sawHeader = false
+  let sawData = false
+  let sawEnd = false
+  let sawPhysicalDimensions = false
+  const compressed: Buffer[] = []
+  while (cursor < png.byteLength) {
+    if (png.byteLength - cursor < 12) return false
+    const length = png.readUInt32BE(cursor)
+    const end = cursor + 12 + length
+    if (end > png.byteLength) return false
+    const type = png.subarray(cursor + 4, cursor + 8).toString('ascii')
+    const data = png.subarray(cursor + 8, cursor + 8 + length)
+    const expectedCrc = png.readUInt32BE(cursor + 8 + length)
+    if (crc32(png.subarray(cursor + 4, cursor + 8 + length)) !== expectedCrc) return false
+    if (type === 'IHDR') {
+      if (sawHeader || cursor !== 8 || length !== 13) return false
+      sawHeader = true
+    } else if (type === 'IDAT') {
+      if (!sawHeader || sawEnd || length === 0) return false
+      sawData = true
+      compressed.push(data)
+    } else if (type === 'pHYs') {
+      if (!sawHeader || sawData || sawEnd || sawPhysicalDimensions || length !== 9) return false
+      if (data[8] !== 0 && data[8] !== 1) return false
+      sawPhysicalDimensions = true
+    } else if (type === 'IEND') {
+      if (!sawData || sawEnd || length !== 0 || end !== png.byteLength) return false
+      sawEnd = true
+    } else {
+      return false
+    }
+    cursor = end
+  }
+  if (!sawHeader || !sawData || !sawEnd) return false
+  try {
+    const colorType = png[25]
+    const rowBytes = colorType === 6 ? 256 * 4 : 256 * 3
+    const pixels = inflateSync(Buffer.concat(compressed), { maxOutputLength: 256 * (rowBytes + 1) })
+    if (pixels.byteLength !== 256 * (rowBytes + 1)) return false
+    for (let offset = 0; offset < pixels.byteLength; offset += rowBytes + 1) {
+      if (pixels[offset]! > 4) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function loadDisplay(
+  manifest: PluginManifest,
+  files: readonly InspectedFile[],
+): PluginPackageDisplay | null {
+  if (manifest.schemaVersion !== 2 && manifest.schemaVersion !== 3) return null
+  if (!manifest.display.icon.endsWith('.svg')) throw new PluginPackageIntegrityError('corrupt')
+  const icon = files.find(file => file.path === manifest.display.icon)
+  if (icon === undefined) throw new PluginPackageIntegrityError('corrupt')
+  if (icon.bytes.byteLength > MAX_ICON_BYTES) {
+    throw new PluginPackageIntegrityError('limit_exceeded')
+  }
+  const svg = decodeUtf8(icon.bytes)
+  if (!isPassiveIconSvg(svg)) throw new PluginPackageIntegrityError('corrupt')
+  let composerIconDataUrl: string | null = null
+  if (manifest.schemaVersion === 3) {
+    if (!manifest.display.composerIcon.endsWith('.png')) {
+      throw new PluginPackageIntegrityError('corrupt')
+    }
+    const composerIcon = files.find(file => file.path === manifest.display.composerIcon)
+    if (composerIcon === undefined) throw new PluginPackageIntegrityError('corrupt')
+    if (composerIcon.bytes.byteLength > MAX_COMPOSER_ICON_BYTES) {
+      throw new PluginPackageIntegrityError('limit_exceeded')
+    }
+    const png = composerIcon.bytes
+    if (
+      !isCanonicalComposerPng(png) ||
+      png.readUInt32BE(8) !== 13 ||
+      png.subarray(12, 16).toString('ascii') !== 'IHDR' ||
+      png.readUInt32BE(16) !== 256 ||
+      png.readUInt32BE(20) !== 256 ||
+      png[24] !== 8 ||
+      (png[25] !== 2 && png[25] !== 6) ||
+      png[26] !== 0 ||
+      png[27] !== 0 ||
+      png[28] !== 0
+    ) {
+      throw new PluginPackageIntegrityError('corrupt')
+    }
+    composerIconDataUrl = `data:image/png;base64,${png.toString('base64')}`
+  }
+  return {
+    category: manifest.display.category,
+    accent: manifest.display.accent,
+    iconSvg: svg,
+    composerIconDataUrl,
+  }
 }
 
 async function inspectPackage(directory: string): Promise<InspectedPackage> {
@@ -190,6 +442,7 @@ async function inspectPackage(directory: string): Promise<InspectedPackage> {
   for (const task of manifest.tasks) {
     loadTaskSkill(task, files)
   }
+  loadDisplay(manifest, files)
   for (const migration of manifest.migrations) {
     const file = files.find(candidate => candidate.path === migration.path)
     if (file === undefined || sha256(file.bytes) !== migration.sha256) {
@@ -286,11 +539,17 @@ export class PluginPackageStore {
   async loadSkills(record: PluginVersionRecord): Promise<readonly SkillDefinition[]> {
     const inspected = await this.verifyInspection(record)
     const manifest = inspected.manifest
+    const directory = this.resolvePackageKey(record.packageKey)
     const skills: SkillDefinition[] = []
     for (const task of manifest.tasks) {
-      skills.push(loadTaskSkill(task, inspected.files))
+      skills.push(loadTaskSkill(task, inspected.files, directory))
     }
     return skills
+  }
+
+  async loadDisplay(record: PluginVersionRecord): Promise<PluginPackageDisplay | null> {
+    const inspected = await this.verifyInspection(record)
+    return loadDisplay(inspected.manifest, inspected.files)
   }
 
   private async verifyInspection(record: PluginVersionRecord): Promise<InspectedPackage> {

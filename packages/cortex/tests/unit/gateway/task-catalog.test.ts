@@ -36,6 +36,12 @@ describe('task catalog handlers', () => {
         description: 'Create documents.',
         availableVersions: ['1.0.0'],
         effectiveVersion: '1.0.0',
+        display: {
+          category: 'documents-files',
+          accent: 'blue',
+          iconSvg: '<svg viewBox="0 0 24 24"></svg>',
+          composerIconDataUrl: null,
+        },
         tasks: [{ id: 'create-document', label: 'Create a document' }],
         scopes: [],
       }]),

@@ -1980,9 +1980,24 @@ components:
         description: { type: string }
         examples: { type: array, items: { type: string } }
       additionalProperties: false
+    TaskPackDisplay:
+      type: object
+      required: [category, accent, iconSvg, composerIconDataUrl]
+      properties:
+        category: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$' }
+        accent: { type: string, enum: [blue, red, green, amber, violet, slate] }
+        iconSvg:
+          type: string
+          maxLength: 32768
+          description: Sanitized geometry-only 24px SVG source for the task-pack icon.
+        composerIconDataUrl:
+          type: [string, 'null']
+          maxLength: 349550
+          description: Canonical 256px PNG data URL for richer task surfaces, or null for older manifests.
+      additionalProperties: false
     TaskPackCatalogEntry:
       type: object
-      required: [id, name, description, availableVersions, effectiveVersion, tasks, scopes]
+      required: [id, name, description, availableVersions, effectiveVersion, display, tasks, scopes]
       properties:
         id: { type: string }
         name: { type: string }
@@ -1991,6 +2006,10 @@ components:
         effectiveVersion:
           type: [string, 'null']
           description: Exact selected version for the requested context, or null when disabled.
+        display:
+          oneOf:
+            - { $ref: '#/components/schemas/TaskPackDisplay' }
+            - { type: 'null' }
         tasks: { type: array, items: { $ref: '#/components/schemas/TaskPackTask' } }
         scopes: { type: array, items: { $ref: '#/components/schemas/TaskPackScope' } }
       additionalProperties: false

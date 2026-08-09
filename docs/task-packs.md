@@ -16,13 +16,21 @@ inherit the root agent's lazy task registry; their existing explicit profile and
 ```text
 documents/
 ├── ownware-plugin.json
+├── display/
+│   ├── icon.svg
+│   └── icon.png
 ├── skills/
 │   └── create-document/
 │       └── SKILL.md
 ├── references/
 │   └── document-workflow.md
-└── assets/
-    └── project-brief-outline.md
+├── assets/
+│   └── templates/
+│       └── project-brief.md
+├── schemas/
+│   └── document-plan.schema.json
+└── scripts/
+    └── document_probe.py
 ```
 
 `ownware-plugin.json` is strict: unknown fields, non-contained paths, duplicate task
@@ -30,11 +38,17 @@ identities, invalid semantic versions, and missing declared files are rejected.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "id": "documents",
   "version": "1.0.0",
   "name": "Documents",
   "description": "Create and revise structured documents.",
+  "display": {
+    "category": "documents-files",
+    "icon": "display/icon.svg",
+    "composerIcon": "display/icon.png",
+    "accent": "blue"
+  },
   "tasks": [
     {
       "id": "create-document",
@@ -42,6 +56,23 @@ identities, invalid semantic versions, and missing declared files are rejected.
       "description": "Plan, draft, and verify a structured document.",
       "skill": "skills/create-document",
       "references": ["references/document-workflow.md"],
+      "resources": [
+        {
+          "kind": "script",
+          "path": "scripts/document_probe.py",
+          "description": "Inspect and verify the saved document."
+        },
+        {
+          "kind": "template",
+          "path": "assets/templates/project-brief.md",
+          "description": "Reusable project brief outline."
+        },
+        {
+          "kind": "schema",
+          "path": "schemas/document-plan.schema.json",
+          "description": "Machine-readable document planning contract."
+        }
+      ],
       "examples": ["Create a project brief from these notes."]
     }
   ],
@@ -68,8 +99,31 @@ Clarify the audience, draft the artifact, save it, and reopen it for verificatio
 
 The manifest's permissions are declared requirements; they never grant an agent a
 tool. The agent profile's normal tool and security policy remains authoritative.
-References are verified with the package but enter the conversation only when the
-agent invokes that task through the lazy `skill` tool.
+References and typed resources are verified with the package but enter the
+conversation only when the agent invokes that task through the lazy `skill` tool.
+The invocation identifies every declared resource by an immutable absolute path;
+the ordinary agent tool policy still decides whether and how the agent may use it.
+
+Schema versions 1 and 2 remain accepted for existing packages. Schema version 2
+adds the required display block. Schema version 3 adds typed task resources and a
+required composer icon. References must be Markdown below `references/`; scripts,
+schemas, templates and other assets must be declared from their corresponding
+package roots. The loader enforces per-resource byte limits, parseable JSON schema resources,
+and combined invoked-content limits before any path reaches an agent.
+
+The catalog icon must be a contained, passive SVG no larger than 32 KiB with a
+`0 0 24 24` view box. Only a small geometry element and attribute allowlist is
+accepted; scripts, animation, event handlers, text, embedded objects, external
+references and CSS are rejected. The composer icon must be a non-interlaced,
+8-bit RGB or RGBA PNG at exactly 256 by 256 pixels and no larger than 256 KiB.
+Its chunks, checksums, decompressed row size and filters are verified. All display
+and task files are included in the immutable package digest and copied into the
+selected Ownware data directory during installation.
+
+The owner-only task catalog projects the selected version's category, accent,
+sanitized inline SVG and canonical composer PNG data URL. Schema-v1 packs return
+`display: null`; schema-v2 packs return a null composer icon, preserving one stable
+client contract across all supported package versions.
 
 ## Supplying built-in packs
 
@@ -132,6 +186,6 @@ a delegation names the route operation.
   global/workspace/top-level-agent controls, lazy root-agent skills, SQLite and
   PostgreSQL.
 - Not yet supported: remote marketplace ingestion, publisher signatures, automatic
-  background updates, historical per-run task-pack version receipts, or arbitrary
-  package script execution.
+  background updates, historical per-run task-pack version receipts, or automatic
+  install-time package script execution.
 - Package digests prove byte equality, not publisher identity or task completion.

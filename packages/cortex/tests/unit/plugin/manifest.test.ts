@@ -41,4 +41,61 @@ describe('plugin manifest', () => {
     })).toThrow()
     expect(() => parsePluginManifest({ ...manifest(), executable: 'install.sh' })).toThrow()
   })
+
+  it('accepts bounded v2 display metadata while preserving v1 compatibility', () => {
+    expect(parsePluginManifest({
+      ...manifest(),
+      schemaVersion: 2,
+      display: {
+        category: 'documents-files',
+        icon: 'display/icon.svg',
+        accent: 'blue',
+      },
+    })).toMatchObject({
+      schemaVersion: 2,
+      display: { icon: 'display/icon.svg', accent: 'blue' },
+    })
+    expect(() => parsePluginManifest({
+      ...manifest(),
+      schemaVersion: 2,
+      display: { category: 'documents-files', icon: '../icon.svg', accent: 'blue' },
+    })).toThrow()
+  })
+
+  it('accepts typed schema-v3 resources and rejects misplaced resource kinds', () => {
+    const v3 = {
+      ...manifest(),
+      schemaVersion: 3,
+      display: {
+        category: 'documents-files',
+        icon: 'display/icon.svg',
+        composerIcon: 'display/icon.png',
+        accent: 'blue',
+      },
+      tasks: [{
+        ...manifest().tasks[0],
+        references: ['references/workflow.md'],
+        resources: [
+          { kind: 'script', path: 'scripts/inspect.py', description: 'Inspect a document.' },
+          { kind: 'template', path: 'assets/templates/brief.md', description: 'Brief outline.' },
+          { kind: 'schema', path: 'schemas/plan.json', description: 'Plan schema.' },
+        ],
+      }],
+    }
+    expect(parsePluginManifest(v3)).toMatchObject({
+      schemaVersion: 3,
+      tasks: [expect.objectContaining({
+        resources: expect.arrayContaining([
+          expect.objectContaining({ kind: 'script', path: 'scripts/inspect.py' }),
+        ]),
+      })],
+    })
+    expect(() => parsePluginManifest({
+      ...v3,
+      tasks: [{
+        ...v3.tasks[0],
+        resources: [{ kind: 'script', path: 'assets/inspect.py', description: 'Wrong root.' }],
+      }],
+    })).toThrow()
+  })
 })

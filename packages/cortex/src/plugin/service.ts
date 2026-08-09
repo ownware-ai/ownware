@@ -4,7 +4,11 @@ import type {
   PluginRepository,
   PluginVersionRecord,
 } from '../storage/plugin-repository.js'
-import { PluginPackageStore, type InstalledPluginPackage } from './package-store.js'
+import {
+  PluginPackageStore,
+  type InstalledPluginPackage,
+  type PluginPackageDisplay,
+} from './package-store.js'
 import { resolvePluginVersion, type PluginResolutionContext } from './resolver.js'
 import { parsePluginManifest } from './manifest.js'
 
@@ -20,6 +24,8 @@ export interface TaskPackCatalogEntry {
   readonly availableVersions: readonly string[]
   /** Version whose tasks apply in the requested context; null when the pack is disabled. */
   readonly effectiveVersion: string | null
+  /** UI-safe display metadata for the selected version, or the latest version when disabled. */
+  readonly display: PluginPackageDisplay | null
   readonly tasks: readonly {
     readonly id: string
     readonly label: string
@@ -99,13 +105,15 @@ export class PluginService {
         { ...context, agentId: context.agentId ?? '' },
       )
       const effective = resolution.status === 'enabled' ? resolution.version : null
-      const manifest = parsePluginManifest((effective ?? latest).manifest)
+      const selected = effective ?? latest
+      const manifest = parsePluginManifest(selected.manifest)
       entries.push({
         id: pluginId,
         name: manifest.name,
         description: manifest.description,
         availableVersions: versions.map(version => version.version),
         effectiveVersion: effective?.version ?? null,
+        display: await this.packages.loadDisplay(selected),
         tasks: (effective === null ? [] : manifest.tasks).map(task => ({
           id: task.id,
           label: task.label,

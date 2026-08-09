@@ -22,6 +22,12 @@ const TaskCatalogSchema = z.object({
     description: z.string().min(1),
     availableVersions: z.array(z.string().min(1)),
     effectiveVersion: z.string().min(1).nullable(),
+    display: z.object({
+      category: z.string().min(1),
+      accent: z.enum(['blue', 'red', 'green', 'amber', 'violet', 'slate']),
+      iconSvg: z.string().min(1).max(32 * 1024),
+      composerIconDataUrl: z.string().startsWith('data:image/png;base64,').nullable(),
+    }).strict().nullable(),
     tasks: z.array(z.object({
       id: z.string().min(1),
       label: z.string().min(1),
@@ -36,12 +42,14 @@ const ScopeResponseSchema = z.object({ scope: ScopeSchema }).strict()
 
 async function writeDocumentsTaskPack(directory: string): Promise<void> {
   await mkdir(join(directory, 'skills', 'create-document'), { recursive: true })
+  await mkdir(join(directory, 'display'), { recursive: true })
   await writeFile(join(directory, 'ownware-plugin.json'), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'documents',
     version: '1.0.0',
     name: 'Documents',
     description: 'Create and revise structured documents.',
+    display: { category: 'documents-files', icon: 'display/icon.svg', accent: 'blue' },
     tasks: [{
       id: 'create-document',
       label: 'Create a document',
@@ -59,6 +67,10 @@ description: Plan, draft, and verify a structured document.
 ---
 Clarify the audience, draft the document, and verify the saved artifact.
 `)
+  await writeFile(
+    join(directory, 'display', 'icon.svg'),
+    '<svg viewBox="0 0 24 24"><path d="M4 3h16v18H4z"/></svg>',
+  )
 }
 
 describe('Contract: task catalog', () => {
@@ -86,6 +98,12 @@ describe('Contract: task catalog', () => {
         id: 'documents',
         availableVersions: ['1.0.0'],
         effectiveVersion: '1.0.0',
+        display: {
+          category: 'documents-files',
+          accent: 'blue',
+          iconSvg: expect.stringContaining('viewBox="0 0 24 24"'),
+          composerIconDataUrl: null,
+        },
         tasks: [{ id: 'create-document', label: 'Create a document' }],
         scopes: [{
           taskPackId: 'documents',
