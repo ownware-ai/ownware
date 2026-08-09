@@ -1,14 +1,14 @@
 # ownware
 
-**Build your own agent — alive everywhere.** Open-source, self-hosted
-agent platform: build an agent as a text profile, run it yourself as
-one process, reach it everywhere over one HTTP+SSE contract.
+**The open agent runtime for products you own.** Define an agent as a portable
+text profile and run the execution loop, durable backend, permission flow,
+storage, and HTTP+SSE contract as one self-hosted process.
 
 This is the umbrella package — one install for the whole quickstart
 surface: the `ownware` CLI, the `OwnwareGateway` class, and the profile +
 tool APIs.
 
-## Your agent live in three commands
+## A durable agent service in three commands
 
 ```bash
 ownware init      # drop a starter profile into ./profiles (the agent, as text)
@@ -22,8 +22,9 @@ anthropic` (or `openai` / `google` / `openrouter`) stores it in the
 encrypted credential vault.
 
 ```bash
-ownware channel add slack --profile assistant --bot-token xoxb-… --app-token xapp-…
-# the same agent now answers in Slack (also: telegram, discord, whatsapp, sms)
+curl -X POST http://localhost:3011/api/v1/run \
+  -H 'Content-Type: application/json' \
+  -d '{"profileId":"assistant","prompt":"hello"}'
 ```
 
 ## Or as a library — the whole backend in five lines
@@ -36,8 +37,8 @@ await ownware.start()
 // → POST /api/v1/run + SSE stream, threads, connectors, schedules
 ```
 
-Talk to it from anywhere with [`@ownware/client`](https://www.npmjs.com/package/@ownware/client)
-(zero-dep, Node + browser).
+Build any client with [`@ownware/client`](https://www.npmjs.com/package/@ownware/client)
+(zero dependencies, Node + browser) or the published OpenAPI/AsyncAPI contracts.
 
 SQLite is the zero-configuration storage default. A library deployment can
 explicitly select tenant-owned PostgreSQL 16–18 by installing the optional

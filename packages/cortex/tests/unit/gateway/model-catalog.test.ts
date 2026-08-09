@@ -1,5 +1,5 @@
 /**
- * Model catalog invariants.
+ * Editorial model-policy invariants.
  *
  * These tests guard against the most common mistakes when adding a new
  * model to one of the per-provider catalogs:
@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  ALL_MODELS,
+  MODEL_POLICIES,
   ANTHROPIC_MODELS,
   OPENAI_MODELS,
   GOOGLE_MODELS,
@@ -22,11 +22,11 @@ import {
   normalizeModelId,
 } from '../../../src/gateway/catalog/models/index.js'
 
-describe('model catalog', () => {
+describe('editorial model policies', () => {
   describe('uniqueness', () => {
     it('has no duplicate IDs across the union', () => {
       const seen = new Set<string>()
-      for (const m of ALL_MODELS) {
+      for (const m of MODEL_POLICIES) {
         expect(seen.has(m.id)).toBe(false)
         seen.add(m.id)
       }
@@ -34,7 +34,7 @@ describe('model catalog', () => {
 
     it('has no duplicate aliases across the union', () => {
       const seen = new Set<string>()
-      for (const m of ALL_MODELS) {
+      for (const m of MODEL_POLICIES) {
         for (const alias of m.aliases) {
           expect(seen.has(alias)).toBe(false)
           seen.add(alias)
@@ -81,7 +81,7 @@ describe('model catalog', () => {
 
   describe('metadata completeness', () => {
     it('every model has a non-empty name and description', () => {
-      for (const m of ALL_MODELS) {
+      for (const m of MODEL_POLICIES) {
         expect(m.name.length).toBeGreaterThan(0)
         expect(m.description.length).toBeGreaterThan(0)
       }
@@ -89,31 +89,13 @@ describe('model catalog', () => {
 
     it('every model has a valid tier', () => {
       const validTiers = ['flagship', 'balanced', 'fast', 'legacy', 'preview']
-      for (const m of ALL_MODELS) {
+      for (const m of MODEL_POLICIES) {
         expect(validTiers).toContain(m.tier)
       }
     })
 
-    it('every model has a positive context window and output limit', () => {
-      for (const m of ALL_MODELS) {
-        expect(m.contextWindow).toBeGreaterThan(0)
-        expect(m.maxOutputTokens).toBeGreaterThan(0)
-      }
-    })
-
-    it('pricing is either a positive number or explicitly null', () => {
-      for (const m of ALL_MODELS) {
-        if (m.costPer1kInput !== null) {
-          expect(m.costPer1kInput).toBeGreaterThan(0)
-        }
-        if (m.costPer1kOutput !== null) {
-          expect(m.costPer1kOutput).toBeGreaterThan(0)
-        }
-      }
-    })
-
     it('every model has a valid ISO release date', () => {
-      for (const m of ALL_MODELS) {
+      for (const m of MODEL_POLICIES) {
         expect(() => new Date(m.releaseDate)).not.toThrow()
         const d = new Date(m.releaseDate)
         expect(Number.isNaN(d.getTime())).toBe(false)

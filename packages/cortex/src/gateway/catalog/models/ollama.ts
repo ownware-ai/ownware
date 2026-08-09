@@ -8,14 +8,13 @@
  * pulled model works via the `ollama:<name>` string even if it isn't
  * listed here.
  *
- * Facts: no snapshot covers local models; context/output are the
- * published family numbers. Pricing is `null` (not zero) on purpose —
- * the catalog treats null as "no pricing to display", and the Loom
- * provider itself reports actual $0 cost at run time.
+ * Models.dev does not describe the local Ollama route. The published family
+ * context/output limits below are narrow Hub-ingested compatibility fallbacks;
+ * local billing remains unpriced and actual installed-model discovery remains
+ * the runtime authority.
  *
- * `hasCredentials` for these entries is reachability, not a stored key —
- * the gateway includes `ollama` in its configured-provider set only when
- * a local server answers (see `server.ts` model-catalog wiring).
+ * Provider Hub projects reachability as a local connection, never as a stored
+ * credential.
  */
 
 import type { ModelInfo } from '../../types.js'
@@ -29,8 +28,6 @@ export const OLLAMA_MODELS: readonly ModelInfo[] = [
     description: 'Small, quick local model — the keyless first-run default. Free, private, runs on your machine.',
     contextWindow: 131_072,
     maxOutputTokens: 8_192,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['tools', 'streaming'],
     aliases: [],
     releaseDate: '2024-09-25',
@@ -44,8 +41,6 @@ export const OLLAMA_MODELS: readonly ModelInfo[] = [
     description: 'Strong general local model for machines with the memory for it. Free and private.',
     contextWindow: 131_072,
     maxOutputTokens: 8_192,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['tools', 'streaming'],
     aliases: [],
     releaseDate: '2024-12-06',
@@ -58,8 +53,6 @@ export const OLLAMA_MODELS: readonly ModelInfo[] = [
     description: 'Capable local all-rounder with solid tool calling.',
     contextWindow: 32_768,
     maxOutputTokens: 8_192,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['tools', 'streaming', 'thinking'],
     aliases: [],
     releaseDate: '2025-04-29',

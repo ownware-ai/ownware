@@ -212,10 +212,11 @@ npx vitest run tests/framework/
 - `POST /api/v1/threads/:threadId/resume`
 - `POST /api/v1/threads/:threadId/abort`
 
-### Tools & Models (3)
+### Tools & Models
 - `GET /api/v1/profiles/:profileId/tools`
 - `GET /api/v1/tools/catalog`
-- `GET /api/v1/models`
+- `GET /api/v1/provider-hub/models` (canonical)
+- `GET /api/v1/models` (deprecated compatibility view)
 
 ### MCP Integration (11)
 - `GET /api/v1/mcp/featured`

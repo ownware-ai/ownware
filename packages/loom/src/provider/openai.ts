@@ -113,7 +113,7 @@ export class OpenAIProvider implements ProviderAdapter {
    * constructs a fresh `OpenAI` instance per call so the resolved key
    * cannot leak across requests.
    */
-  private async getClient(): Promise<OpenAI> {
+  protected async getClient(): Promise<OpenAI> {
     if (this.apiKeyProvider !== undefined) {
       const apiKey = await this.apiKeyProvider()
       return new OpenAI({
@@ -142,6 +142,29 @@ export class OpenAIProvider implements ProviderAdapter {
     return {}
   }
 
+  /** Catalog facts used for direct-OpenAI request quirks. Compatible
+   * subclasses override to return `null` so a matching model name cannot
+   * accidentally opt into OpenAI-only parameters or role changes. */
+  protected modelInfoForRequest(model: string): ReturnType<typeof getModelInfo> {
+    return getModelInfo('openai', model)
+  }
+
+  /** Kimi history ids are an OpenRouter/Moonshot-specific exception. */
+  protected normalizeKimiToolCallIds(model: string): boolean {
+    return isKimiModel(model)
+  }
+
+  /** Direct OpenAI uses the current field; compatible endpoints select their
+   * explicitly configured token-limit field instead. */
+  protected maxTokensRequestField(): 'max_completion_tokens' | 'max_tokens' {
+    return 'max_completion_tokens'
+  }
+
+  /** Direct OpenAI supports a final usage-only streaming chunk. */
+  protected includeStreamUsage(): boolean {
+    return true
+  }
+
   /**
    * Stream a chat completion from OpenAI.
    *
@@ -155,7 +178,7 @@ export class OpenAIProvider implements ProviderAdapter {
     try {
       yield* this.streamImpl(request)
     } catch (err) {
-      throw translateOpenAIError(err)
+      throw translateOpenAIError(err, this.name)
     }
   }
 
@@ -175,7 +198,7 @@ export class OpenAIProvider implements ProviderAdapter {
     // Completions endpoint accepts, and needs `developer` instead of
     // `system` for the lead message. Validate once up front, then build a
     // shape that's safe to send either way.
-    const modelInfo = getModelInfo('openai', request.model)
+    const modelInfo = this.modelInfoForRequest(request.model)
     const isReasoningModel = modelInfo?.supportsReasoning === true
     // `thinking` is a provider-agnostic hint. Per core/config.ts, providers
     // that can't honor it must ignore the field — not throw. Clearing it
@@ -195,7 +218,7 @@ export class OpenAIProvider implements ProviderAdapter {
       // `toCanonicalKimiId` (see `kimi-id-mapper.ts`); flip this flag
       // and the converter rewrites every `tool_call_id` and
       // `tool_calls[].id` on the wire. No-op for other providers.
-      normalizeKimiIds: isKimiModel(request.model),
+      normalizeKimiIds: this.normalizeKimiToolCallIds(request.model),
     })
     const tools = request.tools.length > 0
       ? request.tools.map(toOpenAITool)
@@ -206,9 +229,9 @@ export class OpenAIProvider implements ProviderAdapter {
       model: request.model,
       messages,
       tools,
-      max_completion_tokens: request.maxTokens,
+      [this.maxTokensRequestField()]: request.maxTokens,
       stream: true,
-      stream_options: { include_usage: true },
+      ...(this.includeStreamUsage() ? { stream_options: { include_usage: true } } : {}),
       ...this.getProviderSpecificStreamParams(),
     }
 
@@ -244,6 +267,7 @@ export class OpenAIProvider implements ProviderAdapter {
 
     const stream = await client.chat.completions.create(
       params as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
+      request.signal ? { signal: request.signal } : undefined,
     )
 
     // Accumulate state across streamed deltas
@@ -265,7 +289,7 @@ export class OpenAIProvider implements ProviderAdapter {
 
     // Wrap stream with stall detection
     const guardedStream = withStallGuard(stream, {
-      provider: 'openai',
+      provider: this.name,
       warnMs: request.stallWarnMs ?? STALL_WARN_MS,
       timeoutMs: request.stallTimeoutMs ?? STALL_TIMEOUT_MS,
     })
@@ -746,9 +770,9 @@ function toOpenAITool(
  * Anthropic translator — duck-types the SDK's APIError shape so we don't
  * import SDK error classes here.
  */
-export function translateOpenAIError(err: unknown): Error {
+export function translateOpenAIError(err: unknown, providerName = 'openai'): Error {
   if (err instanceof ProviderError) return err
-  if (!(err instanceof Error)) return new ProviderError('Unknown error', 'openai')
+  if (!(err instanceof Error)) return new ProviderError('Unknown error', providerName)
 
   // A custom transport may reject before any HTTP request exists (for
   // example, credential resolution or a required account binding). The
@@ -773,14 +797,14 @@ export function translateOpenAIError(err: unknown): Error {
     : err.message
 
   if (statusCode != null) {
-    return classifyHttpError(statusCode, bodyText, 'openai', {
+    return classifyHttpError(statusCode, bodyText, providerName, {
       message: err.message,
       retryAfterMs,
       headers,
     })
   }
 
-  return new ProviderError(err.message, 'openai', { recoverable: true, headers })
+  return new ProviderError(err.message, providerName, { recoverable: true, headers })
 }
 
 function normalizeOpenAIHeaders(h: unknown): Record<string, string> {

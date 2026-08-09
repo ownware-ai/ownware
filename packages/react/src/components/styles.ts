@@ -211,3 +211,96 @@ export const ownwareStudioCss = `
 .ow-main > * { flex: 1; min-width: 0; }
 .ow-hidden { display: none !important; }
 `
+
+/** Styles for <ChatGPTConnection>. Kept separate so account management can be
+ * embedded without pulling in the chat or studio layout. */
+export const OW_CONNECTION_STYLE_ID = 'ow-connection-styles'
+
+export const ownwareConnectionCss = `
+.ow-connection {
+  --ow-bg: #0F0F0E; --ow-surface: #181817; --ow-surface-2: #1F1F1E; --ow-wash: #282827;
+  --ow-hairline: rgba(255,255,255,.09); --ow-hairline-2: rgba(255,255,255,.16);
+  --ow-ink: #F4F3F0; --ow-ink-2: #B4B3AE; --ow-ink-3: #8C8B86;
+  --ow-accent: #93A9F9; --ow-accent-wash: rgba(147,169,249,.13);
+  --ow-action: #F4F3F0; --ow-on-action: #141414; --ow-action-hover: #E7E5E0;
+  --ow-success: #3FB950; --ow-danger: #F85149; --ow-danger-wash: rgba(248,81,73,.13);
+  --ow-font: "Instrument Sans","Helvetica Neue",Helvetica,system-ui,sans-serif;
+  --ow-mono: "IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  width: 100%; max-width: 760px; padding: 24px; color: var(--ow-ink); background: var(--ow-bg);
+  border: 1px solid var(--ow-hairline); border-radius: 14px; font-family: var(--ow-font);
+  font-size: 15px; line-height: 1.5; box-sizing: border-box;
+}
+.ow-connection[data-ow-theme="light"] {
+  --ow-bg: #F4F3F0; --ow-surface: #FFFFFF; --ow-surface-2: #F0EFEC; --ow-wash: #E7E6E2;
+  --ow-hairline: rgba(0,0,0,.10); --ow-hairline-2: rgba(0,0,0,.15);
+  --ow-ink: #141414; --ow-ink-2: #565654; --ow-ink-3: #83827E;
+  --ow-accent: #2A45C6; --ow-accent-wash: rgba(42,69,198,.08);
+  --ow-action: #141414; --ow-on-action: #F4F3F0; --ow-action-hover: #282827;
+  --ow-success: #1A7F37; --ow-danger: #CF222E; --ow-danger-wash: rgba(207,34,46,.09);
+}
+.ow-connection *, .ow-connection *::before, .ow-connection *::after { box-sizing: border-box; }
+.ow-connection button { font: inherit; cursor: pointer; }
+.ow-connection button:disabled { cursor: default; opacity: .52; }
+.ow-connection a { color: var(--ow-accent); font-weight: 650; text-underline-offset: 3px; }
+.ow-connection :is(button, a):focus-visible { outline: 2px solid var(--ow-accent); outline-offset: 3px; }
+.ow-connection-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.ow-connection-eyebrow { margin: 0 0 4px; color: var(--ow-accent); font-family: var(--ow-mono);
+  font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.ow-connection-head h2 { margin: 0; font-size: 24px; line-height: 1.2; letter-spacing: -.025em; }
+.ow-connection-head p:not(.ow-connection-eyebrow) { max-width: 48ch; margin: 8px 0 0; color: var(--ow-ink-2); }
+.ow-connection-state { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 5px 9px;
+  color: var(--ow-ink-3); background: var(--ow-surface); border: 1px solid var(--ow-hairline);
+  border-radius: 999px; font-family: var(--ow-mono); font-size: 10.5px; }
+.ow-connection-state > span { width: 7px; height: 7px; border-radius: 50%; background: var(--ow-ink-3); }
+.ow-connection-state.connected { color: var(--ow-success); }
+.ow-connection-state.connected > span { background: var(--ow-success); }
+.ow-route-list { display: grid; gap: 10px; margin-top: 22px; }
+.ow-route { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0;
+  padding: 16px; background: var(--ow-surface); border: 1px solid var(--ow-hairline); border-radius: 10px; }
+.ow-route.active { border-color: var(--ow-hairline-2); }
+.ow-route.unavailable { opacity: .66; }
+.ow-route-copy { min-width: 0; }
+.ow-route-title { display: flex; align-items: center; gap: 8px; }
+.ow-route-title h3 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+.ow-route-copy p { margin: 5px 0 0; color: var(--ow-ink-2); font-size: 13.5px; }
+.ow-route-copy .ow-route-meta { color: var(--ow-ink-3); font-family: var(--ow-mono); font-size: 10.5px; }
+.ow-badge { padding: 2px 7px; color: var(--ow-accent); background: var(--ow-accent-wash);
+  border-radius: 999px; font-family: var(--ow-mono); font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.ow-badge.muted { color: var(--ow-ink-3); background: var(--ow-surface-2); }
+.ow-route-action, .ow-connection-actions { display: flex; flex: none; gap: 8px; }
+.ow-connection-btn { min-height: 36px; padding: 0 13px; border-radius: 7px; font-size: 13px; font-weight: 650; }
+.ow-connection-btn.primary { color: var(--ow-on-action); background: var(--ow-action); border: 1px solid var(--ow-action); }
+.ow-connection-btn.primary:hover:not(:disabled) { background: var(--ow-action-hover); }
+.ow-connection-btn.ghost { color: var(--ow-ink-2); background: transparent; border: 1px solid var(--ow-hairline-2); }
+.ow-connection-btn.ghost:hover:not(:disabled) { color: var(--ow-ink); background: var(--ow-surface-2); }
+.ow-login-panel { display: grid; justify-items: start; gap: 8px; margin-top: 12px; padding: 16px;
+  color: var(--ow-ink-2); background: var(--ow-accent-wash); border: 1px solid var(--ow-hairline-2); border-radius: 10px; }
+.ow-login-panel strong { color: var(--ow-ink); }
+.ow-login-panel p { margin: 0; }
+.ow-login-panel code { padding: 8px 11px; color: var(--ow-ink); background: var(--ow-bg);
+  border: 1px solid var(--ow-hairline); border-radius: 6px; font-family: var(--ow-mono); font-size: 17px;
+  font-weight: 700; letter-spacing: .08em; user-select: all; }
+.ow-login-panel .ow-connection-wait { color: var(--ow-ink-3); font-size: 12px; }
+.ow-connected-detail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+  margin-top: 12px; overflow: hidden; background: var(--ow-hairline); border: 1px solid var(--ow-hairline); border-radius: 10px; }
+.ow-connected-detail > div { min-width: 0; padding: 13px; background: var(--ow-surface); }
+.ow-connected-detail span { display: block; color: var(--ow-ink-3); font-size: 11px; }
+.ow-connected-detail strong { display: block; margin-top: 3px; overflow: hidden; color: var(--ow-ink);
+  font-family: var(--ow-mono); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.ow-connection-note { margin: 12px 0 0; color: var(--ow-ink-2); font-size: 13px; }
+.ow-connection-error { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 12px; padding: 10px 12px; color: var(--ow-danger); background: var(--ow-danger-wash);
+  border: 1px solid var(--ow-danger); border-radius: 8px; font-size: 13px; }
+.ow-connection-error button { padding: 2px; color: inherit; background: none; border: none; font-weight: 700; text-decoration: underline; }
+.ow-connection-foot { margin-top: 16px; padding-top: 14px; color: var(--ow-ink-3); border-top: 1px solid var(--ow-hairline);
+  font-size: 11.5px; }
+@media (max-width: 640px) {
+  .ow-connection { padding: 18px; }
+  .ow-connection-head, .ow-route { align-items: stretch; flex-direction: column; }
+  .ow-connection-state { align-self: flex-start; }
+  .ow-route-action, .ow-connection-actions { width: 100%; }
+  .ow-connection-actions { flex-direction: column; }
+  .ow-connection-btn { width: 100%; }
+  .ow-connected-detail { grid-template-columns: 1fr; }
+}
+`

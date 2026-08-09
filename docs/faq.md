@@ -6,6 +6,12 @@ type: concept
 
 # FAQ
 
+**What is Ownware?**
+Ownware is an open, self-hosted agent runtime. A portable profile becomes a
+durable service with the execution loop, tools, threads, permission flow,
+storage, and typed HTTP+SSE contract already wired. Your product supplies the
+interface and business logic around it.
+
 **Is Ownware really free?**
 Yes — the whole kit (engine, gateway, channels, security) is [Apache-2.0](../LICENSE), free
 for any use including commercial. You self-host it; there's no paid tier for the core.
@@ -17,7 +23,7 @@ app as a library, `npm i ownware` and import `OwnwareGateway`. Power users can d
 
 **Can I run it without any API key?**
 Yes. Install [Ollama](https://ollama.com), `ollama pull llama3.2`, and point your profile
-at `ollama:llama3.2`. Everything runs locally, free and private. Add a cloud key later with
+at `ollama:llama3.2`. Model inference then runs locally with no provider key. Add a cloud key later with
 `ownware key add openai` (or anthropic / google / openrouter) when you want a bigger model.
 
 **Which model should I pick?**
@@ -26,9 +32,11 @@ OpenAI, Google) via `ownware key add` gives the best results. You can override p
 `--model`, or per profile in `agent.json`. See [Models](models/overview.md).
 
 **Is my data / are my keys safe?**
-Keys live in an encrypted vault under `~/.ownware/` and never leave your machine — the
-engine only ever sees opaque handles, and secrets never enter events, logs, or the database.
-Nothing is sent to Ownware; there is no Ownware server. See [Security overview](security/overview.md).
+Keys live in an encrypted vault under `~/.ownware/`; the engine only sees opaque
+handles, and secrets never enter events, logs, or the database. Ownware does not
+receive your keys or runtime data. The runtime talks directly to model and tool
+providers you configure, which receive the data sent for those calls. See
+[Security overview](security/overview.md).
 
 **Where does my data live, and what happens on an upgrade?**
 SQLite remains the zero-configuration default: its database and local artifacts

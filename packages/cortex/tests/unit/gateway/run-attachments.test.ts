@@ -11,6 +11,7 @@ describe('run attachment processing failure', () => {
       {} as ProfileRegistry,
       {} as SessionRunner,
       {
+        pickRunnableDefaultModel: async () => null,
         processAttachmentsFn: async () => {
           throw new Error('RAW-PRIVATE-PARSER-DETAIL')
         },

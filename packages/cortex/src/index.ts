@@ -142,6 +142,21 @@ export {
   CodexAccountProtocolError,
   CodexAccountUnavailableError,
 } from './runtime/codex/account.js'
+
+// Owner-facing, redacted gateway control plane for the official Codex route.
+// Codex owns token persistence; these snapshots never expose account identity
+// or reusable credentials.
+export {
+  CodexControlPlaneInputError,
+  ManagedCodexRuntimeControlPlane,
+} from './runtime/codex/control-plane.js'
+export type {
+  CodexControlPlaneClient,
+  CodexControlPlaneInputErrorCode,
+  CodexRuntimeControlPlane,
+  CodexRuntimeControlPlaneOptions,
+  CodexRuntimeStatus,
+} from './runtime/codex/control-plane.js'
 export {
   CodexProfileMappingError,
   CodexScopedToolAuthority,

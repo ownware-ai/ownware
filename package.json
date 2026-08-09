@@ -2,7 +2,7 @@
   "name": "ownware",
   "private": true,
   "version": "0.1.0",
-  "description": "ownware monorepo — ownware (umbrella) + loom (agent engine) + cortex (agent kernel & gateway) + bundled profiles",
+  "description": "Ownware monorepo — the open, self-hosted agent runtime, public clients, adapters, and bundled profiles.",
   "workspaces": [
     "packages/loom",
     "packages/cortex",

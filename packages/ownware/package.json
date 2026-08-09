@@ -1,7 +1,7 @@
 {
   "name": "ownware",
   "version": "0.4.0",
-  "description": "Ownware — build your own agent, run it yourself, reach it everywhere. Umbrella package: one import for the quickstart surface.",
+  "description": "Ownware — the open, self-hosted agent runtime: portable profiles, durable threads, tools, permissions, storage, and one typed streaming API.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

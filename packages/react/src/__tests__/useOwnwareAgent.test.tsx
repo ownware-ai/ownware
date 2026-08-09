@@ -2,10 +2,45 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useOwnwareAgent, type AgentTransport } from '../index.js'
-import type { RunResult, ModelEntry } from '@ownware/client'
+import type { ProviderHubModelPage, RunResult } from '@ownware/client'
 import type { AgentEvent } from '@ownware/ui'
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
+
+function hubPage(id: string): ProviderHubModelPage {
+  const [provider = 'test', wireModelId = id] = id.split(':', 2)
+  return {
+    generationId: 'test-generation',
+    items: [{
+      model: {
+        id,
+        providerRouteId: `route:${provider}`,
+        wireModelId,
+        name: id,
+        aliases: [],
+        contextWindow: null,
+        maxInputTokens: null,
+        maxOutputTokens: null,
+        capabilities: [],
+        variants: [],
+        availability: {
+          catalogued: true,
+          connectable: true,
+          credentialed: true,
+          verified: false,
+          recommended: true,
+          lifecycle: 'active',
+          connectionIds: ['connection:test'],
+        },
+        billingKind: provider === 'ollama' ? 'local' : 'metered',
+        catalogSourceRef: 'test',
+      },
+      prices: [],
+    }],
+    page: { limit: 200, total: 1, nextCursor: null },
+    warnings: [],
+  }
+}
 
 /** A controllable SSE-like stream the test pushes events onto. */
 function channel() {
@@ -41,17 +76,15 @@ function fakeTransport(ch: ReturnType<typeof channel>) {
   const resume = vi.fn(async () => {})
   const abort = vi.fn(async () => {})
   const run = vi.fn(async (): Promise<RunResult> => ({ threadId: 't-1' }))
-  const models = vi.fn(
-    async (): Promise<ModelEntry[]> => [{ id: 'openai:gpt-5.5', hasCredentials: true, default: true }],
-  )
+  const providerHubModels = vi.fn(async () => hubPage('openai:gpt-5.5'))
   const transport: AgentTransport = {
     run,
     events: (tid, opts) => ch.stream(tid, opts),
     resume,
     abort,
-    models,
+    providerHubModels,
   }
-  return { transport, resume, abort, run, models, ch }
+  return { transport, resume, abort, run, providerHubModels, ch }
 }
 
 describe('useOwnwareAgent', () => {

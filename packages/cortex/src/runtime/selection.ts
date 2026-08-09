@@ -186,7 +186,9 @@ export function resolveRuntimeSelection(
  * Build an inspectable plan without starting a model or external process.
  *
  * Support status is derived from the mechanism. It is not caller-controlled:
- * schema version 1 classifies direct ChatGPT transport as experimental.
+ * schema version 1 classifies both ChatGPT subscription routes as
+ * experimental. The official App Server route follows OpenAI's current
+ * upstream support label; "official" does not mean production-supported.
  */
 export function createRuntimePlan(
   input: unknown,
@@ -194,9 +196,9 @@ export function createRuntimePlan(
   plannedAt: string,
 ): RuntimePlan {
   const selection = resolveRuntimeSelection(input)
-  const support = selection.access.route === 'openai-chatgpt-direct'
-    ? 'experimental'
-    : 'supported'
+  const support = selection.access.route === 'provider-api'
+    ? 'supported'
+    : 'experimental'
 
   return RuntimePlanSchema.parse({
     schemaVersion: 1,

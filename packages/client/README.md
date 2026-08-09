@@ -1,11 +1,11 @@
 # @ownware/client
 
-Talk to your Ownware agent from anywhere. The typed SDK over the gateway
-wire contract (HTTP + SSE) — **zero dependencies**, works in Node and
-the browser.
+Build on the Ownware runtime from Node or the browser. This is the typed SDK
+over its public gateway contract (HTTP + SSE), with **zero dependencies**.
 
 The server half is the [`ownware`](../ownware) package (`OwnwareGateway`, or just
-`ownware serve`). This is the plug that connects to it.
+`ownware serve`). Applications, CLIs, UIs, and optional adapters all connect
+through this same surface.
 
 ## Five lines
 
@@ -31,6 +31,17 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `issueDelegation(input)` | `POST /api/v1/auth/delegations` | Owner-only: mint a short-lived workspace/profile/purpose/operation-scoped bearer. Bind an explicit `subjectId` for protected content reads/searches and Data View queries; never give a browser the owner token. |
 | `revokeDelegation(tokenId, reason)` | `POST /api/v1/auth/delegations/:id/revoke` | Owner-only: immediately revoke one delegated bearer by its public token ID. |
 | `connections(options?)` | `GET /api/v1/connections` | Owner-only: list the latest provider-neutral connection states and fixed recovery guidance without vendor, credential, session, install-identity or raw-error detail. |
+| `codexRuntime()` | `GET /api/v1/runtimes/codex` | Owner-only: read redacted official-Codex process, ChatGPT auth, login-phase and provider-quota state. This route is experimental and does not prove a later model request will be served. |
+| `startCodexLogin(kind)` | `POST /api/v1/runtimes/codex/login/start` | Owner-only: start Codex-owned browser or device login. The URL/code in the response is one-time material; never persist or log it. |
+| `waitForCodexLogin(timeoutMs?)` | `POST /api/v1/runtimes/codex/login/wait` | Bounded long-poll for the active login attempt; returns the same redacted runtime status shape. |
+| `cancelCodexLogin()` / `logoutCodex()` | `POST /api/v1/runtimes/codex/login/cancel` / `logout` | Cancel a pending login, or ask Codex to revoke managed local auth and confirm signed-out state. |
+| `codexModels()` | `GET /api/v1/runtimes/codex/models` | List the exact current `model/list` observation for the Codex-managed account, separate from API-key model catalogues. |
+| `providerHubOverview()` / `providerHubHealth()` | `GET /api/v1/provider-hub` / `health` | Read the active central catalog generation, closed counts and last-known-good refresh health without credentials or account identity. |
+| `providerHubProviders()` / `providerHubConnections()` / `providerHubVerifications()` | Provider Hub read routes | Inspect provider routes, secret-free connection projections and independently versioned verification evidence. |
+| `providerHubModels(query?)` | `GET /api/v1/provider-hub/models` | Search one generation-bound page across fixed API-key, router, local, custom and Codex subscription routes with explicit connected/verified/recommended filters and applicable price scopes. |
+| `refreshProviderHub(force?)` | `POST /api/v1/provider-hub/catalog/refresh` | Attempt a Models.dev refresh while retaining the validated last-known-good catalog on failure. |
+| `openAICompatibleConnections()` / `saveOpenAICompatibleConnection(input)` | Provider Hub compatible-connection routes | List or save a plug-and-play OpenAI-compatible endpoint. A submitted `key` is write-only and moves into a dedicated encrypted credential record. |
+| `discoverOpenAICompatibleModels(id)` / `removeOpenAICompatibleConnection(id)` | Provider Hub compatible-connection routes | Run bounded `/models` discovery, or remove the runtime registration and its dedicated managed credential. |
 | `registerSource(input)` | `POST /api/v1/sources` | With a scoped delegated bearer and UUID idempotency key, register safe logical-source metadata without paths, URLs, bytes or storage detail. |
 | `sources(options?)` | `GET /api/v1/sources` | Read a bounded page of safe manifests from only the bearer’s workspace/profile scope. |
 | `source(id)` | `GET /api/v1/sources/:id` | Read one safe manifest; cross-scope identities are indistinguishable from absence. |
@@ -75,7 +86,7 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `decidePermission(runId, requestId, input)` | `POST /runs/:runId/permissions/:requestId/decision` | Decide one exact request using its emitted `operationHash`; never bulk-decides siblings. |
 | `cancel(runId)` | `POST /runs/:runId/cancel` | Durably request cancellation of one exact run; `cancel_requested` is not confirmed cancellation. |
 | `abort(threadId)` | `POST /threads/:id/abort` | Owner-only legacy UI compatibility; delegated/public callers cannot use this thread route. |
-| `models()` | `GET /api/v1/models` | The catalog with live availability (`hasCredentials`). |
+| `models()` | `GET /api/v1/models` | Deprecated array compatibility view; projected from Provider Hub. New clients use `providerHubModels()`. |
 | `health()` | `GET /api/v1/health` | Liveness (the one unauthenticated route). |
 
 Continue a conversation by passing the same `threadId` to the next `run`, but

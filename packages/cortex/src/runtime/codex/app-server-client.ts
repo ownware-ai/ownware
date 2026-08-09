@@ -3,7 +3,15 @@ import { mkdir, realpath } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 
-export const SUPPORTED_CODEX_VERSION_RANGE = '>=0.145.0 <0.146.0'
+/**
+ * Protocol minors with generated-schema and installed-process evidence.
+ *
+ * This is intentionally not a broad semver interval: 0.146 was never proven
+ * by this repository, so accepting it merely because it lies between two
+ * known minors would turn version ordering into protocol compatibility.
+ */
+export const SUPPORTED_CODEX_VERSION_RANGE =
+  '>=0.145.0 <0.146.0 || >=0.147.0 <0.148.0'
 
 const MAX_STDOUT_LINE_BYTES = 1024 * 1024
 const MAX_INBOX_ITEMS = 1_024
@@ -30,7 +38,9 @@ export function parseCodexVersion(output: string): ParsedCodexVersion | null {
 }
 
 function isSupportedVersion(version: ParsedCodexVersion): boolean {
-  return version.major === 0 && version.minor === 145
+  return version.major === 0 && (
+    version.minor === 145 || version.minor === 147
+  )
 }
 
 type CodexFailureCode =

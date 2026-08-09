@@ -22,13 +22,25 @@ import { createPrincipalAuthMiddleware } from './auth/principal-middleware.js'
 import { ScopedPrincipalService } from './auth/scoped-principal.js'
 import { createHostGuard } from './middleware/host-guard.js'
 import { loadOrCreateGatewayToken, gatewayTokenPath } from './token-store.js'
-import { isOllamaReachable, PROVIDER_ENV_HINTS } from '@ownware/loom'
+import {
+  isOllamaReachable,
+  listOllamaModels,
+  listProviders,
+  PROVIDER_ENV_HINTS,
+} from '@ownware/loom'
 import { createRateLimiter } from './middleware/rate-limit.js'
 import type { RateLimiter } from './middleware/rate-limit.js'
 import { createAccessLogger } from './middleware/access-log.js'
 import type { AccessLogger } from './middleware/access-log.js'
 import { healthHandler, appVersionHandler, connectivityHandler } from './handlers/health.js'
 import { createCapabilitiesHandler } from './handlers/capabilities.js'
+import { createCodexRuntimeHandlers } from './handlers/codex-runtime.js'
+import { CORTEX_VERSION } from '../version.js'
+import { CodexAppServerClient } from '../runtime/codex/app-server-client.js'
+import {
+  ManagedCodexRuntimeControlPlane,
+  type CodexRuntimeControlPlane,
+} from '../runtime/codex/control-plane.js'
 import {
   createActivateCandidateHandler,
   createDeleteCandidateHandler,
@@ -64,7 +76,11 @@ import {
   createCredentialAuditHandlers,
   createCredentialStoreHandlers,
 } from './handlers/credential-store.js'
-import { bootstrapProvidersFromUnifiedStore } from '../credential/bootstrap-providers.js'
+import {
+  PROVIDER_ADAPTER_IDS,
+  bootstrapProvidersFromUnifiedStore,
+} from '../credential/bootstrap-providers.js'
+import { makeApiKeyProvider } from '../credential/provider-binding.js'
 import { CredentialInjector } from '../credential/injector.js'
 import { GatewayCredentialResolver } from '../credential/resolver.js'
 import {
@@ -127,10 +143,27 @@ import { createWorkspaceHandlers } from './handlers/workspaces.js'
 import { createDashboardHandlers } from './handlers/dashboard.js'
 import { createSettingsHandlers } from './handlers/settings.js'
 import { createProviderHandlers } from './handlers/providers.js'
+import { createProviderHubHandlers } from './handlers/provider-hub.js'
 import { createTranscribeHandlers } from './handlers/transcribe.js'
 import { createSearchHandlers } from './handlers/search.js'
 import { createModelCatalogHandler, createCatalogHandler } from './handlers/catalog.js'
-import { VARIABLE_NAME_TO_PROVIDER_ID, llmProviderById } from './llm-providers.js'
+import { MODEL_POLICIES } from './catalog/models/index.js'
+import {
+  LLM_PROVIDER_ROUTE_BINDINGS,
+  llmProviderById,
+} from './llm-providers.js'
+import {
+  BUNDLED_MODELS_DEV_PATH,
+  OpenAICompatibleConnectionManager,
+  ProviderCatalogStore,
+  ProviderHubService,
+  VerificationEvidenceStore,
+  projectAmbientLlmConnections,
+  projectCodexSubscription,
+  projectLegacyModelPolicies,
+  projectLlmCredentials,
+  projectOllamaLocal,
+} from '../provider-hub/index.js'
 import { createMCPRegisterHandlers } from './handlers/mcp-register.js'
 import { createActivityHandlers } from './handlers/activity.js'
 import { createAgentEventHandlers } from './handlers/agent-events.js'
@@ -474,6 +507,8 @@ export class OwnwareGateway {
    * `injectEnvForChild`, `injectAuthHeader`, `runWithCredential`.
    */
   readonly credentialInjector: CredentialInjector
+  /** Persisted, secret-free BYO OpenAI-compatible connection control plane. */
+  readonly openAICompatibleConnections: OpenAICompatibleConnectionManager
   /**
    * Vendor-agnostic polling engine. Composio (2b), future Pipedream,
    * etc. register listeners here. Webhook-driven sources skip this.
@@ -567,6 +602,11 @@ export class OwnwareGateway {
   private channelJobStore: ChannelJobRepository | null = null
   private channelProcedures: ChannelProcedureRegistry | null = null
   private channelJobWorker: ChannelJobWorker | null = null
+  /**
+   * Lazy official-Codex account process. Merely starting Ownware never probes
+   * Codex or touches an account; the owner-only runtime routes opt into it.
+   */
+  private readonly codexControlPlane: CodexRuntimeControlPlane
 
   constructor(opts: GatewayOptions) {
     const dataDir = opts.dataDir ?? process.env.OWNWARE_DATA_DIR ?? join(homedir(), DEFAULT_DATA_DIR_NAME)
@@ -603,6 +643,12 @@ export class OwnwareGateway {
       sourceWorkerEnabled: opts.disableSourceWorker !== true,
       sourceQuotaLimits: opts.sourceQuotaLimits ?? DEFAULT_SOURCE_QUOTA_LIMITS,
     }
+    this.codexControlPlane = new ManagedCodexRuntimeControlPlane({
+      startClient: () => CodexAppServerClient.start({
+        codexHome: join(this.opts.dataDir, 'runtimes', 'openai-codex'),
+        clientVersion: CORTEX_VERSION,
+      }),
+    })
 
     // ── Bind-safety invariant (S9) ────────────────────────────────────
     // Non-loopback bind ⇒ auth + TLS FORCED, or refuse to boot. There is
@@ -715,6 +761,21 @@ export class OwnwareGateway {
       trustGate: this.credentialTrustGate,
     })
     this.credentialInjector = new CredentialInjector(this.credentialResolver)
+    this.openAICompatibleConnections = new OpenAICompatibleConnectionManager({
+      settings: this.state,
+      credentials: this.credentialStore,
+      audit: this.credentialAudit,
+      credentialProviderFor: (variableName) => makeApiKeyProvider({
+        resolver: this.credentialResolver,
+        injector: this.credentialInjector,
+        variableName,
+        context: () => ({
+          agentId: 'gateway-openai-compatible',
+          sessionId: 'gateway-openai-compatible',
+          threadId: 'gateway-openai-compatible',
+        }),
+      }).apiKeyProvider,
+    })
     // Phase 2b.2b — per-alias source preference store (user_settings backed).
     this.sourcePreferences = new SourcePreferences(this.state)
     // Resolve install identity ONCE, here. Every other consumer reads
@@ -758,8 +819,7 @@ export class OwnwareGateway {
     // used by onboarding and the new Settings UI) writes the key to the
     // store but, unlike the legacy POST /api/v1/providers handler, never
     // re-registered the provider in loom. A freshly-saved key (e.g.
-    // OPENROUTER_API_KEY) therefore reported `hasCredentials: true` and
-    // showed its models as available, yet a run died with
+    // OPENROUTER_API_KEY) therefore appeared connected in discovery, yet a run died with
     // `Unknown provider "openrouter"` until the next gateway restart —
     // the store and loom's in-memory registry were split-brained.
     //
@@ -769,6 +829,9 @@ export class OwnwareGateway {
     this.credentialEventBus.subscribe((event) => {
       if (event.action === 'validated') return
       void this.refreshLlmProviderRegistry()
+      void this.openAICompatibleConnections.registerAll().catch((error: unknown) => {
+        console.error('[ownware] OpenAI-compatible provider re-registration failed:', error)
+      })
     })
 
     // Set CORS origins
@@ -1266,6 +1329,7 @@ export class OwnwareGateway {
       injector: this.credentialInjector,
       log: (msg) => console.log(msg),
     })
+    await this.openAICompatibleConnections.registerAll()
     bootLap('credential migrations + providers')
 
     // 1. Discover profiles — Model C layered:
@@ -1889,6 +1953,15 @@ export class OwnwareGateway {
       // Best-effort — don't prevent shutdown
     }
 
+    // The account control plane is a separate lazy app-server process. Close
+    // it even when no run was active so login polling cannot outlive gateway
+    // shutdown. Its client has bounded TERM/KILL teardown.
+    try {
+      await this.codexControlPlane.close()
+    } catch {
+      // Best-effort — later storage/server teardown must still run.
+    }
+
     // 2026-04-11 audit Hazard 21 fix: tear down every live MCP child
     // process before we close the HTTP server. Without this, killing
     // the gateway leaves orphaned `npx @modelcontextprotocol/server-*`
@@ -2171,6 +2244,10 @@ export class OwnwareGateway {
       idempotency: this.runIdempotency,
       authEnabled: !this.authDisabled,
     })
+    const codexRuntime = createCodexRuntimeHandlers({
+      controlPlane: this.codexControlPlane,
+      authEnabled: !this.authDisabled,
+    })
     const protectedSourceReads = new ProtectedSourceReadService(
       accessGrantStore,
       new AccessGrantEvaluator(accessGrantStore),
@@ -2298,6 +2375,90 @@ export class OwnwareGateway {
         wake: () => this.channelJobWorker?.wake(),
       }),
     ]
+
+    // One assembled provider/model authority backs discovery, the deprecated
+    // `/models` compatibility view, model fallback, pricing and connection
+    // state. No handler may rebuild these facts from a parallel catalogue.
+    const providerHubStartedAt = new Date().toISOString()
+    const verificationEvidenceStore = new VerificationEvidenceStore(
+      join(this.opts.dataDir, 'provider-hub', 'verification-evidence.json'),
+    )
+    const providerHubService = new ProviderHubService({
+      store: new ProviderCatalogStore({
+        bundledPath: BUNDLED_MODELS_DEV_PATH,
+        cachePath: join(this.opts.dataDir, 'provider-hub', 'models-dev.snapshot.json'),
+        sourceUrl: 'https://models.dev/api.json',
+      }),
+      connectableProviderIds: PROVIDER_ADAPTER_IDS,
+      connectableProviderRoutes: LLM_PROVIDER_ROUTE_BINDINGS,
+      legacyModelPolicies: projectLegacyModelPolicies(MODEL_POLICIES),
+      pickLocalModel: async () => {
+        const installed = await listOllamaModels()
+        return installed != null && installed.length > 0 ? `ollama:${installed[0]}` : null
+      },
+      // Connection presence proves configuration; the Loom registry is the
+      // effect boundary that proves this process can actually dispatch it.
+      isRuntimeProviderAvailable: providerId => listProviders().includes(providerId),
+      loadVerificationEvidence: () => verificationEvidenceStore.load(),
+      listConnections: async () => {
+        const fromVault = projectLlmCredentials(
+          await this.credentialStore.list({ category: 'llm' }),
+        )
+        const ambientProviderIds = Object.entries(PROVIDER_ENV_HINTS)
+          .filter(([, variableName]) => Boolean(process.env[variableName]))
+          .map(([providerId]) => providerId)
+        return [
+          ...fromVault,
+          ...projectAmbientLlmConnections(ambientProviderIds, providerHubStartedAt),
+        ]
+      },
+      loadDynamicProjection: async () => {
+        const [compatible, ollamaReachable] = await Promise.all([
+          this.openAICompatibleConnections.projection(),
+          isOllamaReachable(),
+        ])
+        const ollama = projectOllamaLocal(ollamaReachable, providerHubStartedAt)
+        // Provider Hub must not spawn the optional Codex process merely to
+        // list API-key/local models. It joins only state already observed by
+        // the explicit Codex control-plane routes.
+        const codexObservation = this.codexControlPlane.cachedObservation()
+        const codex = codexObservation == null
+          ? { families: [], routes: [], models: [], prices: [], connections: [] }
+          : projectCodexSubscription(
+              codexObservation.status.account,
+              codexObservation.catalog ?? {
+                authority: 'model/list',
+                observedAt: providerHubStartedAt,
+                validUntil: null,
+                models: [],
+              },
+            )
+        return {
+          families: [
+            ...(codex.families ?? []),
+            ...(ollama.families ?? []),
+            ...(compatible.families ?? []),
+          ],
+          routes: [
+            ...(codex.routes ?? []),
+            ...(ollama.routes ?? []),
+            ...(compatible.routes ?? []),
+          ],
+          models: [...(codex.models ?? []), ...(compatible.models ?? [])],
+          prices: [...(codex.prices ?? []), ...(compatible.prices ?? [])],
+          connections: [
+            ...(codex.connections ?? []),
+            ...(ollama.connections ?? []),
+            ...(compatible.connections ?? []),
+          ],
+        }
+      },
+    })
+    const providerHub = createProviderHubHandlers(
+      providerHubService,
+      { openAICompatible: this.openAICompatibleConnections },
+    )
+
     const run = createRunHandlers(this.state, this.registry, this.runner, {
       runStore: this.runStore,
       idempotencyStore: this.runIdempotency,
@@ -2309,6 +2470,7 @@ export class OwnwareGateway {
       terminalRegistry: this.terminalRegistry,
       pendingReconciles: this.pendingReconciles,
       memorySystem: this.memorySystem,
+      pickRunnableDefaultModel: () => providerHubService.pickRunnableDefaultModel(),
       // F4.b: route MCPManager state-change events through the same
       // bus the `/api/v1/connectors/events` SSE channel reads. Without
       // this wire, transport closes never hit the client's connector
@@ -2452,6 +2614,36 @@ export class OwnwareGateway {
         authEnabled: !this.authDisabled,
       }),
       { operation: 'connections.list' },
+    )
+    this.router.get(
+      '/api/v1/runtimes/codex',
+      codexRuntime.status,
+      { operation: 'runtimes.codex.read' },
+    )
+    this.router.post(
+      '/api/v1/runtimes/codex/login/start',
+      codexRuntime.startLogin,
+      { operation: 'runtimes.codex.login' },
+    )
+    this.router.post(
+      '/api/v1/runtimes/codex/login/wait',
+      codexRuntime.waitLogin,
+      { operation: 'runtimes.codex.login' },
+    )
+    this.router.post(
+      '/api/v1/runtimes/codex/login/cancel',
+      codexRuntime.cancelLogin,
+      { operation: 'runtimes.codex.login' },
+    )
+    this.router.post(
+      '/api/v1/runtimes/codex/logout',
+      codexRuntime.logout,
+      { operation: 'runtimes.codex.logout' },
+    )
+    this.router.get(
+      '/api/v1/runtimes/codex/models',
+      codexRuntime.models,
+      { operation: 'runtimes.codex.models' },
     )
     this.router.post('/api/v1/auth/delegations', principals.issue)
     this.router.post('/api/v1/auth/delegations/:tokenId/revoke', principals.revoke)
@@ -3081,30 +3273,38 @@ export class OwnwareGateway {
     })
     this.router.get('/api/v1/connectors/events', connectorEvents.streamConnectorEvents)
 
-    // Models — `hasCredentials` derives from the unified credentials
-    // store. Each LLM credential's `variableName` maps to one provider
-    // ID via the same descriptor list used by the `/providers` handlers.
-    // Ollama is keyless: it counts as configured when a local server
-    // answers the 300ms reachability probe (availability, not a key).
+    // Deprecated model-array compatibility view. It is projected from the
+    // exact same ProviderHubService as the rich route below; there is no
+    // independent model, price, credential or local-runtime catalogue here.
     this.router.get(
       '/api/v1/models',
-      createModelCatalogHandler({
-        listConfiguredProviders: async () => {
-          const llmCredentials = await this.credentialStore.list({ category: 'llm' })
-          const fromVault = llmCredentials
-            .map((c) => VARIABLE_NAME_TO_PROVIDER_ID[c.variableName ?? ''])
-            .filter((p): p is string => typeof p === 'string')
-          // Env keys count too: loom registers providers from the
-          // environment at boot, so runs genuinely work with just an
-          // exported key — the catalog must not claim otherwise.
-          const fromEnv = Object.entries(PROVIDER_ENV_HINTS)
-            .filter(([, envVar]) => Boolean(process.env[envVar]))
-            .map(([providerId]) => providerId)
-          const configured = new Set([...fromVault, ...fromEnv])
-          if (await isOllamaReachable()) configured.add('ollama')
-          return [...configured]
-        },
-      }),
+      createModelCatalogHandler(providerHubService),
+    )
+
+    // Central Provider Hub control plane. Catalog reads are paginated and
+    // secret-free; Codex contributes only its token-blind account/model projection.
+    this.router.get('/api/v1/provider-hub', providerHub.overview)
+    this.router.get('/api/v1/provider-hub/providers', providerHub.providers)
+    this.router.get('/api/v1/provider-hub/connections', providerHub.connections)
+    this.router.get('/api/v1/provider-hub/verifications', providerHub.verifications)
+    this.router.get('/api/v1/provider-hub/models', providerHub.models)
+    this.router.get('/api/v1/provider-hub/health', providerHub.health)
+    this.router.post('/api/v1/provider-hub/catalog/refresh', providerHub.refresh)
+    this.router.get(
+      '/api/v1/provider-hub/connections/openai-compatible',
+      providerHub.compatibleConnections,
+    )
+    this.router.post(
+      '/api/v1/provider-hub/connections/openai-compatible',
+      providerHub.saveCompatibleConnection,
+    )
+    this.router.delete(
+      '/api/v1/provider-hub/connections/openai-compatible/:connectionId',
+      providerHub.removeCompatibleConnection,
+    )
+    this.router.post(
+      '/api/v1/provider-hub/connections/openai-compatible/:connectionId/discover',
+      providerHub.discoverCompatibleModels,
     )
 
     // T21 (2026-04-22): GET /api/v1/mcp/featured removed.

@@ -1,16 +1,14 @@
 /**
  * Catalog handlers — tools and models listing.
  *
- * Model catalog is sourced from `gateway/catalog/models/` (three per-provider
- * files). Add new models there, not here.
+ * Model reads are projections of Provider Hub. The old curated files now carry
+ * compatibility policy only; they are not an independent facts/price source.
  */
 
 import { createHash } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { sendJSON, sendError } from '../router.js'
-import type { ModelInfo } from '../types.js'
-import { ALL_MODELS } from '../catalog/models/index.js'
-import { enrichCatalog } from '../catalog/models/enrich.js'
+import type { ProviderHubService } from '../../provider-hub/index.js'
 import {
   CatalogQuerySchema,
   type Connector,
@@ -230,29 +228,17 @@ export function createCatalogHandler(deps: CatalogHandlerDeps) {
   }
 }
 
-// GET /api/v1/models — annotate every curated model with
-// `hasCredentials` derived from the unified credentials store. UI greys
-// out models whose provider has no saved key.
-
-interface ModelCatalogHandlerDeps {
-  /** Returns the set of provider IDs that currently have a saved key. */
-  readonly listConfiguredProviders: () => Promise<readonly string[]>
-}
-
-export function createModelCatalogHandler(deps: ModelCatalogHandlerDeps) {
+// GET /api/v1/models — deprecated wire-compatible projection. Both this view
+// and the rich paginated route read the same assembled Provider Hub generation.
+export function createModelCatalogHandler(
+  providerHub: Pick<ProviderHubService, 'compatibilityModels'>,
+) {
   return async function modelCatalogHandler(
     _req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    const configured = new Set(await deps.listConfiguredProviders())
-    // Overlay live context/output/pricing facts from the model snapshots
-    // (models.dev + OpenRouter) before annotating credential state. The
-    // snapshot is the source of truth for objective numbers; the catalog's
-    // hand-typed values are only a fallback for un-synced models.
-    const models: ModelInfo[] = enrichCatalog(ALL_MODELS).map((m) => ({
-      ...m,
-      hasCredentials: configured.has(m.provider),
-    }))
-    sendJSON(res, 200, models)
+    res.setHeader('Deprecation', 'true')
+    res.setHeader('Link', '</api/v1/provider-hub/models>; rel="successor-version"')
+    sendJSON(res, 200, await providerHub.compatibilityModels())
   }
 }

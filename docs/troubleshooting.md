@@ -38,8 +38,9 @@ but produces no reply. Fix one of:
   provider? Set the profile model to it and add that provider's key instead.
 - Go keyless: point the profile at Ollama — `ownware profile set <profile> --model ollama:llama3.2` — and make sure Ollama is running.
 
-Check what's usable right now: `curl http://localhost:3011/api/v1/models` and look for
-`hasCredentials: true`.
+Check what's usable right now:
+`curl 'http://localhost:3011/api/v1/provider-hub/models?scope=connected'`.
+Each `items[]` entry is backed by an active API-key, custom, subscription or reachable local connection.
 
 ## Ollama (keyless local)
 

@@ -59,7 +59,10 @@ import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqli
 import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js'
 import { __resetMasterKeyCacheForTests } from '../../../src/connector/credentials/vault.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
-import { createProviderHandlers } from '../../../src/gateway/handlers/providers.js'
+import {
+  createProviderHandlers,
+  testProviderKey,
+} from '../../../src/gateway/handlers/providers.js'
 import { LLM_PROVIDERS } from '../../../src/gateway/llm-providers.js'
 
 interface CapturedResponse {
@@ -122,6 +125,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   db.close()
   if (prevHome === undefined) delete process.env['HOME']
   else process.env['HOME'] = prevHome
@@ -147,7 +151,7 @@ describe('GET /api/v1/providers — catalogue-wide shape', () => {
     expect(rows.map((r) => r.provider)).toEqual(LLM_PROVIDERS.map((d) => d.providerId))
   })
 
-  it('marks every provider available=true today (all four adapters ship in this build)', async () => {
+  it('marks every provider available=true when every descriptor has a shipped adapter', async () => {
     const rows = await callListProviders()
     for (const row of rows) {
       expect(row.available).toBe(true)
@@ -182,5 +186,65 @@ describe('GET /api/v1/providers — catalogue-wide shape', () => {
     expect(typeof anthropic?.updatedAt).toBe('string')
     expect(openai?.configured).toBe(false)
     expect(openai?.keyHint).toBeUndefined()
+  })
+})
+
+describe('POST /api/v1/providers/validate — compatible presets', () => {
+  it('validates a fixed preset only against its server-owned models endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    )
+
+    const result = await testProviderKey('groq', 'gsk_secret_fixture')
+
+    expect(result).toEqual({ provider: 'groq', isValid: true })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.groq.com/openai/v1/models',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { Authorization: 'Bearer gsk_secret_fixture' },
+      }),
+    )
+  })
+
+  it('keeps auth rejection and upstream failures distinct without returning a body', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('secret upstream detail', { status: 401 }))
+      .mockResolvedValueOnce(new Response('secret upstream detail', { status: 503 }))
+
+    await expect(testProviderKey('mistral', 'bad-key')).resolves.toEqual({
+      provider: 'mistral', isValid: false, error: 'Invalid API key',
+    })
+    await expect(testProviderKey('mistral', 'maybe-key')).resolves.toEqual({
+      provider: 'mistral',
+      isValid: false,
+      error: 'Provider validation endpoint returned status 503',
+    })
+  })
+
+  it('does not surface transport errors that may contain endpoint or credential data', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new Error('request to https://example.invalid/?key=secret failed'),
+    )
+
+    await expect(testProviderKey('cerebras', 'secret')).resolves.toEqual({
+      provider: 'cerebras', isValid: false, error: 'Validation request failed',
+    })
+  })
+
+  it('does not pretend a public model list validates a router credential', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+
+    await expect(testProviderKey('vercel', 'not-tested')).resolves.toEqual({
+      provider: 'vercel',
+      isValid: false,
+      error: 'Credential validation is unavailable without a billable inference request',
+    })
+    await expect(testProviderKey('helicone', 'not-tested')).resolves.toEqual({
+      provider: 'helicone',
+      isValid: false,
+      error: 'Credential validation is unavailable without a billable inference request',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -77,4 +77,4 @@ Every tool — built-in, custom, or MCP — passes through the same security lay
 
 - [Custom tools](custom-tools.md) — write your own with `defineTool`.
 - [Hooks](hooks.md) — run logic before/after every tool call.
-- [MCP](mcp.md) — adopt tools from any MCP server.
+- [MCP](mcp.md) — adopt tools from MCP servers over supported transports.

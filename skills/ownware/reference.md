@@ -28,7 +28,7 @@ Only `name` is required; everything else defaults sensibly.
     "allow": ["readFile", "shell.*"],    // glob allowlist
     "deny": ["shell_execute"],           // glob denylist (wins over allow)
     "custom": [{ "path": "tools/my-tool.ts" }],  // your defineTool files
-    "mcp": {                             // any MCP server (stdio or url) — agent gets its tools
+    "mcp": {                             // MCP server (stdio or URL) — agent gets its tools
       "everything": { "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-everything"] }
     },
     "composio": { "toolkits": ["github", "notion"] }  // 400+ SaaS apps (needs COMPOSIO_API_KEY)
@@ -48,7 +48,7 @@ Full schema and every option: `docs/agents/profile-format.md`. Profile directory
 - Model string is `provider:model`. Providers: `anthropic`, `openai`, `google`, `openrouter`, `ollama`.
 - Examples: `openai:gpt-5.5` (the default), `anthropic:claude-sonnet-4-6`, `google:gemini-2.5-flash`, `openrouter:haiku-4.5`, `ollama:llama3.2` (keyless, local, free).
 - Keys: `ownware key add <provider>` stores them encrypted in `~/.ownware/` (omit the value to be prompted with input hidden — inline values leak into shell history). `ownware key list` / `ownware key remove <provider>`. Env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`) also work.
-- Discover what's usable right now: `GET /api/v1/models` reports `hasCredentials` (a key is set, or a local Ollama is reachable). `default: true` is flagged per provider, so pick the first *usable* model rather than `models.find(m => m.default)`.
+- Discover what's usable right now from the single Provider Hub authority: `GET /api/v1/provider-hub/models?scope=connected`. Read `items[].model`; prefer `availability.recommended`, then the first connected model.
 
 ## The wire contract (run API)
 
@@ -59,7 +59,7 @@ Everything a client does uses four HTTP calls. On a loopback bind, auth is off; 
 | `POST /api/v1/run` | Start a run. Body `{profileId, prompt, model?, threadId?}` → `{threadId}`. Reuse `threadId` to continue a conversation. |
 | `GET /api/v1/threads/{threadId}/agents/root/events?since=<seq>` | SSE stream of the run. `since` is a resume cursor — pass the last event's `seq` to skip replay. |
 | `POST /api/v1/threads/{threadId}/resume` | Answer a permission prompt. Body `{action: "approve"｜"deny"}`. |
-| `GET /api/v1/models` | List models with `hasCredentials`. |
+| `GET /api/v1/provider-hub/models?scope=connected` | List models backed by a current connection. |
 
 **SSE event vocabulary** (each event has a `type` and a `seq`):
 
@@ -90,8 +90,9 @@ Any frontend (React, mobile, backend) follows this shape — plain `fetch` + SSE
 const headers = { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) }
 
 // 1. pick a usable model
-const models = await (await fetch(`${url}/api/v1/models`, { headers })).json()
-const model = (models.filter(m => m.hasCredentials).find(m => m.default) ?? models.find(m => m.hasCredentials))?.id
+const modelPage = await (await fetch(`${url}/api/v1/provider-hub/models?scope=connected`, { headers })).json()
+const models = modelPage.items.map(item => item.model)
+const model = (models.find(m => m.availability.recommended) ?? models[0])?.id
 
 // 2. start a run (keep threadId across turns for one conversation)
 const { threadId } = await (await fetch(`${url}/api/v1/run`, {

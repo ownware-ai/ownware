@@ -460,8 +460,8 @@ describe('GET /api/v1/profiles/:profileId/tools', () => {
 //   → exercised via GET /api/v1/catalog?source=builtin in
 //     tests/integration/gateway/catalog-endpoint.test.ts.
 
-describe('GET /api/v1/models', () => {
-  it('returns models catalog with credential status', async () => {
+describe('GET /api/v1/models compatibility view', () => {
+  it('returns deprecated rows projected from Provider Hub connection state', async () => {
     const { status, body } = await get('/api/v1/models')
     expect(status).toBe(200)
     expect(Array.isArray(body)).toBe(true)
@@ -471,7 +471,7 @@ describe('GET /api/v1/models', () => {
       expect(typeof model.id).toBe('string')
       expect(typeof model.name).toBe('string')
       expect(typeof model.provider).toBe('string')
-      expect(typeof model.contextWindow).toBe('number')
+      expect(typeof model.contextWindow, model.id).toBe('number')
       expect(typeof model.hasCredentials).toBe('boolean')
     }
 
@@ -486,6 +486,32 @@ describe('GET /api/v1/models', () => {
     // true when the developer sourced a real .env for the key lane.
     const openrouter = body.find((m: any) => m.provider === 'openrouter')
     expect(openrouter?.hasCredentials).toBe(Boolean(process.env['OPENROUTER_API_KEY']))
+  })
+
+  it('is a compatibility projection of the canonical Provider Hub generation', async () => {
+    const legacyResponse = await get('/api/v1/models')
+    const legacy = legacyResponse.body.find((model: any) => model.id === 'anthropic:claude-sonnet-4-6')
+    expect(legacy).toBeDefined()
+
+    const hubResponse = await get(
+      '/api/v1/provider-hub/models?q=anthropic%3Aclaude-sonnet-4-6&limit=25',
+    )
+    expect(hubResponse.status).toBe(200)
+    const hubItem = hubResponse.body.items.find(
+      (item: any) => item.model.id === 'anthropic:claude-sonnet-4-6',
+    )
+    expect(hubItem).toBeDefined()
+    expect(legacy.contextWindow).toBe(hubItem.model.contextWindow)
+    expect(legacy.maxOutputTokens).toBe(hubItem.model.maxOutputTokens)
+    expect(legacy.hasCredentials).toBe(hubItem.model.availability.credentialed)
+
+    const basePrice = hubItem.prices.find(
+      (price: any) => price.scope.variantId == null && price.scope.minimumInputTokens == null,
+    )
+    const input = basePrice.rates.find((rate: any) => rate.dimension === 'input_text_tokens')
+    const output = basePrice.rates.find((rate: any) => rate.dimension === 'output_text_tokens')
+    expect(legacy.costPer1kInput).toBe((input.amountUsd * 1_000) / input.unitSize)
+    expect(legacy.costPer1kOutput).toBe((output.amountUsd * 1_000) / output.unitSize)
   })
 })
 

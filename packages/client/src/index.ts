@@ -32,6 +32,14 @@ export type {
   ModelEntry,
   ProfileSummary,
   HealthResult,
+  CodexAccountState,
+  CodexRateLimitWindow,
+  CodexRateLimitBucket,
+  CodexQuotaState,
+  CodexRuntimeStatus,
+  CodexLoginPresentation,
+  CodexModel,
+  CodexModelCatalog,
   GatewayContractDescriptor,
   GatewayCapability,
   PublicGatewayLimits,
@@ -122,3 +130,31 @@ export type { RunStreamEvent } from './run-stream.js'
 export { interpretSseEvent } from './run-stream.js'
 
 export { parseSseFrames } from './sse.js'
+
+export type {
+  OpenAICompatibility,
+  OpenAICompatibleAuthInput,
+  OpenAICompatibleConnectionConfig,
+  OpenAICompatibleConnectionInput,
+  OpenAICompatibleConnectionList,
+  ProviderHubAuth,
+  ProviderHubBillingKind,
+  ProviderHubCapability,
+  ProviderHubConnection,
+  ProviderHubConnectionHealth,
+  ProviderHubConnectionPage,
+  ProviderHubFamily,
+  ProviderHubLifecycle,
+  ProviderHubModelPage,
+  ProviderHubModelQuery,
+  ProviderHubModelRoute,
+  ProviderHubModelScope,
+  ProviderHubOverview,
+  ProviderHubPricebookEntry,
+  ProviderHubProviderPage,
+  ProviderHubRoute,
+  ProviderHubRouteKind,
+  ProviderHubVerification,
+  ProviderHubVerificationOverview,
+} from './provider-hub.js'
+export { providerHubModelQueryString } from './provider-hub.js'

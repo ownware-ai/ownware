@@ -17,7 +17,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { OwnwareClient, type GatewayEvent, type ModelEntry, type ResumeInput, type RunResult } from '@ownware/client'
+import {
+  OwnwareClient,
+  type GatewayEvent,
+  type ProviderHubModelPage,
+  type ProviderHubModelQuery,
+  type ProviderHubModelRoute,
+  type ResumeInput,
+  type RunResult,
+} from '@ownware/client'
 import {
   addUserMessage,
   chatReducer,
@@ -34,7 +42,7 @@ export interface AgentTransport {
   events(threadId: string, opts?: { since?: number; signal?: AbortSignal }): AsyncIterable<GatewayEvent>
   resume(threadId: string, input: ResumeInput): Promise<void>
   abort(threadId: string): Promise<void>
-  models(): Promise<ModelEntry[]>
+  providerHubModels(query?: ProviderHubModelQuery): Promise<ProviderHubModelPage>
 }
 
 export interface UseOwnwareAgentOptions {
@@ -60,8 +68,8 @@ export interface OwnwareAgent {
   readonly pendingApproval: PendingApproval | null
   readonly model?: string
   readonly error?: string
-  /** Model catalog with live availability (`hasCredentials`). */
-  readonly models: readonly ModelEntry[]
+  /** Recommended Provider Hub routes with live connection availability. */
+  readonly models: readonly ProviderHubModelRoute[]
   readonly threadId?: string
   /** Send a prompt (starts the thread on the first call). */
   readonly send: (prompt: string) => Promise<void>
@@ -91,7 +99,7 @@ export function useOwnwareAgent(opts: UseOwnwareAgentOptions): OwnwareAgent {
   }, [opts.client, opts.baseUrl, opts.token])
 
   const [state, dispatch] = useReducer(reduce, null, initialChatState)
-  const [models, setModels] = useState<readonly ModelEntry[]>([])
+  const [models, setModels] = useState<readonly ProviderHubModelRoute[]>([])
 
   const threadIdRef = useRef<string | undefined>(opts.threadId)
   const streamingRef = useRef(false) // guard: one events loop per thread
@@ -103,13 +111,13 @@ export function useOwnwareAgent(opts: UseOwnwareAgentOptions): OwnwareAgent {
     pendingRef.current = state.pendingApproval
   }, [state.pendingApproval])
 
-  // Load the model catalog once.
+  // Load the recommended model-picker view from the canonical Provider Hub.
   useEffect(() => {
     let alive = true
     client
-      .models()
-      .then((m) => {
-        if (alive) setModels(m)
+      .providerHubModels({ scope: 'recommended', limit: 200 })
+      .then((page) => {
+        if (alive) setModels(page.items.map(item => item.model))
       })
       .catch(() => {
         /* non-fatal — models are informational */

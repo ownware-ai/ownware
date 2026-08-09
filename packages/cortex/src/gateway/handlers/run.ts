@@ -171,7 +171,7 @@ class RunStartError extends Error {
   }
 }
 
-import { normalizeModelId, pickRunnableDefaultModel } from '../catalog/models/index.js'
+import { normalizeModelId } from '../catalog/models/index.js'
 import {
   authorizePrincipalScope,
   getRequestPrincipal,
@@ -195,6 +195,8 @@ import type {
 } from '../../storage/platform-repositories.js'
 
 export interface RunHandlerDeps {
+  /** Canonical Provider Hub default selector. */
+  readonly pickRunnableDefaultModel: () => Promise<string | null>
   /** Attachment processor override for failure-injection tests. */
   readonly processAttachmentsFn?: typeof processAttachments
   /** Durable execution snapshots and lifecycle transitions. */
@@ -323,7 +325,7 @@ export function createRunHandlers(
   state: GatewayState,
   registry: ProfileRegistry,
   runner: SessionRunner,
-  deps: RunHandlerDeps = {},
+  deps: RunHandlerDeps,
 ) {
 
   async function delegatedThreadAccessAllowed(
@@ -710,7 +712,7 @@ export function createRunHandlers(
           ? effectiveModel.slice(0, effectiveModel.indexOf(':'))
           : effectiveModel
         if (getProvider(providerId) == null) {
-          const fallback = await pickRunnableDefaultModel()
+          const fallback = await deps.pickRunnableDefaultModel()
           if (fallback != null) {
             console.log(
               `[ownware] profile model "${effectiveModel}" has no credentials — answering with "${fallback}" instead`,

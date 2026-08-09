@@ -537,16 +537,19 @@ export async function runTuiShell(opts: ReplOptions): Promise<void> {
   const pickModel = async (query: string) => {
     let models
     try {
-      models = await opts.client.models()
+      const page = await opts.client.providerHubModels({ scope: 'recommended', limit: 200 })
+      models = page.items.map(item => item.model)
     } catch (err) {
       out(s.red(`✖ could not list models: ${err instanceof Error ? err.message : String(err)}\n`))
       return
     }
     const items: PickerItem[] = models.map((m) => ({
       id: m.id,
-      label: m.id,
-      hint: m.hasCredentials === true ? (m.default === true ? 'ready · default' : 'ready') : 'no key',
-      muted: m.hasCredentials !== true,
+      label: m.name,
+      hint: m.availability.credentialed
+        ? (m.availability.recommended ? `${m.id} · ready · recommended` : `${m.id} · ready`)
+        : `${m.id} · not connected`,
+      muted: !m.availability.credentialed,
     }))
     openPicker('/model', items, query, (id) => {
       currentModel = id

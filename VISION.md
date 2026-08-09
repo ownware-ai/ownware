@@ -1,128 +1,131 @@
 # Ownware Vision
 
-**Most agents you've met are *someone else's*. Ownware lets you build *your own* — for
-anything.** The magic of a personal AI agent — living in your channels, texting you
-every morning, doing real work — but owned by you: your brand, your model, your
-infrastructure, your rules. For your business, or your life.
+> **Ownware is the open agent runtime for products you own.**
 
-The whole idea in one motion:
-
-> **Build the agent once** (a text profile) → **run it yourself** (one process)
-> → **reach it everywhere** (one HTTP + SSE contract).
-
-An agent for your support desk, one for your shop, one for your own day — same
-kit, different text. Most agent projects give you *their* agent; Ownware is the open kit
-for building and shipping yours.
+Define an agent as ordinary files. Run its execution loop and operational
+backend as one self-hosted service. Build every interface against one typed
+HTTP+SSE contract.
 
 Project overview and setup: [`README.md`](README.md)
+
 Contribution guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+
 Security policy: [`SECURITY.md`](SECURITY.md)
 
 ---
 
-## Why Ownware is different
+## Why Ownware exists
 
-Ownware sits in a middle that nothing else fills:
+Calling a model is the smallest part of operating an agent product. The real
+boundary also has to execute tools, preserve thread state, survive reconnects,
+pause for permission, protect credentials, recover from failures, and give
+every client the same account of what happened.
 
-- **Personal-assistant apps** are *products* — you use *their*
-  agent. You can't rebrand it, embed it, or ship it to your own customers.
-- **Frameworks** (LangChain, LangGraph, CrewAI) hand you a box of parts — you build the
-  loop yourself and own its quality, months from a production agent.
-- **Lab SDKs** (Claude Agent SDK, OpenAI Agents SDK) are excellent harnesses — but
-  locked to one company's models, and still just libraries: no backend, no UI, no
-  deployment story.
+Teams should not have to rebuild that boundary for every agent application.
+They should be able to adopt a complete runtime, inspect it, run it on their own
+infrastructure, and keep their product-specific experience outside it.
 
-Ownware is the platform in the gap: **a real agent runtime — the same class of machine as
-Claude Code** (streaming, parallel tool orchestration, sub-agents, pluggable
-compaction, MCP), **model-agnostic and yours to self-host**, wrapped in a kernel that
-turns a folder of text into a live, reachable agent with tools, memory, schedules, and
-a gateway any client can talk to. You don't assemble the loop and own its bugs — you
-inherit a good one and point it at any model.
+Ownware exists to make that runtime a reusable open-source dependency.
 
-## Where we're heading
+## The product boundary
 
-Every business — and every person — will run its own agent: built in minutes, embedded
-in its own product or life, owned entirely by them. Ownware aims to be the open layer
-underneath all of them: the way you ship *your* agent, not rent someone else's.
+Ownware accepts a **portable profile**—`agent.json`, `SOUL.md`, skills, tools,
+and related text—and turns it into a running agent service.
 
-The agent is a brain, not a chat window. Chat is one of its faces. The same agent
-reaches the world through four kinds of surface, kept deliberately separate:
+The runtime owns:
 
-- **Messaging channels** — Slack, Telegram, WhatsApp, Discord: doorways to talk to the
-  agent where you already are.
-- **Embeds** — the agent installed *inside* a site, app, or shop, handling that
-  business's customers as part of the product.
-- **The face** — a fully themeable chat UI, so the agent looks like *their* product,
-  never like ours.
-- **The developer surface** — a small SDK and one wire contract, so anything custom is
-  a few lines, not a rewrite.
+- the model/tool loop, typed streaming, retries, compaction, and sub-agents;
+- durable threads, checkpoints, resumable events, and permission continuation;
+- provider and tool configuration, credential isolation, and security policy;
+- explicit storage adapters, schedules, auth, and safe network exposure; and
+- the public HTTP+SSE contract, SDKs, and compatibility metadata clients rely on.
 
-Adding a new place is a few steps, not a fork — every surface is just another client of
-the same contract. That's the point of the architecture, and the bar every change is
-measured against.
+The adopter owns the product around it: the user experience, business rules,
+deployment topology, and which supported providers and tools receive data.
+Messaging, CLI, web, mobile, and future clients are consumers of the runtime,
+not privileged paths inside it.
 
 ## The promises
 
-These are load-bearing. They don't change with a pricing page.
+These are load-bearing:
 
-1. **Your keys never leave your runtime.** Ownware never holds your provider credentials
-   and never becomes your data controller. Self-hosting is not a demo tier — it is the
-   product.
-2. **The security primitives are core and free.** The credential vault, permission
-   zones, combination rules, and audit trail are never paywalled and never weakened by
-   default.
-3. **Any model, no lock-in.** Hosted providers or local models — switching is
-   configuration, not a rewrite.
-4. **One contract.** Every surface — bundled or community-built — speaks the same wire
-   contract. No privileged internal APIs.
+1. **Self-hosting is the default product.** Runtime state and credentials live
+   on infrastructure chosen by the operator. Ownware is not a mandatory cloud
+   hop and does not hold customer keys.
+2. **The agent is portable.** Its essential definition is made of inspectable,
+   versionable files rather than a hidden hosted object.
+3. **One public contract.** First-party and third-party clients use the same
+   documented run, event, permission, and capability surfaces.
+4. **Provider routes are explicit.** Model access and execution-runtime choices
+   never collapse into a misleading “available” flag or silent fallback.
+   Supported and experimental routes are labelled as such.
+5. **Security primitives remain core and free.** Credential isolation, bind
+   safety, zones, combination rules, permissions, and audit are not paid gates.
+6. **Unknowns fail honestly.** A new provider, tool, status, or schema variant
+   does not become success through a default branch.
 
-## Current focus
+## What makes a change belong here
 
-Priority right now:
+A capability belongs in Ownware when an agent needs it while running and it can
+be expressed through a stable, product-neutral contract. The test is semantic,
+not cosmetic: multiple products sharing a route name is not proof that the
+runtime owns the concept.
 
-- Security and safe defaults (safe-by-default networking, honest failure modes)
-- First-run smoothness — from install to a live, answering agent in minutes, no API key
-  required to start
-- Stability and bug fixes across the bundled channels
+Good additions improve one of these general seams:
 
-Next:
+- execution and streaming;
+- tools, providers, context, or compaction;
+- durable runtime state and recovery;
+- credentials, permissions, security, or audit;
+- runtime-owned sources and evidence;
+- the gateway/client contract; or
+- optional adapters that remain ordinary clients of that contract.
 
-- A themeable web chat kit and drop-in widget
-- More messaging channels — and an adapter kit so the community can add any channel
-  without touching core
-- Embed adapters, so a business installs its agent into its own shop or site from that
-  platform's store
-- A no-code path from "describe the agent" to "it's live"
+Product-specific workspaces, dashboards, onboarding, billing, business
+taxonomies, and control-plane state do not belong in the runtime. They should be
+built on the public contract instead of pulling the dependency boundary upward.
+
+## How Ownware should be described
+
+Lead with what the repository can prove:
+
+> **A self-hosted agent harness and operational backend in one runtime: profile
+> in, durable agent service out.**
+
+Provider names, channel logos, tool counts, and framework comparisons are
+supporting details. They change over time and must not carry the category.
+Ownware does not need to claim that alternatives are incomplete or locked in;
+it needs to make its own boundary clear, small enough to understand, and strong
+enough to build on.
 
 ## Contribution rules
 
-- One PR = one topic. Don't bundle unrelated fixes or features.
-- Very large PRs are reviewed only in exceptional circumstances; split them.
-- Don't open large batches of tiny PRs at once — each PR has review cost.
-- New capability should live at the lightest layer that can express it:
-  a profile → a CLI verb → a channel adapter → a connector → engine core
-  (last resort). The default answer for integrations is a profile or an
-  adapter, not core.
+- One PR = one topic. Split unrelated or very large changes.
+- Add capability at the lightest layer that can express it. A profile, tool,
+  provider, client, or adapter is often better than engine core.
+- Change public contracts additively unless every consumer and migration path
+  is deliberately reviewed.
+- State the semantic claim before implementing a detector, evaluator, safety
+  rule, or generalized capability. Test an adversarial counterexample.
+- Keep secrets and real user data out of tests, logs, events, fixtures, and
+  documentation.
 
-## What we will not merge (for now)
+## What we will not merge
 
-- Anything that requires Ownware — the server or the company — to hold end-user provider
-  keys or become the data controller.
-- Anything that moves a security primitive behind a paywall, or a convenience wrapper
-  that hides a security decision (binding, auth, key handling) from the operator.
-- Bundled channel adapters that duplicate an existing channel without a clear capability
-  or security gap — ship it as an adapter package first; broadly used ones get promoted.
-- Niche integrations in core when a profile or adapter can express them.
-- Heavy orchestration frameworks (manager-of-managers, nested planner trees) as a
-  default architecture.
-
-This list is a roadmap guardrail, not a law of physics. Strong user demand and strong
-technical rationale can change it.
+- A mandatory hosted path that requires Ownware to hold end-user provider keys
+  or become the data controller.
+- A security primitive moved behind a paywall or a convenience wrapper that
+  hides a material security decision.
+- Product-specific control-plane or UI concepts embedded in the runtime.
+- A provider, tool, or adapter catalogue presented as universal support.
+- Heuristics presented as proof of permission, safety, completion, or effect.
+- Heavy orchestration added by default without evidence that the shared runtime
+  contract requires it.
 
 ## Security
 
-Ownware treats its in-process security boundary as real: the engine never sees plaintext
-credentials — only opaque handles resolved inside the credential vault — and exposed
-deployments refuse to boot without auth. Reports that cross that boundary are
-first-class vulnerabilities, not heuristic bypasses. The full trust model and reporting
-process live in [`SECURITY.md`](SECURITY.md).
+Ownware treats its runtime boundary as real. The engine uses opaque credential
+handles, exposed deployments refuse unsafe binds, and permission decisions are
+part of the public continuation contract. Reports that cross those boundaries
+are first-class vulnerabilities. The full trust model and reporting process
+live in [`SECURITY.md`](SECURITY.md).

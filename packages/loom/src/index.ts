@@ -344,6 +344,13 @@ export type {
 export { registerProvider, unregisterProvider, getProvider, resolveProvider, listProviders } from './provider/registry.js'
 export { AnthropicProvider } from './provider/anthropic.js'
 export { OpenAIProvider } from './provider/openai.js'
+export {
+  OpenAICompatibleProvider,
+  assertSafeCredentialHeaderName,
+  normalizeCompatibleBaseUrl,
+  type OpenAICompatibleAuth,
+  type OpenAICompatibleProviderOptions,
+} from './provider/openai-compatible.js'
 export { OpenAIResponsesProvider } from './provider/openai-responses.js'
 export { GoogleProvider } from './provider/google.js'
 export { OpenRouterProvider } from './provider/openrouter.js'

@@ -134,8 +134,6 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
       idempotencyRetentionSeconds: 7 * 24 * 60 * 60,
       rateLimit: { enabled: true, runStarts: 10 },
     })
-    await expect(ownware.models()).resolves.not.toHaveLength(0)
-
     await expect(ownware.capabilities({ requiredMajor: 2 })).resolves.toMatchObject({
       status: 'incompatible',
       expectedMajor: 2,

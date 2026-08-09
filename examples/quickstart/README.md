@@ -1,4 +1,4 @@
-# Ownware quickstart — your own agent in four commands
+# Ownware quickstart — a durable agent runtime in four commands
 
 ```bash
 ownware init                                             # 1. build it  — a starter agent in ./profiles/assistant

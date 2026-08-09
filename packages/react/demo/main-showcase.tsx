@@ -5,7 +5,25 @@
 import { useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { OwnwareChat, type AgentTransport } from '@ownware/react'
+import type { ProviderHubModelPage } from '@ownware/client'
 import type { AgentEvent, ToolUIDescriptor } from '@ownware/ui'
+
+const MODEL_PAGE = {
+  generationId: 'demo',
+  items: [{
+    model: {
+      id: 'openrouter:anthropic/claude-3.5-sonnet', providerRouteId: 'route:openrouter',
+      wireModelId: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', aliases: [],
+      contextWindow: 200_000, maxInputTokens: null, maxOutputTokens: 8_192,
+      capabilities: [], variants: [], billingKind: 'provider_reported', catalogSourceRef: 'demo',
+      availability: { catalogued: true, connectable: true, credentialed: true, verified: false,
+        recommended: true, lifecycle: 'active', connectionIds: ['connection:demo'] },
+    },
+    prices: [],
+  }],
+  page: { limit: 200, total: 1, nextCursor: null },
+  warnings: [],
+} satisfies ProviderHubModelPage
 
 // A custom (non-built-in) tool — demonstrates the `descriptors` prop.
 const CUSTOM: Record<string, ToolUIDescriptor> = {
@@ -58,7 +76,7 @@ function makeFake(): AgentTransport {
       setTimeout(() => { push('permission.response', { requestId: input.requestId ?? '' }); push('text.delta', { text: 'Connected.' }); push('turn.end', { stopReason: 'end_turn' }) }, 120)
     },
     async abort() {},
-    async models() { return [{ id: 'openrouter:anthropic/claude-3.5-sonnet', hasCredentials: true, default: true }] },
+    async providerHubModels() { return MODEL_PAGE },
   }
 }
 

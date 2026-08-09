@@ -1,19 +1,12 @@
 /**
  * OpenAI model catalog.
  *
- * Source of truth: live data fetched from GET https://api.openai.com/v1/models
- * on 2026-04-11. OpenAI's /v1/models endpoint returns every model the key has
- * access to (chat, embeddings, TTS, realtime, image gen, etc) — this catalog
- * hand-picks only the text-generation chat models users actually pick in a
- * profile.
+ * Editorial policy only: this list hand-picks text-generation models for
+ * stable Ownware IDs, labels, aliases, tiers and recommendations. Provider Hub
+ * supplies active model facts and the pricebook.
  *
  * Excluded by design: -realtime, -audio, -tts, -transcribe, -search-preview,
  * dall-e, text-embedding, tts-, davinci, babbage variants.
- *
- * Pricing sources: OpenAI's public pricing page. Numbers for GPT-5.4 and
- * GPT-5 families are from OpenAI's public announcements and product pages
- * as of 2026-04. When pricing cannot be verified against an official source,
- * the field is `null` and the UI shows "—".
  *
  * Update policy: when OpenAI ships a new flagship, add it at the TOP and
  * flip the `default: true` flag. Keep the old one as `tier: 'legacy'`.
@@ -35,10 +28,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'flagship',
     description: 'OpenAI\'s newest flagship — best agentic performance, tuned for multi-tool orchestration.',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['vision', 'tools', 'streaming', 'structured', 'thinking'],
     aliases: ['gpt5.5', 'gpt-5.5', 'spud'],
     releaseDate: '2026-04-23',
@@ -50,10 +39,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'flagship',
     description: 'GPT-5.5 with extra reasoning budget — for the hardest research and agentic tasks.',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['vision', 'tools', 'streaming', 'structured', 'thinking'],
     aliases: ['gpt5.5-pro', 'gpt-5.5-pro'],
     releaseDate: '2026-04-23',
@@ -66,10 +51,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'balanced',
     description: 'Previous flagship. Strong reasoning; superseded by 5.5 for agentic work.',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt5.4', 'gpt-5.4'],
     releaseDate: '2026-03-05',
@@ -80,10 +61,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'balanced',
     description: 'Smaller GPT-5.4 — balanced intelligence and cost for everyday use. Currently the cheapest 5.x option (no 5.5-mini exists yet).',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt5.4-mini', 'gpt-5.4-mini'],
     releaseDate: '2026-03-17',
@@ -94,10 +71,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'fast',
     description: 'Smallest and fastest GPT-5.4 — cheap, quick classification and extraction.',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['tools', 'streaming', 'structured'],
     aliases: ['gpt5.4-nano', 'gpt-5.4-nano'],
     releaseDate: '2026-03-17',
@@ -110,10 +83,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Previous flagship. Strong reasoning; still fully supported.',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt5'],
     releaseDate: '2025-08-07',
@@ -124,10 +93,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Smaller GPT-5 — still cost-effective, superseded by 5.4 Mini.',
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    costPer1kInput: null,
-    costPer1kOutput: null,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt5-mini'],
     releaseDate: '2025-08-07',
@@ -140,10 +105,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Previous-generation flagship. Solid all-rounder; superseded by GPT-5.',
-    contextWindow: 1_000_000,
-    maxOutputTokens: 32_768,
-    costPer1kInput: 0.002,
-    costPer1kOutput: 0.008,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt4.1', 'gpt-4.1'],
     releaseDate: '2025-04-14',
@@ -154,10 +115,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Cheap, fast 4.1 — good for lightweight agents when cost matters.',
-    contextWindow: 1_000_000,
-    maxOutputTokens: 32_768,
-    costPer1kInput: 0.0004,
-    costPer1kOutput: 0.0016,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt4.1-mini'],
     releaseDate: '2025-04-14',
@@ -168,10 +125,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Cheapest 4.1 — tight budgets, high-volume classification.',
-    contextWindow: 1_000_000,
-    maxOutputTokens: 32_768,
-    costPer1kInput: 0.0001,
-    costPer1kOutput: 0.0004,
     capabilities: ['tools', 'streaming', 'structured'],
     aliases: [],
     releaseDate: '2025-04-14',
@@ -184,10 +137,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Reasoning model tuned for math, science, and programming.',
-    contextWindow: 200_000,
-    maxOutputTokens: 100_000,
-    costPer1kInput: 0.002,
-    costPer1kOutput: 0.008,
     capabilities: ['tools', 'streaming', 'structured', 'thinking'],
     aliases: ['o3'],
     releaseDate: '2025-04-16',
@@ -198,10 +147,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Smaller, faster reasoning model — great for agentic tasks that need chain-of-thought.',
-    contextWindow: 200_000,
-    maxOutputTokens: 100_000,
-    costPer1kInput: 0.0011,
-    costPer1kOutput: 0.0044,
     capabilities: ['tools', 'streaming', 'structured', 'thinking'],
     aliases: ['o4-mini'],
     releaseDate: '2025-04-16',
@@ -214,10 +159,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Multimodal GPT-4 with vision. Still supported; superseded for text by GPT-4.1.',
-    contextWindow: 128_000,
-    maxOutputTokens: 16_384,
-    costPer1kInput: 0.0025,
-    costPer1kOutput: 0.01,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt4o', 'gpt-4o'],
     releaseDate: '2024-05-13',
@@ -228,10 +169,6 @@ export const OPENAI_MODELS: readonly ModelInfo[] = [
     provider: 'openai',
     tier: 'legacy',
     description: 'Cheap, fast 4o. Superseded by 4.1 Mini.',
-    contextWindow: 128_000,
-    maxOutputTokens: 16_384,
-    costPer1kInput: 0.00015,
-    costPer1kOutput: 0.0006,
     capabilities: ['vision', 'tools', 'streaming', 'structured'],
     aliases: ['gpt4o-mini'],
     releaseDate: '2024-07-18',

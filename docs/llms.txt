@@ -1,6 +1,6 @@
 # Ownware
 
-> Open-source, self-hostable agent platform: build an agent as a text profile (a folder with agent.json + SOUL.md), serve it with one class (OwnwareGateway) as an HTTP+SSE service, and reach it from anywhere — terminals, web apps, Telegram, Slack — over one wire contract. Keyless local models via Ollama; Anthropic/OpenAI/Google/OpenRouter with one env var.
+> The open, self-hosted agent runtime: define an agent as a portable text profile (agent.json + SOUL.md), then serve its execution loop, durable threads, tools, permission flow, storage, and typed HTTP+SSE API with one OwnwareGateway class. Applications, SDKs, CLIs, and optional adapters consume the same public contract. Keyless local models are available through Ollama; supported cloud and compatible routes are documented under Models.
 
 Packages: `ownware` (umbrella, the quickstart surface), `@ownware/loom` (agent runtime engine — loop, streaming, tools, zone security), `@ownware/cortex` (kernel & gateway — profiles, threads, SSE, connectors, vault, schedules), `@ownware/shuttle` (messaging channel adapters). Monorepo uses bun and Node ≥ 22: `bun install && bun run build`. Runnable example: `examples/quickstart/`.
 
@@ -34,7 +34,7 @@ Packages: `ownware` (umbrella, the quickstart surface), `@ownware/loom` (agent r
 
 ## Capabilities
 
-- [Tools & connectors](tools/overview.md): built-in presets, any MCP server, Composio SaaS toolkits, custom defineTool files
+- [Tools & connectors](tools/overview.md): built-in presets, MCP servers over supported transports, Composio SaaS toolkits, custom defineTool files
 - [Models](models/overview.md): provider:model strings, keyless Ollama path, provider env vars, model discovery
 - [Channels](channels/overview.md): Shuttle adapters — Telegram, Slack, Discord, WhatsApp, SMS — session keys, delivery, group policies; `ownware channel add` + one-process `ownware serve`; schedules deliver to channels via `ownware schedule add --deliver`
 

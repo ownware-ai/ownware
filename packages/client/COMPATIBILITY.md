@@ -37,6 +37,9 @@ older capability rather than inventing a value.
 | `0.29.0` | Owner-only provider-neutral connection inventory with Ownware-owned opaque identities, fixed recovery truth, revoked/legacy-history exclusion and an explicit separate-grant requirement. |
 | `0.30.0` | Durable delegated-thread authority binding across continuation, snapshots, event streams, exact permission decisions and cancellation, with legacy unscoped memory disabled for delegated runs. |
 | `0.31.0` | Source upload capability discovery admits verified DOCX/XLSX containers while preserving the separate, narrower preparation envelope. |
+| `0.32.0` | Owner-only, no-store Codex managed-subscription status/login/logout/model discovery with redacted account state and one-time login presentation. |
+| `0.33.0` | Central secret-free Provider Hub catalog, provider/model/price/verification views, catalog refresh, fixed OpenAI-compatible provider presets, and managed custom compatible endpoints with dedicated encrypted credentials. |
+| `0.34.0` | Provider Hub becomes the single model-discovery authority, including ambient API-key and local Ollama connection projections; the old model-list route is a deprecated compatibility view over the same assembled Hub state. |
 
 Compatibility rules:
 
@@ -49,8 +52,9 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.31.0`,
-  `gateway.capabilities` is version 12, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.34.0`,
+  `gateway.capabilities` is version 15, `connections.list` is version 1,
+  `models.list` and `provider_hub.read` are version 2,
   `principals.issue` is version 3,
   `runs.start` is version 5,
   `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 3,
@@ -75,6 +79,19 @@ Compatibility rules:
   install identity, credential/session material, raw errors and confirmed
   revocations are absent. `accessPolicy: separate_grant_required` is invariant:
   connection state supplies no resource or action authority.
+  `runtimes.codex.read`, `runtimes.codex.login`, `runtimes.codex.logout` and
+  `runtimes.codex.models` are version 1. They are owner-only, disable caching,
+  expose no account identity or durable login material, and describe an
+  experimental managed route rather than a production-support guarantee.
+  `provider_hub.read` is version 2; `provider_hub.refresh` and
+  `provider_hub.compatible_connections.manage` are version 1. Hub reads are
+  secret-free catalog/control-plane projections; connection state and upstream
+  metadata do not prove model capability, verification, price applicability,
+  authorization, or successful future service. Submitted compatible-endpoint
+  keys are write-only and persist only through the encrypted credential store.
+  `models.list` version 2 is deprecated and preserves its old response shape by
+  projecting the same assembled Provider Hub state; it is not an independent
+  catalog or price source.
   `sources.register` is version 2; `sources.list` and `sources.read` remain
   version 1. They require a delegated workspace/profile-scoped principal and
   never accept workspace, profile, path, URL, bytes or storage authority from

@@ -24,6 +24,18 @@
 
 import { parseSseFrames } from './sse.js'
 import { interpretSseEvent, type RunStreamEvent } from './run-stream.js'
+import {
+  providerHubModelQueryString,
+  type OpenAICompatibleConnectionConfig,
+  type OpenAICompatibleConnectionInput,
+  type OpenAICompatibleConnectionList,
+  type ProviderHubConnectionPage,
+  type ProviderHubModelPage,
+  type ProviderHubModelQuery,
+  type ProviderHubOverview,
+  type ProviderHubProviderPage,
+  type ProviderHubVerificationOverview,
+} from './provider-hub.js'
 
 // ── inputs / outputs ─────────────────────────────────────────────────────────
 
@@ -148,7 +160,7 @@ export interface RunCancellationResult {
   readonly cancellation: 'requested' | 'already_requested' | 'already_terminal'
 }
 
-/** One entry from GET /api/v1/models. */
+/** One entry from deprecated GET /api/v1/models compatibility projection. */
 export interface ModelEntry {
   readonly id: string
   readonly name?: string
@@ -164,6 +176,128 @@ export interface HealthResult {
   readonly status: string
   readonly version?: string
   readonly [key: string]: unknown
+}
+
+export type CodexAccountState =
+  | { readonly state: 'unknown'; readonly reason: 'not_read' }
+  | {
+      readonly state: 'authenticated'
+      readonly authMode: 'chatgpt'
+      readonly plan: string
+      readonly requiresOpenaiAuth: boolean
+      readonly authority: 'account/read'
+      readonly observedAt: string
+      readonly validUntil: null
+    }
+  | {
+      readonly state: 'signed_out'
+      readonly requiresOpenaiAuth: boolean
+      readonly authority: 'account/read'
+      readonly observedAt: string
+      readonly validUntil: null
+    }
+  | {
+      readonly state: 'unsupported_auth'
+      readonly authMode: 'apiKey' | 'amazonBedrock'
+      readonly requiresOpenaiAuth: boolean
+      readonly authority: 'account/read'
+      readonly observedAt: string
+      readonly validUntil: null
+    }
+
+export interface CodexRateLimitWindow {
+  readonly usedPercent: number
+  readonly windowDurationMinutes: number | null
+  readonly resetsAt: string | null
+}
+
+export interface CodexRateLimitBucket {
+  readonly id: string | null
+  readonly name: string | null
+  readonly plan: string | null
+  readonly primary: CodexRateLimitWindow | null
+  readonly secondary: CodexRateLimitWindow | null
+  readonly reachedType: string | null
+  readonly spendControlReached: boolean | null
+  readonly hasCredits: boolean | null
+  readonly unlimitedCredits: boolean | null
+  readonly spendRemainingPercent: number | null
+  readonly spendResetsAt: string | null
+}
+
+export type CodexQuotaState =
+  | {
+      readonly state: 'unknown'
+      readonly reason: 'not_read' | 'provider_stated_no_usable_limit' | 'unrecognized_provider_shape'
+      readonly authority?: 'account/rateLimits/read' | 'account/rateLimits/updated'
+      readonly observedAt?: string
+      readonly validUntil: null
+    }
+  | {
+      readonly state: 'reported' | 'exhausted'
+      readonly authority: 'account/rateLimits/read' | 'account/rateLimits/updated'
+      readonly observedAt: string
+      readonly validUntil: null
+      readonly buckets: readonly CodexRateLimitBucket[]
+      readonly resetCreditsAvailable: number | null
+      readonly resetCreditDetailsKnown: boolean | null
+    }
+
+export interface CodexRuntimeStatus {
+  readonly runtime: {
+    readonly id: 'openai-codex'
+    readonly accessRoute: 'openai-chatgpt-managed'
+    readonly support: 'experimental'
+    readonly upstreamSupport: 'experimental_unsupported_for_production'
+    readonly processState: 'starting' | 'running' | 'closing' | 'closed' | 'failed'
+    readonly protocolVersion: string
+    readonly supportedVersionRange: string
+  }
+  readonly account: CodexAccountState
+  readonly login: {
+    readonly phase: 'idle' | 'pending' | 'cancelling' | 'succeeded' | 'cancelled' | 'failed'
+    readonly reason?: 'provider_rejected'
+  }
+  readonly quota: CodexQuotaState
+}
+
+export type CodexLoginPresentation =
+  | {
+      readonly kind: 'browser'
+      /** One-time correlation value; do not persist or log. */
+      readonly loginId: string
+      /** One-time provider URL; do not persist or log. */
+      readonly url: string
+    }
+  | {
+      readonly kind: 'device'
+      /** One-time correlation value; do not persist or log. */
+      readonly loginId: string
+      readonly verificationUrl: string
+      /** One-time device code; do not persist or log. */
+      readonly userCode: string
+    }
+
+export interface CodexModel {
+  readonly id: string
+  readonly model: string
+  readonly displayName: string
+  readonly description: string
+  readonly hidden: boolean
+  readonly isDefault: boolean
+  readonly defaultReasoningEffort: string
+  readonly reasoningEfforts: readonly string[]
+  readonly inputModalities: readonly string[]
+  readonly serviceTiers: readonly string[]
+  readonly defaultServiceTier: string | null
+  readonly supportsPersonality: boolean
+}
+
+export interface CodexModelCatalog {
+  readonly authority: 'model/list'
+  readonly observedAt: string
+  readonly validUntil: null
+  readonly models: readonly CodexModel[]
 }
 
 export interface GatewayContractDescriptor {
@@ -1168,6 +1302,133 @@ export class OwnwareClient implements GatewayClient {
     return (await response.json()) as ConnectionList
   }
 
+  /** Read the install owner's redacted official-Codex connection state. */
+  async codexRuntime(): Promise<CodexRuntimeStatus> {
+    const response = await this.doFetch(`${this.base}/api/v1/runtimes/codex`, {
+      headers: this.headers(false),
+    })
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as CodexRuntimeStatus
+  }
+
+  /** Start one Codex-owned ChatGPT login; returned material is one-time only. */
+  async startCodexLogin(
+    kind: 'browser' | 'device',
+  ): Promise<CodexLoginPresentation> {
+    const response = await this.post('/api/v1/runtimes/codex/login/start', { kind })
+    return (await response.json()) as CodexLoginPresentation
+  }
+
+  /** Bounded long-poll for the active Codex-owned login attempt. */
+  async waitForCodexLogin(timeoutMs?: number): Promise<CodexRuntimeStatus> {
+    const response = await this.post('/api/v1/runtimes/codex/login/wait', {
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    })
+    return (await response.json()) as CodexRuntimeStatus
+  }
+
+  async cancelCodexLogin(): Promise<CodexRuntimeStatus> {
+    const response = await this.post('/api/v1/runtimes/codex/login/cancel', {})
+    return (await response.json()) as CodexRuntimeStatus
+  }
+
+  async logoutCodex(): Promise<CodexRuntimeStatus> {
+    const response = await this.post('/api/v1/runtimes/codex/logout', {})
+    return (await response.json()) as CodexRuntimeStatus
+  }
+
+  /** Models observed from this exact Codex-managed ChatGPT account. */
+  async codexModels(): Promise<CodexModelCatalog> {
+    const response = await this.doFetch(`${this.base}/api/v1/runtimes/codex/models`, {
+      headers: this.headers(false),
+    })
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as CodexModelCatalog
+  }
+
+  /** Central, secret-free provider/model/connection catalog overview. */
+  async providerHubOverview(): Promise<ProviderHubOverview> {
+    return this.providerHubGet('/api/v1/provider-hub')
+  }
+
+  async providerHubProviders(): Promise<ProviderHubProviderPage> {
+    return this.providerHubGet('/api/v1/provider-hub/providers')
+  }
+
+  async providerHubConnections(): Promise<ProviderHubConnectionPage> {
+    return this.providerHubGet('/api/v1/provider-hub/connections')
+  }
+
+  async providerHubVerifications(): Promise<ProviderHubVerificationOverview> {
+    return this.providerHubGet('/api/v1/provider-hub/verifications')
+  }
+
+  async providerHubModels(query: ProviderHubModelQuery = {}): Promise<ProviderHubModelPage> {
+    return this.providerHubGet(
+      `/api/v1/provider-hub/models${providerHubModelQueryString(query)}`,
+    )
+  }
+
+  async providerHubHealth(): Promise<ProviderHubOverview> {
+    return this.providerHubGet('/api/v1/provider-hub/health')
+  }
+
+  async refreshProviderHub(force = false): Promise<ProviderHubOverview> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/provider-hub/catalog/refresh?force=${String(force)}`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProviderHubOverview
+  }
+
+  async openAICompatibleConnections(): Promise<OpenAICompatibleConnectionList> {
+    return this.providerHubGet('/api/v1/provider-hub/connections/openai-compatible')
+  }
+
+  async saveOpenAICompatibleConnection(
+    input: OpenAICompatibleConnectionInput,
+  ): Promise<OpenAICompatibleConnectionConfig> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/provider-hub/connections/openai-compatible`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify(input),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as OpenAICompatibleConnectionConfig
+  }
+
+  async removeOpenAICompatibleConnection(connectionId: string): Promise<{ readonly removed: true }> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/provider-hub/connections/openai-compatible/${encodeURIComponent(connectionId)}`,
+      { method: 'DELETE', headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as { readonly removed: true }
+  }
+
+  async discoverOpenAICompatibleModels(
+    connectionId: string,
+  ): Promise<OpenAICompatibleConnectionConfig> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/provider-hub/connections/openai-compatible/${encodeURIComponent(connectionId)}/discover`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as OpenAICompatibleConnectionConfig
+  }
+
+  private async providerHubGet<T>(path: string): Promise<T> {
+    const response = await this.doFetch(`${this.base}${path}`, {
+      headers: this.headers(false),
+    })
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as T
+  }
+
   /** Register one logical source using only safe control metadata from a scoped principal. */
   async registerSource(input: RegisterSourceInput): Promise<SourceManifest> {
     const headers = this.headers(true)
@@ -1829,7 +2090,10 @@ export class OwnwareClient implements GatewayClient {
     return (await res.json()) as RunSnapshot
   }
 
-  /** The model catalog with live availability (`hasCredentials`). */
+  /**
+   * @deprecated Use `providerHubModels()`; this is the old array shape projected
+   * from the same canonical Provider Hub generation.
+   */
   async models(): Promise<ModelEntry[]> {
     const res = await this.doFetch(`${this.base}/api/v1/models`, { headers: this.headers(false) })
     if (!res.ok) throw await errorFromResponse(res)

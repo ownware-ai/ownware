@@ -1,12 +1,12 @@
 ---
 title: MCP
-description: Loom is an MCP client — connect to any MCP server over stdio, SSE, HTTP, or WebSocket (with OAuth2 PKCE) and adopt its tools.
+description: Loom is an MCP client — connect to MCP servers over stdio, SSE, HTTP, or WebSocket (with OAuth2 PKCE) and adopt their tools.
 type: howto
 ---
 
 # MCP (Model Context Protocol)
 
-Loom is an MCP client. Connect to any MCP server over any transport and adopt its tools and resources.
+Loom is an MCP client. Connect to MCP servers over the supported stdio, SSE, HTTP, or WebSocket transports and adopt their tools and resources.
 
 ```ts
 import { MCPManager, adaptAllMCPTools, Loom, builtinTools } from '@ownware/loom'

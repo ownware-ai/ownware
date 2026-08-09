@@ -6,9 +6,9 @@ type: concept
 
 # Models
 
-Ownware is provider-agnostic. A model is always one string — `provider:model` — set in the profile (`"model"` in `agent.json`), overridden per run (the `model` field on `POST /api/v1/run`), or picked automatically by the client from `GET /api/v1/models`.
+Ownware is provider-agnostic. A model is always one string — `provider:model` — set in the profile (`"model"` in `agent.json`), overridden per run (the `model` field on `POST /api/v1/run`), or picked automatically by the client from the canonical Provider Hub.
 
-**For AI agents:** keyless path = install Ollama, `ollama pull llama3.2`, use `"ollama:llama3.2"` — no env var needed (`OLLAMA_HOST` optional). Cloud paths = set exactly one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `OPENROUTER_API_KEY` in the environment before the gateway starts. `GET /api/v1/models` returns `[{id, hasCredentials, default?}]` — filter on `hasCredentials` to find what's usable right now.
+**For AI agents:** keyless path = install Ollama, `ollama pull llama3.2`, use `"ollama:llama3.2"` — no env var needed (`OLLAMA_HOST` optional). Cloud paths = set exactly one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` / `OPENROUTER_API_KEY` in the environment before the gateway starts. `GET /api/v1/provider-hub/models?scope=connected` returns one page of models backed by a current connection.
 
 ## Providers at a glance
 
@@ -31,11 +31,15 @@ Then use `"model": "ollama:llama3.2"` — fully local, free, private. The quicks
 
 ## How clients discover models
 
-`GET /api/v1/models` reports every known model with `hasCredentials` — true when a key is set or a local Ollama is reachable *right now*. `default: true` is flagged **per provider** (so several models carry it), so don't do `models.find(m => m.default)`. The reference client `chat.mjs` instead takes the first *usable* model (preferring one flagged `default`). Build your clients the same way and "no config" stays true.
+`GET /api/v1/provider-hub/models?scope=connected` is the one supported discovery flow. Read `items[].model`; prefer a row whose `availability.recommended` is true, then use the first connected row. Change the scope to `all`, `connectable`, `verified`, or `recommended` without switching catalogs. Prices and availability come from that same generation.
+
+Provider/model metadata and token rates start with Ownware's bundled Models.dev snapshot and its validated last-known-good refresh. Ownware overlays only stable IDs, aliases and recommendations. A few historical Anthropic and local Ollama rows that Models.dev does not cover retain explicit context/output compatibility limits inside the Hub; their price stays unknown rather than being invented. Live connection state then joins from the local credential vault, environment keys, compatible endpoints, Ollama reachability and already-observed Codex subscription state. Merely listing models never starts Codex; its subscription catalog appears after an explicit Codex status/model request has observed it.
+
+`GET /api/v1/models` is retained only for older clients. It is deprecated and projected from Provider Hub, so it cannot drift into a second source of model facts.
 
 Keys can also be saved through the gateway's credential vault instead of the environment; either way they live on **your** machine (`~/.ownware/`) and never leave it.
 
 ## Next steps
 
 - [Profile format](../agents/profile-format.md) — where `"model"` lives.
-- [The run API](../gateway/run-api.md) — per-run model override and `/models`.
+- [The run API](../gateway/run-api.md) — per-run model override and Provider Hub discovery.

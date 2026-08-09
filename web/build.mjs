@@ -24,7 +24,7 @@ if (cut === -1) throw new Error('landing.html: no </style> found — unexpected 
 const head = src.slice(0, cut + marker.length)
 const body = src.slice(cut + marker.length)
 
-const DESC = 'Ownware is the open kit for building your own AI agent — self-hosted, any model, alive in Slack, your website, your app, and scheduled every morning. You own all of it.'
+const DESC = 'Ownware is the open, self-hosted agent runtime: portable profiles, an owned execution loop, durable threads, permissions, storage, and one typed streaming API.'
 
 const html = `<!doctype html>
 <html lang="en" data-theme="dark">
@@ -35,7 +35,7 @@ const html = `<!doctype html>
 <link rel="canonical" href="https://ownware.dev/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://ownware.dev/">
-<meta property="og:title" content="Ownware — build your agent once, alive everywhere">
+<meta property="og:title" content="Ownware — the open agent runtime for products you own">
 <meta property="og:description" content="${DESC}">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="/favicon.svg">

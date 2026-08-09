@@ -101,7 +101,9 @@ async function startClient(
 
 describe('Codex app-server compatibility', () => {
   it('pins the generated protocol to the supported Codex minor line', () => {
-    expect(SUPPORTED_CODEX_VERSION_RANGE).toBe('>=0.145.0 <0.146.0')
+    expect(SUPPORTED_CODEX_VERSION_RANGE).toBe(
+      '>=0.145.0 <0.146.0 || >=0.147.0 <0.148.0',
+    )
     expect(parseCodexVersion('codex-cli 0.145.0')).toEqual({
       raw: '0.145.0',
       major: 0,
@@ -111,7 +113,17 @@ describe('Codex app-server compatibility', () => {
     expect(parseCodexVersion('not a version')).toBeNull()
   })
 
-  it.each(['codex-cli 0.144.9', 'codex-cli 0.146.0', 'garbled'])(
+  it('accepts the separately proven 0.147 protocol line', async () => {
+    const child = successfulChild('/private/tmp/ownware-codex-home')
+    const client = await startClient(child, {
+      probeVersion: async () => 'codex-cli 0.147.0',
+    })
+
+    expect(client.diagnostics().version).toBe('0.147.0')
+    await client.close()
+  })
+
+  it.each(['codex-cli 0.144.9', 'codex-cli 0.146.0', 'codex-cli 0.148.0', 'garbled'])(
     'fails an incompatible binary before spawning: %s',
     async (version) => {
       const child = successfulChild('/private/tmp/ownware-codex-home')

@@ -101,7 +101,7 @@ describe('runtime selection', () => {
     expect(createRuntimePlan({
       runtime: 'openai-codex',
       access: { route: 'openai-chatgpt-managed' },
-    }, [], NOW).support).toBe('supported')
+    }, [], NOW).support).toBe('experimental')
     expect(createRuntimePlan({
       runtime: 'ownware',
       access: DIRECT_ACCESS,

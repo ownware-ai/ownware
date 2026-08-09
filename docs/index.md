@@ -1,12 +1,14 @@
 ---
 title: Ownware
-description: Open-source, self-hostable agent platform — build an agent as a text profile, run it as one process, reach it from anywhere over one HTTP+SSE contract.
+description: The open, self-hosted agent runtime — turn a portable profile into a durable service with tools, threads, permissions, storage, and one typed streaming API.
 type: concept
 ---
 
 # Ownware
 
-Ownware lets you **build your own agent and make it alive everywhere**. You define the agent as a folder of text files (a *profile*), one class turns that folder into a live HTTP+SSE service, and anything that can speak HTTP — a terminal, a web widget, Telegram, Slack, your own app — can talk to it. You host it; your keys never leave your machine.
+Ownware is **the open agent runtime for products you own**. Define an agent as a folder of text files (a *profile*); one class turns it into a self-hosted HTTP+SSE service with the execution loop, durable threads, tools, permission continuation, credentials, schedules, and storage already wired. Your application, the SDK, the CLI, and optional adapters all use the same public contract.
+
+Use Ownware when you want a harness and operational backend together, while keeping your product's interface and business logic outside the runtime.
 
 ```ts
 import { OwnwareGateway } from 'ownware'

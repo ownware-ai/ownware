@@ -271,7 +271,7 @@ export function createProviderHandlers(deps: ProviderHandlerDeps) {
 // works before saving.
 // ---------------------------------------------------------------------------
 
-async function testProviderKey(
+export async function testProviderKey(
   provider: string,
   key: string,
 ): Promise<{ provider: string; isValid: boolean; error?: string }> {
@@ -332,18 +332,48 @@ async function testProviderKey(
         return { provider, isValid: true }
       }
 
-      default:
+      default: {
+        const descriptor = llmProviderById(provider)
+        if (descriptor?.adapter === 'openai-compatible' && descriptor.validationUrl == null) {
+          return {
+            provider,
+            isValid: false,
+            error: 'Credential validation is unavailable without a billable inference request',
+          }
+        }
+        if (descriptor?.adapter === 'openai-compatible' && descriptor.validationUrl != null) {
+          const response = await fetch(descriptor.validationUrl, {
+            method: 'GET',
+            signal: controller.signal,
+            headers: { Authorization: `Bearer ${key}` },
+          })
+          if (response.status === 401) {
+            return { provider, isValid: false, error: 'Invalid API key' }
+          }
+          if (response.status === 403) {
+            return { provider, isValid: false, error: 'API key does not have permission for validation' }
+          }
+          if (!response.ok) {
+            return {
+              provider,
+              isValid: false,
+              error: `Provider validation endpoint returned status ${response.status}`,
+            }
+          }
+          return { provider, isValid: true }
+        }
         return {
           provider,
           isValid: false,
           error: `Unknown provider: ${provider}. Supported: ${KNOWN_PROVIDERS.join(', ')}`,
         }
+      }
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       return { provider, isValid: false, error: 'Validation timed out' }
     }
-    return { provider, isValid: false, error: err instanceof Error ? err.message : 'Validation failed' }
+    return { provider, isValid: false, error: 'Validation request failed' }
   } finally {
     clearTimeout(timeout)
   }

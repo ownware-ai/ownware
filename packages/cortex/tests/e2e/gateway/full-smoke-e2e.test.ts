@@ -135,7 +135,7 @@ describe('auth enforcement', () => {
     // T21 (2026-04-22): /api/v1/tools/catalog removed — replaced by
     // /api/v1/catalog?source=builtin (which is also auth-protected).
     '/api/v1/catalog?source=builtin',
-    '/api/v1/models',
+    '/api/v1/provider-hub/models?limit=1',
   ]
 
   it('all protected routes return 401 without token', async () => {
@@ -590,10 +590,11 @@ describe('mcp + catalog + session', () => {
     expect(body.items.length).toBeGreaterThan(0)
   })
 
-  it('GET /models → 200', async () => {
-    const { status, body } = await json('/api/v1/models')
+  it('GET /provider-hub/models → canonical model page', async () => {
+    const { status, body } = await json('/api/v1/provider-hub/models?limit=5')
     expect(status).toBe(200)
-    expect(body).toBeTruthy()
+    expect(Array.isArray(body.items)).toBe(true)
+    expect(body.page.total).toBeGreaterThan(0)
   })
 
   // /session/{state,restore} tests removed — the legacy desktop

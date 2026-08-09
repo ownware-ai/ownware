@@ -12,7 +12,7 @@ function readyProfile(toolNames: readonly string[] = []) {
       state: 'ready' as const,
       observedAt: '2026-07-26T00:00:00.000Z',
       validUntil: null,
-      authority: 'codex-app-server/0.145.0-generated-schema' as const,
+      authority: 'codex-app-server/0.147.0-generated-schema' as const,
       entries: [],
       limitations: [],
     },
@@ -41,7 +41,7 @@ function readySandbox() {
       state: 'requires_acceptance' as const,
       observedAt: '2026-07-26T00:00:00.000Z',
       validUntil: null,
-      authority: 'codex-app-server/0.145.0-generated-schema' as const,
+      authority: 'codex-app-server/0.147.0-generated-schema' as const,
       limitations: [],
     },
     plan: {

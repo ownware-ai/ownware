@@ -27,8 +27,9 @@
     "rebuild:electron": "bash scripts/rebuild-native-for-electron.sh",
     "rebuild:node": "npm rebuild better-sqlite3 node-pty",
     "promote": "bun run scripts/promote-profile.ts",
-    "build": "tsc && mkdir -p dist/connector/detection && cp src/connector/detection/known-apps.json dist/connector/detection/known-apps.json",
-    "bundle:gateway": "bun build dist/gateway/server.js --outfile dist/gateway-bundle.mjs --target node --format esm --external better-sqlite3 --external pg --external node-pty --external chokidar --external bindings --external fsevents --external playwright-core --external playwright --external chromium-bidi --external sharp --external @img/sharp-darwin-arm64 --external @img/sharp-darwin-x64 --external @img/sharp-linux-arm64 --external @img/sharp-linux-x64 --external @img/sharp-win32-x64 --external @img/sharp-libvips-darwin-arm64 --external @img/sharp-libvips-darwin-x64 --external @img/sharp-libvips-linux-arm64 --external @img/sharp-libvips-linux-x64 --external @vscode/ripgrep",
+    "build": "tsc && mkdir -p dist/connector/detection && cp src/connector/detection/known-apps.json dist/connector/detection/known-apps.json && bun run scripts/copy-provider-hub-assets.ts",
+    "bundle:gateway": "bun build dist/gateway/server.js --outfile dist/gateway-bundle.mjs --target node --format esm --external better-sqlite3 --external pg --external node-pty --external chokidar --external bindings --external fsevents --external playwright-core --external playwright --external chromium-bidi --external sharp --external @img/sharp-darwin-arm64 --external @img/sharp-darwin-x64 --external @img/sharp-linux-arm64 --external @img/sharp-linux-x64 --external @img/sharp-win32-x64 --external @img/sharp-libvips-darwin-arm64 --external @img/sharp-libvips-darwin-x64 --external @img/sharp-libvips-linux-arm64 --external @img/sharp-libvips-linux-x64 --external @vscode/ripgrep && bun run scripts/copy-provider-hub-assets.ts",
+    "sync-provider-catalog": "bun run scripts/sync-provider-catalog.ts",
     "dev": "tsc --build && node --watch --watch-path=dist dist/gateway/server.js",
     "dev:watch": "tsc --watch",
     "gateway": "node dist/gateway/server.js",
@@ -43,6 +44,7 @@
   },
   "files": [
     "dist",
+    "!dist/gateway-bundle.mjs",
     "scripts/fix-node-pty-permissions.mjs",
     "scripts/ensure-ripgrep-binary.mjs"
   ],

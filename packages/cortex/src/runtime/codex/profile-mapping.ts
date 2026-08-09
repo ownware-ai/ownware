@@ -178,7 +178,7 @@ export interface CodexProfileCompatibilityReport {
    * The report id, not time, binds a decision to the exact mapped material.
    */
   readonly validUntil: null
-  readonly authority: 'codex-app-server/0.145.0-generated-schema'
+  readonly authority: 'codex-app-server/0.147.0-generated-schema'
   readonly entries: readonly CodexProfileCompatibilityEntry[]
   readonly limitations: readonly CodexProfileLimitation[]
 }
@@ -343,7 +343,7 @@ export async function prepareCodexProfileMapping(
     state,
     observedAt: new Date().toISOString(),
     validUntil: null,
-    authority: 'codex-app-server/0.145.0-generated-schema',
+    authority: 'codex-app-server/0.147.0-generated-schema',
     entries: prepared.entries,
     limitations: prepared.limitations,
   }

@@ -30,9 +30,9 @@ async function api(path, init) {
 
 // Pick the first model the gateway says is actually usable right now —
 // a cloud key you've set, or a running local Ollama. No config needed.
-const models = await api('/api/v1/models')
-const usable = models.filter((m) => m.hasCredentials)
-const model = (usable.find((m) => m.default) ?? usable[0])?.id
+const modelPage = await api('/api/v1/provider-hub/models?scope=connected&limit=200')
+const usable = modelPage.items.map((item) => item.model)
+const model = (usable.find((m) => m.availability.recommended) ?? usable[0])?.id
 if (!model) {
   const ollamaHint =
     process.platform === 'darwin' ? 'brew install ollama && ollama pull llama3.2'

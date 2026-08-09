@@ -107,7 +107,7 @@ const ENGINE_GROUPS = [
 ]
 
 const PRODUCTS = [
-  { id: 'ownware', label: 'Ownware', tagline: 'Build & serve your agent', home: 'index', groups: WEFT_GROUPS },
+  { id: 'ownware', label: 'Ownware', tagline: 'Open agent runtime', home: 'index', groups: WEFT_GROUPS },
   { id: 'engine', label: 'Engine', tagline: 'The engine, in code', home: 'engine-overview', groups: ENGINE_GROUPS },
 ]
 const PRODUCT_LABEL = Object.fromEntries(PRODUCTS.map((p) => [p.id, p.label]))

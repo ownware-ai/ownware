@@ -44,6 +44,7 @@ src/
 ├── connector/            # Connectors: builtin / MCP / Composio, credentials vault
 ├── credential/           # Runtime credential handling (.env import, redaction)
 ├── gateway/              # HTTP/2 gateway: handlers, db, SSE, session runner
+├── provider-hub/         # Central provider/model/route/price/verification control plane
 ├── storage/              # Adapter contracts/lifecycle, logical schema, codecs, transfer preflight
 ├── memory/               # DB-backed memory with approval gating
 ├── permissions/          # Permission store + zones
@@ -64,6 +65,7 @@ src/
 | `profile/context.ts` | System prompt context fragments (git, os, date, project) | Adding new context types |
 | `profile/hooks.ts` | Compiles `agent.json` `hooks` into the engine `HookRuntime` + shared `ReminderInjector`. Loud-or-dead validation at assembly; observe actions (`log`/`webhook`/`save_json`) never block; `approve` (onToolCall only, optional `tools` globs) PAUSES the run on the injected `requestHookApproval` channel — the gateway wires it to the thread's permission HITL, so the decision arrives from the web UI, terminal chat, or a messaging channel via `POST /threads/:id/resume`; no channel wired → fail-closed deny; `command` actions are operator-gated (`OWNWARE_ALLOW_COMMAND_HOOKS=1`, default OFF — a downloaded profile must never mean shell execution); `OWNWARE_DISABLE_HOOKS=1` kill switch; `OWNWARE_HOOK_WEBHOOK_ALLOWLIST` narrows egress; payloads scrubbed via the credential redactor. Session wiring: pass BOTH `hookRuntime` and `reminderInjector` from `AssembledAgent`. | Adding hook actions/events or changing the trust policy |
 | `gateway/types.ts` | HTTP wire format types (Thread, Profile, etc.) | Changing the gateway API |
+| `provider-hub/schema.ts` + `service.ts` | Secret-free central provider/model/connection contract, catalog views and honest verification/pricing projections | Changing Provider Hub semantics or public catalog behavior |
 | `gateway/state.ts` | Composes adapter repositories with process-local sessions/runtimes | Adding persistence backends or changing state ownership |
 | `gateway/db/schema.ts` + `migration-safety.ts` | Immutable SQLite migration manifest, exact applied-history validation, snapshots and recovery | Adding a migration or changing database startup safety |
 | `storage/contracts.ts` + `sqlite-adapter.ts` | Async adapter lifecycle, guarded repository/transaction scopes, savepoints and typed operational failures | Changing storage startup, shutdown or transaction ownership |
@@ -431,9 +433,11 @@ client.
 `src/runtime/codex/app-server-client.ts` is the official external-process
 boundary:
 
-- Support is pinned to the generated Codex `0.145.x` protocol. A new minor
-  version must regenerate schemas, add compatibility fixtures and pass a real
-  installed lifecycle before widening the range.
+- Support is pinned to the exact generated-and-proven Codex protocol minors
+  `0.145.x` and `0.147.x`. `0.146.x` is intentionally unsupported: version
+  ordering is not protocol-compatibility evidence. Every additional minor must
+  regenerate schemas, add compatibility fixtures and pass a real isolated
+  installed lifecycle before widening the set.
 - Stdout is JSONL protocol only. Malformed envelopes and unknown response IDs
   poison the connection because request correlation is no longer authoritative.
 - `CODEX_HOME` is an absolute Ownware-managed directory and initialization must
@@ -469,6 +473,22 @@ boundary:
   values. Invalid or empty shapes become `unknown`, never zero.
 - Account, model and quota observations carry their authority, timestamp and
   `validUntil: null`; the provider declares no freshness window.
+
+`src/runtime/codex/control-plane.ts` and
+`gateway/handlers/codex-runtime.ts` expose the owner-side connection flow:
+
+- The control process is lazy and uses `<dataDir>/runtimes/openai-codex`; merely
+  starting the Gateway must not start Codex or inspect an account.
+- Status, login, logout and model catalogue routes are install-owner only and
+  `Cache-Control: no-store`. Delegated principals remain denied even if they
+  advertise the matching operation.
+- One inbound pump owns app-server notifications and rejects unexpected server
+  requests. HTTP handlers never race separate consumers over the wire queue.
+- Inspectable status contains no account identity, login correlation, login URL
+  or device code. Only login start returns one-time presentation material.
+- Both managed and direct ChatGPT routes remain `experimental`. The official
+  app-server route is operationally distinct from the unproven direct transport
+  and must never fail over to it.
 
 Direct OAuth credentials use the existing credential boundary, with additional
 rotation invariants:

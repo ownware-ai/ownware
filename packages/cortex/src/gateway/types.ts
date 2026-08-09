@@ -794,18 +794,14 @@ export type ModelCapability =
 export type ModelTier = 'flagship' | 'balanced' | 'fast' | 'legacy' | 'preview'
 
 /**
- * Canonical info for a single AI model exposed by the Cortex gateway.
+ * Deprecated compatibility/editorial model shape.
  *
- * The objective facts — `contextWindow`, `maxOutputTokens`,
- * `costPer1kInput`, `costPer1kOutput` — are NOT hand-authored truth. They
- * come from the live snapshots Loom ships (models.dev / OpenRouter) and are
- * merged in by `enrichModel` at serve time. Catalog entries therefore leave
- * them out for any model the snapshot already covers; they are only
- * hand-typed as a fallback for a model the snapshot doesn't know yet.
- *
- * Because of that, all four are OPTIONAL on the wire: absent (or `null` for
- * pricing) means "not known for this model" — the UI renders "—", never "$0"
- * or a fake context size. Pricing is per 1K tokens (input / output).
+ * Provider Hub owns public model facts, routes, availability and pricebook
+ * entries. Cortex retains this shape for stable IDs, aliases, recommendation
+ * policy and the deprecated `/api/v1/models` response only. Optional objective
+ * fields reach consumers only after Provider Hub projection; a few historical
+ * and local rows carry narrow compatibility fallbacks because Models.dev has
+ * no authoritative route for them.
  */
 export interface ModelInfo {
   /** Canonical Loom model ID, e.g. `anthropic:claude-sonnet-4-6`. */
@@ -822,9 +818,9 @@ export interface ModelInfo {
   readonly contextWindow?: number
   /** Max output/completion tokens. Absent = unknown. */
   readonly maxOutputTokens?: number
-  /** Input cost per 1K tokens in USD. Absent/`null` = pricing unknown. */
+  /** Deprecated compatibility field. Hub pricebook is authoritative. */
   readonly costPer1kInput?: number | null
-  /** Output cost per 1K tokens in USD. Absent/`null` = pricing unknown. */
+  /** Deprecated compatibility field. Hub pricebook is authoritative. */
   readonly costPer1kOutput?: number | null
   /** Capabilities — drives capability icons in the UI. */
   readonly capabilities: readonly ModelCapability[]
@@ -836,7 +832,7 @@ export interface ModelInfo {
   readonly default?: boolean
   /** True if deprecated — UI fades the entry. */
   readonly deprecated?: boolean
-  /** Live credential check: does the gateway have a key for this provider? */
+  /** Deprecated compatibility projection of Hub connection state. */
   readonly hasCredentials?: boolean
   /**
    * OpenRouter slug (e.g. `deepseek/deepseek-v4-pro`) — the join key into the

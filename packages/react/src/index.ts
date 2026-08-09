@@ -20,7 +20,16 @@ export { OwnwareChat } from './components/OwnwareChat.js'
 export type { OwnwareChatProps } from './components/OwnwareChat.js'
 export { OwnwareStudio } from './components/OwnwareStudio.js'
 export type { OwnwareStudioProps, StudioProfile } from './components/OwnwareStudio.js'
-export { ownwareChatCss, ownwareStudioCss } from './components/styles.js'
+export { ChatGPTConnection } from './components/ChatGPTConnection.js'
+export type {
+  ChatGPTConnectionClient,
+  ChatGPTConnectionProps,
+} from './components/ChatGPTConnection.js'
+export {
+  ownwareChatCss,
+  ownwareConnectionCss,
+  ownwareStudioCss,
+} from './components/styles.js'
 
 export type {
   ChatState,

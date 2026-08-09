@@ -1,6 +1,6 @@
 ---
 title: Thinking in Ownware
-description: The mental model — profile, engine, gateway, channel — and where state and security live.
+description: The mental model — portable profile, execution engine, durable gateway, and public client contract.
 type: concept
 ---
 
@@ -9,12 +9,12 @@ type: concept
 One picture explains the whole system:
 
 ```
- profile directory        @ownware/cortex          @ownware/loom          any client
- ─────────────────        ───────────────          ─────────────          ──────────
- agent.json               loadProfile()            Session loop           chat.mjs
- SOUL.md                  assembleAgent()          (model + tools,        web widget
- AGENTS.md (memory)       OwnwareGateway           streaming events)      Telegram bot
- skills/  tools/          (HTTP+SSE door)                                 your app
+ profile directory        runtime assembly         execution engine       any client
+ ─────────────────        ────────────────         ────────────────       ──────────
+ agent.json               loadProfile()            Session loop           your app
+ SOUL.md                  assembleAgent()          (model + tools,        SDK / CLI
+ AGENTS.md (memory)       OwnwareGateway           streaming events)      optional adapter
+ skills/  tools/          (durable HTTP+SSE API)                          background worker
 
  The pipeline runs left → right: a text profile → assembled by the kernel →
  executed by the engine → reached by any client over one HTTP+SSE contract.
@@ -39,9 +39,9 @@ Rule of thumb: **the kernel decides WHAT agent to run; the engine decides HOW to
 
 `OwnwareGateway` wraps the kernel in one HTTP+SSE service. Every client — the quickstart terminal chat, a web app, a channel adapter — uses the exact same wire contract: `POST /api/v1/run` to start a run, an SSE stream to watch it think, `POST …/resume` to answer permission requests. If you can `fetch`, you can build an Ownware client, in any language. Threads persist across restarts; everything is stored under `~/.ownware/` on *your* machine.
 
-## 4. Channels are thin clients
+## 4. Every integration is a client
 
-Putting your agent on Telegram or Slack doesn't change the agent. A **Shuttle** adapter just carries messages: platform message in → `POST /api/v1/run` → tail the SSE → reply out, keeping one thread per person. One agent, many identities, same contract.
+Your application does not get a privileged path into the agent. It starts runs, follows events, and answers permission requests through the same contract as the SDK, CLI, background workers, and optional messaging adapters. That keeps product-specific behavior above the runtime boundary and makes new clients additive instead of engine forks.
 
 ## Where security lives
 

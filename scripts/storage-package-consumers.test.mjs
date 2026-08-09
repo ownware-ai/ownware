@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -14,6 +15,23 @@ function run(command, args, cwd, env = process.env) {
     child.once('exit', (code, signal) => {
       if (code === 0) return resolveRun()
       rejectRun(new Error(`${command} exited with ${code ?? signal ?? 'unknown status'}.`))
+    })
+  })
+}
+
+function capture(command, args, cwd) {
+  return new Promise((resolveRun, rejectRun) => {
+    const child = spawn(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk })
+    child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk })
+    child.once('error', rejectRun)
+    child.once('exit', (code, signal) => {
+      if (code === 0) return resolveRun(stdout)
+      rejectRun(new Error(
+        `${command} exited with ${code ?? signal ?? 'unknown status'}: ${stderr.trim()}`,
+      ))
     })
   })
 }
@@ -183,6 +201,16 @@ test('published tarballs work for SQLite without pg and PostgreSQL with pg', {
       )
       tarballs.set(packageInfo.name, join(archiveDirectory, packageInfo.archiveName))
     }
+    const cortexArchive = await capture(
+      'tar',
+      ['-tzf', tarballs.get('@ownware/cortex')],
+      repoRoot,
+    )
+    assert.equal(
+      cortexArchive.split('\n').includes('package/dist/gateway-bundle.mjs'),
+      false,
+      'The local-only gateway bundle must not make the published tarball nondeterministic.',
+    )
 
     const sqliteDirectory = join(temporaryRoot, 'sqlite-consumer')
     await writeConsumer(sqliteDirectory, tarballs, false)

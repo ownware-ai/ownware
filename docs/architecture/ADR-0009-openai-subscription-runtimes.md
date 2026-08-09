@@ -41,7 +41,7 @@ Runtime selection is represented as a strict union of valid pairs:
 |---|---|---|
 | `ownware` | `provider-api` | supported, existing default |
 | `ownware` | `openai-chatgpt-direct` | experimental |
-| `openai-codex` | `openai-chatgpt-managed` | supported subscription route |
+| `openai-codex` | `openai-chatgpt-managed` | experimental managed subscription route |
 
 An absent selection retains `ownware` + `provider-api` for existing profiles.
 Unknown values, extra fields and invalid runtime/access pairs are rejected at
@@ -101,7 +101,7 @@ an ambiguous outcome and requires a person to choose recovery.
 
 ### Official app-server data path
 
-The supported subscription route is:
+The managed subscription route is:
 
 ```
 Ownware kernel → local codex app-server → OpenAI
@@ -147,10 +147,13 @@ The app-server protocol is versioned independently. Ownware declares a tested
 version/platform envelope, validates initialization before a customer turn and
 fails visibly for missing, incompatible or malformed implementations.
 
-The first supported envelope is Codex `>=0.145.0 <0.146.0`, generated and
-tested against the installed `0.145.0` schema. Initialization identifies the
-client as `ownware`; an enterprise distribution must use OpenAI's documented
-known-client registration path rather than another product's identity.
+The proven protocol envelopes are the exact minor lines Codex
+`>=0.145.0 <0.146.0` and `>=0.147.0 <0.148.0`, generated and tested against
+installed `0.145.0` and `0.147.0` processes. `0.146.x` is intentionally not
+accepted: a version between two proven minors is not evidence of protocol
+compatibility. Initialization identifies the client as `ownware`; an
+enterprise distribution must use OpenAI's documented known-client registration
+path rather than another product's identity.
 
 The process receives an absolute, Ownware-managed `CODEX_HOME`, and the
 initialize response must report the same canonical filesystem identity. Parent
@@ -165,6 +168,14 @@ reads or copies Codex's auth file. Account email, provider error prose,
 authorization URLs and device codes do not enter inspectable runtime state or
 logs. One-time login presentation values are returned only to the initiating
 caller.
+
+The Gateway exposes this through a lazy owner-only control process rooted at
+`<dataDir>/runtimes/openai-codex`. Status, login lifecycle, logout and model
+catalogue responses disable caching. Delegated principals are denied. The
+inspectable projection contains no account identity or one-time login material;
+only login start returns the authorization URL or device code. This control
+plane makes connection management reachable but does not by itself make the
+external runtime selectable through the public run route.
 
 `account/read` with Codex-managed refresh is the pre-turn authentication
 authority, while the later model request remains the authority for whether a
@@ -377,6 +388,18 @@ The first contract slice proves:
 Process supervision, authentication, live capability discovery, tools and real
 provider calls are intentionally separate slices with their own contract and
 real-flow tests.
+
+The Codex `0.147` control-plane checkpoint additionally proves exact-minor
+version admission with `0.146` rejection, redacted account/login/quota state,
+one-time browser/device presentation, owner-only/no-store Gateway routes,
+typed browser-and-Node client methods, and a standalone React connection
+surface that shows the managed and direct routes separately. An isolated real
+installed `0.147.0` canary started the auth-enabled Gateway in disposable
+Ownware and Codex directories, observed signed-out account authority, rejected
+model discovery while signed out, emitted no account identity and shut down
+cleanly. It did not read the operator's login or make a model request. The
+upstream app-server interface remains experimental and unsupported for
+production, and public run selection remains a separate gate.
 
 The process-supervision slice additionally proves version rejection before
 spawn, both accepted response-envelope shapes, concurrent request correlation,

@@ -1,11 +1,11 @@
 ---
 name: ownware
-description: Build, run, serve, and embed AI agents with Ownware — the open-source, self-hostable agent platform (npm package `ownware` + the `ownware` CLI). An agent is a text profile (agent.json + SOUL.md); serve it with OwnwareGateway as one HTTP+SSE service and reach it from a web/React app, mobile, Slack, Telegram, or the terminal. Use when the user wants to build their own AI agent, scaffold or edit an Ownware profile, run or serve an agent, wire the gateway run/events/resume/models API into an app, add a messaging channel or schedule, or asks about Ownware, OwnwareGateway, agent.json, or SOUL.md.
+description: Build, run, serve, and integrate AI agents with Ownware — the open-source, self-hosted agent runtime (npm package `ownware` + the `ownware` CLI). An agent is a portable text profile (agent.json + SOUL.md); OwnwareGateway runs the loop, durable threads, permissions, storage, and typed HTTP+SSE service that apps, SDKs, CLIs, and optional adapters consume. Use when the user wants to build an agent product, scaffold or edit an Ownware profile, run or serve an agent, wire the gateway run/events/resume/models API into an app, add a messaging adapter or schedule, or asks about Ownware, OwnwareGateway, agent.json, or SOUL.md.
 ---
 
 # Building Ownware agents
 
-Ownware turns a folder of text into a running AI agent you host yourself, on any model, reachable everywhere over one HTTP+SSE contract. Build the agent once (a profile) → run it (one process) → reach it anywhere (one wire contract). The user keeps their keys, their model, their machine.
+Ownware turns a portable folder of text into a durable agent service the user hosts. The runtime includes the execution loop, tools, threads, permissions, credentials, storage, schedules, and one HTTP+SSE contract. Applications, SDKs, CLIs, and optional adapters are clients of that same boundary; model access stays an explicit supported route rather than a hidden product dependency.
 
 Two ways to work with it: the **`ownware` CLI** (fastest — build and serve from the terminal) and the **`ownware` library** (embed the gateway in your own app). Prefer the CLI unless the user is integrating Ownware into an existing codebase.
 
@@ -116,7 +116,7 @@ Any frontend — React, mobile, a Slack bot, your own backend — talks to the s
 POST /api/v1/run                                  {profileId, prompt, model?, threadId?} → {threadId}
 GET  /api/v1/threads/{threadId}/agents/root/events?since=<seq>   Server-Sent Events stream
 POST /api/v1/threads/{threadId}/resume            {action: "approve"|"deny"}  (answer a permission prompt)
-GET  /api/v1/models                               list models; filter hasCredentials
+GET  /api/v1/provider-hub/models?scope=connected  list usable models; prefer availability.recommended
 ```
 
 A React/web client `POST`s to `/run`, then tails the SSE stream (text deltas, tool calls, permission requests, cost, end). Keep one `threadId` for a conversation. To restore history (page reload, thread reopen), `GET /api/v1/threads/{threadId}/hydrate` returns the whole conversation in one call — render from its `messages`, and reopen SSE only if `runningAgentId != null`. It needs nothing but `fetch` + SSE, so any language/framework can do it. See the full flow and event vocabulary in [reference.md](reference.md), and the runnable reference client at `examples/custom-client/chat.mjs` in the repo. Full endpoint docs: `docs/gateway/run-api.md`.

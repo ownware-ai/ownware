@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.30.0
+  version: 0.34.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -106,6 +106,324 @@ paths:
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub:
+    get:
+      operationId: getProviderHubOverview
+      summary: Read the central provider, route, model, price and connection counts.
+      responses:
+        '200':
+          description: Secret-free active catalog generation and health.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubOverview' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/providers:
+    get:
+      operationId: listProviderHubProviders
+      summary: List provider families and their runnable or catalog-only routes.
+      responses:
+        '200':
+          description: Provider summaries from the active catalog generation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubProviderPage' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/connections:
+    get:
+      operationId: listProviderHubConnections
+      summary: List secret-free API-key, subscription, local and custom connections.
+      responses:
+        '200':
+          description: Connections projected from credential metadata and runtime-owned state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubConnectionPage' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/verifications:
+    get:
+      operationId: getProviderHubVerifications
+      summary: Read independently versioned provider-route verification evidence.
+      responses:
+        '200':
+          description: Secret-free evidence bundle, or null before a harness run.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubVerificationOverview' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/models:
+    get:
+      operationId: listProviderHubModels
+      summary: Search and page the central model catalog without overstating verification.
+      parameters:
+        - { in: query, name: q, schema: { type: string, minLength: 1, maxLength: 500 } }
+        - { in: query, name: providerFamilyId, schema: { type: string, minLength: 1, maxLength: 512 } }
+        - { in: query, name: providerRouteId, schema: { type: string, minLength: 1, maxLength: 512 } }
+        - { in: query, name: connectionId, schema: { type: string, minLength: 1, maxLength: 512 } }
+        - { in: query, name: lifecycle, schema: { type: string, enum: [active, experimental, deprecated, hidden] } }
+        - { in: query, name: scope, schema: { type: string, enum: [all, connectable, connected, verified, recommended] } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { in: query, name: cursor, schema: { type: string, minLength: 1, maxLength: 4096 } }
+      responses:
+        '200':
+          description: One generation-bound model page with applicable price scopes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubModelPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/health:
+    get:
+      operationId: getProviderHubHealth
+      summary: Read active Provider Hub generation health.
+      responses:
+        '200':
+          description: The same generation and health envelope as the overview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubOverview' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/catalog/refresh:
+    post:
+      operationId: refreshProviderHubCatalog
+      summary: Refresh the remote catalog while retaining last-known-good state on failure.
+      parameters:
+        - in: query
+          name: force
+          schema: { type: string, enum: ['true', 'false'], default: 'false' }
+      responses:
+        '200':
+          description: Fresh active generation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubOverview' }
+        '202':
+          description: Refresh did not produce a fresh generation; last-known-good remains active.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubOverview' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/connections/openai-compatible:
+    get:
+      operationId: listOpenAICompatibleConnections
+      summary: List persisted secret-free OpenAI-compatible endpoint configurations.
+      responses:
+        '200':
+          description: Custom endpoint configurations; plaintext keys never appear.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAICompatibleConnectionList' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      operationId: saveOpenAICompatibleConnection
+      summary: Create or update one runtime-registered OpenAI-compatible endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenAICompatibleConnectionInput' }
+      responses:
+        '200':
+          description: Updated secret-free configuration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAICompatibleConnectionConfig' }
+        '201':
+          description: Created secret-free configuration.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAICompatibleConnectionConfig' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/connections/openai-compatible/{connectionId}:
+    delete:
+      operationId: deleteOpenAICompatibleConnection
+      summary: Remove a compatible endpoint and its dedicated managed credential.
+      parameters:
+        - { in: path, name: connectionId, required: true, schema: { type: string, pattern: '^oai_[a-f0-9]{12}$' } }
+      responses:
+        '200':
+          description: Removal confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [removed]
+                properties: { removed: { type: boolean, const: true } }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/connections/openai-compatible/{connectionId}/discover:
+    post:
+      operationId: discoverOpenAICompatibleModels
+      summary: Probe one configured endpoint's /models response with a bounded timeout.
+      parameters:
+        - { in: path, name: connectionId, required: true, schema: { type: string, pattern: '^oai_[a-f0-9]{12}$' } }
+      responses:
+        '200':
+          description: Updated configuration with discovered IDs and safe health.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAICompatibleConnectionConfig' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runtimes/codex:
+    get:
+      operationId: getCodexRuntime
+      summary: Read the install owner's redacted official-Codex runtime state.
+      description: >
+        Owner-only. Starts the isolated control-plane process lazily, then reads
+        account state and provider-reported quota through Codex App Server. No
+        account identity, token, auth-file content, login URL or device code is
+        returned. Authentication does not guarantee a later model request.
+      responses:
+        '200':
+          description: Redacted process, account, login-phase and quota projection.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodexRuntimeStatus' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runtimes/codex/login/start:
+    post:
+      operationId: startCodexLogin
+      summary: Start one Codex-owned ChatGPT login.
+      description: >
+        Owner-only. Browser URLs and device codes are one-time response values;
+        clients must not persist or log them. Codex owns token storage and refresh.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [browser, device] }
+              additionalProperties: false
+      responses:
+        '200':
+          description: One-time login presentation.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodexLoginPresentation' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runtimes/codex/login/wait:
+    post:
+      operationId: waitForCodexLogin
+      summary: Bounded long-poll for the active Codex login attempt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeoutMs: { type: integer, minimum: 0, maximum: 25000, default: 20000 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: Current redacted runtime state after notification or timeout.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodexRuntimeStatus' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runtimes/codex/login/cancel:
+    post:
+      operationId: cancelCodexLogin
+      summary: Cancel the one active Codex-owned login attempt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          description: Current redacted runtime state.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodexRuntimeStatus' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runtimes/codex/logout:
+    post:
+      operationId: logoutCodex
+      summary: Ask Codex to revoke local managed auth and confirm signed-out state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200':
+          description: Confirmed redacted signed-out runtime state.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodexRuntimeStatus' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runtimes/codex/models:
+    get:
+      operationId: listCodexModels
+      summary: List models observed from the exact Codex-managed ChatGPT account.
+      description: >
+        Owner-only. Refreshes account authority immediately before model/list.
+        This catalogue is distinct from API-key and handwritten model catalogues.
+      responses:
+        '200':
+          description: Provider-observed model catalogue with no account identity.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CodexModelCatalog' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/sources:
     post:
@@ -1414,10 +1732,18 @@ paths:
   /api/v1/models:
     get:
       operationId: models
-      summary: The model catalog with LIVE availability.
+      deprecated: true
+      summary: Legacy model-array compatibility view projected from Provider Hub.
       responses:
         '200':
-          description: Every model the gateway knows.
+          description: Curated compatibility rows sourced from the canonical Provider Hub generation.
+          headers:
+            Deprecation:
+              schema: { type: string, enum: ['true'] }
+              description: This compatibility route is deprecated.
+            Link:
+              schema: { type: string }
+              description: Successor relation to `/api/v1/provider-hub/models`.
           content:
             application/json:
               schema:
@@ -1432,8 +1758,8 @@ paths:
                     hasCredentials:
                       type: boolean
                       description: >
-                        Can answer RIGHT NOW: a key is saved/exported, or —
-                        for ollama — a local server answered the probe.
+                        Deprecated compatibility projection of Provider Hub
+                        connection state for this route.
                     default:
                       type: boolean
                       description: At most one per provider — the recommended pick.
@@ -1484,6 +1810,465 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/SourceDeletionError' }
   schemas:
+    ProviderHubGeneration:
+      type: object
+      required: [id, schemaVersion, source, generatedAt, sha256]
+      properties:
+        id: { type: string }
+        schemaVersion: { type: integer, const: 1 }
+        source: { type: string, enum: [bundled, cache, network, manual] }
+        sourceUrl: { type: string, format: uri }
+        generatedAt: { type: string, format: date-time }
+        fetchedAt: { type: string, format: date-time }
+        upstreamVersion: { type: string }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+      additionalProperties: false
+    ProviderHubCatalogHealth:
+      type: object
+      required: [status, activeGenerationId]
+      properties:
+        status: { type: string, enum: [fresh, stale, offline, error] }
+        activeGenerationId: { type: string }
+        lastAttemptAt: { type: string, format: date-time }
+        lastSuccessAt: { type: string, format: date-time }
+        nextRefreshAt: { type: string, format: date-time }
+        errorCode: { type: string }
+        errorMessage: { type: string }
+      additionalProperties: false
+    ProviderHubOverview:
+      type: object
+      required: [generation, generationId, catalogHealth, counts, warnings]
+      properties:
+        generation: { $ref: '#/components/schemas/ProviderHubGeneration' }
+        generationId: { type: string }
+        catalogHealth: { $ref: '#/components/schemas/ProviderHubCatalogHealth' }
+        counts:
+          type: object
+          required: [providers, routes, models, pricebookEntries, connections]
+          properties:
+            providers: { type: integer, minimum: 0 }
+            routes: { type: integer, minimum: 0 }
+            models: { type: integer, minimum: 0 }
+            pricebookEntries: { type: integer, minimum: 0 }
+            connections: { type: integer, minimum: 0 }
+          additionalProperties: false
+        warnings: { type: array, items: { type: string } }
+      additionalProperties: false
+    ProviderHubFamily:
+      type: object
+      required: [id, name, lifecycle]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        websiteUrl: { type: string, format: uri }
+        brandId: { type: string }
+        lifecycle: { type: string, enum: [active, experimental, deprecated, hidden] }
+      additionalProperties: false
+    ProviderHubRoute:
+      type: object
+      required: [id, familyId, name, kind, transport, connectable, lifecycle]
+      properties:
+        id: { type: string }
+        familyId: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [direct, router, cloud, subscription, local, custom, unknown] }
+        transport:
+          type: object
+          required: [runtimeId, protocol]
+          properties:
+            runtimeId: { type: string }
+            adapterId: { type: string }
+            protocol: { type: string }
+            sdkPackage: { type: string }
+          additionalProperties: false
+        apiBaseUrl: { type: string, format: uri }
+        docsUrl: { type: string, format: uri }
+        region: { type: string }
+        plan: { type: string }
+        connectable: { type: boolean }
+        connectabilityReason: { type: string }
+        lifecycle: { type: string, enum: [active, experimental, deprecated, hidden] }
+        sourceRef: { type: string }
+      additionalProperties: false
+    ProviderHubProviderPage:
+      type: object
+      required: [generationId, items, warnings]
+      properties:
+        generationId: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [family, routes, modelCount, connectableModelCount, connectedModelCount, verifiedModelCount, recommendedModelCount]
+            properties:
+              family: { $ref: '#/components/schemas/ProviderHubFamily' }
+              routes: { type: array, items: { $ref: '#/components/schemas/ProviderHubRoute' } }
+              modelCount: { type: integer, minimum: 0 }
+              connectableModelCount: { type: integer, minimum: 0 }
+              connectedModelCount: { type: integer, minimum: 0 }
+              verifiedModelCount: { type: integer, minimum: 0 }
+              recommendedModelCount: { type: integer, minimum: 0 }
+            additionalProperties: false
+        warnings: { type: array, items: { type: string } }
+      additionalProperties: false
+    ProviderHubConnection:
+      type: object
+      required: [id, providerRouteId, label, auth, settings, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        providerRouteId: { type: string }
+        label: { type: string }
+        auth:
+          type: object
+          description: Secret-free tagged authentication strategy; values are credential references only.
+        settings:
+          type: object
+          description: Non-secret route settings.
+        status: { type: string, enum: [configured, disabled, error] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        health: { $ref: '#/components/schemas/ProviderHubConnectionHealth' }
+      additionalProperties: false
+    ProviderHubConnectionHealth:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [unknown, healthy, degraded, failed] }
+        checkedAt: { type: string, format: date-time }
+        latencyMs: { type: integer, minimum: 0 }
+        errorCode: { type: string }
+        errorMessage: { type: string }
+      additionalProperties: false
+    ProviderHubConnectionPage:
+      type: object
+      required: [generationId, items, warnings]
+      properties:
+        generationId: { type: string }
+        items: { type: array, items: { $ref: '#/components/schemas/ProviderHubConnection' } }
+        warnings: { type: array, items: { type: string } }
+      additionalProperties: false
+    ProviderHubVerificationOverview:
+      type: object
+      required: [generationId, bundle, warnings]
+      properties:
+        generationId: { type: string }
+        bundle:
+          description: Independently versioned secret-free verification evidence, or null before a run.
+          oneOf: [{ type: object }, { type: 'null' }]
+        warnings: { type: array, items: { type: string } }
+      additionalProperties: false
+    ProviderHubModelRoute:
+      type: object
+      required: [id, providerRouteId, wireModelId, name, aliases, contextWindow, maxInputTokens, maxOutputTokens, capabilities, variants, availability, billingKind, catalogSourceRef]
+      properties:
+        id: { type: string }
+        providerRouteId: { type: string }
+        wireModelId: { type: string }
+        name: { type: string }
+        description: { type: string }
+        modelFamily: { type: string }
+        modelAuthor: { type: string }
+        aliases: { type: array, items: { type: string } }
+        releaseDate: { type: string, format: date }
+        knowledgeCutoff: { type: string }
+        contextWindow: { type: [integer, 'null'], minimum: 1 }
+        maxInputTokens: { type: [integer, 'null'], minimum: 1 }
+        maxOutputTokens: { type: [integer, 'null'], minimum: 1 }
+        capabilities:
+          type: array
+          items:
+            type: object
+            required: [capability, upstream, ownware]
+            properties:
+              capability: { type: string }
+              upstream: { type: object }
+              ownware: { type: object }
+            additionalProperties: false
+        variants: { type: array, items: { type: object } }
+        defaultVariantIds: { type: array, items: { type: string } }
+        availability:
+          type: object
+          required: [catalogued, connectable, credentialed, verified, recommended, lifecycle, connectionIds]
+          properties:
+            catalogued: { type: boolean }
+            connectable: { type: boolean }
+            credentialed: { type: boolean }
+            verified: { type: boolean }
+            recommended: { type: boolean }
+            lifecycle: { type: string, enum: [active, experimental, deprecated, hidden] }
+            connectionIds: { type: array, items: { type: string } }
+            reason: { type: string }
+          additionalProperties: false
+        billingKind: { type: string, enum: [metered, provider_reported, subscription, local, unknown] }
+        catalogSourceRef: { type: string }
+      additionalProperties: false
+    ProviderHubPricebookEntry:
+      type: object
+      required: [id, version, currency, scope, rates, effectiveFrom, effectiveUntil, source]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        currency: { type: string, const: USD }
+        scope: { type: object }
+        rates: { type: array, minItems: 1, items: { type: object } }
+        effectiveFrom: { type: [string, 'null'], format: date-time }
+        effectiveUntil: { type: [string, 'null'], format: date-time }
+        source: { type: object }
+      additionalProperties: false
+    ProviderHubModelPage:
+      type: object
+      required: [generationId, items, page, warnings]
+      properties:
+        generationId: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [model, prices]
+            properties:
+              model: { $ref: '#/components/schemas/ProviderHubModelRoute' }
+              prices: { type: array, items: { $ref: '#/components/schemas/ProviderHubPricebookEntry' } }
+            additionalProperties: false
+        page:
+          type: object
+          required: [limit, total, nextCursor]
+          properties:
+            limit: { type: integer, minimum: 1, maximum: 200 }
+            total: { type: integer, minimum: 0 }
+            nextCursor: { type: [string, 'null'] }
+          additionalProperties: false
+        warnings: { type: array, items: { type: string } }
+      additionalProperties: false
+    OpenAICompatibleConnectionInput:
+      type: object
+      required: [label, baseUrl, auth]
+      properties:
+        id: { type: string, pattern: '^oai_[a-f0-9]{12}$' }
+        templateId: { type: string, enum: [lmstudio, ollama, azure-openai, amazon-bedrock-mantle] }
+        label: { type: string, minLength: 1, maxLength: 200 }
+        baseUrl: { type: string, minLength: 1, maxLength: 2000 }
+        auth:
+          oneOf:
+            - type: object
+              required: [kind]
+              properties: { kind: { type: string, const: none } }
+              additionalProperties: false
+            - type: object
+              required: [kind]
+              properties:
+                kind: { type: string, const: bearer }
+                credentialId: { type: string }
+                key: { type: string, minLength: 1, maxLength: 65536, writeOnly: true }
+              additionalProperties: false
+            - type: object
+              required: [kind, name]
+              properties:
+                kind: { type: string, const: header }
+                credentialId: { type: string }
+                key: { type: string, minLength: 1, maxLength: 65536, writeOnly: true }
+                name: { type: string }
+                prefix: { type: string, maxLength: 100 }
+              additionalProperties: false
+        manualModelIds: { type: array, maxItems: 1000, items: { type: string } }
+        discoveryEnabled: { type: boolean, default: true }
+        compatibility: { $ref: '#/components/schemas/OpenAICompatibility' }
+      additionalProperties: false
+    OpenAICompatibility:
+      type: object
+      required: [maxTokensField, streamUsage]
+      properties:
+        maxTokensField: { type: string, enum: [max_tokens, max_completion_tokens] }
+        streamUsage: { type: string, enum: [include, omit] }
+      additionalProperties: false
+    OpenAICompatibleConnectionConfig:
+      type: object
+      required: [schemaVersion, id, label, baseUrl, auth, manualModelIds, discoveredModelIds, discoveryEnabled, compatibility, health, createdAt, updatedAt]
+      properties:
+        schemaVersion: { type: integer, const: 1 }
+        id: { type: string, pattern: '^oai_[a-f0-9]{12}$' }
+        templateId: { type: string, enum: [lmstudio, ollama, azure-openai, amazon-bedrock-mantle] }
+        label: { type: string }
+        baseUrl: { type: string, format: uri }
+        auth:
+          type: object
+          description: Secret-free auth configuration containing only credential references.
+        manualModelIds: { type: array, items: { type: string } }
+        discoveredModelIds: { type: array, items: { type: string } }
+        discoveredAt: { type: string, format: date-time }
+        discoveryEnabled: { type: boolean }
+        compatibility: { $ref: '#/components/schemas/OpenAICompatibility' }
+        health: { $ref: '#/components/schemas/ProviderHubConnectionHealth' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      additionalProperties: false
+    OpenAICompatibleConnectionList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/OpenAICompatibleConnectionConfig' } }
+      additionalProperties: false
+    CodexRuntimeStatus:
+      type: object
+      required: [runtime, account, login, quota]
+      additionalProperties: false
+      properties:
+        runtime:
+          type: object
+          required: [id, accessRoute, support, upstreamSupport, processState, protocolVersion, supportedVersionRange]
+          additionalProperties: false
+          properties:
+            id: { type: string, const: openai-codex }
+            accessRoute: { type: string, const: openai-chatgpt-managed }
+            support: { type: string, const: experimental }
+            upstreamSupport: { type: string, const: experimental_unsupported_for_production }
+            processState: { type: string, enum: [starting, running, closing, closed, failed] }
+            protocolVersion: { type: string }
+            supportedVersionRange: { type: string }
+        account:
+          oneOf:
+            - type: object
+              required: [state, reason]
+              properties:
+                state: { type: string, const: unknown }
+                reason: { type: string, const: not_read }
+              additionalProperties: false
+            - type: object
+              required: [state, requiresOpenaiAuth, authority, observedAt, validUntil]
+              properties:
+                state: { type: string, const: signed_out }
+                requiresOpenaiAuth: { type: boolean }
+                authority: { type: string, const: account/read }
+                observedAt: { type: string, format: date-time }
+                validUntil: { type: 'null' }
+              additionalProperties: false
+            - type: object
+              required: [state, authMode, plan, requiresOpenaiAuth, authority, observedAt, validUntil]
+              properties:
+                state: { type: string, const: authenticated }
+                authMode: { type: string, const: chatgpt }
+                plan: { type: string }
+                requiresOpenaiAuth: { type: boolean }
+                authority: { type: string, const: account/read }
+                observedAt: { type: string, format: date-time }
+                validUntil: { type: 'null' }
+              additionalProperties: false
+            - type: object
+              required: [state, authMode, requiresOpenaiAuth, authority, observedAt, validUntil]
+              properties:
+                state: { type: string, const: unsupported_auth }
+                authMode: { type: string, enum: [apiKey, amazonBedrock] }
+                requiresOpenaiAuth: { type: boolean }
+                authority: { type: string, const: account/read }
+                observedAt: { type: string, format: date-time }
+                validUntil: { type: 'null' }
+              additionalProperties: false
+        login:
+          type: object
+          required: [phase]
+          properties:
+            phase: { type: string, enum: [idle, pending, cancelling, succeeded, cancelled, failed] }
+            reason: { type: string, enum: [provider_rejected] }
+          additionalProperties: false
+        quota: { $ref: '#/components/schemas/CodexQuotaState' }
+
+    CodexQuotaState:
+      oneOf:
+        - type: object
+          required: [state, reason, validUntil]
+          properties:
+            state: { type: string, const: unknown }
+            reason: { type: string, enum: [not_read, provider_stated_no_usable_limit, unrecognized_provider_shape] }
+            authority: { type: string, enum: [account/rateLimits/read, account/rateLimits/updated] }
+            observedAt: { type: string, format: date-time }
+            validUntil: { type: 'null' }
+          additionalProperties: false
+        - type: object
+          required: [state, authority, observedAt, validUntil, buckets, resetCreditsAvailable, resetCreditDetailsKnown]
+          properties:
+            state: { type: string, enum: [reported, exhausted] }
+            authority: { type: string, enum: [account/rateLimits/read, account/rateLimits/updated] }
+            observedAt: { type: string, format: date-time }
+            validUntil: { type: 'null' }
+            buckets:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, name, plan, primary, secondary, reachedType, spendControlReached, hasCredits, unlimitedCredits, spendRemainingPercent, spendResetsAt]
+                properties:
+                  id: { type: [string, 'null'] }
+                  name: { type: [string, 'null'] }
+                  plan: { type: [string, 'null'] }
+                  primary: { $ref: '#/components/schemas/CodexRateLimitWindow' }
+                  secondary: { $ref: '#/components/schemas/CodexRateLimitWindow' }
+                  reachedType: { type: [string, 'null'] }
+                  spendControlReached: { type: [boolean, 'null'] }
+                  hasCredits: { type: [boolean, 'null'] }
+                  unlimitedCredits: { type: [boolean, 'null'] }
+                  spendRemainingPercent: { type: [integer, 'null'], minimum: 0 }
+                  spendResetsAt: { type: [string, 'null'], format: date-time }
+            resetCreditsAvailable: { type: [integer, 'null'], minimum: 0 }
+            resetCreditDetailsKnown: { type: [boolean, 'null'] }
+          additionalProperties: false
+
+    CodexRateLimitWindow:
+      oneOf:
+        - { type: 'null' }
+        - type: object
+          required: [usedPercent, windowDurationMinutes, resetsAt]
+          additionalProperties: false
+          properties:
+            usedPercent: { type: integer, minimum: 0 }
+            windowDurationMinutes: { type: [integer, 'null'], minimum: 0 }
+            resetsAt: { type: [string, 'null'], format: date-time }
+
+    CodexLoginPresentation:
+      oneOf:
+        - type: object
+          required: [kind, loginId, url]
+          properties:
+            kind: { type: string, const: browser }
+            loginId: { type: string }
+            url: { type: string, format: uri, pattern: '^https:' }
+          additionalProperties: false
+        - type: object
+          required: [kind, loginId, verificationUrl, userCode]
+          properties:
+            kind: { type: string, const: device }
+            loginId: { type: string }
+            verificationUrl: { type: string, format: uri, pattern: '^https:' }
+            userCode: { type: string }
+          additionalProperties: false
+
+    CodexModelCatalog:
+      type: object
+      required: [authority, observedAt, validUntil, models]
+      additionalProperties: false
+      properties:
+        authority: { type: string, const: model/list }
+        observedAt: { type: string, format: date-time }
+        validUntil: { type: 'null' }
+        models:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, model, displayName, description, hidden, isDefault, defaultReasoningEffort, reasoningEfforts, inputModalities, serviceTiers, defaultServiceTier, supportsPersonality]
+            properties:
+              id: { type: string }
+              model: { type: string }
+              displayName: { type: string }
+              description: { type: string }
+              hidden: { type: boolean }
+              isDefault: { type: boolean }
+              defaultReasoningEffort: { type: string }
+              reasoningEfforts: { type: array, items: { type: string } }
+              inputModalities: { type: array, items: { type: string } }
+              serviceTiers: { type: array, items: { type: string } }
+              defaultServiceTier: { type: [string, 'null'] }
+              supportsPersonality: { type: boolean }
+
     RunSnapshot:
       type: object
       required: [runId, threadId, workspaceId, profileId, candidateId, model, timeoutMs, status, terminal, outcomeKnown, acceptedAt, startedAt, updatedAt, terminalAt, cancelRequestedAt, startSeq, endSeq, earliestRetainedCursor, code]

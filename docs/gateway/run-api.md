@@ -77,9 +77,9 @@ curl -X POST http://localhost:3011/api/v1/threads/$TID/resume \
   -d '{"action":"approve"}'        # or "deny"
 ```
 
-## List usable models — `GET /api/v1/models`
+## List usable models — `GET /api/v1/provider-hub/models?scope=connected`
 
-Returns an array of models; each entry includes `id` and `hasCredentials` (whether a key is set or a local Ollama is reachable *right now*). `default: true` is flagged **per provider**, so several entries can carry it — pick the *first usable* model (rather than `models.find(m => m.default)`). The reference client picks its model with exactly this call — no configuration.
+Returns the canonical Provider Hub page. Each `items[]` row contains a `model`; prefer one with `model.availability.recommended`, then fall back to the first connected model. The same authority supplies model facts, applicable prices, API-key/custom/local/already-observed-Codex connection state and verification. Listing models does not start the optional Codex runtime. The deprecated `GET /api/v1/models` array remains only as a compatibility projection of this data.
 
 ## A complete client
 

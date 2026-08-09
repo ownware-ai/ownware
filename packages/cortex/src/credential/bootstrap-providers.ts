@@ -15,6 +15,7 @@
 import {
   AnthropicProvider,
   GoogleProvider,
+  OpenAICompatibleProvider,
   OpenAIProvider,
   OpenRouterProvider,
   registerProvider,
@@ -25,17 +26,7 @@ import type { CredentialInjector } from './injector.js'
 import { makeApiKeyProvider } from './provider-binding.js'
 import type { GatewayCredentialResolver } from './resolver.js'
 import type { CredentialStore } from './store/index.js'
-import { LLM_PROVIDERS } from '../gateway/llm-providers.js'
-
-const PROVIDER_FACTORY: Record<
-  string,
-  (apiKeyProvider: () => Promise<string>) => ProviderAdapter
-> = {
-  anthropic: (apiKeyProvider) => new AnthropicProvider({ apiKeyProvider }),
-  openai: (apiKeyProvider) => new OpenAIProvider({ apiKeyProvider }),
-  google: (apiKeyProvider) => new GoogleProvider({ apiKeyProvider }),
-  openrouter: (apiKeyProvider) => new OpenRouterProvider({ apiKeyProvider }),
-}
+import { LLM_PROVIDERS, type LlmProviderDescriptor } from '../gateway/llm-providers.js'
 
 /**
  * Set of provider IDs whose Loom adapter is present in this build.
@@ -46,7 +37,7 @@ const PROVIDER_FACTORY: Record<
  * `providers` handler to annotate the wire response.
  */
 export const PROVIDER_ADAPTER_IDS: ReadonlySet<string> = new Set(
-  Object.keys(PROVIDER_FACTORY),
+  LLM_PROVIDERS.map(provider => provider.providerId),
 )
 
 /** True when Loom exports an adapter for this provider in this build. */
@@ -124,15 +115,13 @@ export async function bootstrapProvidersFromUnifiedStore(
       skipped.push(entry.providerId)
       continue
     }
-    const factory = PROVIDER_FACTORY[entry.providerId]
-    if (!factory) continue
     const binding = makeApiKeyProvider({
       resolver,
       injector,
       variableName: entry.variableName,
       context: contextProvider ?? (() => PLACEHOLDER_LLM_CTX),
     })
-    registerProvider(factory(binding.apiKeyProvider))
+    registerProvider(createProviderAdapter(entry, binding.apiKeyProvider))
     registered.push(entry.providerId)
   }
 
@@ -148,4 +137,30 @@ export async function bootstrapProvidersFromUnifiedStore(
   }
 
   return { registered, skipped }
+}
+
+function createProviderAdapter(
+  descriptor: LlmProviderDescriptor,
+  apiKeyProvider: () => Promise<string>,
+): ProviderAdapter {
+  switch (descriptor.adapter) {
+    case 'anthropic':
+      return new AnthropicProvider({ apiKeyProvider })
+    case 'openai':
+      return new OpenAIProvider({ apiKeyProvider })
+    case 'google':
+      return new GoogleProvider({ apiKeyProvider })
+    case 'openrouter':
+      return new OpenRouterProvider({ apiKeyProvider })
+    case 'openai-compatible':
+      return new OpenAICompatibleProvider({
+        name: descriptor.providerId,
+        registryKind: 'preset',
+        baseURL: descriptor.apiBaseUrl,
+        auth: { kind: 'bearer', credentialProvider: apiKeyProvider },
+        maxTokensField: descriptor.maxTokensField,
+        includeUsage: false,
+        verifiedFeatures: new Set(['streaming']),
+      })
+  }
 }

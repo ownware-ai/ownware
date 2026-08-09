@@ -161,6 +161,33 @@ Invariants:
 - Do not let clients read `agent_events` for archived threads. That is
   the exact inconsistency this contract was written to remove.
 
+## Codex subscription control plane
+
+The six `/api/v1/runtimes/codex*` routes are an owner-side control plane, not a
+run transport and not delegated profile authority. Keep these invariants:
+
+- auth-enabled installs require the owner bearer; auth-disabled loopback is the
+  local install owner; delegated principals are always denied;
+- every response is `Cache-Control: no-store`;
+- status is redacted and never includes account identity, provider prose,
+  login IDs, authorization URLs, device codes or tokens;
+- login start is the only one-time presentation boundary;
+- the Gateway owns one lazy control process in its managed data directory and
+  closes it during bounded shutdown;
+- model discovery refreshes and authorizes the managed account first and fails
+  closed when signed out; it does not fall back to an API-key catalogue.
+
+## Provider Hub control plane
+
+The `/api/v1/provider-hub*` routes centralize secret-free provider families,
+execution routes, model facts, price scopes, connection state and independent
+verification evidence. Catalog claims are not execution evidence: unknown or
+untested capabilities remain explicit, and catalog-only routes are never made
+connectable without a registered runtime adapter. Custom OpenAI-compatible
+configuration persists only credential references; submitted keys go through
+the encrypted credential store. Settings and audit access must stay on async
+repository ports so SQLite and PostgreSQL retain the same behavior.
+
 ## Files
 
 - `handlers/threads.ts` — `/hydrate` and message CRUD.
@@ -171,3 +198,8 @@ Invariants:
 - `event-bus.ts` — in-process fan-out for live SSE subscribers.
 - `events.ts` — gateway event contract (Loom events + gateway-owned
   wrapper events, including `user.message` and `turn.interrupted`).
+- `handlers/codex-runtime.ts` — redacted owner-only account/login/model routes.
+- `handlers/provider-hub.ts` — central provider reads, refresh and compatible-
+  connection lifecycle.
+- `../runtime/codex/control-plane.ts` — lazy process ownership and the single
+  ordered app-server inbound pump.

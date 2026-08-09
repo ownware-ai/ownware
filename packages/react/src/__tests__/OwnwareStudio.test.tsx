@@ -2,9 +2,41 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { OwnwareStudio, type AgentTransport } from '../index.js'
-import type { RunResult, ModelEntry } from '@ownware/client'
+import type { ProviderHubModelPage, RunResult } from '@ownware/client'
 
 afterEach(cleanup)
+
+const MODEL_PAGE = {
+  generationId: 'test-generation',
+  items: [{
+    model: {
+      id: 'ollama:llama3.2',
+      providerRouteId: 'route:ollama',
+      wireModelId: 'llama3.2',
+      name: 'Llama 3.2',
+      aliases: [],
+      contextWindow: null,
+      maxInputTokens: null,
+      maxOutputTokens: null,
+      capabilities: [],
+      variants: [],
+      availability: {
+        catalogued: true,
+        connectable: true,
+        credentialed: true,
+        verified: false,
+        recommended: true,
+        lifecycle: 'active',
+        connectionIds: ['connection:test'],
+      },
+      billingKind: 'local',
+      catalogSourceRef: 'test',
+    },
+    prices: [],
+  }],
+  page: { limit: 200, total: 1, nextCursor: null },
+  warnings: [],
+} satisfies ProviderHubModelPage
 
 function fakeTransport(): AgentTransport {
   return {
@@ -14,7 +46,7 @@ function fakeTransport(): AgentTransport {
     },
     resume: vi.fn(async () => {}),
     abort: vi.fn(async () => {}),
-    models: vi.fn(async (): Promise<ModelEntry[]> => [{ id: 'ollama:llama3.2', hasCredentials: true, default: true }]),
+    providerHubModels: vi.fn(async () => MODEL_PAGE),
   }
 }
 

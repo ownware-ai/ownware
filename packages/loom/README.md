@@ -1,10 +1,10 @@
 # Loom
 
-**Loom is the open-source agent runtime inside [Ownware](https://github.com/ownware-ai/ownware) — the full engine, exposed as a standalone library.**
+**Loom is the execution engine inside the [Ownware agent runtime](https://github.com/ownware-ai/ownware), exposed as a standalone library.**
 
-> Part of Ownware ("build your own AI agent"). Loom is the model-agnostic engine; [`@ownware/cortex`](https://www.npmjs.com/package/@ownware/cortex) wraps it into the profiles + gateway you run as `ownware serve`. Use Loom directly when you want just the engine.
+> Ownware combines this engine with portable profiles, durable threads, permissions, storage, and a typed gateway contract. Use Loom directly when your product needs only the in-process harness.
 
-It gives you the agent loop that reads your files, runs commands, drives browsers, calls MCP servers, and spawns sub-agents — all streaming, all auditable — with 7-level security classification that blocks dangerous *combinations* of calls (like "read a secret, then make a network request") that other frameworks miss. Zero framework dependencies, strict TypeScript, bring your own model.
+It gives you the agent loop that reads files, runs commands, drives browsers, calls MCP servers, and spawns sub-agents — all streaming, all auditable — with 7-level security classification that can block dangerous *combinations* of calls such as "read a secret, then make a network request." Zero framework dependencies, strict TypeScript, and explicit provider adapters.
 
 ---
 
@@ -373,7 +373,7 @@ Serving profiles through the gateway instead of embedding? Declare hooks in `age
 
 ## MCP (Model Context Protocol)
 
-Loom is an MCP client. Connect to any MCP server over any transport and adopt its tools and resources.
+Loom is an MCP client. Connect to MCP servers over the supported stdio, SSE, HTTP, or WebSocket transports and adopt their tools and resources.
 
 ```ts
 import { MCPManager, adaptAllMCPTools } from '@ownware/loom'

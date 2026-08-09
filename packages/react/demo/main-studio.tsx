@@ -6,7 +6,25 @@
 import { useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { OwnwareStudio, type AgentTransport } from '@ownware/react'
+import type { ProviderHubModelPage } from '@ownware/client'
 import type { AgentEvent } from '@ownware/ui'
+
+const MODEL_PAGE = {
+  generationId: 'demo',
+  items: [{
+    model: {
+      id: 'ollama:llama3.2', providerRouteId: 'route:ollama', wireModelId: 'llama3.2',
+      name: 'Llama 3.2', aliases: [], contextWindow: 131_072, maxInputTokens: null,
+      maxOutputTokens: 8_192, capabilities: [], variants: [], billingKind: 'local',
+      catalogSourceRef: 'demo',
+      availability: { catalogued: true, connectable: true, credentialed: true, verified: false,
+        recommended: true, lifecycle: 'active', connectionIds: ['connection:demo'] },
+    },
+    prices: [],
+  }],
+  page: { limit: 200, total: 1, nextCursor: null },
+  warnings: [],
+} satisfies ProviderHubModelPage
 
 interface Chan { q: AgentEvent[]; wake: (() => void) | null; closed: boolean }
 
@@ -64,7 +82,7 @@ function makeFake(): AgentTransport {
       }, 150)
     },
     async abort() {},
-    async models() { return [{ id: 'ollama:llama3.2', hasCredentials: true, default: true }] },
+    async providerHubModels() { return MODEL_PAGE },
   }
 }
 

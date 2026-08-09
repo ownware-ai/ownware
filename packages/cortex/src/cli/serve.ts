@@ -12,10 +12,8 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { ollamaInstallHint } from '@ownware/loom'
 import { OwnwareGateway } from '../gateway/server.js'
 import { gatewayTokenPath } from '../gateway/token-store.js'
-import { pickRunnableDefaultModel } from '../gateway/catalog/models/index.js'
 
 export interface ServeFlags {
   port?: number
@@ -103,7 +101,6 @@ export async function serveCommand(argv: string[]): Promise<void> {
 
   const scheme = (loopback ? (flags.tls ?? false) : true) ? 'https' : 'http'
   const url = `${scheme}://${loopback ? 'localhost' : host}:${gateway.port}`
-  const model = await pickRunnableDefaultModel()
   const exampleProfile = firstProfileId(profilesDir) ?? 'assistant'
 
   // One-process channels (Slice 7) + schedule delivery host (Slice 8).
@@ -139,12 +136,7 @@ export async function serveCommand(argv: string[]): Promise<void> {
   console.log()
   console.log(`  Your agent is live: ${url}`)
   console.log()
-  if (model != null) {
-    console.log(`  Model:  ${model}${model.startsWith('ollama:') ? '  (keyless, local)' : ''}`)
-  } else {
-    console.log('  Model:  none available yet — add a key with `ownware key add <provider>`,')
-    console.log(`          or run keyless: ${ollamaInstallHint()}`)
-  }
+  console.log('  Model:  automatic via Provider Hub (API key, compatible endpoint, subscription, or local)')
   if (channels != null && channels.started.length > 0) {
     console.log(`  Channels: ${channels.started.join(', ')}  (in-process — answering + schedule delivery)`)
   }

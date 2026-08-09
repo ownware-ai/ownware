@@ -105,7 +105,7 @@ export interface CodexSandboxReport {
   readonly state: 'requires_acceptance'
   readonly observedAt: string
   readonly validUntil: null
-  readonly authority: 'codex-app-server/0.145.0-generated-schema'
+  readonly authority: 'codex-app-server/0.147.0-generated-schema'
   readonly limitations: readonly CodexSandboxLimitation[]
 }
 
@@ -549,7 +549,7 @@ export async function prepareCodexSandboxPlan(
     state: 'requires_acceptance',
     observedAt: new Date().toISOString(),
     validUntil: null,
-    authority: 'codex-app-server/0.145.0-generated-schema',
+    authority: 'codex-app-server/0.147.0-generated-schema',
     limitations: [{
       id: 'host_read_scope',
       severity: 'requires_acceptance',

@@ -6,10 +6,10 @@
 </p>
 
 <p align="center">
-  <strong>Build your own AI agent — alive everywhere you already are.</strong><br>
-  <em>The magic of a personal AI agent — living in your channels, texting you every
-  morning, doing real work — but it's <strong>yours</strong>: your brand, your model,
-  your machine. For your business, or your life.</em>
+  <strong>The open agent runtime for products you own.</strong><br>
+  <em>A self-hosted harness and operational backend in one package: portable agent
+  profiles, a production-shaped loop, durable threads, permission gates, storage,
+  and one typed streaming API.</em>
 </p>
 
 <p align="center">
@@ -26,80 +26,76 @@
 
 ---
 
-## Build your *own* agent — and put it everywhere you already are.
+## The runtime behind your agent product
 
-You've seen the magic: an agent living in your Telegram, texting you every morning,
-doing real work on a real machine. **But the ones you've met are someone else's agent —
-their brand, their choices.** You can configure them; you can never truly make one
-yours, and you certainly can't ship it to your own customers.
+A model call is not an agent product. The production boundary also needs a reliable
+loop, tool execution, durable conversations, resumable streaming, approvals,
+credentials, storage, and an API every client can use.
 
-Ownware is the kit for building your own — **an agent for anything:**
+**Ownware ships that boundary as one open-source process or one class.** Define an
+agent as ordinary text files, run it on infrastructure you control, and build your
+application against a typed HTTP+SSE contract. The CLI, SDK, React bindings,
+schedules, and messaging adapters are all clients of that same runtime.
 
-- an agent in your **shop** that answers customers and reads your orders,
-- an agent in your **Slack** that works on your team's data — and the data stays yours,
-- an agent for your **own day** that reads your inbox and DMs you the summary,
-- a branded agent an **agency ships to every client**, again and again.
-
-Same kit, different text. One agent → alive in Slack, Telegram, your website, your app,
-scheduled every morning — **self-hosted, any model, safe by default. You own all of it.**
+- **Profile in.** `agent.json`, `SOUL.md`, skills, and tools form a portable,
+  reviewable agent definition.
+- **Durable service out.** Threads, checkpoints, permission continuation, storage,
+  schedules, and streaming are already wired.
+- **Your product around it.** Bring your own interface, business logic, and supported
+  model route without forking the runtime.
 
 If this resonates: **⭐ star the repo** — it's how a solo-dev project gets seen — and
 [come build it with me](#give-us-a-hand).
 
 ## Why Ownware exists
 
-I'm a solo developer who's lived with a personal agent in my Telegram — one that
-texts me every morning and does real work. It's magic. But it showed me the gap:
-agents are now powerful enough to automate almost anything, yet almost no business, no
-shop, no team runs one of their **own**. The magic is stuck with hobbyists, while every
-business around me still burns its days on the repetitive 80%.
+Most agent projects begin with a loop and quickly become a backend project: thread
+state, retries, permissions, secrets, reconnects, model routing, and the contract
+between the runtime and every UI. Each is easy to sketch and expensive to operate
+honestly.
 
-Freeware was free. Shareware was shared. **Ownware is owned** — describe your agent in
-a folder of text, run it as one process on your machine, put it to work on every
-surface, and let it work 24/7 while you grow the thing you actually care about. The
-next piece — being built now — is **the face**: a white-label chat UI you brand as
-your own, dropped into your SaaS or as a widget on any site, so your users talk to
-*your* agent and never see Ownware.
+Ownware makes that operational boundary reusable. It owns the loop, exposes the
+runtime through a stable contract, and keeps product-specific UI and business logic
+outside the core. **Freeware was free. Shareware was shared. Ownware is owned:** you
+run it, inspect it, extend it, and keep the durable agent asset on infrastructure you
+control.
 
-Everything here is **free and open (Apache-2.0)** — the engine, the gateway, the
-channels, the security. It's also how builders and agencies ship agents as a service:
-one per client, white-labeled, on the client's own infrastructure. The kit is not the
-thing you pay for.
+Everything here is **free and open (Apache-2.0)** — the runtime, gateway, client
+contracts, adapters, and security primitives.
 
 ---
 
 ## How it works
 
 ```
-1. BUILD the agent as a folder of text   →   2. RUN it as one process   →   3. REACH it from anywhere
-        (a "profile")                          (ownware serve)               (one HTTP+SSE contract)
+1. DEFINE the agent as ordinary files   →   2. RUN the complete runtime   →   3. BUILD on one contract
+        (a portable profile)                    (one process or class)             (HTTP+SSE)
 ```
 
-- **Any model.** Anthropic, OpenAI, Google, OpenRouter — or fully local via
-  [Ollama](https://ollama.com). The first answer works **without any API key**.
-- **Yours.** Self-hosted, your keys never leave your machine (encrypted vault).
+- **Provider-neutral by contract.** Use a documented cloud route, an
+  OpenAI-compatible endpoint, or fully local [Ollama](https://ollama.com). The first
+  answer can work **without an API key**.
+- **Yours.** Self-hosted; provider credentials remain inside your runtime's encrypted
+  vault. Providers and tools you choose receive the data sent for those calls.
   SQLite is the zero-configuration default; library deployments can explicitly
   select tenant-owned PostgreSQL while local protected artifacts stay on your
   infrastructure.
 - **Safe by default.** Exposing beyond localhost force-enables auth + TLS; an
   unsafe bind refuses to boot. Dangerous tool calls pause and ask first.
-- **One wire contract.** The CLI, the SDK, Slack, your future app — all talk to the
-  agent the same way. Learn it once, build anything.
+- **One wire contract.** The CLI, SDK, your application, and optional adapters all
+  talk to the agent the same way. Learn it once; keep product logic out of the runtime.
 
-### A real engine underneath — not a framework, not a wrapper
+### A harness and operational backend in one runtime
 
-This is the part that makes the magic real instead of a demo. Ownware isn't a box of
-parts you assemble, and it isn't a thin wrapper around someone else's loop. The engine
-is a **from-scratch agent runtime — the same class of machine as Claude Code**
-(streaming, parallel tool orchestration, sub-agents, pluggable compaction, retry with
-backoff, MCP) — but **model-agnostic and yours to self-host.** You don't build the loop
-and own its bugs; you inherit a good one and point it at any model.
+Ownware includes the execution loop—streaming, parallel tool orchestration,
+sub-agents, compaction, retries, and MCP—and the service boundary around it: durable
+threads, resumable events, credentials, schedules, storage, auth, and typed clients.
+Use the engine directly when you need an in-process harness, or start the gateway when
+your product needs a long-running agent service.
 
-- **Frameworks** (LangChain, CrewAI) hand you parts — the loop quality is your problem.
-- **Lab SDKs** (Claude Agent SDK, OpenAI Agents SDK) are excellent harnesses — locked
-  to one company's models.
-- **Ownware** is a Claude-Code-*class* harness for *any* model, that you own and run
-  yourself. That's the empty middle nobody else fills.
+That combination is the point. Ownware does not need every framework or SDK to lack
+these features; it gives adopters one inspectable, Apache-2.0 runtime where the loop,
+the operational backend, and the public contract are designed together.
 
 > **Status:** early and moving fast. The package is live on npm (`npm i -g ownware`);
 > contributors can also run it from source (below). The engine, gateway, channels, and
@@ -141,10 +137,10 @@ profiles/assistant/
 **Editing these files IS building the agent.** No SDK, no build step, no wizard. Open
 `SOUL.md` and change its personality. Open `agent.json` and:
 
-- pick any model — `"openai:gpt-5.5"`, `"anthropic:claude-sonnet-4-6"`,
+- pick a supported model route — `"openai:gpt-5.5"`, `"anthropic:claude-sonnet-4-6"`,
   `"ollama:llama3.2"` (local, free)…
-- give it tools — built-in presets (files, shell, web), **any MCP server**, 400+ SaaS
-  apps via Composio, or your own custom tool files
+- give it tools — built-in presets (files, shell, web), **MCP servers over supported
+  transports**, 400+ SaaS apps via Composio, or your own custom tool files
 - set its security — permission mode, security level, allow/deny lists
 
 Add `skills/` (markdown how-tos) and `AGENTS.md` (its memory) as it grows. Because an
@@ -208,17 +204,16 @@ domains, put a reverse proxy or tunnel (Caddy, nginx, Tailscale, cloudflared) in
 
 Library deployments can instead use a tenant-owned PostgreSQL database; see
 [gateway storage](docs/gateway/storage.md). **Single-click deploy?** Not yet —
-honestly. Today it's *one command*, not one click. Templates for the default SQLite
-deployment are a thin wrapper and on the roadmap; PostgreSQL templates must also
+honestly. Today it's *one command*, not one click. PostgreSQL deployments must also
 provision or connect the database. If it runs Node, it runs Ownware now.
 
-## Step 3 — Talk to it (four doors, one contract)
+## Step 3 — Build against one contract
 
-**Door 1 — Raw HTTP.** Any language: `POST /api/v1/run` starts a run, an SSE stream
+**Raw HTTP.** Any language: `POST /api/v1/run` starts a run, an SSE stream
 delivers the reply token by token. Fully specified in
 [`packages/client/spec/`](packages/client/spec) (OpenAPI + AsyncAPI).
 
-**Door 2 — The SDK.** [`@ownware/client`](packages/client): zero dependencies, Node
+**The SDK.** [`@ownware/client`](packages/client): zero dependencies, Node
 *and* browser:
 
 ```ts
@@ -231,7 +226,7 @@ for await (const ev of agent.streamReply(threadId)) {
 }
 ```
 
-**Door 3 — Messaging.** The same agent answers in Slack, Telegram, Discord, WhatsApp,
+**Optional messaging adapters.** The same agent answers in Slack, Telegram, Discord, WhatsApp,
 SMS — `ownware serve` runs the channels in-process, no second deployment:
 
 ```bash
@@ -242,7 +237,7 @@ ownware serve      # gateway + Slack, one process
 Unknown senders are held behind fail-closed pairing until you
 `ownware channel approve` them — your agent doesn't talk to strangers.
 
-**Door 4 — Proactive.** Don't just answer — reach out on a schedule:
+**Scheduled runs.** Start work on a schedule and optionally deliver the result:
 
 ```bash
 ownware schedule add --profile assistant --name morning \
@@ -267,7 +262,7 @@ language.
 | `events(threadId)` | The RAW stream — tool calls, thinking, permission requests. Build rich UIs from this. |
 | `resume(threadId, { action })` | Answer a `permission.request` — approve/deny in *your* UI. |
 | `abort(threadId)` | Stop button. |
-| `models()` / `health()` | Model catalog with live availability / liveness. |
+| `providerHubModels({ scope: 'connected' })` / `health()` | Canonical model routes with live connection state and prices / liveness. |
 
 That's enough for a support widget, an internal copilot, a mobile app, a voice bot.
 Threads give every user a continuous, isolated conversation; dropped connections resume
@@ -286,10 +281,10 @@ await agent.start()
 
 <table>
 <tr><td><b>Agents as text</b></td><td>A profile is a folder — <code>agent.json</code> + <code>SOUL.md</code> + skills + memory. Version it, review it, share it. Bundled examples in <a href="profiles"><code>profiles/</code></a>.</td></tr>
-<tr><td><b>Any model, keyless first</b></td><td>Anthropic, OpenAI, Google, OpenRouter, or local Ollama. First answer needs no API key; keys live in an encrypted vault (<code>ownware key add</code>).</td></tr>
+<tr><td><b>Multiple model routes, keyless first</b></td><td>Anthropic, OpenAI, Google, OpenRouter, OpenAI-compatible endpoints, or local Ollama. A local first answer needs no API key; cloud keys live in an encrypted vault (<code>ownware key add</code>).</td></tr>
 <tr><td><b>A real agent engine</b></td><td>Provider-agnostic loop with streaming, parallel tool orchestration, retry with backoff, checkpointing — production plumbing, not a demo loop.</td></tr>
-<tr><td><b>Batteries-included tools</b></td><td>Your agent works out of the box: <b>filesystem</b> (read/write/edit/glob/grep), <b>shell</b> (guarded, with persistent sessions), <b>real browser automation</b> (Playwright-backed — navigate, click, extract), <b>web search + fetch</b>, task lists, memory, ask-the-user. <b>Image generation</b> and <b>speech</b> (TTS/STT) are bring-your-own-provider hooks. Full computer use: coming soon.</td></tr>
-<tr><td><b>Any integration</b></td><td><b>Any MCP server</b> (stdio or url), 400+ SaaS apps via Composio, or your own custom tool files (<code>defineTool</code>) — declared in <code>agent.json</code>, no engine code.</td></tr>
+<tr><td><b>Batteries-included tools</b></td><td>Your agent works out of the box: <b>filesystem</b> (read/write/edit/glob/grep), <b>shell</b> (guarded, with persistent sessions), <b>real browser automation</b> (Playwright-backed — navigate, click, extract), <b>web search + fetch</b>, task lists, memory, ask-the-user. <b>Image generation</b> and <b>speech</b> (TTS/STT) are bring-your-own-provider hooks.</td></tr>
+<tr><td><b>Extensible tools</b></td><td>MCP servers (stdio or URL), Composio's SaaS catalogue, or your own custom tool files (<code>defineTool</code>) — declared in <code>agent.json</code>, without changing the engine.</td></tr>
 <tr><td><b>Multi-agent</b></td><td>Agents spawn sub-agents: isolated workers for parallel workstreams, forked contexts, a coordinator protocol — one agent can run a team.</td></tr>
 <tr><td><b>Never dies at the context limit</b></td><td>Pluggable compaction strategies — summarize, sliding window, truncate, tool-result drop, hierarchical — so long-running tasks keep going instead of hitting a wall.</td></tr>
 <tr><td><b>One-process backend</b></td><td><code>ownware serve</code>: HTTP/2 + SSE gateway, persistent threads, resumable streams, schedules, vault, auth — the whole backend as one process or one class.</td></tr>
@@ -310,35 +305,28 @@ so every client can render approve/deny. It's the closer, not the headline — t
 the answer is *yes* when compliance asks "can we actually deploy this?" Full story:
 [docs/security/overview.md](docs/security/overview.md)
 
-## Status & roadmap
+## Project status
 
-Built and test-covered today: engine + gateway, profile format, CLI verbs, keyless first
-answer, bind-safety, `@ownware/client` + wire spec, five channel adapters in-process,
-schedules with channel delivery — all of it installable from npm (`npm i -g ownware`).
-
-Next, roughly in order:
-
-1. **The UI kit (`@ownware/ui`)** — a white-label, themeable chat UI served by the
-   gateway + a `<script>` embed widget: your brand on your landing page, inside your
-   SaaS, as your product's support agent — your users never see Ownware.
-2. **One-click deploy templates** — Docker + Railway/Render/Fly buttons.
-3. **Embed adapters** — Shopify / WordPress / Wix: install your agent into your own
-   store like any other plugin.
-4. **Live demo recordings** — "it answered in my Slack" and security-in-action clips.
+Built and test-covered today: the engine and gateway, portable profile format, CLI,
+keyless local first answer, bind safety, SQLite and PostgreSQL storage,
+`@ownware/client` plus OpenAPI/AsyncAPI specs, headless and React chat bindings,
+schedules, and five optional messaging adapters. It is installable from npm
+(`npm i -g ownware`) and remains early software: expect rough edges, verify the
+capability envelope you depend on, and report failures precisely.
 
 ## Give us a hand
 
-Ownware is one person and a big goal: **every business and every person running their
-own agent.** If you're like-minded:
+Ownware is one person and a big goal: **make the runtime beneath agent products open,
+portable, and owned by the people who run it.** If you're like-minded:
 
 - **⭐ Star the repo** — visibility is oxygen for a solo project.
 - **Open an issue** — tell me the agent you tried to build and where the kit fought
   you. Activation friction is a bug.
 - **Send a PR** — [CONTRIBUTING.md](CONTRIBUTING.md) has the setup and the hard rules;
-  [VISION.md](VISION.md) has where this is going and the "what we won't merge (for now)"
+  [VISION.md](VISION.md) defines the runtime boundary and the "what we won't merge"
   list — two minutes there saves a wasted PR. Great first contributions: a new channel
   adapter (a channel is a thin client of one contract — a weekend, not a fork), an
-  example profile for your industry, docs fixes, deploy templates.
+  example profile for your industry, or a precise docs fix.
 
 Everyone interacting here is expected to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).

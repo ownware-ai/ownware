@@ -1,6 +1,6 @@
 ---
 title: Tools & connectors
-description: Give your agent capabilities — built-in tools, any MCP server, 400+ apps via Composio, or your own TypeScript.
+description: Give your agent capabilities — built-in tools, MCP servers over supported transports, 400+ apps via Composio, or your own TypeScript.
 type: concept
 ---
 
@@ -15,7 +15,7 @@ Tools are what your agent can *do*. Ownware ships a built-in kit (filesystem, sh
 | You want | Use |
 |---|---|
 | Files, shell, search on the host | Built-in presets — already there |
-| An existing tool server (filesystem, GitHub, databases…) | **MCP** — any stdio or url server |
+| An existing tool server (filesystem, GitHub, databases…) | **MCP** — servers over supported transports |
 | SaaS apps (GitHub, Notion, Slack, 400+) with managed auth | **Composio** |
 | Your own logic in TypeScript | **Custom tools** |
 
@@ -29,7 +29,7 @@ Selected by `tools.preset`, filtered by `allow`/`deny` globs — deny always win
 
 Presets: `full` (**all** built-ins — filesystem, shell, web, browser, memory, sub-agent, …) · `coding` (filesystem **+ shell**) · `readonly` (read-only filesystem) · `none`. See [Profile format](../agents/profile-format.md#tool-presets).
 
-## Any MCP server
+## MCP servers
 
 Verified: the agent gets the server's tools at startup.
 

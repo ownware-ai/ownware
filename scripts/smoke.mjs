@@ -1,6 +1,7 @@
 // First-run smoke test — boots the quickstart gateway with NO API keys
-// and proves the keyless contract: it starts, serves, lists models, and
-// shuts down cleanly. Run: `bun run smoke` (after `bun run build`).
+// and proves the keyless contract: it starts, serves the canonical Provider
+// Hub model authority, and shuts down cleanly. Run: `bun run smoke` (after
+// `bun run build`).
 //
 // This is the onboarding canary: if a change breaks the cold keyless
 // boot, this fails before a stranger ever sees it.
@@ -44,12 +45,16 @@ const base = `http://localhost:${gateway.port}`
 const health = await (await fetch(`${base}/api/v1/health`, { headers: H })).json()
 if (health.status !== 'ok') fail(`health returned ${JSON.stringify(health)}`)
 
-const models = await (await fetch(`${base}/api/v1/models`, { headers: H })).json()
-if (!Array.isArray(models) || models.length === 0) fail('models catalog empty')
-// Keyless + no local Ollama on CI ⇒ hasCredentials may be all-false —
-// that's fine; the field must exist and be honest, not throw.
-if (models.some((m) => typeof m.hasCredentials !== 'boolean')) {
-  fail('hasCredentials missing from model entries')
+const modelPage = await (
+  await fetch(`${base}/api/v1/provider-hub/models?limit=200`, { headers: H })
+).json()
+if (!Array.isArray(modelPage.items) || modelPage.items.length === 0) {
+  fail('Provider Hub models catalog empty')
+}
+// Keyless + no local Ollama on CI ⇒ credentialed may be all-false —
+// that's fine; the authoritative availability field must exist and be honest.
+if (modelPage.items.some((item) => typeof item.model?.availability?.credentialed !== 'boolean')) {
+  fail('Provider Hub credentialed availability missing from model entries')
 }
 
 const profiles = await (await fetch(`${base}/api/v1/profiles`, { headers: H })).json()
@@ -57,5 +62,5 @@ if (!profiles.some((p) => p.id === 'assistant')) fail('quickstart profile not di
 
 await gateway.stop()
 rmSync(tmp, { recursive: true, force: true })
-console.log(`smoke OK — keyless boot, health, ${models.length} models, quickstart profile discovered`)
+console.log(`smoke OK — keyless boot, health, ${modelPage.page.total} Provider Hub models, quickstart profile discovered`)
 process.exit(0)

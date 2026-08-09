@@ -62,6 +62,7 @@ import { createSqliteCredentialSpendRepository } from '../../../src/storage/sqli
 import { DbCredentialBackend } from '../../../src/credential/store/db-backend.js'
 import { __resetMasterKeyCacheForTests } from '../../../src/connector/credentials/vault.js'
 import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
+import { LLM_PROVIDERS } from '../../../src/gateway/llm-providers.js'
 
 let prevHome: string | undefined
 let tmpHome: string
@@ -120,11 +121,13 @@ describe('bootstrapProvidersFromUnifiedStore — registration', () => {
       store, resolver, injector,
     })
     expect(result.registered).toEqual(['anthropic'])
-    expect(result.skipped.sort()).toEqual(['google', 'openai', 'openrouter'])
+    expect(result.skipped.sort()).toEqual(
+      LLM_PROVIDERS.map(provider => provider.providerId).filter(id => id !== 'anthropic').sort(),
+    )
     expect(listProviders()).toContain('anthropic')
   })
 
-  it('registers all four when every catalogued credential exists', async () => {
+  it('registers the four native adapters when their credentials exist', async () => {
     await seedAnthropic()
     await store.save({
       name: 'OpenAI', value: 'sk-oa-XXXX-BOOT',
@@ -145,7 +148,34 @@ describe('bootstrapProvidersFromUnifiedStore — registration', () => {
       store, resolver, injector,
     })
     expect(result.registered.sort()).toEqual(['anthropic', 'google', 'openai', 'openrouter'])
-    expect(result.skipped).toEqual([])
+    expect(result.skipped.sort()).toEqual([
+      'cerebras', 'deepinfra', 'fireworks-ai', 'groq', 'helicone', 'mistral',
+      'togetherai', 'vercel', 'xai',
+    ])
+  })
+
+  it.each([
+    ['Groq', 'GROQ_API_KEY', 'gsk_XXXX_BOOT', 'groq'],
+    ['Vercel AI Gateway', 'AI_GATEWAY_API_KEY', 'vag_XXXX_BOOT', 'vercel'],
+  ])('registers a resolver-backed fixed OpenAI-compatible preset for %s', async (
+    name,
+    variableName,
+    value,
+    providerId,
+  ) => {
+    await store.save({
+      name, value,
+      category: 'llm', authType: 'api-key',
+      variableName, source: 'manual',
+    })
+
+    const result = await bootstrapProvidersFromUnifiedStore({ store, resolver, injector })
+    const provider = getProvider(providerId)
+
+    expect(result.registered).toEqual([providerId])
+    expect(provider?.name).toBe(providerId)
+    expect(provider?.supportsFeature('streaming')).toBe(true)
+    expect(provider?.supportsFeature('tool_use')).toBe(false)
   })
 
   it('does NOT touch the registry when no credentials exist', async () => {
@@ -153,7 +183,9 @@ describe('bootstrapProvidersFromUnifiedStore — registration', () => {
       store, resolver, injector,
     })
     expect(result.registered).toEqual([])
-    expect(result.skipped.sort()).toEqual(['anthropic', 'google', 'openai', 'openrouter'])
+    expect(result.skipped.sort()).toEqual(
+      LLM_PROVIDERS.map(provider => provider.providerId).sort(),
+    )
   })
 })
 

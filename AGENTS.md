@@ -37,7 +37,7 @@ await ownware.start()   // → ownware.port, ownware.token (Bearer auth)
 - Wire contract: `POST /api/v1/run` `{"profileId","prompt","model"?,"threadId"?}` → `{threadId}`;
   SSE `GET /api/v1/threads/{threadId}/agents/root/events?since=<seq>`;
   `POST /api/v1/threads/{threadId}/resume` `{"action":"approve"|"deny"}`;
-  `GET /api/v1/models` (filter `hasCredentials`).
+  `GET /api/v1/provider-hub/models?scope=connected` (read each item’s `model`; prefer `availability.recommended`).
 - Keyless models: Ollama (`ollama:llama3.2`); cloud: one of `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_API_KEY`/`OPENROUTER_API_KEY`.
 - Docs index for agents: [`docs/llms.txt`](docs/llms.txt). Runnable reference: [`examples/quickstart/`](examples/quickstart).
 
@@ -47,11 +47,10 @@ Everything below is for working **on** Ownware itself.
 
 ## What Ownware is
 
-**Ownware is the open, model-agnostic platform for building your own AI agent and putting
-it everywhere you already are** — your site, your app, your shop, Slack, Telegram,
-WhatsApp, scheduled every morning — self-hosted, on any model, safe by default.
-Build the agent once (a text profile) → run it yourself (one process) → reach it
-everywhere (one HTTP+SSE contract).
+**Ownware is the open, self-hosted agent runtime for products you own.** It turns a
+portable text profile into a durable agent service: execution loop, tools, threads,
+permissions, credentials, storage, schedules, and one typed HTTP+SSE contract. Product
+UIs, business logic, CLIs, and optional adapters remain clients of that runtime.
 
 **Public brand is "Ownware" and only Ownware.** "Loom" and "Cortex" are internal package
 names — they must never surface in public-facing code, docs, or UI. The umbrella

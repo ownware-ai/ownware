@@ -1,6 +1,6 @@
 # @ownware/cortex
 
-The kernel and gateway of [Ownware](https://github.com/ownware-ai/ownware) — and the home of the `ownware` CLI. It takes agent profile directories and turns them into running [Loom](https://www.npmjs.com/package/@ownware/loom) sessions, then serves them over HTTP+SSE.
+The assembly, durable backend, and public gateway of the [Ownware agent runtime](https://github.com/ownware-ai/ownware) — and the home of the `ownware` CLI. It turns portable profile directories into running sessions, then serves them over the typed HTTP+SSE contract used by every client.
 
 ## What It Does
 
@@ -46,8 +46,8 @@ for await (const event of session.submitMessage('Fix the auth bug')) {
 
 ## Command-line interface (`ownware`)
 
-This package also ships the **`ownware` CLI** — the whole build → talk → serve → reach arc
-from one command (no `serve.mjs`/`chat.mjs` glue):
+This package also ships the **`ownware` CLI** — define, test, and serve the runtime
+without `serve.mjs`/`chat.mjs` glue:
 
 ```bash
 ownware profile new sales           # build an agent (a folder of text)

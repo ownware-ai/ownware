@@ -137,6 +137,82 @@ beforeAll(async () => {
       }))
       return
     }
+    const codexStatus = {
+      runtime: {
+        id: 'openai-codex',
+        accessRoute: 'openai-chatgpt-managed',
+        support: 'experimental',
+        upstreamSupport: 'experimental_unsupported_for_production',
+        processState: 'running',
+        protocolVersion: '0.147.0',
+        supportedVersionRange: '>=0.145.0 <0.146.0 || >=0.147.0 <0.148.0',
+      },
+      account: {
+        state: 'authenticated',
+        authMode: 'chatgpt',
+        plan: 'plus',
+        requiresOpenaiAuth: true,
+        authority: 'account/read',
+        observedAt: '2026-08-09T00:00:00.000Z',
+        validUntil: null,
+      },
+      login: { phase: 'succeeded' },
+      quota: { state: 'unknown', reason: 'not_read', validUntil: null },
+    }
+    if (url === '/api/v1/runtimes/codex') {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify(codexStatus))
+      return
+    }
+    if (url === '/api/v1/runtimes/codex/login/start') {
+      const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify(input.kind === 'browser'
+        ? {
+            kind: 'browser',
+            loginId: 'one-time-login',
+            url: 'https://example.test/login',
+          }
+        : {
+            kind: 'device',
+            loginId: 'one-time-login',
+            verificationUrl: 'https://example.test/device',
+            userCode: 'ABCD-EFGH',
+          }))
+      return
+    }
+    if (
+      url === '/api/v1/runtimes/codex/login/wait'
+      || url === '/api/v1/runtimes/codex/login/cancel'
+      || url === '/api/v1/runtimes/codex/logout'
+    ) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify(codexStatus))
+      return
+    }
+    if (url === '/api/v1/runtimes/codex/models') {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        authority: 'model/list',
+        observedAt: '2026-08-09T00:00:00.000Z',
+        validUntil: null,
+        models: [{
+          id: 'gpt-test',
+          model: 'gpt-test',
+          displayName: 'GPT Test',
+          description: 'Fixture',
+          hidden: false,
+          isDefault: true,
+          defaultReasoningEffort: 'medium',
+          reasoningEfforts: ['low', 'medium'],
+          inputModalities: ['text'],
+          serviceTiers: [],
+          defaultServiceTier: null,
+          supportsPersonality: false,
+        }],
+      }))
+      return
+    }
     if (url === '/api/v1/sources/51515151-abab-4515-8515-515151515151') {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
@@ -936,6 +1012,44 @@ describe('request shapes', () => {
       method: 'GET',
       url: '/api/v1/connections?limit=2&cursor=40404040-abab-4404-8404-404040404040',
       auth: 'Bearer tok123',
+    })
+  })
+
+  it('drives the redacted Codex account and model control plane explicitly', async () => {
+    const ownware = client()
+
+    await expect(ownware.codexRuntime()).resolves.toMatchObject({
+      runtime: { support: 'experimental', protocolVersion: '0.147.0' },
+      account: { state: 'authenticated', plan: 'plus' },
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'GET',
+      url: '/api/v1/runtimes/codex',
+      auth: 'Bearer tok123',
+    })
+
+    await expect(ownware.startCodexLogin('device')).resolves.toEqual({
+      kind: 'device',
+      loginId: 'one-time-login',
+      verificationUrl: 'https://example.test/device',
+      userCode: 'ABCD-EFGH',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ kind: 'device' })
+
+    await ownware.waitForCodexLogin(5_000)
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({ timeoutMs: 5_000 })
+    await ownware.cancelCodexLogin()
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({})
+    await ownware.logoutCodex()
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({})
+
+    await expect(ownware.codexModels()).resolves.toMatchObject({
+      authority: 'model/list',
+      models: [{ id: 'gpt-test', reasoningEfforts: ['low', 'medium'] }],
+    })
+    expect(seen.at(-1)).toMatchObject({
+      method: 'GET',
+      url: '/api/v1/runtimes/codex/models',
     })
   })
 
