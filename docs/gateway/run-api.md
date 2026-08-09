@@ -29,10 +29,37 @@ curl -X POST http://localhost:3011/api/v1/run \
 |---|---|---|
 | `profileId` | yes | Which profile answers (the `name` in its `agent.json`) |
 | `prompt` | yes | The user message |
-| `model` | no | Override the profile's model (`provider:model` string) |
+| `model` | no | Explicit model for this run (`provider:model` string) |
 | `threadId` | no | Continue an existing conversation; omit to start a new thread |
 
-Returns JSON containing `threadId`. Reuse it on the next call to keep one conversation.
+The gateway resolves the configured model in this order: request `model` → the
+existing thread's saved model → the install default (when configured) → the
+profile default. Blank values do not hide the next choice. Request, thread, and
+install choices are explicit: if one is unavailable or belongs to a different
+runtime, the request fails before a new thread or run is created.
+
+Only an unavailable profile default on the same execution runtime may be
+replaced automatically by the keyless fallback. A winner owned by another
+runtime always fails instead of crossing that boundary. The response's `model`
+is always the model actually dispatched. When that differs from the configured
+profile default, the response also contains:
+
+```json
+{
+  "model": "ollama:llama3.2",
+  "modelSubstitution": {
+    "configuredModel": "openai:gpt-5.5",
+    "effectiveModel": "ollama:llama3.2",
+    "configuredSource": "profile",
+    "reason": "profile_default_unavailable"
+  }
+}
+```
+
+This receipt proves the gateway's dispatch choice, not provider acceptance or
+run completion. Retrying the exact request with the same `Idempotency-Key`
+replays the same receipt. Reuse `threadId` on the next call to keep one
+conversation.
 
 ## Stream the run — `GET /api/v1/threads/{threadId}/agents/root/events`
 

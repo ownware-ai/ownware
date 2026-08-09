@@ -5,9 +5,15 @@ import {
   OpenAICompatibleConnectionNotFoundError,
   PROVIDER_HUB_MAX_PAGE_SIZE,
   ProviderHubCursorError,
+  UsageCostSchema,
   type OpenAICompatibleConnectionManager,
   type ProviderHubService,
 } from '../../provider-hub/index.js'
+import {
+  UsageEvidenceIntegrityError,
+  UsageEvidenceNotFoundError,
+  type UsageEvidenceRepository,
+} from '../../storage/usage-evidence-repository.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
 
 const ModelQuerySchema = z.object({
@@ -25,10 +31,29 @@ const RefreshQuerySchema = z.object({
   force: z.enum(['true', 'false']).transform(value => value === 'true').default('false'),
 }).strict()
 
+const UsageQuerySchema = z.object({
+  from: z.string().datetime({ offset: true }).optional(),
+  until: z.string().datetime({ offset: true }).optional(),
+  profileId: z.string().trim().min(1).max(512).optional(),
+  threadId: z.string().trim().min(1).max(512).optional(),
+  classification: z.enum([
+    'estimated', 'provider_reported', 'reconciled', 'subscription', 'local', 'unknown',
+  ]).optional(),
+  limit: z.coerce.number().int().min(1).max(1_000).optional(),
+}).strict()
+
+const ReconciliationSchema = UsageCostSchema.refine(
+  cost => cost.classification === 'reconciled',
+  'Only reconciled cost observations may be appended through the operator API',
+)
+
 /** Additive HTTP facade for the central provider control plane. */
 export function createProviderHubHandlers(
   service: ProviderHubService,
-  options: { readonly openAICompatible?: OpenAICompatibleConnectionManager } = {},
+  options: {
+    readonly openAICompatible?: OpenAICompatibleConnectionManager
+    readonly usageEvidence?: UsageEvidenceRepository
+  } = {},
 ) {
   async function overview(_req: IncomingMessage, res: ServerResponse): Promise<void> {
     sendJSON(res, 200, await service.overview())
@@ -155,6 +180,73 @@ export function createProviderHubHandlers(
     }
   }
 
+  async function usage(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (options.usageEvidence === undefined) {
+      sendError(res, 501, 'Provider usage evidence is unavailable in this build')
+      return
+    }
+    const parsed = UsageQuerySchema.safeParse(parseSearchParams(req))
+    if (!parsed.success) {
+      sendError(res, 400, 'Invalid provider usage query')
+      return
+    }
+    sendJSON(res, 200, { items: await options.usageEvidence.list(parsed.data) })
+  }
+
+  async function usageSummary(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (options.usageEvidence === undefined) {
+      sendError(res, 501, 'Provider usage evidence is unavailable in this build')
+      return
+    }
+    const parsed = UsageQuerySchema.omit({ classification: true, limit: true })
+      .safeParse(parseSearchParams(req))
+    if (!parsed.success) {
+      sendError(res, 400, 'Invalid provider usage summary query')
+      return
+    }
+    sendJSON(res, 200, await options.usageEvidence.summary(parsed.data))
+  }
+
+  async function usageExport(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (options.usageEvidence === undefined) {
+      sendError(res, 501, 'Provider usage evidence is unavailable in this build')
+      return
+    }
+    sendJSON(res, 200, await options.usageEvidence.exportEvidence())
+  }
+
+  async function appendUsageCostObservation(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    if (options.usageEvidence === undefined) {
+      sendError(res, 501, 'Provider usage evidence is unavailable in this build')
+      return
+    }
+    const parsed = ReconciliationSchema.safeParse(await readJSON(req))
+    if (!parsed.success) {
+      sendError(res, 400, 'Invalid provider usage reconciliation')
+      return
+    }
+    try {
+      sendJSON(res, 201, await options.usageEvidence.appendCostObservation(
+        params['usageId'] ?? '',
+        parsed.data,
+      ))
+    } catch (error) {
+      if (error instanceof UsageEvidenceNotFoundError) {
+        sendError(res, 404, error.message)
+        return
+      }
+      if (error instanceof UsageEvidenceIntegrityError) {
+        sendError(res, 409, error.message)
+        return
+      }
+      throw error
+    }
+  }
+
   return {
     overview,
     providers,
@@ -167,6 +259,10 @@ export function createProviderHubHandlers(
     saveCompatibleConnection,
     removeCompatibleConnection,
     discoverCompatibleModels,
+    usage,
+    usageSummary,
+    usageExport,
+    appendUsageCostObservation,
   }
 }
 

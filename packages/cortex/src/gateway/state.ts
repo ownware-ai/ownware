@@ -45,6 +45,7 @@ import type {
   AgentEventRepository,
   CoreStorageRepositories,
 } from '../storage/core-repositories.js'
+import type { UsageEvidenceRepository } from '../storage/usage-evidence-repository.js'
 import { createSqliteCoreRepositories } from '../storage/sqlite-core-repositories.js'
 import { createPostgreSqlCoreRepositories } from '../storage/postgresql-core-repositories.js'
 import type {
@@ -68,6 +69,9 @@ import { createPostgreSqlPlatformRepositories } from '../storage/postgresql-plat
 import type { GatewayRepositories } from '../storage/gateway-repositories.js'
 import { createSqliteGatewayRepositories } from '../storage/sqlite-gateway-repositories.js'
 import { createPostgreSqlGatewayRepositories } from '../storage/postgresql-gateway-repositories.js'
+import type { PluginRepository } from '../storage/plugin-repository.js'
+import { createSqlitePluginRepository } from '../storage/sqlite-plugin-repository.js'
+import { createPostgreSqlPluginRepository } from '../storage/postgresql-plugin-repository.js'
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import type { SourceQuotaLimits } from './source-quota-policy.js'
@@ -82,6 +86,7 @@ interface GatewayStorageRepositories {
   readonly sources: SourceRepositories
   readonly platform: PlatformRepositories
   readonly gateway: GatewayRepositories
+  readonly plugins: PluginRepository
 }
 
 function deferredRepository<T extends object>(resolve: () => T): T {
@@ -215,6 +220,7 @@ export class GatewayState {
   private readonly sources: SourceRepositories
   private readonly platform: PlatformRepositories
   private readonly gateway: GatewayRepositories
+  private readonly plugins: PluginRepository
   private readonly sessions = new Map<string, Session>()
   private readonly sessionCandidateIds = new Map<string, string | null>()
   private readonly runtimes = new Map<string, ThreadRuntime>()
@@ -326,6 +332,7 @@ export class GatewayState {
               memoryEvents: this.memoryEventBus,
             }),
             gateway: createSqliteGatewayRepositories(context),
+            plugins: createSqlitePluginRepository(context),
           }),
           createTransaction: createSqliteSecurityTransactionRepositories,
         },
@@ -360,6 +367,7 @@ export class GatewayState {
               memoryEvents: this.memoryEventBus,
             }),
             gateway: createPostgreSqlGatewayRepositories(context),
+            plugins: createPostgreSqlPluginRepository(context),
           }),
           createTransaction: createPostgreSqlSecurityTransactionRepositories,
         },
@@ -371,6 +379,7 @@ export class GatewayState {
       threads: deferredRepository(() => root().core.threads),
       messages: deferredRepository(() => root().core.messages),
       usage: deferredRepository(() => root().core.usage),
+      usageEvidence: deferredRepository(() => root().core.usageEvidence),
       events: deferredRepository(() => root().core.events),
     }
     this.security = {
@@ -416,6 +425,7 @@ export class GatewayState {
       auditLog: deferredRepository(() => root().gateway.auditLog),
       diagnostics: deferredRepository(() => root().gateway.diagnostics),
     }
+    this.plugins = deferredRepository(() => root().plugins)
     this.eventIngestor = new EventIngestor(this.core.events, this.eventBus)
   }
 
@@ -516,6 +526,16 @@ export class GatewayState {
   /** Backend-neutral event repository for retention and other services. */
   get eventRepository(): AgentEventRepository {
     return this.core.events
+  }
+
+  /** Immutable Provider Hub usage facts and append-only cost observations. */
+  get usageEvidenceRepository(): UsageEvidenceRepository {
+    return this.core.usageEvidence
+  }
+
+  /** Installed plugin identity, migration evidence and revisioned scope decisions. */
+  get pluginRepository(): PluginRepository {
+    return this.plugins
   }
 
   /**

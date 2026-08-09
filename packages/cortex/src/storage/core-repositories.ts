@@ -9,6 +9,7 @@ import type {
   ThreadMessage,
   UsageBucket,
 } from '../gateway/types.js'
+import type { UsageEvidenceRepository } from './usage-evidence-repository.js'
 
 export interface ThreadUpdate {
   readonly title?: string | null
@@ -136,5 +137,6 @@ export interface CoreStorageRepositories {
   readonly threads: ThreadRepository
   readonly messages: MessageRepository
   readonly usage: UsageRepository
+  readonly usageEvidence: UsageEvidenceRepository
   readonly events: AgentEventRepository
 }

@@ -29,6 +29,7 @@ import {
 import type {
   ContentBlock, ZoneDecision, RunningChrome, LaunchChromeOptions, Tool,
   ToolContext, ToolCall, ToolResult,
+  SkillDefinition,
 } from '@ownware/loom'
 import { processAttachments, categorizeFile } from '@ownware/loom'
 import {
@@ -50,7 +51,12 @@ import {
   resolveLocalHelperDir,
   loadLocalHelperProfile,
 } from '../../profile/local-helpers.js'
-import type { RunRequest, ResumeRequest, AttachmentMeta } from '../types.js'
+import type {
+  RunRequest,
+  ResumeRequest,
+  AttachmentMeta,
+  ModelSubstitution,
+} from '../types.js'
 import type { UserMessageEvent } from '../events.js'
 import type { LoomEvent } from '@ownware/loom'
 import { permissionStore } from '../../permissions/store.js'
@@ -141,6 +147,7 @@ interface RunStartResult {
   readonly profileId: string
   readonly candidateId: string | null
   readonly model: string
+  readonly modelSubstitution?: ModelSubstitution
   readonly status: 'running'
   /** Enforced wall-clock limit selected from the resolved profile. */
   readonly timeoutMs?: number
@@ -172,6 +179,7 @@ class RunStartError extends Error {
 }
 
 import { normalizeModelId } from '../catalog/models/index.js'
+import { resolveRunModelPreference } from '../catalog/models/preference.js'
 import {
   authorizePrincipalScope,
   getRequestPrincipal,
@@ -197,6 +205,13 @@ import type {
 export interface RunHandlerDeps {
   /** Canonical Provider Hub default selector. */
   readonly pickRunnableDefaultModel: () => Promise<string | null>
+  /** Provider Hub authority for the runtime/adapter that owns one model id. */
+  readonly resolveModelExecutionAuthority: (
+    modelId: string,
+  ) => Promise<{
+    readonly runtimeId: string
+    readonly adapterId?: string
+  } | null>
   /** Attachment processor override for failure-injection tests. */
   readonly processAttachmentsFn?: typeof processAttachments
   /** Durable execution snapshots and lifecycle transitions. */
@@ -220,6 +235,11 @@ export interface RunHandlerDeps {
    * then legacy webSearchService (back-compat).
    */
   readonly toolProviders?: readonly ConnectorToolProvider[]
+  /** Scope-resolved plugin skills for the agent session being assembled. */
+  readonly resolvePluginSkills?: (context: {
+    readonly agentId: string
+    readonly workspaceId?: string
+  }) => Promise<readonly SkillDefinition[]>
   /**
    * Browser launcher override — the production default is Loom's
    * `launchChrome`. Tests inject a mock to exercise the autoLaunch path
@@ -291,6 +311,16 @@ export interface RunHandlerDeps {
    * connector status to surface.
    */
   readonly connectorStatusBus?: ConnectorStatusBus
+}
+
+/**
+ * Spawned helpers receive skills only through their existing explicit
+ * `grant.skills`/profile envelope. The root agent's lazy dispatcher closes over
+ * its complete registry, so sharing that tool by name would bypass agent-scoped
+ * task-pack decisions and expose every root skill to the child.
+ */
+export function subagentToolPool(tools: readonly Tool[]): Tool[] {
+  return tools.filter(tool => tool.name !== 'skill')
 }
 
 /**
@@ -508,6 +538,9 @@ export function createRunHandlers(
         profileId: result.profileId,
         candidateId: result.candidateId,
         model: result.model,
+        ...(result.modelSubstitution !== undefined
+          ? { modelSubstitution: result.modelSubstitution }
+          : {}),
         status: result.status,
         ...(result.timeoutMs !== undefined ? { timeoutMs: result.timeoutMs } : {}),
       }
@@ -529,6 +562,9 @@ export function createRunHandlers(
         profileId: result.profileId,
         candidateId: result.candidateId,
         model: result.model,
+        ...(result.modelSubstitution !== undefined
+          ? { modelSubstitution: result.modelSubstitution }
+          : {}),
         status: result.status,
         timeoutMs: result.timeoutMs,
         attachments: result.attachments,
@@ -587,8 +623,11 @@ export function createRunHandlers(
         workspacePath = ws.path
       }
 
-      // 1. Get or create thread
+      // 1. Resolve an existing thread. New-thread creation is deliberately
+      // deferred until after model/runtime preflight so an invalid install
+      // default or explicit choice cannot leave an empty durable thread.
       let session: Session | undefined
+      let threadRow: Awaited<ReturnType<typeof state.getThread>>
 
       if (threadId) {
         const thread = await state.getThread(threadId)
@@ -612,6 +651,146 @@ export function createRunHandlers(
           const ws = await state.getWorkspace(thread.workspaceId)
           if (ws) workspacePath = ws.path
         }
+        threadRow = thread
+      }
+
+      // 2. Resolve modelString unconditionally.
+      //
+      // Previous bug: this lived inside the `if (!session)` block at line
+      // ~140 and defaulted to 'unknown'. On a thread's second message
+      // the session is already cached, the if-branch is skipped, and
+      // the response reported `model: 'unknown'`. Worse, the runtime
+      // was also only set inside that branch — so the runner bailed
+      // silently with "Missing session or runtime" and the chat appeared
+      // frozen.
+      //
+      // Computing the model here means: (a) the response always carries
+      // the real model string, and (b) we have a `profile` reference
+      // we can use to read execution.timeoutMs below regardless of
+      // whether the session is cached.
+      const resolvedCandidate = await deps.candidateResolver?.resolve(profileId) ?? null
+      const candidateId = resolvedCandidate?.candidateId ?? null
+      if (!resolvedCandidate && !registry.has(profileId)) {
+        // A just-built legacy agent may not be registered yet — re-scan user
+        // dirs once. Immutable candidates resolve independently of registry.
+        await registry.refreshUser()
+        if (!registry.has(profileId)) {
+          throw new RunStartError(404, `Profile "${profileId}" not found`)
+        }
+      }
+      const profile = resolvedCandidate?.profile ?? await registry.get(profileId)
+      const requestModel = body.model
+      // Four-level configured preference: request → thread → install → profile.
+      //
+      //   1. `body.model`    — explicit override on this run (the client's
+      //      dropdown change rides on the next /run body).
+      //   2. `thread.model`  — what the user last picked for THIS
+      //      thread, persisted via setThreadModel below. This is the
+      //      bit that makes the dropdown stick across reload.
+      //   3. `defaults.defaultModel` — install-wide default for new
+      //      conversations, persisted through the async settings repository.
+      //   4. `profile.config.model` — the template fallback for new
+      //      threads.
+      //
+      // Canonicalize all paths. Aliases (`haiku`, `sonnet`, etc.) get
+      // resolved to the catalog's full id so the provider never sees a
+      // bare alias it can't look up.
+      const threadModel = threadRow?.model ?? null
+      const installDefaultModel = (await state.getSetting('defaults.defaultModel'))?.value ?? null
+      const preferredModel = resolveRunModelPreference({
+        requestModel,
+        threadModel,
+        installDefaultModel,
+        profileDefaultModel: profile.config.model,
+      })
+      const configuredModel = normalizeModelId(preferredModel.model)
+      const configuredProviderId = configuredModel.includes(':')
+        ? configuredModel.slice(0, configuredModel.indexOf(':'))
+        : configuredModel
+
+      // A model id is not runtime authority. Every configured winner is checked
+      // against the same Provider Hub generation before any thread model or
+      // cached Session is mutated. The current public /run contract owns the
+      // Loom execution loop; entering another runtime requires the OAS typed
+      // binding/new-thread flow, never a string prefix or fallback policy.
+      const execution = await deps.resolveModelExecutionAuthority(configuredModel)
+      if (execution?.runtimeId != null && execution.runtimeId !== 'loom') {
+        throw new RunStartError(
+          409,
+          `Model "${configuredModel}" belongs to runtime "${execution.runtimeId}" and cannot run on this thread.`,
+          'model_runtime_incompatible',
+          {
+            configuredSource: preferredModel.source,
+            configuredModel,
+            requiredRuntimeId: execution.runtimeId,
+            currentRuntimeId: 'loom',
+          },
+        )
+      }
+      if (preferredModel.source !== 'profile') {
+        if (preferredModel.source === 'install' && execution == null) {
+          throw new RunStartError(
+            422,
+            `Install default model "${configuredModel}" is not present in the active Provider Hub generation.`,
+            'install_default_model_unknown',
+            { configuredModel },
+          )
+        }
+        const adapterId = execution?.adapterId ?? configuredProviderId
+        if (getProvider(adapterId) == null) {
+          throw new RunStartError(
+            422,
+            `Configured model "${configuredModel}" is not runnable on this install.`,
+            'model_unavailable',
+            {
+              configuredSource: preferredModel.source,
+              configuredModel,
+            },
+          )
+        }
+      }
+
+      let effectiveModel = configuredModel
+      let modelSubstitution: ModelSubstitution | undefined
+
+      // Keyless fallback (F1): when the model is the PROFILE default and
+      // its provider has no credentials on this install, swap in a model
+      // that can actually answer (vault/env-keyed provider, else a
+      // reachable local Ollama). Scope: profile-sourced only — an
+      // explicit request/thread choice must fail honestly with the
+      // provider's actionable error, never be silently second-guessed.
+      // This is what makes the shipped quickstart answer with zero keys:
+      // the raw curl in serve.mjs sends no model, the profile names a
+      // cloud model, and without this the run dies on "not configured"
+      // even though a local Ollama is sitting right there.
+      if (preferredModel.source === 'profile') {
+        const adapterId = execution?.adapterId ?? configuredProviderId
+        if (getProvider(adapterId) == null) {
+          const fallback = await deps.pickRunnableDefaultModel()
+          if (fallback != null) {
+            const normalizedFallback = normalizeModelId(fallback)
+            console.log(
+              `[ownware] profile model "${configuredModel}" has no credentials — answering with "${normalizedFallback}" instead`,
+            )
+            effectiveModel = normalizedFallback
+            if (effectiveModel !== configuredModel) {
+              modelSubstitution = {
+                configuredModel,
+                effectiveModel,
+                configuredSource: 'profile',
+                reason: 'profile_default_unavailable',
+              }
+            }
+          }
+        }
+      }
+      const modelString = effectiveModel
+
+      // Model/runtime preflight is now complete. Only now may cached execution
+      // state or durable thread/workspace state be mutated.
+      if (session && state.getSessionCandidateId(threadId!) !== candidateId) {
+        await state.resetSession(threadId!)
+        session = undefined
       }
 
       if (!threadId) {
@@ -640,88 +819,6 @@ export function createRunHandlers(
         await state.touchWorkspace(workspaceId)
         await state.updateWorkspace(workspaceId, { lastProfileId: profileId })
       }
-
-      // 2. Resolve modelString unconditionally.
-      //
-      // Previous bug: this lived inside the `if (!session)` block at line
-      // ~140 and defaulted to 'unknown'. On a thread's second message
-      // the session is already cached, the if-branch is skipped, and
-      // the response reported `model: 'unknown'`. Worse, the runtime
-      // was also only set inside that branch — so the runner bailed
-      // silently with "Missing session or runtime" and the chat appeared
-      // frozen.
-      //
-      // Computing the model here means: (a) the response always carries
-      // the real model string, and (b) we have a `profile` reference
-      // we can use to read execution.timeoutMs below regardless of
-      // whether the session is cached.
-      const resolvedCandidate = await deps.candidateResolver?.resolve(profileId) ?? null
-      const candidateId = resolvedCandidate?.candidateId ?? null
-      if (!resolvedCandidate && !registry.has(profileId)) {
-        // A just-built legacy agent may not be registered yet — re-scan user
-        // dirs once. Immutable candidates resolve independently of registry.
-        await registry.refreshUser()
-        if (!registry.has(profileId)) {
-          throw new RunStartError(404, `Profile "${profileId}" not found`)
-        }
-      }
-      const profile = resolvedCandidate?.profile ?? await registry.get(profileId)
-      if (session && state.getSessionCandidateId(threadId!) !== candidateId) {
-        await state.resetSession(threadId!)
-        session = undefined
-      }
-      const requestModel = body.model
-      // Three-level precedence: request → thread → profile.
-      //
-      //   1. `body.model`    — explicit override on this run (the client's
-      //      dropdown change rides on the next /run body).
-      //   2. `thread.model`  — what the user last picked for THIS
-      //      thread, persisted via setThreadModel below. This is the
-      //      bit that makes the dropdown stick across reload.
-      //   3. `profile.config.model` — the template default for new
-      //      threads.
-      //
-      // Canonicalize all paths. Aliases (`haiku`, `sonnet`, etc.) get
-      // resolved to the catalog's full id so the provider never sees a
-      // bare alias it can't look up.
-      const threadRow = await state.getThread(threadId!)
-      const threadModel = threadRow?.model ?? null
-      const rawModel =
-        requestModel != null && requestModel.length > 0
-          ? requestModel
-          : threadModel != null && threadModel.length > 0
-            ? threadModel
-            : profile.config.model
-      let effectiveModel = normalizeModelId(rawModel)
-
-      // Keyless fallback (F1): when the model is the PROFILE default and
-      // its provider has no credentials on this install, swap in a model
-      // that can actually answer (vault/env-keyed provider, else a
-      // reachable local Ollama). Scope: profile-sourced only — an
-      // explicit request/thread choice must fail honestly with the
-      // provider's actionable error, never be silently second-guessed.
-      // This is what makes the shipped quickstart answer with zero keys:
-      // the raw curl in serve.mjs sends no model, the profile names a
-      // cloud model, and without this the run dies on "not configured"
-      // even though a local Ollama is sitting right there.
-      const modelCameFromProfile =
-        !(requestModel != null && requestModel.length > 0) &&
-        !(threadModel != null && threadModel.length > 0)
-      if (modelCameFromProfile) {
-        const providerId = effectiveModel.includes(':')
-          ? effectiveModel.slice(0, effectiveModel.indexOf(':'))
-          : effectiveModel
-        if (getProvider(providerId) == null) {
-          const fallback = await deps.pickRunnableDefaultModel()
-          if (fallback != null) {
-            console.log(
-              `[ownware] profile model "${effectiveModel}" has no credentials — answering with "${fallback}" instead`,
-            )
-            effectiveModel = normalizeModelId(fallback)
-          }
-        }
-      }
-      const modelString = effectiveModel
 
       // Persist the dispatched model onto the thread so reload + the
       // next turn see the same selection. Idempotent: a no-op write of
@@ -784,6 +881,14 @@ export function createRunHandlers(
         const hookApprovalThreadId = threadId!
 
         const assembled = await assembleAgent(profileToAssemble, {
+          ...(deps.resolvePluginSkills === undefined
+            ? {}
+            : {
+                additionalSkills: await deps.resolvePluginSkills({
+                  agentId: profileId,
+                  ...(workspaceId === undefined ? {} : { workspaceId }),
+                }),
+              }),
           webSearchService: deps.webSearchService,
           ...(deps.toolProviders !== undefined ? { toolProviders: deps.toolProviders } : {}),
           credentialContext: {
@@ -1058,7 +1163,9 @@ export function createRunHandlers(
           additionalWorkspaceRoots: sessionAdditionalRoots,
         })
 
-        // Spawn tool pool. Starts as the parent's assembled tools. A
+        // Spawn tool pool. Starts as the parent's assembled tools except the
+        // root-scoped lazy skill dispatcher (skills cross this boundary only
+        // through explicit grant.skills/profile rules). A
         // referenced helper that ships its OWN custom tools (e.g. the
         // gatherer's scan_* — tools the parent cannot share as builtins)
         // gets those tools merged in by the subagent loop below, so the
@@ -1068,7 +1175,7 @@ export function createRunHandlers(
         // NOTE: only the spawner's isolation POOL is widened — the parent's
         // own callable tool set (the `Session` below) stays `assembled.tools`,
         // so the builder never gains the ability to scan directly.
-        const spawnerToolPool: Tool[] = [...assembled.tools]
+        const spawnerToolPool: Tool[] = subagentToolPool(assembled.tools)
         const spawnerPoolNames = new Set(spawnerToolPool.map(t => t.name))
 
         // Wire sub-agent spawner
@@ -1139,7 +1246,7 @@ export function createRunHandlers(
         // model for a specific helper usage). Grants (if declared)
         // pass named parent tools down to the child and are validated
         // against the parent's assembled tool set.
-        const parentToolNames = new Set(assembled.tools.map(t => t.name))
+        const parentToolNames = new Set(spawnerToolPool.map(t => t.name))
         const subagentDefs: Record<string, {
           model?: string; tools?: string[]; systemPrompt?: string; maxTurns?: number; persistentReminder?: string
         }> = {}
@@ -1200,7 +1307,7 @@ export function createRunHandlers(
               hooks: hookBindingOptionsFromEnv(),
               workspacePath: workspacePath ?? null,
             })
-            helperOwnTools = [...helperAsm.tools]
+            helperOwnTools = subagentToolPool(helperAsm.tools)
             for (const t of helperOwnTools) {
               if (!spawnerPoolNames.has(t.name)) {
                 spawnerToolPool.push(t)
@@ -1224,7 +1331,7 @@ export function createRunHandlers(
           // the helper through the same fragment assembly the main
           // agent uses, with the helper's resolved tool subset.
           //
-          // Helper tools = parent's assembled.tools filtered by the
+          // Helper tools = the safe spawner pool filtered by the
           // helper's effective allow list. When the helper inherits
           // (no allow restriction), it sees the full parent tool set.
           // This mirrors the runtime tool gating Loom applies to the
@@ -1239,8 +1346,8 @@ export function createRunHandlers(
             const helperTools = helperOwnTools
               ? helperOwnTools
               : helperToolNames
-                ? assembled.tools.filter(t => helperToolNames.includes(t.name))
-                : assembled.tools
+                ? spawnerToolPool.filter(t => helperToolNames.includes(t.name))
+                : spawnerToolPool
             envelopedSystemPrompt = buildSubagentSystemPrompt(
               refProfile,
               helperTools,
@@ -1649,6 +1756,7 @@ export function createRunHandlers(
         profileId,
         candidateId,
         model: modelString,
+        ...(modelSubstitution !== undefined ? { modelSubstitution } : {}),
         status: 'running',
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
         attachments: attachmentMeta,
@@ -2342,6 +2450,14 @@ export function createRunHandlers(
       await buildThreadCredentialRuntime(credentialThreadId, workspacePath)
 
     const assembled = await assembleAgent(profile, {
+      ...(deps.resolvePluginSkills === undefined
+        ? {}
+        : {
+            additionalSkills: await deps.resolvePluginSkills({
+              agentId: params.profileId,
+              ...(params.workspaceId === undefined ? {} : { workspaceId: params.workspaceId }),
+            }),
+          }),
       webSearchService: deps.webSearchService,
       ...(deps.toolProviders !== undefined ? { toolProviders: deps.toolProviders } : {}),
       credentialContext: {

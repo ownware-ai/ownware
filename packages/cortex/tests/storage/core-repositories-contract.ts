@@ -1,6 +1,70 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CoreStorageRepositories } from '../../src/storage/core-repositories.js'
 import type { ThreadMessage } from '../../src/gateway/types.js'
+import type {
+  PricebookEntry,
+  UsageLedgerEntry,
+} from '../../src/provider-hub/schema.js'
+
+const USAGE_EVIDENCE_NOW = '2026-08-09T04:00:00.000Z'
+
+function usageEvidencePrice(): PricebookEntry {
+  return {
+    id: 'price:contract:sonnet',
+    version: 'catalog-v1',
+    currency: 'USD',
+    scope: {
+      providerRouteId: 'anthropic:api',
+      modelRouteId: 'anthropic:claude-sonnet',
+    },
+    rates: [
+      { dimension: 'input_text_tokens', unitSize: 1_000_000, amountUsd: 3 },
+      { dimension: 'output_text_tokens', unitSize: 1_000_000, amountUsd: 15 },
+    ],
+    effectiveFrom: null,
+    effectiveUntil: null,
+    source: {
+      kind: 'models_dev',
+      sourceRef: 'https://models.dev/api.json',
+      retrievedAt: USAGE_EVIDENCE_NOW,
+    },
+  }
+}
+
+function usageEvidenceEntry(
+  overrides: Partial<UsageLedgerEntry> = {},
+): UsageLedgerEntry {
+  const price = usageEvidencePrice()
+  return {
+    id: 'usage:contract:1',
+    occurredAt: USAGE_EVIDENCE_NOW,
+    profileId: 'ownware-code',
+    providerFamilyId: 'anthropic',
+    providerRouteId: 'anthropic:api',
+    modelRouteId: 'anthropic:claude-sonnet',
+    wireModelId: 'claude-sonnet',
+    billingKind: 'metered',
+    tokens: {
+      inputTextTokens: 1_000,
+      outputTextTokens: 200,
+      cacheReadTokens: 2_000,
+      reasoningTokens: 50,
+    },
+    units: { requests: 1 },
+    cost: {
+      classification: 'estimated',
+      amountUsd: 0.006,
+      currency: 'USD',
+      pricebookEntryId: price.id,
+      pricebookVersion: price.version,
+      observedAt: USAGE_EVIDENCE_NOW,
+    },
+    providerFacts: { finishReason: 'end_turn' },
+    durationMs: 800,
+    success: true,
+    ...overrides,
+  }
+}
 
 export interface CoreRepositoryHarness {
   readonly repositories: CoreStorageRepositories
@@ -253,6 +317,99 @@ export function runCoreRepositoryContract(
       expect(await repositories.events.maxSeq(thread.id, 'root')).toBe(3)
       expect(await append('root', 'text.delta', { type: 'text.delta', text: 'b' })).toBe(4)
       expect(await repositories.events.count()).toBe(5)
+    })
+
+    it('keeps provider-call facts immutable and chooses latest cost by adapter sequence', async () => {
+      const thread = await repositories.threads.create('usage-evidence')
+      const entry = usageEvidenceEntry({ threadId: thread.id })
+      await expect(repositories.usageEvidence.record(entry, usageEvidencePrice()))
+        .resolves.toEqual(entry)
+      expect(await repositories.usageEvidence.get(entry.id)).toEqual(entry)
+
+      // Deliberately older than the estimate: caller time must not outrank the
+      // adapter-assigned append sequence.
+      const reconciled = await repositories.usageEvidence.appendCostObservation(entry.id, {
+        classification: 'reconciled',
+        amountUsd: 0.0055,
+        currency: 'USD',
+        observedAt: '2026-08-08T04:00:00.000Z',
+        reconciledAt: '2026-08-10T04:00:00.000Z',
+      })
+      expect(reconciled.cost).toMatchObject({
+        classification: 'reconciled',
+        amountUsd: 0.0055,
+      })
+      expect((await repositories.usageEvidence.list({ classification: 'reconciled' })))
+        .toHaveLength(1)
+      expect((await repositories.usageEvidence.list({ classification: 'estimated' })))
+        .toHaveLength(0)
+      expect((await repositories.usageEvidence.summary()).observations.reconciled)
+        .toEqual({ requestCount: 1, amountUsd: 0.0055 })
+
+      const exported = await repositories.usageEvidence.exportEvidence()
+      expect(exported.entries[0]?.fact.id).toBe(entry.id)
+      expect(exported.entries[0]?.costObservations.map(observation => ({
+        sequence: observation.sequence,
+        classification: observation.cost.classification,
+      }))).toEqual([
+        { sequence: 1, classification: 'estimated' },
+        { sequence: 2, classification: 'reconciled' },
+      ])
+      expect(exported.pricebookSnapshots[0]?.entry).toEqual(usageEvidencePrice())
+
+      // Product retention cannot rewrite historical provider evidence.
+      await repositories.threads.delete(thread.id)
+      expect((await repositories.usageEvidence.get(entry.id))?.threadId).toBe(thread.id)
+      repositories = await harness.reopen()
+      expect((await repositories.usageEvidence.get(entry.id))?.cost.classification)
+        .toBe('reconciled')
+    })
+
+    it('rejects conflicting price evidence atomically and keeps failures content-free', async () => {
+      const first = usageEvidenceEntry()
+      await repositories.usageEvidence.record(first, usageEvidencePrice())
+      const conflicting = {
+        ...usageEvidencePrice(),
+        rates: [{ dimension: 'input_text_tokens' as const, unitSize: 1, amountUsd: 99 }],
+      }
+      await expect(repositories.usageEvidence.record(
+        usageEvidenceEntry({
+          id: 'usage:contract:conflict',
+          wireModelId: 'customer-secret-canary',
+        }),
+        conflicting,
+      )).rejects.not.toThrow('customer-secret-canary')
+      expect(await repositories.usageEvidence.get('usage:contract:conflict')).toBeNull()
+      await expect(repositories.usageEvidence.appendCostObservation('missing', {
+        classification: 'unknown',
+        amountUsd: null,
+        currency: 'USD',
+        observedAt: USAGE_EVIDENCE_NOW,
+      })).rejects.toMatchObject({ name: 'UsageEvidenceNotFoundError' })
+    })
+
+    it('serializes concurrent cost appends into one gap-free evidence order', async () => {
+      const entry = usageEvidenceEntry({ id: 'usage:contract:concurrent' })
+      await repositories.usageEvidence.record(entry, usageEvidencePrice())
+      await Promise.all(Array.from({ length: 8 }, (_, index) => {
+        const reconciledAt = new Date(Date.parse(USAGE_EVIDENCE_NOW) + index + 1).toISOString()
+        return repositories.usageEvidence.appendCostObservation(entry.id, {
+          classification: 'reconciled',
+          amountUsd: 0.01 + index / 10_000,
+          currency: 'USD',
+          observedAt: reconciledAt,
+          reconciledAt,
+        })
+      }))
+      const exported = await repositories.usageEvidence.exportEvidence()
+      const observations = exported.entries.find(row => row.fact.id === entry.id)?.costObservations
+      expect(observations?.map(observation => observation.sequence))
+        .toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+      expect(observations?.filter(observation => (
+        observation.cost.classification === 'reconciled'
+      ))).toHaveLength(8)
+      expect((await repositories.usageEvidence.get(entry.id))?.cost.classification)
+        .toBe('reconciled')
     })
 
     it('keeps the complete core value journey durable across reopen', async () => {

@@ -7,6 +7,7 @@ import type {
   ProviderHubOverview,
   ProviderHubService,
 } from '../../../src/provider-hub/index.js'
+import type { UsageEvidenceRepository } from '../../../src/storage/usage-evidence-repository.js'
 
 interface CapturedResponse {
   status?: number
@@ -175,5 +176,51 @@ describe('provider hub HTTP handlers', () => {
       { connectionId: 'oai_0123456789ab' },
     )
     expect(removalResponse.status).toBe(404)
+  })
+
+  it('reads classification-separated usage and appends only reconciliation', async () => {
+    const list = vi.fn(async () => [])
+    const appendCostObservation = vi.fn(async (_id, cost) => ({ cost }))
+    const usageEvidence = {
+      list,
+      appendCostObservation,
+    } as unknown as UsageEvidenceRepository
+    const handlers = createProviderHubHandlers({} as ProviderHubService, { usageEvidence })
+
+    const listResponse: CapturedResponse = {}
+    await handlers.usage(
+      request('/api/v1/provider-hub/usage?classification=reconciled&limit=25'),
+      response(listResponse),
+    )
+    expect(listResponse.status).toBe(200)
+    expect(list).toHaveBeenCalledWith({ classification: 'reconciled', limit: 25 })
+
+    const cost = {
+      classification: 'reconciled' as const,
+      amountUsd: 0.5,
+      currency: 'USD' as const,
+      observedAt: '2026-08-09T00:00:00.000Z',
+      reconciledAt: '2026-08-09T00:00:00.000Z',
+    }
+    const writeResponse: CapturedResponse = {}
+    await handlers.appendUsageCostObservation(
+      jsonRequest('/api/v1/provider-hub/usage/usage-1/cost-observations', cost),
+      response(writeResponse),
+      { usageId: 'usage-1' },
+    )
+    expect(writeResponse.status).toBe(201)
+    expect(appendCostObservation).toHaveBeenCalledWith('usage-1', cost)
+
+    const invalidResponse: CapturedResponse = {}
+    await handlers.appendUsageCostObservation(
+      jsonRequest('/api/v1/provider-hub/usage/usage-1/cost-observations', {
+        ...cost,
+        classification: 'estimated',
+      }),
+      response(invalidResponse),
+      { usageId: 'usage-1' },
+    )
+    expect(invalidResponse.status).toBe(400)
+    expect(appendCostObservation).toHaveBeenCalledTimes(1)
   })
 })

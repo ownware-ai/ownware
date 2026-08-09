@@ -151,6 +151,8 @@ export {
 // tool result. Pair with the existing skills loader/registry.
 export { createSkillTool } from './tools/builtins/skill.js'
 export type { SkillToolOptions } from './tools/builtins/skill.js'
+export { SkillRegistry } from './skills/registry.js'
+export { loadSkills, parseSkillFile } from './skills/loader.js'
 
 // Output sanitizer — value-format secret redaction (API keys, tokens,
 // private keys, connection strings). The canonical secret-VALUE redactor;

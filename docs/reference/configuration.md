@@ -71,6 +71,28 @@ Full story: [Exposing the gateway](../gateway/exposing.md) and
 | `OWNWARE_COMPOSIO_USER_ID` | derived | Pins the Composio entity id. |
 | `OWNWARE_SKIP_MCP_REGISTRY` | — | `1` skips MCP registry sync at boot (faster boots, e.g. tests/CI). |
 
+### Provider-route verification CLI
+
+These variables are read only by the explicit `ownware provider verify`
+operator command; they do not configure gateway startup. See
+[Models](../models/overview.md#verify-one-provider-route) for the evidence
+scope and safety contract.
+
+| Env var | Default | What it does |
+|---|---|---|
+| `OWNWARE_PROVIDER_VERIFY_LIVE` | off | Must equal `1` before any paid/network verification probe can run. |
+| `OWNWARE_PROVIDER_VERIFY_ADAPTER` / `OWNWARE_PROVIDER_VERIFY_ADAPTER_ID` | — | Selects the supported adapter kind and its exact runtime identity. Both are required. |
+| `OWNWARE_PROVIDER_VERIFY_MODEL` / `OWNWARE_PROVIDER_VERIFY_PROVIDER_ROUTE_ID` / `OWNWARE_PROVIDER_VERIFY_MODEL_ROUTE_ID` | — | Required wire model, Provider Hub route, and Provider Hub model identities for the evidence record. |
+| `OWNWARE_PROVIDER_VERIFY_CATALOG_GENERATION_ID` | — | Required `generation.id` from `GET /api/v1/provider-hub`; a different active catalog generation ignores the evidence. |
+| `OWNWARE_PROVIDER_VERIFY_OUTPUT` | — | Required path for the validated, mode-0600 evidence bundle. Use `<dataDir>/provider-hub/verification-evidence.json` for gateway consumption. |
+| `OWNWARE_PROVIDER_VERIFY_API_KEY` | — | Explicit transient verification credential. Never accepted as an argument, printed, or persisted in evidence. Required except for a supported no-auth compatible route. |
+| `OWNWARE_PROVIDER_VERIFY_BASE_URL` / `OWNWARE_PROVIDER_VERIFY_AUTH_KIND` | — / `bearer` | Exact endpoint override and `bearer`/`none` placement. A base URL is required for OpenAI-compatible verification; `none` is limited to that adapter kind. |
+| `OWNWARE_PROVIDER_VERIFY_PROBES` | text streaming, terminal events, usage reporting | Comma-separated contract probes. Unknown or empty entries fail before network access. |
+| `OWNWARE_PROVIDER_VERIFY_ABORT_AFTER_MS` / `OWNWARE_PROVIDER_VERIFY_CONTEXT_CHARS` | harness defaults / off | Positive-integer cancellation timing and explicit oversized-context fixture length. |
+| `OWNWARE_PROVIDER_VERIFY_EXPECT_RATE_LIMIT` / `OWNWARE_PROVIDER_VERIFY_STREAM_USAGE` | off | Exact `1` opt-ins for an expected rate-limit probe and compatible-stream usage reporting. |
+| `OWNWARE_PROVIDER_VERIFY_TOOL_USE` / `OWNWARE_PROVIDER_VERIFY_PARALLEL_TOOL_USE` / `OWNWARE_PROVIDER_VERIFY_VISION` / `OWNWARE_PROVIDER_VERIFY_PDF` / `OWNWARE_PROVIDER_VERIFY_CACHE_CONTROL` | off | Exact `1` declarations of compatible-adapter features eligible for their matching probes; omission produces an honest skip rather than a support claim. |
+| `OWNWARE_PROVIDER_VERIFY_IMAGE_PATH` / `OWNWARE_PROVIDER_VERIFY_IMAGE_MEDIA_TYPE` / `OWNWARE_PROVIDER_VERIFY_PDF_PATH` | — / `image/png` / — | Explicit local media fixtures. Their bytes and paths are not persisted in evidence. |
+
 ## Operations & debugging
 
 | Env var | Default | What it does |

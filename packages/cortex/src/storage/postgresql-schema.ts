@@ -176,7 +176,7 @@ export async function inspectPostgreSqlBaseline(
   return inspectPostgreSqlSchema(client, BASELINE_EXPECTATION)
 }
 
-async function inspectPostgreSqlSchema(
+export async function inspectPostgreSqlSchema(
   client: QueryClient,
   expectation: PostgreSqlSchemaExpectation,
 ): Promise<PostgreSqlBaselineInspection> {

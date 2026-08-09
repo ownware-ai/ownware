@@ -14,6 +14,7 @@ Packages: `ownware` (umbrella, the quickstart surface), `@ownware/loom` (agent r
 
 - [Agents & profiles](agents/overview.md): an agent is a folder of text files; when to use profiles and how to serve them
 - [Profile format](agents/profile-format.md): the profile directory and every commonly-used agent.json field (presets, security levels, connectors)
+- [Task packs](task-packs.md): immutable skill bundles, exact manifest format, scoped enablement, updates and rollback
 - [Hooks](agents/hooks.md): declare lifecycle hooks in agent.json — audit webhooks, run archives, pause-for-approval (chat/web/terminal decision), per-model-call metering, operator-gated command hooks, and which mechanism to pick when
 - [Hooks cookbook](agents/hooks-cookbook.md): copy-paste recipes for everyday jobs — approve-from-phone, finish notifications, per-client audit files, usage metering for billing, failure paging, custom check scripts, local debugging
 

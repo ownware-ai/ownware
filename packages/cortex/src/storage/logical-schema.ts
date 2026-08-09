@@ -27,9 +27,9 @@ export class LogicalSchemaError extends Error {
   }
 }
 
-export const SQLITE_V83_COLUMN_COUNT = 690
-export const SQLITE_V83_COLUMN_SET_HASH =
-  'sha256:003447047d88c986688d6df6673eb6e222dfd7dff3a85572a0d75549623b6945'
+export const SQLITE_V85_COLUMN_COUNT = 749
+export const SQLITE_V85_COLUMN_SET_HASH =
+  'sha256:3d5c7666cddab1ca3224a673edf7be1bec9a20a5b49782dbc8df691383afbb47'
 
 function keys(value: string): ReadonlySet<string> {
   return new Set(value.trim().split(/\s+/).filter(Boolean))
@@ -37,6 +37,7 @@ function keys(value: string): ReadonlySet<string> {
 
 const BOOLEAN_COLUMNS = keys(`
   memories.pinned
+  provider_usage_facts.success
   schedule_runs.was_catch_up
   schedules.skip_weekends
   schedules.skip_holidays
@@ -158,9 +159,20 @@ const ISO_INSTANT_COLUMNS = keys(`
   memory_proposals.created_at
   memory_proposals.resolved_at
   messages.created_at
+  plugin_grants.updated_at
+  plugin_migration_receipts.applied_at
+  plugin_packages.created_at
+  plugin_packages.updated_at
+  plugin_versions.installed_at
   profile_mcp_servers.added_at
   profile_metadata.updated_at
   profile_metadata.last_used_at
+  provider_pricebook_snapshots.recorded_at
+  provider_usage_cost_observations.observed_at
+  provider_usage_cost_observations.reconciled_at
+  provider_usage_cost_observations.recorded_at
+  provider_usage_facts.occurred_at
+  provider_usage_facts.recorded_at
   tasks.created_at
   tasks.updated_at
   team_leases.last_activity_at
@@ -207,6 +219,11 @@ const JSON_VALUE_COLUMNS = keys(`
   messages.attachments
   messages.parts
   messages.credentials
+  plugin_versions.manifest_json
+  provider_pricebook_snapshots.payload_json
+  provider_usage_facts.tokens_json
+  provider_usage_facts.units_json
+  provider_usage_facts.provider_facts_json
   run_idempotency.result_json
   schedule_approvals.tool_input
   schedule_approvals.result
@@ -308,8 +325,8 @@ export function postgresqlProjectionForColumn(key: string): LogicalValueProjecti
 export function classifyLogicalColumns(
   columns: readonly PhysicalColumnDescriptor[],
 ): readonly LogicalColumnDescriptor[] {
-  if (columns.length !== SQLITE_V83_COLUMN_COUNT) return fail('column_count_mismatch')
-  if (physicalColumnSetHash(columns) !== SQLITE_V83_COLUMN_SET_HASH) {
+  if (columns.length !== SQLITE_V85_COLUMN_COUNT) return fail('column_count_mismatch')
+  if (physicalColumnSetHash(columns) !== SQLITE_V85_COLUMN_SET_HASH) {
     return fail('column_set_mismatch')
   }
 

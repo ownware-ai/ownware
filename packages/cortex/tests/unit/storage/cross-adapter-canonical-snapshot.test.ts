@@ -11,7 +11,7 @@ import {
   type PostgreSqlRepositoryFactories,
 } from '../../../src/storage/postgresql-adapter.js'
 import {
-  postgreSqlCatalogMatchesCurrentV83,
+  postgreSqlCatalogMatchesCurrentV85,
 } from '../../../src/storage/postgresql-catalog-certification.js'
 import { canonicalPostgreSqlTransferSnapshot } from '../../../src/storage/postgresql-canonical-snapshot.js'
 import { validateStoragePlan, type ValidatedPostgreSqlPlan } from '../../../src/storage/config.js'
@@ -59,7 +59,7 @@ describePostgreSql('cross-adapter canonical transfer snapshot', () => {
       await adapter.initialize()
       await adapter.close()
       await postgresql.connect()
-      await expect(postgreSqlCatalogMatchesCurrentV83(postgresql)).resolves.toBe(true)
+      await expect(postgreSqlCatalogMatchesCurrentV85(postgresql)).resolves.toBe(true)
 
       const instant = '2026-08-02T03:04:05.678Z'
       const principal = 'delegated\0workspace-a\0profile-a'
@@ -150,6 +150,92 @@ describePostgreSql('cross-adapter canonical transfer snapshot', () => {
         '{ "count": 1e0, "ok": true }', '1', '2', '3',
       ])
 
+      const priceSha = `sha256:${'a'.repeat(64)}`
+      sqlite.prepare(`
+        INSERT INTO provider_pricebook_snapshots (
+          entry_id, version, payload_json, payload_sha256, recorded_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(
+        'price-a', '2026-08-09',
+        '{"id":"price-a","rates":[{"amountUsd":0.25,"dimension":"input_text_tokens"}]}',
+        priceSha, instant,
+      )
+      await postgresql.query(`
+        INSERT INTO ownware.provider_pricebook_snapshots (
+          entry_id, version, payload_json, payload_sha256, recorded_at
+        ) VALUES ($1, $2, $3, $4, $5)
+      `, [
+        'price-a', '2026-08-09',
+        '{ "rates": [{ "dimension": "input_text_tokens", "amountUsd": 2.5e-1 }], "id": "price-a" }',
+        priceSha, instant,
+      ])
+
+      sqlite.prepare(`
+        INSERT INTO provider_usage_facts (
+          id, occurred_at, thread_id, profile_id, provider_family_id,
+          provider_route_id, model_route_id, connection_id, wire_model_id,
+          service_tier, context_tier, region, billing_kind, tokens_json,
+          units_json, provider_facts_json, duration_ms, success, recorded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'usage-a', instant, 'thread-a', 'profile-a', 'family-a',
+        'route-a', 'model-route-a', 'connection-a', 'wire-model-a',
+        'priority', null, 'australia-southeast1', 'metered',
+        '{"inputTextTokens":1,"outputTextTokens":2}', '{"requests":1}',
+        '{"requestId":"request-provider-a"}', 12.5, 1, instant,
+      )
+      await postgresql.query(`
+        INSERT INTO ownware.provider_usage_facts (
+          id, occurred_at, thread_id, profile_id, provider_family_id,
+          provider_route_id, model_route_id, connection_id, wire_model_id,
+          service_tier, context_tier, region, billing_kind, tokens_json,
+          units_json, provider_facts_json, duration_ms, success, recorded_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17, $18, $19
+        )
+      `, [
+        'usage-a', instant, 'thread-a', 'profile-a', 'family-a',
+        'route-a', 'model-route-a', 'connection-a', 'wire-model-a',
+        'priority', null, 'australia-southeast1', 'metered',
+        '{ "outputTextTokens": 2e0, "inputTextTokens": 1.0 }', '{ "requests": 1e0 }',
+        '{ "requestId": "request-provider-a" }', 12.5, true, instant,
+      ])
+
+      for (const observation of [
+        {
+          id: 'cost-a-estimate', sequence: 1, classification: 'estimated', amount: 0.25,
+          priceId: 'price-a', priceVersion: '2026-08-09', reconciledAt: null,
+        },
+        {
+          id: 'cost-a-reconciled', sequence: 2, classification: 'reconciled', amount: 0.2,
+          priceId: null, priceVersion: null, reconciledAt: instant,
+        },
+      ] as const) {
+        sqlite.prepare(`
+          INSERT INTO provider_usage_cost_observations (
+            id, usage_id, observation_seq, classification, amount_usd,
+            currency, pricebook_entry_id, pricebook_version, observed_at,
+            reconciled_at, recorded_at
+          ) VALUES (?, 'usage-a', ?, ?, ?, 'USD', ?, ?, ?, ?, ?)
+        `).run(
+          observation.id, observation.sequence, observation.classification,
+          observation.amount, observation.priceId, observation.priceVersion,
+          instant, observation.reconciledAt, instant,
+        )
+        await postgresql.query(`
+          INSERT INTO ownware.provider_usage_cost_observations (
+            id, usage_id, observation_seq, classification, amount_usd,
+            currency, pricebook_entry_id, pricebook_version, observed_at,
+            reconciled_at, recorded_at
+          ) VALUES ($1, 'usage-a', $2, $3, $4, 'USD', $5, $6, $7, $8, $9)
+        `, [
+          observation.id, observation.sequence, observation.classification,
+          observation.amount, observation.priceId, observation.priceVersion,
+          instant, observation.reconciledAt, instant,
+        ])
+      }
+
       sqlite.close()
       const sqliteReceipt = preflightSqliteTransferSource(sqlitePath)
       const postgresqlReceipt = await canonicalPostgreSqlTransferSnapshot(postgresql)
@@ -165,10 +251,10 @@ describePostgreSql('cross-adapter canonical transfer snapshot', () => {
         tables: sqliteReceipt.tables,
       })
       expect(postgresqlReceipt).toMatchObject({
-        schemaVersion: 83,
-        logicalColumnCount: 690,
-        tableCount: 58,
-        rowCount: 4,
+        schemaVersion: 85,
+        logicalColumnCount: 749,
+        tableCount: 65,
+        rowCount: 8,
       })
     } finally {
       if (sqlite.open) sqlite.close()

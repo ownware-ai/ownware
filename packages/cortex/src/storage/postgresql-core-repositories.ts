@@ -26,6 +26,7 @@ import {
   safeInteger,
   withPostgreSqlTransaction,
 } from './postgresql-repository.js'
+import { createPostgreSqlUsageEvidenceRepository } from './postgresql-usage-evidence-repository.js'
 
 interface ThreadRow {
   readonly id: string
@@ -956,7 +957,9 @@ export function createPostgreSqlCoreRepositories(
     },
   }
 
-  return { threads, messages, usage, events }
+  const usageEvidence = createPostgreSqlUsageEvidenceRepository(context)
+
+  return { threads, messages, usage, usageEvidence, events }
 }
 
 /** Transaction-scoped primitive used by delegated thread authority. */

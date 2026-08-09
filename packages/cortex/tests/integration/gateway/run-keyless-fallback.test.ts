@@ -9,6 +9,8 @@
  *      provider's default (response.model tells the truth).
  *   2. An EXPLICIT body.model with an unavailable provider is never
  *      second-guessed — it must not silently fall back.
+ *   3. An install default seeds independent threads; a later explicit
+ *      choice changes only that thread and remains authoritative next turn.
  *
  * Real gateway, temp profilesDir + dataDir (per gateway CLAUDE.md).
  * Provider availability is driven through Loom's registry — a fake
@@ -68,16 +70,83 @@ afterAll(async () => {
 })
 
 describe('POST /run keyless fallback', () => {
-  it('profile-default model without credentials falls back to the available provider', async () => {
+  it('profile fallback returns the same truthful receipt on idempotent replay', async () => {
+    const request = () => fetch(`${baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': '14141414-1414-4141-8141-141414141414',
+      },
+      body: JSON.stringify({ profileId: 'test-agent', prompt: 'hello' }),
+    })
+    const res = await request()
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      model: string
+      threadId: string
+      modelSubstitution?: Record<string, unknown>
+    }
+    // NOT the profile's anthropic pin — the available provider's default.
+    expect(body.model).toBe('openai:gpt-5.5')
+    expect(body.modelSubstitution).toEqual({
+      configuredModel: 'anthropic:claude-sonnet-4-6',
+      effectiveModel: 'openai:gpt-5.5',
+      configuredSource: 'profile',
+      reason: 'profile_default_unavailable',
+    })
+
+    const replay = await request()
+    expect(replay.status).toBe(200)
+    expect(replay.headers.get('idempotency-replayed')).toBe('true')
+    expect(await replay.json()).toEqual(body)
+  })
+
+  it('uses the async install default without reporting a substitution', async () => {
+    await gateway.state.setSetting('defaults.defaultModel', '  openai:gpt-5.5  ')
     const res = await fetch(`${baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId: 'test-agent', prompt: 'hello' }),
+      body: JSON.stringify({ profileId: 'test-agent', prompt: 'use install default' }),
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { model: string; threadId: string }
-    // NOT the profile's anthropic pin — the available provider's default.
+    const body = (await res.json()) as {
+      model: string
+      modelSubstitution?: unknown
+    }
     expect(body.model).toBe('openai:gpt-5.5')
+    expect(body.modelSubstitution).toBeUndefined()
+  })
+
+  it('keeps an explicit override on only its thread after the install default seeds both', async () => {
+    registerProvider({ name: 'google' } as unknown as ProviderAdapter)
+
+    const start = async (prompt: string, input: { threadId?: string; model?: string } = {}) => {
+      const res = await fetch(`${baseUrl}/api/v1/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: 'test-agent', prompt, ...input }),
+      })
+      expect(res.status).toBe(200)
+      return await res.json() as { threadId: string; model: string }
+    }
+
+    const first = await start('first install-default thread')
+    const second = await start('second install-default thread')
+    expect(first.model).toBe('openai:gpt-5.5')
+    expect(second.model).toBe('openai:gpt-5.5')
+    await Promise.all([waitForRun(first.threadId), waitForRun(second.threadId)])
+
+    const overridden = await start('change only this thread', {
+      threadId: first.threadId,
+      model: 'google:gemini-2.5-flash',
+    })
+    expect(overridden.model).toBe('google:gemini-2.5-flash')
+    await waitForRun(first.threadId)
+
+    const firstContinued = await start('keep the override', { threadId: first.threadId })
+    const secondContinued = await start('keep the install choice', { threadId: second.threadId })
+    expect(firstContinued.model).toBe('google:gemini-2.5-flash')
+    expect(secondContinued.model).toBe('openai:gpt-5.5')
   })
 
   it('an explicit body.model with an unavailable provider is not silently swapped', async () => {
@@ -90,14 +159,15 @@ describe('POST /run keyless fallback', () => {
         model: 'anthropic:claude-sonnet-4-6',
       }),
     })
-    // Whatever the failure surface is (immediate error or a started run
-    // that dies on provider resolution), the response must never claim
-    // a DIFFERENT model than the one explicitly requested.
-    if (res.status === 200) {
-      const body = (await res.json()) as { model: string }
-      expect(body.model).toBe('anthropic:claude-sonnet-4-6')
-    } else {
-      expect(res.status).toBeGreaterThanOrEqual(400)
-    }
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ error: 'model_unavailable' })
   })
 })
+
+async function waitForRun(threadId: string): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (gateway.runner.isRunning(threadId) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  expect(gateway.runner.isRunning(threadId)).toBe(false)
+}

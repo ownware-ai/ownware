@@ -107,6 +107,8 @@ export type StorageRepositoryDomain =
   | 'threads'
   | 'messages'
   | 'usage'
+  | 'usage_evidence'
+  | 'plugins'
   | 'events'
   | 'credentials'
   | 'credential_audit'

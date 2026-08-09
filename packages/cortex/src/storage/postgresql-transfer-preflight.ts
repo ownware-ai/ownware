@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { POSTGRESQL_BASELINE_MANIFEST } from './postgresql-baseline.js'
 import {
-  postgreSqlCatalogMatchesCurrentV83,
+  postgreSqlCatalogMatchesCurrentV85,
 } from './postgresql-catalog-certification.js'
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
 import {
+  POSTGRESQL_CURRENT_SCHEMA_EXPECTATION,
   POSTGRESQL_MIGRATION_MANIFEST,
   type PostgreSqlMigrationHistoryRow,
   validatePostgreSqlMigrationHistory,
@@ -16,11 +16,13 @@ const TARGET_RECEIPT_FORMAT = 'ownware-postgresql-transfer-target-v1'
 const EXPECTED_FUNCTIONS = Object.freeze([
   '_is_iso_instant',
   '_reject_immutable_mutation',
+  '_reject_plugin_evidence_mutation',
+  '_reject_provider_usage_evidence_mutation',
   '_validate_access_grant_head',
 ])
 
 export const POSTGRESQL_TRANSFER_BUSINESS_TABLES = Object.freeze([
-  ...new Set(POSTGRESQL_BASELINE_MANIFEST.columns.map((column) => column.table)),
+  ...new Set(POSTGRESQL_CURRENT_SCHEMA_EXPECTATION.manifest.columns.map(column => column.table)),
 ].filter((table) => table !== '_migrations').sort())
 
 export type PostgreSqlTransferTargetState =
@@ -417,7 +419,7 @@ export async function preflightPostgreSqlTransferTarget(
     if (!await exactNamespaceAndOwnership(migration)) {
       return fail('schema_unrecognized')
     }
-    if (!await postgreSqlCatalogMatchesCurrentV83(migration)) {
+    if (!await postgreSqlCatalogMatchesCurrentV85(migration)) {
       return fail('schema_manifest_mismatch')
     }
     await assertBusinessTablesEmpty(migration)
@@ -495,7 +497,7 @@ export async function lockAndValidateEmptyPostgreSqlTransferTarget(
       applied !== POSTGRESQL_MIGRATION_MANIFEST.migrations.length ||
       !await POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(client) ||
       !await exactNamespaceAndOwnership(client) ||
-      !await postgreSqlCatalogMatchesCurrentV83(client)
+      !await postgreSqlCatalogMatchesCurrentV85(client)
     ) {
       return fail('schema_manifest_mismatch')
     }

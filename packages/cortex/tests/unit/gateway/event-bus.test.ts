@@ -124,7 +124,7 @@ describe('EventIngestor', () => {
     db = new CortexDatabase(join(tmpDir, 'test.db'))
     bus = new EventBus()
     ingestor = new EventIngestor(
-      createSqliteCoreRepositoriesFromDatabase(db).events,
+      createSqliteCoreRepositoriesFromDatabase(db, db.rawMainHandle).events,
       bus,
     )
     // Need a real thread row — foreign keys not enforced on agent_events
@@ -317,7 +317,7 @@ describe('EventIngestor', () => {
     // stand-in for the future case where a subagent and its parent
     // both write to the same thread concurrently.
     const ing2 = new EventIngestor(
-      createSqliteCoreRepositoriesFromDatabase(db).events,
+      createSqliteCoreRepositoriesFromDatabase(db, db.rawMainHandle).events,
       bus,
     )
 

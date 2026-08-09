@@ -4461,4 +4461,216 @@ export const MIGRATIONS: Migration[] = [
         ON messages(thread_id, message_seq ASC);
     `,
   },
+  {
+    version: 84,
+    name: '084_provider_usage_evidence',
+    sql: `
+      -- Immutable Provider Hub price evidence. Reusing one logical price
+      -- identity with different bytes is rejected by the repository before
+      -- any usage fact is committed.
+      CREATE TABLE provider_pricebook_snapshots (
+        entry_id        TEXT NOT NULL,
+        version         TEXT NOT NULL,
+        payload_json    TEXT NOT NULL CHECK (json_valid(payload_json)),
+        payload_sha256  TEXT NOT NULL CHECK (
+          payload_sha256 GLOB 'sha256:[0-9a-f]*' AND length(payload_sha256) = 71
+        ),
+        recorded_at     TEXT NOT NULL,
+        PRIMARY KEY (entry_id, version)
+      );
+
+      -- One immutable fact per usage event observed at the provider/runtime
+      -- boundary. Thread/profile ids are historical labels rather than foreign
+      -- keys so deleting product state cannot rewrite billing evidence.
+      CREATE TABLE provider_usage_facts (
+        id                  TEXT PRIMARY KEY,
+        occurred_at         TEXT NOT NULL,
+        thread_id           TEXT,
+        profile_id          TEXT,
+        provider_family_id  TEXT NOT NULL,
+        provider_route_id   TEXT NOT NULL,
+        model_route_id      TEXT NOT NULL,
+        connection_id       TEXT,
+        wire_model_id       TEXT NOT NULL,
+        service_tier        TEXT,
+        context_tier        TEXT,
+        region              TEXT,
+        billing_kind        TEXT NOT NULL CHECK (billing_kind IN (
+          'metered', 'provider_reported', 'subscription', 'local', 'unknown'
+        )),
+        tokens_json         TEXT NOT NULL CHECK (json_valid(tokens_json)),
+        units_json          TEXT NOT NULL CHECK (json_valid(units_json)),
+        provider_facts_json TEXT NOT NULL CHECK (json_valid(provider_facts_json)),
+        duration_ms         REAL CHECK (duration_ms IS NULL OR duration_ms >= 0),
+        success             INTEGER NOT NULL CHECK (success IN (0, 1)),
+        recorded_at         TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_provider_usage_facts_occurred
+        ON provider_usage_facts(occurred_at DESC, id DESC);
+      CREATE INDEX idx_provider_usage_facts_profile
+        ON provider_usage_facts(profile_id, occurred_at DESC, id DESC);
+      CREATE INDEX idx_provider_usage_facts_thread
+        ON provider_usage_facts(thread_id, occurred_at ASC, id ASC);
+      CREATE INDEX idx_provider_usage_facts_route_model
+        ON provider_usage_facts(provider_route_id, model_route_id, occurred_at DESC, id DESC);
+
+      -- Cost is an append-only observation stream. Durable sequence, not a
+      -- caller timestamp, defines append order.
+      CREATE TABLE provider_usage_cost_observations (
+        id                  TEXT PRIMARY KEY,
+        usage_id            TEXT NOT NULL REFERENCES provider_usage_facts(id),
+        observation_seq     INTEGER NOT NULL CHECK (
+          observation_seq BETWEEN 1 AND 9007199254740991
+        ),
+        classification      TEXT NOT NULL CHECK (classification IN (
+          'estimated', 'provider_reported', 'reconciled',
+          'subscription', 'local', 'unknown'
+        )),
+        amount_usd          REAL,
+        currency            TEXT NOT NULL CHECK (currency = 'USD'),
+        pricebook_entry_id  TEXT,
+        pricebook_version   TEXT,
+        observed_at         TEXT NOT NULL,
+        reconciled_at       TEXT,
+        recorded_at         TEXT NOT NULL,
+        UNIQUE (usage_id, observation_seq),
+        CHECK (
+          (classification IN ('unknown', 'subscription', 'local') AND amount_usd IS NULL)
+          OR
+          (classification IN ('estimated', 'provider_reported', 'reconciled')
+            AND amount_usd IS NOT NULL AND amount_usd >= 0)
+        ),
+        CHECK (
+          (classification = 'estimated'
+            AND pricebook_entry_id IS NOT NULL AND pricebook_version IS NOT NULL)
+          OR classification <> 'estimated'
+        ),
+        CHECK (
+          (pricebook_entry_id IS NULL AND pricebook_version IS NULL)
+          OR (pricebook_entry_id IS NOT NULL AND pricebook_version IS NOT NULL)
+        ),
+        CHECK (
+          (classification = 'reconciled' AND reconciled_at IS NOT NULL)
+          OR classification <> 'reconciled'
+        ),
+        FOREIGN KEY (pricebook_entry_id, pricebook_version)
+          REFERENCES provider_pricebook_snapshots(entry_id, version)
+      );
+
+      CREATE INDEX idx_provider_usage_cost_classification
+        ON provider_usage_cost_observations(classification, observed_at DESC, id DESC);
+
+      CREATE TRIGGER provider_pricebook_snapshots_no_update
+        BEFORE UPDATE ON provider_pricebook_snapshots
+        BEGIN SELECT RAISE(ABORT, 'immutable provider usage evidence'); END;
+      CREATE TRIGGER provider_pricebook_snapshots_no_delete
+        BEFORE DELETE ON provider_pricebook_snapshots
+        BEGIN SELECT RAISE(ABORT, 'immutable provider usage evidence'); END;
+      CREATE TRIGGER provider_usage_facts_no_update
+        BEFORE UPDATE ON provider_usage_facts
+        BEGIN SELECT RAISE(ABORT, 'immutable provider usage evidence'); END;
+      CREATE TRIGGER provider_usage_facts_no_delete
+        BEFORE DELETE ON provider_usage_facts
+        BEGIN SELECT RAISE(ABORT, 'immutable provider usage evidence'); END;
+      CREATE TRIGGER provider_usage_cost_observations_no_update
+        BEFORE UPDATE ON provider_usage_cost_observations
+        BEGIN SELECT RAISE(ABORT, 'immutable provider usage evidence'); END;
+      CREATE TRIGGER provider_usage_cost_observations_no_delete
+        BEFORE DELETE ON provider_usage_cost_observations
+        BEGIN SELECT RAISE(ABORT, 'immutable provider usage evidence'); END;
+    `,
+  },
+  {
+    version: 85,
+    name: '085_plugin_control_plane',
+    sql: `
+      -- Package bytes live under the lifecycle service's private data root.
+      -- This database owns immutable identity plus mutable scope decisions.
+      CREATE TABLE plugin_packages (
+        id          TEXT PRIMARY KEY,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        CHECK (length(id) BETWEEN 1 AND 128)
+      );
+
+      CREATE TABLE plugin_versions (
+        plugin_id       TEXT NOT NULL REFERENCES plugin_packages(id),
+        version         TEXT NOT NULL,
+        manifest_json   TEXT NOT NULL CHECK (json_valid(manifest_json)),
+        manifest_sha256 TEXT NOT NULL CHECK (
+          manifest_sha256 GLOB 'sha256:[0-9a-f]*' AND length(manifest_sha256) = 71
+        ),
+        package_sha256  TEXT NOT NULL CHECK (
+          package_sha256 GLOB 'sha256:[0-9a-f]*' AND length(package_sha256) = 71
+        ),
+        package_key     TEXT NOT NULL CHECK (length(package_key) BETWEEN 1 AND 1024),
+        source_kind     TEXT NOT NULL CHECK (source_kind IN (
+          'builtin', 'local', 'marketplace'
+        )),
+        trust_kind      TEXT NOT NULL CHECK (trust_kind IN (
+          'builtin', 'local', 'verified', 'unverified'
+        )),
+        installed_at    TEXT NOT NULL,
+        PRIMARY KEY (plugin_id, version)
+      );
+
+      CREATE INDEX idx_plugin_versions_installed
+        ON plugin_versions(plugin_id, installed_at DESC, version DESC);
+
+      CREATE TABLE plugin_grants (
+        plugin_id   TEXT NOT NULL REFERENCES plugin_packages(id),
+        scope_kind  TEXT NOT NULL CHECK (scope_kind IN ('global', 'workspace', 'agent')),
+        scope_id    TEXT NOT NULL,
+        decision    TEXT NOT NULL CHECK (decision IN ('allow', 'deny')),
+        version     TEXT,
+        revision    INTEGER NOT NULL CHECK (
+          revision BETWEEN 1 AND 9007199254740991
+        ),
+        updated_at  TEXT NOT NULL,
+        PRIMARY KEY (plugin_id, scope_kind, scope_id),
+        CHECK (
+          (scope_kind = 'global' AND scope_id = '')
+          OR (scope_kind <> 'global' AND length(scope_id) BETWEEN 1 AND 256)
+        ),
+        CHECK (
+          (decision = 'allow' AND version IS NOT NULL)
+          OR (decision = 'deny' AND version IS NULL)
+        ),
+        FOREIGN KEY (plugin_id, version)
+          REFERENCES plugin_versions(plugin_id, version)
+      );
+
+      CREATE INDEX idx_plugin_grants_scope
+        ON plugin_grants(scope_kind, scope_id, plugin_id);
+
+      CREATE TABLE plugin_migration_receipts (
+        plugin_id        TEXT NOT NULL,
+        version          TEXT NOT NULL,
+        migration_id     TEXT NOT NULL,
+        migration_sha256 TEXT NOT NULL CHECK (
+          migration_sha256 GLOB 'sha256:[0-9a-f]*' AND length(migration_sha256) = 71
+        ),
+        applied_at       TEXT NOT NULL,
+        PRIMARY KEY (plugin_id, version, migration_id),
+        FOREIGN KEY (plugin_id, version)
+          REFERENCES plugin_versions(plugin_id, version)
+      );
+
+      -- Installed identities and migration receipts are evidence. A new
+      -- version is always an insert; rollback only changes the active grant.
+      CREATE TRIGGER plugin_versions_no_update
+        BEFORE UPDATE ON plugin_versions
+        BEGIN SELECT RAISE(ABORT, 'immutable plugin version'); END;
+      CREATE TRIGGER plugin_versions_no_delete
+        BEFORE DELETE ON plugin_versions
+        BEGIN SELECT RAISE(ABORT, 'immutable plugin version'); END;
+      CREATE TRIGGER plugin_migration_receipts_no_update
+        BEFORE UPDATE ON plugin_migration_receipts
+        BEGIN SELECT RAISE(ABORT, 'immutable plugin migration receipt'); END;
+      CREATE TRIGGER plugin_migration_receipts_no_delete
+        BEFORE DELETE ON plugin_migration_receipts
+        BEGIN SELECT RAISE(ABORT, 'immutable plugin migration receipt'); END;
+    `,
+  },
 ]

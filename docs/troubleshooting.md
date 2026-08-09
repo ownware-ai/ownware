@@ -30,9 +30,10 @@ globally — run `node packages/cortex/dist/cli.js …` or alias it. Confirm you
 
 ## "It looks like it ran, but the agent never answers"
 
-The most common cause: **no model is available.** A fresh profile defaults to
-`openai:gpt-5.5`, which needs a key. The run starts (you get a `threadId`)
-but produces no reply. Fix one of:
+The most common cause is that **no model is runnable.** A fresh profile defaults
+to `openai:gpt-5.5`, which needs a key. Ownware can replace an unavailable
+profile default when another connected model exists, but it never silently
+replaces an explicit run, saved-thread, or install-default choice. Fix one of:
 
 - Set a key: `ownware key add openai` (or `export OPENAI_API_KEY=…`). Using another
   provider? Set the profile model to it and add that provider's key instead.
@@ -41,6 +42,10 @@ but produces no reply. Fix one of:
 Check what's usable right now:
 `curl 'http://localhost:3011/api/v1/provider-hub/models?scope=connected'`.
 Each `items[]` entry is backed by an active API-key, custom, subscription or reachable local connection.
+If `POST /api/v1/run` rejects the selection, inspect its typed error and choose
+one of these connected model IDs. A successful response's `model` is the actual
+dispatch; `modelSubstitution` explains the narrow profile-default fallback when
+one occurred.
 
 ## Ollama (keyless local)
 

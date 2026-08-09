@@ -77,6 +77,7 @@ beforeEach(async () => {
         object: 'chat.completion.chunk',
         created: 1,
         model: 'fixture-model',
+        service_tier: 'priority',
         choices: [],
         usage: {
           prompt_tokens: 12,
@@ -137,6 +138,9 @@ describe('OpenAICompatibleProvider', () => {
           outputTokens: 4,
           cacheReadTokens: 2,
           cacheCreationTokens: 0,
+          requestId: 'chatcmpl_fixture',
+          servedModelId: 'fixture-model',
+          servedTier: 'priority',
         }),
       }),
     ]))

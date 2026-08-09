@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- 40d7804: Add the central Provider Hub with a validated Models.dev catalog, explicit
+  route and verification truth, nine resolver-backed OpenAI-compatible provider
+  presets, and managed custom compatible endpoints for local or cloud inference.
+  Custom keys remain in Ownware's encrypted credential store, while the typed
+  client and OpenAPI contract expose only secret-free configuration and catalog
+  state. Provider Hub is also the single model-discovery and pricebook authority:
+  the React and CLI pickers consume it directly, ambient API-key and local Ollama
+  connections join the same view, and the deprecated `/api/v1/models` route is
+  only a compatibility projection of that assembled generation. Automatic
+  fallback additionally checks the live runtime adapter registry, while normal
+  model listing consumes only already-observed Codex state and never starts the
+  optional subscription runtime.
+- Record authoritative provider usage as immutable facts with append-only,
+  classification-separated costs and exact pricebook evidence. Add bounded Provider
+  Hub usage reads, summaries, export, reconciliation, and matching client methods.
+
+### Patch Changes
+
+- 40d7804: Clarify Ownware's public package documentation and metadata around the runtime
+  boundary: a portable profile becomes a self-hosted service with an owned
+  execution loop, durable state, permission flow, storage, and one typed client
+  contract. Provider and messaging integrations remain documented as supported
+  routes and optional adapters rather than the product category.
+
 ## 0.4.0
 
 ### Minor Changes

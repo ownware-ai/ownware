@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.34.0
+  version: 0.37.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -107,6 +107,74 @@ paths:
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
 
+  /api/v1/task-catalog:
+    get:
+      operationId: listTaskCatalog
+      summary: List installed immutable task packs and their scope decisions.
+      description: >
+        Install-owner-only. Task metadata describes outcomes while package
+        digests establish byte identity only; they do not prove publisher
+        identity, permission, or task completion. Without context parameters,
+        effectiveVersion and tasks reflect global policy only.
+      parameters:
+        - in: query
+          name: workspaceId
+          schema: { type: string, minLength: 1, maxLength: 256 }
+        - in: query
+          name: agentId
+          schema: { type: string, minLength: 1, maxLength: 256 }
+      responses:
+        '200':
+          description: Task-oriented catalog and revisioned global/workspace/agent decisions.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPackCatalog' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/task-catalog/{taskPackId}/scope:
+    put:
+      operationId: setTaskPackScope
+      summary: Compare-and-set one task-pack scope decision and selected version.
+      description: >
+        Install-owner-only. A deny selects no version. An allow must select one
+        installed immutable version. The expected revision prevents lost updates.
+      parameters:
+        - in: path
+          name: taskPackId
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetTaskPackScopeInput' }
+      responses:
+        '200':
+          description: The actual durable scope decision and its new or replayed revision.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope]
+                properties:
+                  scope: { $ref: '#/components/schemas/TaskPackScope' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
   /api/v1/provider-hub:
     get:
       operationId: getProviderHubOverview
@@ -188,6 +256,82 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ProviderHubOverview' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/usage:
+    get:
+      operationId: listProviderHubUsage
+      summary: List immutable provider-call facts with their latest cost observation.
+      description: Latest is selected by adapter-assigned append sequence, never caller timestamp.
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: until, schema: { type: string, format: date-time } }
+        - { in: query, name: profileId, schema: { type: string, minLength: 1, maxLength: 512 } }
+        - { in: query, name: threadId, schema: { type: string, minLength: 1, maxLength: 512 } }
+        - { in: query, name: classification, schema: { $ref: '#/components/schemas/ProviderHubCostClassification' } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 1000, default: 100 } }
+      responses:
+        '200':
+          description: Bounded provider usage page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubUsagePage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/usage/summary:
+    get:
+      operationId: summarizeProviderHubUsage
+      summary: Summarize tokens and latest costs without blending classifications.
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: until, schema: { type: string, format: date-time } }
+        - { in: query, name: profileId, schema: { type: string, minLength: 1, maxLength: 512 } }
+        - { in: query, name: threadId, schema: { type: string, minLength: 1, maxLength: 512 } }
+      responses:
+        '200':
+          description: Classification-separated usage summary.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubUsageSummary' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/usage/export:
+    get:
+      operationId: exportProviderHubUsageEvidence
+      summary: Export every immutable fact, append-only observation and hashed price snapshot.
+      responses:
+        '200':
+          description: Lossless secret-free provider usage evidence.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubUsageEvidenceExport' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/provider-hub/usage/{usageId}/cost-observations:
+    post:
+      operationId: reconcileProviderHubUsageCost
+      summary: Append an operator reconciliation without replacing earlier evidence.
+      parameters:
+        - in: path
+          name: usageId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 512 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProviderHubReconciledCostInput' }
+      responses:
+        '201':
+          description: Usage entry projected with the appended reconciliation as latest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderHubUsageEntry' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/provider-hub/catalog/refresh:
     post:
@@ -1482,10 +1626,13 @@ paths:
                   type: string
                   description: >
                     Override the model (`provider:model`). Omitted → the
-                    thread's model, else the profile's default — and if that
-                    default's provider has no credentials, the gateway falls
-                    back to a model that can answer (vault/env provider,
-                    else a reachable local Ollama).
+                    thread's model, else the install's `defaults.defaultModel`,
+                    else the profile's default. Only an unavailable
+                    same-runtime profile default may use the keyless fallback
+                    (vault/env provider, else a reachable local Ollama).
+                    Explicit request/thread/install choices fail honestly when
+                    unavailable. A winner from any source that belongs to
+                    another runtime fails instead of crossing that boundary.
                 attachments:
                   type: array
                   maxItems: 8
@@ -1514,6 +1661,8 @@ paths:
                   model:
                     type: string
                     description: The model ACTUALLY dispatched (incl. keyless fallback).
+                  modelSubstitution:
+                    $ref: '#/components/schemas/ModelSubstitution'
                   status: { type: string }
                   timeoutMs:
                     type: integer
@@ -1810,6 +1959,59 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/SourceDeletionError' }
   schemas:
+    TaskPackScope:
+      type: object
+      required: [taskPackId, scopeKind, scopeId, decision, version, revision, updatedAt]
+      properties:
+        taskPackId: { type: string }
+        scopeKind: { type: string, enum: [global, workspace, agent] }
+        scopeId: { type: [string, 'null'] }
+        decision: { type: string, enum: [allow, deny] }
+        version: { type: [string, 'null'] }
+        revision: { type: integer, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+      additionalProperties: false
+    TaskPackTask:
+      type: object
+      required: [id, label, description, examples]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        description: { type: string }
+        examples: { type: array, items: { type: string } }
+      additionalProperties: false
+    TaskPackCatalogEntry:
+      type: object
+      required: [id, name, description, availableVersions, effectiveVersion, tasks, scopes]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        availableVersions: { type: array, items: { type: string } }
+        effectiveVersion:
+          type: [string, 'null']
+          description: Exact selected version for the requested context, or null when disabled.
+        tasks: { type: array, items: { $ref: '#/components/schemas/TaskPackTask' } }
+        scopes: { type: array, items: { $ref: '#/components/schemas/TaskPackScope' } }
+      additionalProperties: false
+    TaskPackCatalog:
+      type: object
+      required: [taskPacks]
+      properties:
+        taskPacks:
+          type: array
+          items: { $ref: '#/components/schemas/TaskPackCatalogEntry' }
+      additionalProperties: false
+    SetTaskPackScopeInput:
+      type: object
+      required: [scopeKind, scopeId, decision, version, expectedRevision]
+      properties:
+        scopeKind: { type: string, enum: [global, workspace, agent] }
+        scopeId: { type: [string, 'null'] }
+        decision: { type: string, enum: [allow, deny] }
+        version: { type: [string, 'null'] }
+        expectedRevision: { type: [integer, 'null'], minimum: 1 }
+      additionalProperties: false
     ProviderHubGeneration:
       type: object
       required: [id, schemaVersion, source, generatedAt, sha256]
@@ -2015,6 +2217,170 @@ components:
         effectiveFrom: { type: [string, 'null'], format: date-time }
         effectiveUntil: { type: [string, 'null'], format: date-time }
         source: { type: object }
+      additionalProperties: false
+    ProviderHubCostClassification:
+      type: string
+      enum: [estimated, provider_reported, reconciled, subscription, local, unknown]
+    ProviderHubUsageCost:
+      type: object
+      required: [classification, amountUsd, currency, observedAt]
+      properties:
+        classification: { $ref: '#/components/schemas/ProviderHubCostClassification' }
+        amountUsd: { type: [number, 'null'], minimum: 0 }
+        currency: { type: string, const: USD }
+        pricebookEntryId: { type: string }
+        pricebookVersion: { type: string }
+        observedAt: { type: string, format: date-time }
+        reconciledAt: { type: string, format: date-time }
+      additionalProperties: false
+    ProviderHubReconciledCostInput:
+      allOf:
+        - { $ref: '#/components/schemas/ProviderHubUsageCost' }
+        - type: object
+          required: [classification, amountUsd, reconciledAt]
+          properties:
+            classification: { type: string, const: reconciled }
+            amountUsd: { type: number, minimum: 0 }
+            reconciledAt: { type: string, format: date-time }
+    ProviderHubUsageEntry:
+      type: object
+      required: [id, occurredAt, providerFamilyId, providerRouteId, modelRouteId, wireModelId, billingKind, tokens, units, cost, providerFacts, success]
+      properties:
+        id: { type: string }
+        occurredAt: { type: string, format: date-time }
+        threadId: { type: string }
+        profileId: { type: string }
+        providerFamilyId: { type: string }
+        providerRouteId: { type: string }
+        modelRouteId: { type: string }
+        connectionId: { type: string }
+        wireModelId: { type: string }
+        serviceTier: { type: string }
+        contextTier: { type: string }
+        region: { type: string }
+        billingKind: { type: string, enum: [metered, provider_reported, subscription, local, unknown] }
+        tokens:
+          type: object
+          properties:
+            inputTextTokens: { type: integer, minimum: 0 }
+            outputTextTokens: { type: integer, minimum: 0 }
+            cacheReadTokens: { type: integer, minimum: 0 }
+            cacheWriteTokens: { type: integer, minimum: 0 }
+            reasoningTokens: { type: integer, minimum: 0 }
+            inputAudioTokens: { type: integer, minimum: 0 }
+            outputAudioTokens: { type: integer, minimum: 0 }
+          additionalProperties: false
+        units:
+          type: object
+          properties:
+            inputImages: { type: integer, minimum: 0 }
+            outputImages: { type: integer, minimum: 0 }
+            requests: { type: integer, minimum: 0 }
+            toolCalls: { type: integer, minimum: 0 }
+          additionalProperties: false
+        cost: { $ref: '#/components/schemas/ProviderHubUsageCost' }
+        providerFacts:
+          type: object
+          properties:
+            requestId: { type: string }
+            generationId: { type: string }
+            servedModelId: { type: string }
+            servedProvider: { type: string }
+            servedTier: { type: string }
+            finishReason: { type: string }
+            usagePayloadHash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+          additionalProperties: false
+        durationMs: { type: number, minimum: 0 }
+        success: { type: boolean }
+      additionalProperties: false
+    ProviderHubUsagePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ProviderHubUsageEntry' } }
+      additionalProperties: false
+    ProviderHubUsageFact:
+      type: object
+      required: [id, occurredAt, providerFamilyId, providerRouteId, modelRouteId, wireModelId, billingKind, tokens, units, providerFacts, success]
+      properties:
+        id: { type: string }
+        occurredAt: { type: string, format: date-time }
+        threadId: { type: string }
+        profileId: { type: string }
+        providerFamilyId: { type: string }
+        providerRouteId: { type: string }
+        modelRouteId: { type: string }
+        connectionId: { type: string }
+        wireModelId: { type: string }
+        serviceTier: { type: string }
+        contextTier: { type: string }
+        region: { type: string }
+        billingKind: { type: string, enum: [metered, provider_reported, subscription, local, unknown] }
+        tokens: { type: object }
+        units: { type: object }
+        providerFacts: { type: object }
+        durationMs: { type: number, minimum: 0 }
+        success: { type: boolean }
+      additionalProperties: false
+    ProviderHubUsageSummary:
+      type: object
+      required: [observations, tokens]
+      properties:
+        observations:
+          type: object
+          required: [estimated, provider_reported, reconciled, subscription, local, unknown]
+          additionalProperties:
+            type: object
+            required: [requestCount, amountUsd]
+            properties:
+              requestCount: { type: integer, minimum: 0 }
+              amountUsd: { type: [number, 'null'], minimum: 0 }
+            additionalProperties: false
+        tokens:
+          type: object
+          required: [inputTextTokens, outputTextTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens]
+          properties:
+            inputTextTokens: { type: integer, minimum: 0 }
+            outputTextTokens: { type: integer, minimum: 0 }
+            cacheReadTokens: { type: integer, minimum: 0 }
+            cacheWriteTokens: { type: integer, minimum: 0 }
+            reasoningTokens: { type: integer, minimum: 0 }
+          additionalProperties: false
+      additionalProperties: false
+    ProviderHubUsageEvidenceExport:
+      type: object
+      required: [entries, pricebookSnapshots]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            required: [fact, recordedAt, costObservations]
+            properties:
+              fact:
+                $ref: '#/components/schemas/ProviderHubUsageFact'
+              recordedAt: { type: string, format: date-time }
+              costObservations:
+                type: array
+                items:
+                  type: object
+                  required: [id, sequence, cost, recordedAt]
+                  properties:
+                    id: { type: string }
+                    sequence: { type: integer, minimum: 1 }
+                    cost: { $ref: '#/components/schemas/ProviderHubUsageCost' }
+                    recordedAt: { type: string, format: date-time }
+                  additionalProperties: false
+            additionalProperties: false
+        pricebookSnapshots:
+          type: array
+          items:
+            type: object
+            required: [entry, recordedAt]
+            properties:
+              entry: { $ref: '#/components/schemas/ProviderHubPricebookEntry' }
+              recordedAt: { type: string, format: date-time }
+            additionalProperties: false
       additionalProperties: false
     ProviderHubModelPage:
       type: object
@@ -2268,6 +2634,24 @@ components:
               serviceTiers: { type: array, items: { type: string } }
               defaultServiceTier: { type: [string, 'null'] }
               supportsPersonality: { type: boolean }
+
+    ModelSubstitution:
+      type: object
+      additionalProperties: false
+      required: [configuredModel, effectiveModel, configuredSource, reason]
+      description: >
+        Gateway dispatch receipt present only when the normalized configured
+        winner differs from the model actually dispatched. It does not prove
+        provider acceptance, completion, capability support or billing.
+      properties:
+        configuredModel: { type: string, minLength: 1, maxLength: 256 }
+        effectiveModel: { type: string, minLength: 1, maxLength: 256 }
+        configuredSource:
+          type: string
+          const: profile
+        reason:
+          type: string
+          enum: [profile_default_unavailable]
 
     RunSnapshot:
       type: object

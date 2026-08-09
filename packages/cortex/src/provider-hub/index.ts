@@ -146,6 +146,8 @@ export {
   type UsagePriceSelection,
 } from './usage-pricing.js'
 
+export { ProviderUsageRecorder } from './usage-recorder.js'
+
 export {
   PROVIDER_VERIFICATION_HARNESS_VERSION,
   PROVIDER_VERIFICATION_SCHEMA_VERSION,

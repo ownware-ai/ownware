@@ -112,6 +112,7 @@ describe('OpenAIResponsesProvider', () => {
           cacheReadTokens: 4,
           cacheCreationTokens: 0,
           reasoningTokens: 1,
+          requestId: 'resp_test',
         },
       },
     ])
@@ -296,6 +297,7 @@ describe('OpenAIResponsesProvider', () => {
           outputTokens: 8,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          requestId: 'resp_tool',
         },
       },
     ])
@@ -537,6 +539,7 @@ describe('OpenAIResponsesProvider', () => {
         outputTokens: 4,
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
+        requestId: 'resp_partial',
       },
     })
   })
@@ -579,6 +582,7 @@ describe('OpenAIResponsesProvider', () => {
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          requestId: 'resp_refusal',
         },
       },
     ])
@@ -683,6 +687,7 @@ describe('OpenAIResponsesProvider', () => {
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          requestId: 'resp_reasoned',
         },
       },
     ])
@@ -942,6 +947,7 @@ describe('OpenAIResponsesProvider', () => {
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          requestId: 'resp_snapshot',
         },
       },
     ])
@@ -1011,6 +1017,7 @@ describe('OpenAIResponsesProvider', () => {
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
+          requestId: 'resp_terminal_snapshot',
         },
       },
     ])

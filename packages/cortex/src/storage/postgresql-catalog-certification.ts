@@ -5,7 +5,7 @@ type QueryClient = Pick<PostgreSqlClient | PostgreSqlPoolClient, 'query'>
 const CATALOG_FORMAT = 'ownware-postgresql-catalog-v1'
 
 /**
- * Catalog receipts generated from the immutable v82 baseline and its v83
+ * Catalog receipts generated from the immutable v82 baseline and its current
  * migration on PostgreSQL 16.14, 17.10, and 18.4. The projection uses catalog
  * fields available throughout the supported PostgreSQL 16-18 envelope; an
  * unfamiliar deparser result fails closed until its major-version lane is
@@ -17,11 +17,11 @@ const POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS: Readonly<Record<number, string>> 
     17: 'sha256:e1eb2410738e8cc813fab7c56f6f839b1200e9fa792d1af0be7b4185b38bd72b',
     18: 'sha256:c4ec4e9ae3914cb6a430042ab027d014043d52e8e80c53cc6e97508df5aeb5fd',
   })
-const POSTGRESQL_CURRENT_V83_CATALOG_DIGESTS: Readonly<Record<number, string>> =
+const POSTGRESQL_CURRENT_V85_CATALOG_DIGESTS: Readonly<Record<number, string>> =
   Object.freeze({
-    16: 'sha256:1774c1f5625047d1e3a220e2b44263b0120e6a6f083b78cbf91c63bd4b2ca7b5',
-    17: 'sha256:1774c1f5625047d1e3a220e2b44263b0120e6a6f083b78cbf91c63bd4b2ca7b5',
-    18: 'sha256:28d967d9574ee01b84a30f424b6dce300ffdcdcbb79885253feddc719dac384d',
+    16: 'sha256:86e8da7a7f84d79c1b6512c2c784733cad1a7befc6723f40dd45bfa8e8c87795',
+    17: 'sha256:86e8da7a7f84d79c1b6512c2c784733cad1a7befc6723f40dd45bfa8e8c87795',
+    18: 'sha256:5e2a9c93b25142563cd258112a258bc73e9680ddae403aa1406b1905188507bf',
   })
 
 interface RelationRow {
@@ -296,8 +296,8 @@ export async function postgreSqlCatalogMatchesBaselineV82(
   return matchesGeneration(client, POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS)
 }
 
-export async function postgreSqlCatalogMatchesCurrentV83(
+export async function postgreSqlCatalogMatchesCurrentV85(
   client: QueryClient,
 ): Promise<boolean> {
-  return matchesGeneration(client, POSTGRESQL_CURRENT_V83_CATALOG_DIGESTS)
+  return matchesGeneration(client, POSTGRESQL_CURRENT_V85_CATALOG_DIGESTS)
 }

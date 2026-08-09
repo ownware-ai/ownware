@@ -415,18 +415,26 @@ export function applyVerificationEvidenceBundle(
   const warnings: string[] = []
   const appliedEvidenceIds: string[] = []
   const evidenceByModel = new Map(bundle.entries.map(entry => [entry.modelRouteId, entry]))
-  const routeIds = new Set(catalog.routes.map(route => route.id))
+  const routeById = new Map(catalog.routes.map(route => [route.id, route]))
+  const unusableEvidenceIds = new Set<string>()
   for (const evidence of bundle.entries) {
-    if (!routeIds.has(evidence.providerRouteId)) {
+    const route = routeById.get(evidence.providerRouteId)
+    if (route == null) {
       warnings.push(`Verification evidence ${evidence.evidenceId} names an unknown provider route; ignored`)
+      unusableEvidenceIds.add(evidence.evidenceId)
     } else if (!catalog.models.some(model => model.id === evidence.modelRouteId)) {
       warnings.push(`Verification evidence ${evidence.evidenceId} names an unknown model route; ignored`)
+      unusableEvidenceIds.add(evidence.evidenceId)
+    } else if (!evidenceMatchesRouteTransport(evidence, route.transport)) {
+      warnings.push(`Verification evidence ${evidence.evidenceId} does not match the provider route transport; ignored`)
+      unusableEvidenceIds.add(evidence.evidenceId)
     }
   }
 
   const models = catalog.models.map(model => {
     const evidence = evidenceByModel.get(model.id)
     if (evidence == null) return model
+    if (unusableEvidenceIds.has(evidence.evidenceId)) return model
     if (evidence.providerRouteId !== model.providerRouteId) {
       warnings.push(`Verification evidence ${evidence.evidenceId} does not match model route ${model.id}; ignored`)
       return model
@@ -443,6 +451,40 @@ export function applyVerificationEvidenceBundle(
     catalog: ProviderCatalogSnapshotSchema.parse({ ...catalog, models }),
     warnings,
     appliedEvidenceIds,
+  }
+}
+
+function evidenceMatchesRouteTransport(
+  evidence: VerificationEvidence,
+  transport: ProviderCatalogSnapshot['routes'][number]['transport'],
+): boolean {
+  if (evidence.runtimeId !== transport.runtimeId) return false
+  if (transport.adapterId == null || evidence.adapterId !== transport.adapterId) return false
+  return catalogProtocolsFor(evidence.protocol).has(transport.protocol)
+}
+
+function catalogProtocolsFor(protocol: VerificationEvidence['protocol']): ReadonlySet<string> {
+  switch (protocol) {
+    case 'anthropic_messages':
+      return new Set(['anthropic_messages', 'anthropic-messages'])
+    case 'openai_chat_completions':
+      return new Set([
+        'openai_chat_completions',
+        'openai-chat-completions',
+        'openai-compatible',
+        'openrouter',
+        'ollama-openai-compatible',
+      ])
+    case 'openai_responses':
+      return new Set(['openai_responses', 'openai-responses'])
+    case 'google_generate_content':
+      return new Set(['google_generate_content', 'google-generate-content'])
+    case 'codex_app_server':
+      return new Set(['codex_app_server', 'codex-app-server'])
+    case 'local':
+      return new Set(['local'])
+    case 'other':
+      return new Set(['other'])
   }
 }
 

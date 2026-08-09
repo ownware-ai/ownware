@@ -176,6 +176,23 @@ function responseUsage(value: unknown): ProviderUsage {
   }
 }
 
+function responseServingFacts(value: unknown): Partial<ProviderUsage> {
+  if (typeof value !== 'object' || value === null) return {}
+  const response = value as Record<string, unknown>
+  return {
+    ...(typeof response['id'] === 'string' ? { requestId: response['id'] } : {}),
+    ...(typeof response['model'] === 'string'
+      ? { servedModelId: response['model'] }
+      : {}),
+    ...(typeof response['provider'] === 'string'
+      ? { servedProvider: response['provider'] }
+      : {}),
+    ...(typeof response['service_tier'] === 'string'
+      ? { servedTier: response['service_tier'] }
+      : {}),
+  }
+}
+
 /**
  * OpenAI Responses transport for the native engine loop.
  *
@@ -790,7 +807,10 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
         for (const chunk of reconcileOutput(event.response.output)) yield chunk
         terminal = {
           stopReason: 'max_tokens',
-          usage: responseUsage(event.response.usage),
+          usage: {
+            ...responseUsage(event.response.usage),
+            ...responseServingFacts(event.response),
+          },
         }
         continue
       }
@@ -804,7 +824,10 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
             : tools.size > 0
               ? 'tool_use'
               : 'end_turn',
-          usage: responseUsage(event.response.usage),
+          usage: {
+            ...responseUsage(event.response.usage),
+            ...responseServingFacts(event.response),
+          },
         }
         continue
       }

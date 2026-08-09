@@ -78,7 +78,7 @@ const PUBLIC_CAPABILITIES = [
   { id: 'candidates.stage', version: 1 },
   { id: 'candidates.validate', version: 1 },
   { id: 'connections.list', version: 1 },
-  { id: 'gateway.capabilities', version: 15 },
+  { id: 'gateway.capabilities', version: 18 },
   { id: 'gateway.health', version: 1 },
   { id: 'models.list', version: 2 },
   { id: 'principals.issue', version: 3 },
@@ -90,12 +90,14 @@ const PUBLIC_CAPABILITIES = [
   { id: 'provider_hub.compatible_connections.manage', version: 1 },
   { id: 'provider_hub.read', version: 2 },
   { id: 'provider_hub.refresh', version: 1 },
+  { id: 'provider_hub.usage.read', version: 1 },
+  { id: 'provider_hub.usage.reconcile', version: 1 },
   { id: 'runs.abort', version: 3 },
   { id: 'runs.attachments', version: 1 },
   { id: 'runs.events', version: 3 },
   { id: 'runs.resume', version: 3 },
   { id: 'runs.snapshot', version: 3 },
-  { id: 'runs.start', version: 5 },
+  { id: 'runs.start', version: 6 },
   { id: 'runtimes.codex.login', version: 1 },
   { id: 'runtimes.codex.logout', version: 1 },
   { id: 'runtimes.codex.models', version: 1 },
@@ -120,6 +122,8 @@ const PUBLIC_CAPABILITIES = [
   { id: 'sources.list', version: 1 },
   { id: 'sources.read', version: 1 },
   { id: 'sources.register', version: 2 },
+  { id: 'task_catalog.manage', version: 1 },
+  { id: 'task_catalog.read', version: 1 },
 ] as const
 
 export function createCapabilitiesHandler(
@@ -131,7 +135,7 @@ export function createCapabilitiesHandler(
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.34.0',
+        revision: '0.37.0',
       },
       capabilities: PUBLIC_CAPABILITIES,
       limits: {

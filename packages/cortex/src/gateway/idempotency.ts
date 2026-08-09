@@ -2,6 +2,7 @@ import { isSourceMediaType, type SourceMediaType } from './source-media.js'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { RuntimePrincipal } from './auth/scoped-principal.js'
+import type { ModelSubstitution } from './types.js'
 
 export const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const IDEMPOTENCY_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -15,6 +16,7 @@ export interface RunStartSnapshot {
   readonly profileId: string
   readonly candidateId: string | null
   readonly model: string
+  readonly modelSubstitution?: ModelSubstitution
   readonly status: 'running'
   readonly timeoutMs?: number
 }
@@ -404,6 +406,9 @@ export function validateIdempotencySnapshot(value: unknown): IdempotencySnapshot
         (!Number.isSafeInteger(row['timeoutMs']) || (row['timeoutMs'] as number) <= 0))) {
     throw new Error('Invalid run snapshot')
   }
+  const modelSubstitution = row['modelSubstitution'] === undefined
+    ? undefined
+    : validateModelSubstitution(row['modelSubstitution'], row['model'])
   return {
     ...(typeof row['runId'] === 'string' ? { runId: row['runId'] } : {}),
     threadId: row['threadId'],
@@ -411,8 +416,39 @@ export function validateIdempotencySnapshot(value: unknown): IdempotencySnapshot
     profileId: row['profileId'],
     candidateId: typeof row['candidateId'] === 'string' ? row['candidateId'] : null,
     model: row['model'],
+    ...(modelSubstitution === undefined ? {} : { modelSubstitution }),
     status: 'running',
     ...(typeof row['timeoutMs'] === 'number' ? { timeoutMs: row['timeoutMs'] } : {}),
+  }
+}
+
+function validateModelSubstitution(
+  value: unknown,
+  dispatchedModel: string,
+): ModelSubstitution {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid run model substitution')
+  }
+  const row = value as Record<string, unknown>
+  if (
+    typeof row['configuredModel'] !== 'string' ||
+    row['configuredModel'].length === 0 || row['configuredModel'].length > 256 ||
+    typeof row['effectiveModel'] !== 'string' ||
+    row['effectiveModel'] !== dispatchedModel ||
+    row['configuredModel'] === row['effectiveModel'] ||
+    row['configuredSource'] !== 'profile' ||
+    row['reason'] !== 'profile_default_unavailable' ||
+    Object.keys(row).some((key) => ![
+      'configuredModel', 'effectiveModel', 'configuredSource', 'reason',
+    ].includes(key))
+  ) {
+    throw new Error('Invalid run model substitution')
+  }
+  return {
+    configuredModel: row['configuredModel'],
+    effectiveModel: row['effectiveModel'],
+    configuredSource: row['configuredSource'] as ModelSubstitution['configuredSource'],
+    reason: 'profile_default_unavailable',
   }
 }
 

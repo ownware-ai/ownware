@@ -7,6 +7,7 @@ import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 import {
   RunIdempotencyStore,
   principalContinuityKey,
+  validateIdempotencySnapshot,
   type SourceDeletionSnapshot,
   type SourceJobSnapshot,
   type SourceUploadSessionSnapshot,
@@ -60,7 +61,19 @@ describe('RunIdempotencyStore', () => {
       operation: 'runs.start',
       key,
       statusCode: 200,
-      result: { threadId: 'thread_1', agentId: 'root', profileId: 'assistant', model: 'test:model', status: 'running' },
+      result: {
+        threadId: 'thread_1',
+        agentId: 'root',
+        profileId: 'assistant',
+        model: 'effective:model',
+        modelSubstitution: {
+          configuredModel: 'profile:model',
+          effectiveModel: 'effective:model',
+          configuredSource: 'profile',
+          reason: 'profile_default_unavailable',
+        },
+        status: 'running',
+      },
     }, 1_100)
 
     const stored = JSON.stringify(state.rawDbHandle
@@ -75,8 +88,50 @@ describe('RunIdempotencyStore', () => {
       .toMatchObject({
         kind: 'replay',
         statusCode: 200,
-        result: { threadId: 'thread_1' },
+        result: {
+          threadId: 'thread_1',
+          modelSubstitution: {
+            configuredModel: 'profile:model',
+            effectiveModel: 'effective:model',
+            configuredSource: 'profile',
+            reason: 'profile_default_unavailable',
+          },
+        },
       })
+  })
+
+  it('rejects a substitution receipt that disagrees with actual dispatch', () => {
+    expect(() => validateIdempotencySnapshot({
+      threadId: 'thread_1',
+      agentId: 'root',
+      profileId: 'assistant',
+      candidateId: null,
+      model: 'effective:model',
+      modelSubstitution: {
+        configuredModel: 'profile:model',
+        effectiveModel: 'different:model',
+        configuredSource: 'profile',
+        reason: 'profile_default_unavailable',
+      },
+      status: 'running',
+    })).toThrow('Invalid run model substitution')
+  })
+
+  it('rejects a substitution receipt for an explicit preference source', () => {
+    expect(() => validateIdempotencySnapshot({
+      threadId: 'thread_1',
+      agentId: 'root',
+      profileId: 'assistant',
+      candidateId: null,
+      model: 'effective:model',
+      modelSubstitution: {
+        configuredModel: 'request:model',
+        effectiveModel: 'effective:model',
+        configuredSource: 'request',
+        reason: 'profile_default_unavailable',
+      },
+      status: 'running',
+    })).toThrow('Invalid run model substitution')
   })
 
   it('rejects payload conflict before changing the completed result', () => {

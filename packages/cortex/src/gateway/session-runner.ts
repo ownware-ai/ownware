@@ -29,7 +29,13 @@
  *     is cleaned up, completion event is published to EventBus
  */
 
-import type { LoomEvent, ContentBlock, ZoneDecision } from '@ownware/loom'
+import type {
+  LoomEvent,
+  ContentBlock,
+  StopReason,
+  TurnUsage,
+  ZoneDecision,
+} from '@ownware/loom'
 import { ZONE_LEVEL_NAMES } from '@ownware/loom'
 import type { GatewayState } from './state.js'
 import type { ThreadMessage, ToolCallRecord, SubAgentRecord, PermissionRecord, CredentialRecord, AttachmentMeta, MessagePart } from './types.js'
@@ -59,6 +65,16 @@ export interface ReconcileDeps {
   readonly pending: PendingReconciles
   readonly profileRegistry: ProfileRegistry
   readonly toolProviders: readonly ConnectorToolProvider[]
+}
+
+export interface ProviderUsageSinkInput {
+  readonly threadId: string
+  readonly profileId: string
+  readonly requestedModel: string
+  readonly stopReason: StopReason
+  readonly occurredAt: string
+  readonly durationMs?: number
+  readonly usage: TurnUsage
 }
 
 // ---------------------------------------------------------------------------
@@ -185,26 +201,8 @@ export class SessionRunner {
    */
   private reconcileDeps?: ReconcileDeps
 
-  /**
-   * Optional post-flight LLM-cost sink. Invoked once per finished run
-   * with the run's real total cost (Loom computes this from the
-   * models.dev pricing table; the runner accumulates it into
-   * `run.costUsd`). The gateway wires this to attribute the cost back
-   * to the backing credential so the Settings → Credentials cost panel
-   * shows real spend.
-   *
-   * A callback (not a direct store/audit dependency) keeps the runner
-   * decoupled from credential internals — `session-runner` has no
-   * business importing the credential store. Settable, not a
-   * constructor arg, because the runner is built before the credential
-   * store during boot (same reason as `reconcileDeps`).
-   */
-  private llmCostSink?: (params: {
-    readonly model: string
-    readonly costUsd: number
-    readonly threadId: string
-    readonly profileId: string
-  }) => void
+  /** Awaited before publishing an authoritative turn completion. */
+  private providerUsageSink?: (input: ProviderUsageSinkInput) => Promise<void>
 
   constructor(
     private readonly state: GatewayState,
@@ -216,9 +214,9 @@ export class SessionRunner {
     this.reconcileDeps = deps
   }
 
-  /** Install the post-flight LLM-cost sink. Called once during boot. */
-  setLlmCostSink(sink: SessionRunner['llmCostSink']): void {
-    this.llmCostSink = sink
+  /** Install the canonical per-provider-call evidence sink. */
+  setProviderUsageSink(sink: SessionRunner['providerUsageSink']): void {
+    this.providerUsageSink = sink
   }
 
   /**
@@ -411,6 +409,7 @@ export class SessionRunner {
     // Track the last observed turnIndex so the finalizer can tag a
     // turn.interrupted event correctly even if turn.end never fires.
     let observedTurnIndex = 0
+    const turnStartedAt = new Map<number, number>()
 
     // Captures the precise reason the run terminated. RunStatus collapses
     // user-abort, timeout, and system-abort into the single 'aborted'
@@ -503,6 +502,32 @@ export class SessionRunner {
         const event = result.value.event
 
         trace('runner-recv', threadId, 'root', event.type)
+
+        if (event.type === 'turn.start') {
+          turnStartedAt.set(event.turnIndex, event.timestamp)
+        } else if (
+          event.type === 'turn.end' &&
+          event.usage.usageAuthority !== undefined &&
+          this.providerUsageSink !== undefined
+        ) {
+          const startedAt = turnStartedAt.get(event.turnIndex)
+          const durationMs = startedAt === undefined
+            ? undefined
+            : Math.max(0, event.timestamp - startedAt)
+          // Evidence durability precedes the public turn.end event. If this
+          // write fails, the run fails content-free instead of announcing a
+          // completion whose canonical provider-call fact was lost.
+          await this.providerUsageSink({
+            threadId,
+            profileId,
+            requestedModel: model,
+            stopReason: event.stopReason,
+            occurredAt: new Date(event.timestamp).toISOString(),
+            ...(durationMs === undefined ? {} : { durationMs }),
+            usage: event.usage,
+          })
+          turnStartedAt.delete(event.turnIndex)
+        }
 
         // ── Enrich permission events with zone metadata ──────────
         let enriched = enrichEvent(event, getLastZoneDecision)
@@ -795,13 +820,6 @@ export class SessionRunner {
           costUsd: run.costUsd,
         })
         await this.state.incrementProfileUsage(profileId, run.costUsd)
-        // Attribute the real cost back to the backing credential so the
-        // Settings → Credentials cost panel reflects actual spend. Only
-        // when the run cost something — a free/zero-cost run has nothing
-        // to true up. The sink owns its own error handling.
-        if (run.costUsd > 0) {
-          this.llmCostSink?.({ model, costUsd: run.costUsd, threadId, profileId })
-        }
       } catch { /* best effort */ }
 
       // 4. Clean up runtime (Session stays for context, runtime is per-run)

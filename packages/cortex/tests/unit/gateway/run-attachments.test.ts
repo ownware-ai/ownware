@@ -12,6 +12,7 @@ describe('run attachment processing failure', () => {
       {} as SessionRunner,
       {
         pickRunnableDefaultModel: async () => null,
+        resolveModelExecutionAuthority: async () => null,
         processAttachmentsFn: async () => {
           throw new Error('RAW-PRIVATE-PARSER-DETAIL')
         },

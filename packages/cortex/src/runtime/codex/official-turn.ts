@@ -140,6 +140,7 @@ function emptyUsage(model: string): TurnUsage {
     model,
     costUsd: 0,
     costBasis: 'subscription_allowance',
+    usageAuthority: 'runtime_report',
   }
 }
 
@@ -638,6 +639,7 @@ export class CodexOfficialTurnBridge {
       model: this.options.model,
       costUsd: 0,
       costBasis: 'subscription_allowance',
+      usageAuthority: 'runtime_report',
     }
     return { events: [] }
   }

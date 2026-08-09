@@ -72,11 +72,13 @@ export function parseSkillFile(raw: string): SkillDefinition | null {
   if (!frontmatter || !body) return null
 
   const meta = parseYamlFrontmatter(frontmatter)
-  if (!meta?.name || !meta?.trigger) return null
+  if (!meta?.name) return null
+
+  const triggerSource = meta.trigger.trim() === '' ? `/${meta.name}` : meta.trigger
 
   const trigger: string | RegExp = meta.triggerIsRegex
-    ? new RegExp(meta.trigger)
-    : meta.trigger
+    ? new RegExp(triggerSource)
+    : triggerSource
 
   return {
     name: meta.name,

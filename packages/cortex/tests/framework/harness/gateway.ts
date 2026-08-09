@@ -113,6 +113,8 @@ export interface TestGatewayOptions {
   readonly disableSourceWorker?: boolean
   /** Tiny effective source quotas for capacity-contract tests. */
   readonly sourceQuotaLimits?: SourceQuotaLimits
+  /** Read-only built-in task-pack directories supplied by the test host. */
+  readonly builtinTaskPackDirs?: readonly string[]
 }
 
 export interface TestGateway {
@@ -193,6 +195,7 @@ export async function createTestGateway(opts: TestGatewayOptions = {}): Promise<
     dataDir,
     dbPath,
     additionalProfileDirs,
+    builtinPluginDirs: opts.builtinTaskPackDirs ?? [],
     // Plain HTTP/1.1 in tests: no browser → no 6-conn stall to reproduce,
     // and it keeps every test's `http://…:${port}` URL working without a
     // per-boot cert. The HTTP/2-over-TLS path (desktop default) is verified

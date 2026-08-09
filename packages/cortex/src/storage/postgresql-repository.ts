@@ -40,6 +40,10 @@ const PRESERVED_DOMAIN_ERRORS = new Set([
   'CodexThreadReferenceStoreError',
   'ConnectionInventoryCursorNotFoundError',
   'PrincipalAuthError',
+  'PluginGrantConflictError',
+  'PluginMigrationConflictError',
+  'PluginVersionConflictError',
+  'PluginVersionNotFoundError',
   'ProfileRunNotAcceptingError',
   'SourceDataViewUnavailableError',
   'SourceDeletionPlanError',
@@ -48,6 +52,8 @@ const PRESERVED_DOMAIN_ERRORS = new Set([
   'SourceQuotaExceededError',
   'SourceUploadRefreshConflictError',
   'SourceUploadTargetNotFoundError',
+  'UsageEvidenceIntegrityError',
+  'UsageEvidenceNotFoundError',
 ])
 
 export async function repositoryCall<T>(

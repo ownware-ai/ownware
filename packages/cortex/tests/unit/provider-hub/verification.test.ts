@@ -219,6 +219,36 @@ describe('provider route verification harness', () => {
     expect(stale.warnings).toEqual([expect.stringContaining('different catalog generation')])
   })
 
+  it('does not apply evidence from a different runtime adapter or wire protocol', () => {
+    const mismatchedAdapter = createVerificationEvidence({
+      ...evidenceContent('live'),
+      adapterId: 'different-adapter',
+    })
+    const adapterResult = applyVerificationEvidenceBundle(catalog(), createVerificationEvidenceBundle({
+      harnessVersion: PROVIDER_VERIFICATION_HARNESS_VERSION,
+      mode: 'live',
+      createdAt: NOW,
+      entries: [mismatchedAdapter],
+    }))
+    expect(adapterResult.appliedEvidenceIds).toEqual([])
+    expect(adapterResult.catalog.models[0]?.availability.verified).toBe(false)
+    expect(adapterResult.warnings).toEqual([expect.stringContaining('does not match the provider route transport')])
+
+    const mismatchedProtocol = createVerificationEvidence({
+      ...evidenceContent('live'),
+      protocol: 'openai_chat_completions',
+    })
+    const protocolResult = applyVerificationEvidenceBundle(catalog(), createVerificationEvidenceBundle({
+      harnessVersion: PROVIDER_VERIFICATION_HARNESS_VERSION,
+      mode: 'live',
+      createdAt: NOW,
+      entries: [mismatchedProtocol],
+    }))
+    expect(protocolResult.appliedEvidenceIds).toEqual([])
+    expect(protocolResult.catalog.models[0]?.availability.verified).toBe(false)
+    expect(protocolResult.warnings).toEqual([expect.stringContaining('does not match the provider route transport')])
+  })
+
   it('keeps the active last-known-good bundle when a replacement is invalid', async () => {
     const writes: string[] = []
     const store = new VerificationEvidenceStore('/unused/verification.json', async (_path, text) => {
@@ -336,7 +366,7 @@ function catalog(): ProviderCatalogSnapshot {
       familyId: 'test',
       name: 'Test route',
       kind: 'direct',
-      transport: { runtimeId: 'loom', adapterId: 'fixture', protocol: 'fixture' },
+      transport: { runtimeId: 'loom', adapterId: 'fixture', protocol: 'other' },
       connectable: true,
       lifecycle: 'active',
     }],

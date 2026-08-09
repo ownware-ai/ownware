@@ -26,6 +26,7 @@ import { parseSseFrames } from './sse.js'
 import { interpretSseEvent, type RunStreamEvent } from './run-stream.js'
 import {
   providerHubModelQueryString,
+  providerHubUsageQueryString,
   type OpenAICompatibleConnectionConfig,
   type OpenAICompatibleConnectionInput,
   type OpenAICompatibleConnectionList,
@@ -35,6 +36,12 @@ import {
   type ProviderHubOverview,
   type ProviderHubProviderPage,
   type ProviderHubVerificationOverview,
+  type ProviderHubReconciledCostInput,
+  type ProviderHubUsageEntry,
+  type ProviderHubUsageEvidenceExport,
+  type ProviderHubUsagePage,
+  type ProviderHubUsageQuery,
+  type ProviderHubUsageSummary,
 } from './provider-hub.js'
 
 // ── inputs / outputs ─────────────────────────────────────────────────────────
@@ -63,6 +70,15 @@ export interface RunAttachmentInput {
   readonly mimeType: string
 }
 
+export interface ModelSubstitution {
+  /** Normalized configured preference before the gateway's fallback policy. */
+  readonly configuredModel: string
+  /** Model the gateway actually dispatched. Always equal to `RunResult.model`. */
+  readonly effectiveModel: string
+  readonly configuredSource: 'profile'
+  readonly reason: 'profile_default_unavailable'
+}
+
 export interface RunResult {
   /** Immutable execution identity. Present on Gateway contract 0.5+. */
   readonly runId?: string
@@ -74,6 +90,8 @@ export interface RunResult {
   readonly candidateId?: string | null
   /** The model the gateway ACTUALLY dispatched (profile default, your override, or the keyless fallback). */
   readonly model?: string
+  /** Present only when the configured winner differed from actual dispatch. */
+  readonly modelSubstitution?: ModelSubstitution
   readonly status?: string
   /** Gateway-enforced wall-clock timeout for this run, in milliseconds. */
   readonly timeoutMs?: number
@@ -1121,6 +1139,57 @@ export interface ProfileSummary {
   readonly [key: string]: unknown
 }
 
+export type TaskPackScopeKind = 'global' | 'workspace' | 'agent'
+export type TaskPackScopeDecision = 'allow' | 'deny'
+
+export interface TaskPackTask {
+  readonly id: string
+  readonly label: string
+  readonly description: string
+  readonly examples: readonly string[]
+}
+
+export interface TaskPackScope {
+  readonly taskPackId: string
+  readonly scopeKind: TaskPackScopeKind
+  readonly scopeId: string | null
+  readonly decision: TaskPackScopeDecision
+  readonly version: string | null
+  readonly revision: number
+  readonly updatedAt: string
+}
+
+export interface TaskPackCatalogEntry {
+  readonly id: string
+  readonly name: string
+  readonly description: string
+  readonly availableVersions: readonly string[]
+  readonly effectiveVersion: string | null
+  readonly tasks: readonly TaskPackTask[]
+  readonly scopes: readonly TaskPackScope[]
+}
+
+export interface TaskPackCatalog {
+  readonly taskPacks: readonly TaskPackCatalogEntry[]
+}
+
+export interface TaskCatalogContext {
+  readonly workspaceId?: string
+  readonly agentId?: string
+}
+
+export interface SetTaskPackScopeInput {
+  readonly scopeKind: TaskPackScopeKind
+  readonly scopeId: string | null
+  readonly decision: TaskPackScopeDecision
+  readonly version: string | null
+  readonly expectedRevision: number | null
+}
+
+export interface TaskPackScopeResult {
+  readonly scope: TaskPackScope
+}
+
 /**
  * The minimal seam a channel adapter (or any driver) needs. `OwnwareClient`
  * implements it; tests substitute an in-memory fake.
@@ -1371,6 +1440,62 @@ export class OwnwareClient implements GatewayClient {
 
   async providerHubHealth(): Promise<ProviderHubOverview> {
     return this.providerHubGet('/api/v1/provider-hub/health')
+  }
+
+  async providerHubUsage(query: ProviderHubUsageQuery = {}): Promise<ProviderHubUsagePage> {
+    return this.providerHubGet(
+      `/api/v1/provider-hub/usage${providerHubUsageQueryString(query)}`,
+    )
+  }
+
+  async providerHubUsageSummary(
+    query: Omit<ProviderHubUsageQuery, 'classification' | 'limit'> = {},
+  ): Promise<ProviderHubUsageSummary> {
+    return this.providerHubGet(
+      `/api/v1/provider-hub/usage/summary${providerHubUsageQueryString(query)}`,
+    )
+  }
+
+  async exportProviderHubUsageEvidence(): Promise<ProviderHubUsageEvidenceExport> {
+    return this.providerHubGet('/api/v1/provider-hub/usage/export')
+  }
+
+  async reconcileProviderHubUsageCost(
+    usageId: string,
+    input: ProviderHubReconciledCostInput,
+  ): Promise<ProviderHubUsageEntry> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/provider-hub/usage/${encodeURIComponent(usageId)}/cost-observations`,
+      { method: 'POST', headers: this.headers(true), body: JSON.stringify(input) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProviderHubUsageEntry
+  }
+
+  /** List immutable task-pack versions, tasks and owner-controlled scope decisions. */
+  async taskCatalog(context: TaskCatalogContext = {}): Promise<TaskPackCatalog> {
+    const query = new URLSearchParams()
+    if (context.workspaceId !== undefined) query.set('workspaceId', context.workspaceId)
+    if (context.agentId !== undefined) query.set('agentId', context.agentId)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const response = await this.doFetch(`${this.base}/api/v1/task-catalog${suffix}`, {
+      headers: this.headers(false),
+    })
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as TaskPackCatalog
+  }
+
+  /** Compare-and-set one global, workspace or top-level-agent task-pack decision. */
+  async setTaskPackScope(
+    taskPackId: string,
+    input: SetTaskPackScopeInput,
+  ): Promise<TaskPackScopeResult> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/task-catalog/${encodeURIComponent(taskPackId)}/scope`,
+      { method: 'PUT', headers: this.headers(true), body: JSON.stringify(input) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as TaskPackScopeResult
   }
 
   async refreshProviderHub(force = false): Promise<ProviderHubOverview> {

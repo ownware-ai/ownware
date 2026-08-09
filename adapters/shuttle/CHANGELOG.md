@@ -1,5 +1,16 @@
 # @ownware/shuttle
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [40d7804]
+- Updated dependencies [40d7804]
+- Updated dependencies [40d7804]
+- Updated dependencies
+- Updated dependencies
+  - @ownware/client@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -127,7 +127,7 @@ describe('public subject-bound source-search lifecycle', () => {
     })
     expect(negotiation).toMatchObject({
       status: 'available',
-      contract: { name: 'ownware.gateway', major: 1, revision: '0.34.0' },
+      contract: { name: 'ownware.gateway', major: 1, revision: '0.37.0' },
       limits: {
         sourceSearch: {
           maxScanBytes: 16 * 1024 * 1024,

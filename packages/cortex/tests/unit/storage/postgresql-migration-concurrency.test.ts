@@ -5,8 +5,6 @@ import {
   type PostgreSqlRepositoryFactories,
 } from '../../../src/storage/postgresql-adapter.js'
 import {
-  POSTGRESQL_BASELINE_DDL_HASH,
-  POSTGRESQL_BASELINE_NAME,
   POSTGRESQL_BASELINE_SQL,
   POSTGRESQL_BASELINE_VERSION,
 } from '../../../src/storage/postgresql-baseline.js'
@@ -34,13 +32,13 @@ const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
 const MIGRATION_LOCK_NAMESPACE = 1_335_664_962
 const MIGRATION_LOCK_KEY = 0
 const MIGRATION_APPLICATION_NAME = 'ownware-storage-migration'
-const V84_NAME = 'add_thread_upgrade_marker'
-const V84_SQL = `
+const V86_NAME = 'add_thread_upgrade_marker'
+const V86_SQL = `
   ALTER TABLE ownware.threads
-  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v84'
+  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v86'
 `.trim()
 
-const verifyV84Schema: PostgreSqlMigration['verifyApplied'] = async (client) => {
+const verifyV86Schema: PostgreSqlMigration['verifyApplied'] = async (client) => {
   const result = await client.query<{
     readonly tables: string
     readonly columns: string
@@ -68,25 +66,25 @@ const verifyV84Schema: PostgreSqlMigration['verifyApplied'] = async (client) => 
           AND column_name = 'upgrade_marker') AS default_value
   `)
   const row = result.rows[0]
-  return row?.tables === '59' && row.columns === '691' &&
+  return row?.tables === '66' && row.columns === '750' &&
     row.data_type === 'text' && row.nullable === 'NO' &&
-    row.default_value === "'v84'::text"
+    row.default_value === "'v86'::text"
 }
 
-const V84_MIGRATION: PostgreSqlMigration = Object.freeze({
-  version: 84,
-  name: V84_NAME,
-  sql: V84_SQL,
-  verifyApplied: verifyV84Schema,
+const V86_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 86,
+  name: V86_NAME,
+  sql: V86_SQL,
+  verifyApplied: verifyV86Schema,
 })
-const V84_FINGERPRINT = postgreSqlMigrationFingerprint(V84_MIGRATION)
-const V84_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
-  migrations: Object.freeze([...POSTGRESQL_MIGRATION_MANIFEST.migrations, V84_MIGRATION]),
+const V86_FINGERPRINT = postgreSqlMigrationFingerprint(V86_MIGRATION)
+const V86_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
+  migrations: Object.freeze([...POSTGRESQL_MIGRATION_MANIFEST.migrations, V86_MIGRATION]),
   logicalMigrations: Object.freeze([
     ...STORAGE_LOGICAL_MIGRATIONS,
-    { version: 84, name: V84_NAME },
+    { version: 86, name: V86_NAME },
   ]),
-  verifyCurrentSchema: verifyV84Schema,
+  verifyCurrentSchema: verifyV86Schema,
 })
 
 interface EmptyRepositories {}
@@ -303,7 +301,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
         await expect(storage.health()).resolves.toMatchObject({
           kind: 'postgresql',
           state: 'ready',
-          schemaVersion: 83,
+          schemaVersion: 85,
         })
       }
       await expect(migrationHistory(database.url)).resolves.toEqual(
@@ -319,10 +317,10 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       await restart.initialize()
       await expect(restart.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 83,
+        schemaVersion: 85,
       })
       expect(baselineExecutions).toBe(1)
-      await expect(migrationHistory(database.url)).resolves.toHaveLength(2)
+      await expect(migrationHistory(database.url)).resolves.toHaveLength(4)
     } finally {
       releaseFirstLock.resolve()
       await restart?.close().catch(() => {})
@@ -387,7 +385,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
         await restart.initialize()
         await expect(restart.health()).resolves.toMatchObject({
           state: 'ready',
-          schemaVersion: 83,
+          schemaVersion: 85,
         })
       } finally {
         await restart.close().catch(() => {})
@@ -471,16 +469,16 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
     }
   }, 30_000)
 
-  it('executes one v84 upgrade for six concurrent initializers and preserves populated state on restart', async () => {
+  it('executes one v86 upgrade for six concurrent initializers and preserves populated state on restart', async () => {
     const database = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const seed = adapter(database.url)
     const inspector = new Client({ connectionString: database.url, ssl: false })
     const firstLockHeld = deferred()
     const releaseFirstLock = deferred()
     let firstGrantedLockPaused = false
-    let v84Executions = 0
+    let v86Executions = 0
     const driver = instrumentedDriver(async (_client, text, proceed) => {
-      if (text === V84_SQL) v84Executions += 1
+      if (text === V86_SQL) v86Executions += 1
       if (!text.includes('pg_advisory_xact_lock')) return proceed()
 
       const result = await proceed()
@@ -493,7 +491,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
     })
     const upgraders = Array.from({ length: 6 }, () => adapter(database.url, {
       driver,
-      migrationManifest: V84_MANIFEST,
+      migrationManifest: V86_MANIFEST,
       pool: { lockTimeoutMs: 15_000, migrationTimeoutMs: 20_000 },
     }))
     let restart: PostgreSqlStorageAdapter<EmptyRepositories, EmptyRepositories> | undefined
@@ -517,53 +515,46 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       releaseFirstLock.resolve()
       await Promise.all(initializations)
 
-      expect(v84Executions).toBe(1)
+      expect(v86Executions).toBe(1)
       for (const storage of upgraders) {
         await expect(storage.health()).resolves.toMatchObject({
           kind: 'postgresql',
           state: 'ready',
-          schemaVersion: 84,
+          schemaVersion: 86,
         })
       }
-      await expect(verifyV84Schema(inspector)).resolves.toBe(true)
+      await expect(verifyV86Schema(inspector)).resolves.toBe(true)
       const afterUpgrade = (await inspector.query(`
         SELECT id, profile_id, title, upgrade_marker FROM ownware.threads
         WHERE id = 'migration-concurrency-thread'
       `)).rows
       expect(afterUpgrade).toEqual(beforeUpgrade.map((row) => ({
         ...row,
-        upgrade_marker: 'v84',
+        upgrade_marker: 'v86',
       })))
       const expectedHistory = [
-        {
-          version: String(POSTGRESQL_BASELINE_VERSION),
-          name: POSTGRESQL_BASELINE_NAME,
-          fingerprint: POSTGRESQL_BASELINE_DDL_HASH,
-        },
-        {
-          version: '83',
-          name: POSTGRESQL_MIGRATION_MANIFEST.migrations[1]!.name,
-          fingerprint: postgreSqlMigrationFingerprint(
-            POSTGRESQL_MIGRATION_MANIFEST.migrations[1]!,
-          ),
-        },
-        { version: '84', name: V84_NAME, fingerprint: V84_FINGERPRINT },
+        ...POSTGRESQL_MIGRATION_MANIFEST.migrations.map(migration => ({
+          version: String(migration.version),
+          name: migration.name,
+          fingerprint: postgreSqlMigrationFingerprint(migration),
+        })),
+        { version: '86', name: V86_NAME, fingerprint: V86_FINGERPRINT },
       ]
       expect((await migrationReceipts(inspector)).map(({ applied_at: _appliedAt, ...row }) => row))
         .toEqual(expectedHistory)
 
       const receiptsBeforeRestart = await migrationReceipts(inspector)
       await closeAdapters(upgraders)
-      restart = adapter(database.url, { driver, migrationManifest: V84_MANIFEST })
+      restart = adapter(database.url, { driver, migrationManifest: V86_MANIFEST })
       await restart.initialize()
-      await expect(restart.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 84 })
-      expect(v84Executions).toBe(1)
+      await expect(restart.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 86 })
+      expect(v86Executions).toBe(1)
       await expect(migrationReceipts(inspector)).resolves.toEqual(receiptsBeforeRestart)
       expect((await inspector.query(`
         SELECT id, profile_id, title, upgrade_marker FROM ownware.threads
         WHERE id = 'migration-concurrency-thread'
       `)).rows).toEqual(afterUpgrade)
-      await expect(verifyV84Schema(inspector)).resolves.toBe(true)
+      await expect(verifyV86Schema(inspector)).resolves.toBe(true)
     } finally {
       releaseFirstLock.resolve()
       await seed.close().catch(() => {})
@@ -577,20 +568,20 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
   it('makes an overlapping older binary unhealthy after a newer manifest commits', async () => {
     const database = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const older = adapter(database.url)
-    const newer = adapter(database.url, { migrationManifest: V84_MANIFEST })
+    const newer = adapter(database.url, { migrationManifest: V86_MANIFEST })
     const inspector = new Client({ connectionString: database.url, ssl: false })
     try {
       await older.initialize()
       await expect(older.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 83,
+        schemaVersion: 85,
       })
 
       // Multi-gateway runtime remains unsupported, but an accidentally
       // overlapping upgrade must not let the old binary keep claiming that its
       // compiled schema head is current.
       await newer.initialize()
-      await expect(newer.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 84 })
+      await expect(newer.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 86 })
       await expect(older.health()).resolves.toMatchObject({
         state: 'unavailable',
         schemaVersion: 0,
@@ -600,19 +591,12 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       await inspector.connect()
       expect((await migrationReceipts(inspector)).map(({ applied_at: _appliedAt, ...row }) => row))
         .toEqual([
-          {
-            version: String(POSTGRESQL_BASELINE_VERSION),
-            name: POSTGRESQL_BASELINE_NAME,
-            fingerprint: POSTGRESQL_BASELINE_DDL_HASH,
-          },
-          {
-            version: '83',
-            name: POSTGRESQL_MIGRATION_MANIFEST.migrations[1]!.name,
-            fingerprint: postgreSqlMigrationFingerprint(
-              POSTGRESQL_MIGRATION_MANIFEST.migrations[1]!,
-            ),
-          },
-          { version: '84', name: V84_NAME, fingerprint: V84_FINGERPRINT },
+          ...POSTGRESQL_MIGRATION_MANIFEST.migrations.map(migration => ({
+            version: String(migration.version),
+            name: migration.name,
+            fingerprint: postgreSqlMigrationFingerprint(migration),
+          })),
+          { version: '86', name: V86_NAME, fingerprint: V86_FINGERPRINT },
         ])
     } finally {
       await older.close().catch(() => {})

@@ -47,7 +47,7 @@ const c = {
 // ---------------------------------------------------------------------------
 
 interface CliArgs {
-  command: 'run' | 'profiles' | 'profile' | 'help' | 'version' | 'init' | 'serve' | 'key' | 'channel' | 'schedule'
+  command: 'run' | 'profiles' | 'profile' | 'help' | 'version' | 'init' | 'serve' | 'key' | 'channel' | 'schedule' | 'provider'
   profile: string
   prompt: string
   workspace: string
@@ -91,6 +91,7 @@ function parseArgs(argv: string[]): CliArgs {
     cmd === 'key' ||
     cmd === 'channel' ||
     cmd === 'schedule' ||
+    cmd === 'provider' ||
     cmd === 'profile'
   ) {
     args.command = cmd
@@ -191,6 +192,7 @@ ${c.bold}SERVE & REACH IT EVERYWHERE${c.reset}
   ownware channel list | remove | approve | handoff | delivery | start
   ownware schedule add --profile <id> …               Proactive runs ("messages you every morning")
   ownware schedule list | remove <id> | runs <id>
+  ownware provider verify                              Verify one exact provider/model route (explicit live opt-in)
 
 ${c.bold}OPTIONS (run)${c.reset}
   -w, --workspace <path>   Working directory for the agent (default: cwd)
@@ -486,6 +488,11 @@ async function main(): Promise<void> {
     case 'schedule': {
       const { scheduleCommand } = await import('./cli/schedule.js')
       await scheduleCommand(args.rest)
+      break
+    }
+    case 'provider': {
+      const { providerCommand } = await import('./cli/provider.js')
+      await providerCommand(args.rest)
       break
     }
   }

@@ -122,14 +122,14 @@ Content.`
       expect(parseSkillFile(raw)).toBeNull()
     })
 
-    it('returns null when trigger is missing', () => {
+    it('defaults a missing trigger to the slash-prefixed skill name', () => {
       const raw = `---
 name: no-trigger
 description: Missing trigger
 ---
 
 Content.`
-      expect(parseSkillFile(raw)).toBeNull()
+      expect(parseSkillFile(raw)).toMatchObject({ trigger: '/no-trigger' })
     })
 
     it('returns null for empty frontmatter', () => {

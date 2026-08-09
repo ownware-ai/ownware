@@ -66,7 +66,7 @@ describePostgreSql('PostgreSQL transfer target preflight', () => {
           state: 'schema_absent_initializable',
           runtimeAuthority: 'not-yet-provisioned',
           schemaVersion: 0,
-          businessTableCount: 58,
+          businessTableCount: 65,
         })
       expect((await migration.query(`
         SELECT count(*)::text AS count FROM pg_catalog.pg_namespace
@@ -111,8 +111,8 @@ describePostgreSql('PostgreSQL transfer target preflight', () => {
           .toMatchObject({
             state: 'schema_current_empty_ready',
             runtimeAuthority: 'combined-elevated',
-            schemaVersion: 83,
-            businessTableCount: 58,
+            schemaVersion: 85,
+            businessTableCount: 65,
             nonEmptyBusinessTableCount: 0,
           })
         const after = await migration.query<{ readonly migrations: string; readonly app: string }>(`
@@ -189,7 +189,7 @@ describePostgreSql('PostgreSQL transfer target preflight', () => {
           .toMatchObject({
             state: 'schema_current_empty_ready',
             runtimeAuthority: 'separate-least-privilege',
-            schemaVersion: 83,
+            schemaVersion: 85,
             nonEmptyBusinessTableCount: 0,
           })
       } finally {

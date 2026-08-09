@@ -148,6 +148,8 @@ export class GoogleProvider implements ProviderAdapter {
     let totalInputTokens = 0
     let totalOutputTokens = 0
     let cachedContentTokens = 0
+    let requestId: string | undefined
+    let servedModelId: string | undefined
 
     // Wrap stream with stall detection
     const guardedStream = withStallGuard(streamResult.stream, {
@@ -201,6 +203,13 @@ export class GoogleProvider implements ProviderAdapter {
       }
       if (step.kind === 'end') break
       const chunk = step.chunk
+      const providerChunk = chunk as unknown as Record<string, unknown>
+      if (typeof providerChunk['responseId'] === 'string') {
+        requestId = providerChunk['responseId']
+      }
+      if (typeof providerChunk['modelVersion'] === 'string') {
+        servedModelId = providerChunk['modelVersion']
+      }
       if (chunk.candidates?.[0]?.finishReason) {
         finishSeen = true
         lastFinishReason = chunk.candidates[0].finishReason
@@ -284,6 +293,8 @@ export class GoogleProvider implements ProviderAdapter {
       outputTokens: totalOutputTokens,
       cacheReadTokens: cachedContentTokens,
       cacheCreationTokens: 0,
+      ...(requestId === undefined ? {} : { requestId }),
+      ...(servedModelId === undefined ? {} : { servedModelId }),
     }
 
     yield {

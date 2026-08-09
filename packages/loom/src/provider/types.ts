@@ -165,6 +165,12 @@ export interface ProviderUsage {
    * since it reflects the exact route + discounts applied upstream.
    */
   readonly reportedCostUsd?: number
+  /** Provider-returned request/serving facts. Requested values are never substituted. */
+  readonly requestId?: string
+  readonly generationId?: string
+  readonly servedModelId?: string
+  readonly servedProvider?: string
+  readonly servedTier?: string
   /**
    * Meaning of the monetary surface for this response.
    *

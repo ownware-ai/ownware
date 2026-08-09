@@ -68,6 +68,23 @@ export interface TurnUsage {
    */
   readonly costBasis?: 'metered' | 'subscription_allowance' | 'unknown'
   /**
+   * Authority proving this usage belongs to an observed provider/runtime call.
+   * Absence is intentional for terminal turns that ended before a call.
+   */
+  readonly usageAuthority?: 'provider_response' | 'runtime_report'
+  /** Provider-reported reasoning tokens, already included in outputTokens. */
+  readonly reasoningTokens?: number
+  /** Whether the numeric metered cost came from upstream or local price math. */
+  readonly costClassification?: 'estimated' | 'provider_reported'
+  /** Provider-returned serving facts; requested values are never substituted. */
+  readonly providerFacts?: {
+    readonly requestId?: string
+    readonly generationId?: string
+    readonly servedModelId?: string
+    readonly servedProvider?: string
+    readonly servedTier?: string
+  }
+  /**
    * True when `costUsd` was computed via the Sonnet-tier fallback because
    * the model wasn't in Loom's pricing catalog. Consumers (status bars,
    * audit logs) should render the value as an estimate (e.g. `≈ $X.XXXX`)

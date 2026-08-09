@@ -15,7 +15,7 @@
 asyncapi: 3.0.0
 info:
   title: Ownware Gateway — run event stream
-  version: 0.30.0
+  version: 0.37.0
 
 channels:
   runEvents:
@@ -95,7 +95,25 @@ channels:
             type: { const: turn.end }
             seq: { type: integer }
             stopReason: { type: string }
-            usage: { type: object }
+            usage:
+              type: object
+              properties:
+                inputTokens: { type: integer, minimum: 0 }
+                outputTokens: { type: integer, minimum: 0 }
+                cacheReadTokens: { type: integer, minimum: 0 }
+                cacheCreationTokens: { type: integer, minimum: 0 }
+                reasoningTokens: { type: integer, minimum: 0 }
+                cost: { type: number, minimum: 0 }
+                usageAuthority: { type: string, enum: [provider_response, runtime_report] }
+                costClassification: { type: string, enum: [estimated, provider_reported, subscription, local, unknown] }
+                providerFacts:
+                  type: object
+                  properties:
+                    requestId: { type: string }
+                    generationId: { type: string }
+                    servedModelId: { type: string }
+                    servedProvider: { type: string }
+                    servedTier: { type: string }
       turnInterrupted:
         name: turn.interrupted
         summary: Run ended outside turn.end (abort, timeout, shutdown). TERMINAL.

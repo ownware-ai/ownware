@@ -474,20 +474,20 @@ export const CostClassificationSchema = z.enum([
 ])
 
 export const TokenUsageSchema = z.object({
-  inputTextTokens: z.number().int().nonnegative().optional(),
-  outputTextTokens: z.number().int().nonnegative().optional(),
-  cacheReadTokens: z.number().int().nonnegative().optional(),
-  cacheWriteTokens: z.number().int().nonnegative().optional(),
-  reasoningTokens: z.number().int().nonnegative().optional(),
-  inputAudioTokens: z.number().int().nonnegative().optional(),
-  outputAudioTokens: z.number().int().nonnegative().optional(),
+  inputTextTokens: z.number().int().safe().nonnegative().optional(),
+  outputTextTokens: z.number().int().safe().nonnegative().optional(),
+  cacheReadTokens: z.number().int().safe().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().safe().nonnegative().optional(),
+  reasoningTokens: z.number().int().safe().nonnegative().optional(),
+  inputAudioTokens: z.number().int().safe().nonnegative().optional(),
+  outputAudioTokens: z.number().int().safe().nonnegative().optional(),
 }).strict()
 
 export const UnitUsageSchema = z.object({
-  inputImages: z.number().int().nonnegative().optional(),
-  outputImages: z.number().int().nonnegative().optional(),
-  requests: z.number().int().nonnegative().optional(),
-  toolCalls: z.number().int().nonnegative().optional(),
+  inputImages: z.number().int().safe().nonnegative().optional(),
+  outputImages: z.number().int().safe().nonnegative().optional(),
+  requests: z.number().int().safe().nonnegative().optional(),
+  toolCalls: z.number().int().safe().nonnegative().optional(),
 }).strict()
 
 export const UsageCostSchema = z.object({
@@ -566,20 +566,7 @@ export const UsageLedgerEntrySchema = z.object({
   providerFacts: ProviderUsageFactsSchema,
   durationMs: z.number().finite().nonnegative().optional(),
   success: z.boolean(),
-}).strict().superRefine((usage, ctx) => {
-  const expected = usage.billingKind === 'subscription'
-    ? 'subscription'
-    : usage.billingKind === 'local'
-      ? 'local'
-      : null
-  if (expected != null && usage.cost.classification !== expected) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['cost', 'classification'],
-      message: `${usage.billingKind} billing requires ${expected} cost classification`,
-    })
-  }
-})
+}).strict()
 
 export const CatalogGenerationSchema = z.object({
   id: StableIdSchema,

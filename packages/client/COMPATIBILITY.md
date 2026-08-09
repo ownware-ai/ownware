@@ -40,6 +40,9 @@ older capability rather than inventing a value.
 | `0.32.0` | Owner-only, no-store Codex managed-subscription status/login/logout/model discovery with redacted account state and one-time login presentation. |
 | `0.33.0` | Central secret-free Provider Hub catalog, provider/model/price/verification views, catalog refresh, fixed OpenAI-compatible provider presets, and managed custom compatible endpoints with dedicated encrypted credentials. |
 | `0.34.0` | Provider Hub becomes the single model-discovery authority, including ambient API-key and local Ollama connection projections; the old model-list route is a deprecated compatibility view over the same assembled Hub state. |
+| `0.35.0` | Run model precedence adds the async install default between durable thread and profile, rejects explicit unavailable/runtime-incompatible choices before dispatch, and returns an optional truthful substitution receipt when profile-default keyless fallback changes the model. |
+| `0.36.0` | Provider calls with authoritative runtime/provider usage now produce immutable usage facts, append-only classification-separated cost observations and exact pricebook snapshots, exposed through bounded reads, summary, lossless export and reconciliation APIs. |
+| `0.37.0` | Owner-controlled task packs add immutable local package identity, revisioned global/workspace/top-level-agent selection, lazy root-agent skills and typed catalog/scope APIs without granting tools or leaking the root registry into spawned helpers. |
 
 Compatibility rules:
 
@@ -52,11 +55,11 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.34.0`,
-  `gateway.capabilities` is version 15, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.37.0`,
+  `gateway.capabilities` is version 18, `connections.list` is version 1,
   `models.list` and `provider_hub.read` are version 2,
   `principals.issue` is version 3,
-  `runs.start` is version 5,
+  `runs.start` is version 6,
   `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 3,
   and `candidates.validate`, `candidates.stage`, `candidates.activate` and
   `candidates.rollback` are version 1.
@@ -89,9 +92,29 @@ Compatibility rules:
   metadata do not prove model capability, verification, price applicability,
   authorization, or successful future service. Submitted compatible-endpoint
   keys are write-only and persist only through the encrypted credential store.
+  `provider_hub.usage.read` and `provider_hub.usage.reconcile` are version 1.
+  Usage evidence exists only when a runtime or provider reports authoritative
+  usage; placeholder and inferred calls are excluded. Estimated,
+  provider-reported, reconciled, subscription, local and unknown observations
+  remain separate. Estimates retain their exact hashed pricebook snapshot,
+  latest cost is selected by durable append sequence, and reconciliation appends
+  without rewriting earlier evidence. Missing applicable prices remain unknown
+  with a null amount rather than borrowing an engine fallback estimate.
+  `task_catalog.read` and `task_catalog.manage` are version 1 and owner-only.
+  Decisions are revision-fenced across global, workspace and top-level-agent
+  scopes; any applicable deny wins. Package and manifest digests prove byte
+  identity only, permissions are declarations rather than grants, and spawned
+  helpers never inherit the root agent's lazy skill registry.
   `models.list` version 2 is deprecated and preserves its old response shape by
   projecting the same assembled Provider Hub state; it is not an independent
   catalog or price source.
+  `runs.start` version 6 resolves request → durable thread → async install
+  `defaults.defaultModel` → profile. Request/thread/install winners are never
+  silently substituted; unavailable choices fail before dispatch, and a model
+  owned by another runtime cannot migrate the thread or enter fallback. A
+  same-runtime profile-default keyless fallback returns optional
+  `modelSubstitution` with configured/effective model,
+  configured source and policy reason. The receipt proves gateway dispatch only.
   `sources.register` is version 2; `sources.list` and `sources.read` remain
   version 1. They require a delegated workspace/profile-scoped principal and
   never accept workspace, profile, path, URL, bytes or storage authority from

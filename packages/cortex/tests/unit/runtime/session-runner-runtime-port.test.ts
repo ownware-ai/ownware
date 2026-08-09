@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -204,5 +204,83 @@ describe('SessionRunner execution-runtime port', () => {
       type: 'turn.end',
       payload: expect.objectContaining({ stopReason: 'aborted' }),
     }))
+  })
+
+  it('durably records only authoritative usage before publishing turn.end', async () => {
+    const thread = await state.createThread('test')
+    const runtime = externalRuntime([
+      {
+        kind: 'canonical',
+        sourceSequence: 1,
+        event: { type: 'turn.start', turnIndex: 0, timestamp: 1_000 },
+      },
+      {
+        kind: 'canonical',
+        sourceSequence: 2,
+        event: {
+          type: 'turn.end',
+          turnIndex: 0,
+          stopReason: 'tool_use',
+          usage: {
+            inputTokens: 3,
+            outputTokens: 4,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            model: 'synthetic:served',
+            costUsd: 0,
+            costBasis: 'subscription_allowance',
+            usageAuthority: 'runtime_report',
+          },
+          timestamp: 1_025,
+        },
+      },
+      {
+        kind: 'canonical',
+        sourceSequence: 3,
+        event: { type: 'turn.start', turnIndex: 1, timestamp: 2_000 },
+      },
+      {
+        kind: 'canonical',
+        sourceSequence: 4,
+        event: {
+          type: 'turn.end',
+          turnIndex: 1,
+          stopReason: 'end_turn',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            model: 'synthetic:served',
+            costUsd: 0,
+          },
+          timestamp: 2_001,
+        },
+      },
+    ])
+    state.setRuntime(thread.id, { zoneManager: null, execution: runtime })
+    const usageSink = vi.fn(async () => {
+      const events = await state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+      expect(events.some(event => event.type === 'turn.end')).toBe(false)
+    })
+    runner.setProviderUsageSink(usageSink)
+
+    const result = await runner.start({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'synthetic:requested',
+      prompt: 'hello',
+    }).done
+
+    expect(result.status).toBe('completed')
+    expect(usageSink).toHaveBeenCalledTimes(1)
+    expect(usageSink).toHaveBeenCalledWith(expect.objectContaining({
+      requestedModel: 'synthetic:requested',
+      occurredAt: '1970-01-01T00:00:01.025Z',
+      durationMs: 25,
+      usage: expect.objectContaining({ usageAuthority: 'runtime_report' }),
+    }))
+    expect((await state.listAgentEvents({ threadId: thread.id, agentId: 'root' }))
+      .filter(event => event.type === 'turn.end')).toHaveLength(2)
   })
 })

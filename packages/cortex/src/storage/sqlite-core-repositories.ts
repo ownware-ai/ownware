@@ -13,6 +13,7 @@ import type {
   ThreadRepository,
   UsageRepository,
 } from './core-repositories.js'
+import { createSqliteUsageEvidenceRepository } from './sqlite-usage-evidence-repository.js'
 
 /**
  * SQLite implementation of the backend-neutral core repository contract.
@@ -27,6 +28,7 @@ export function createSqliteCoreRepositories(
 ): CoreStorageRepositories {
   return createSqliteCoreRepositoriesFromDatabase(
     context.legacyDatabase,
+    context.database,
     context.assertActive,
   )
 }
@@ -34,6 +36,7 @@ export function createSqliteCoreRepositories(
 /** Test/transition helper for an already-open isolated SQLite database. */
 export function createSqliteCoreRepositoriesFromDatabase(
   database: CortexDatabase,
+  sqliteDatabase: import('./sqlite-driver.js').SqliteDatabase,
   assertActive: () => void = () => {},
 ): CoreStorageRepositories {
   const call = <T>(
@@ -179,5 +182,10 @@ export function createSqliteCoreRepositoriesFromDatabase(
     },
   }
 
-  return { threads, messages, usage, events }
+  const usageEvidence = createSqliteUsageEvidenceRepository({
+    database: sqliteDatabase,
+    assertActive,
+  })
+
+  return { threads, messages, usage, usageEvidence, events }
 }

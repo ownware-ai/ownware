@@ -18,6 +18,7 @@ import type {
   ProviderChunk,
   ProviderCostBasis,
   ProviderRequest,
+  ProviderUsage,
 } from '../provider/types.js'
 import type { Message, AssistantMessage, ContentBlock, ToolUseBlock } from '../messages/types.js'
 import { extractToolCalls, createToolResultMessage } from '../messages/types.js'
@@ -1437,6 +1438,7 @@ async function* streamModelResponse(
                     chunk.usage.cacheCreationTokens,
                   )
               : { costUsd: 0, isFallback: false }
+            const providerFacts = providerFactsFromUsage(chunk.usage)
             usage = {
               inputTokens: chunk.usage.inputTokens,
               outputTokens: chunk.usage.outputTokens,
@@ -1445,6 +1447,18 @@ async function* streamModelResponse(
               model: activeModel,
               costUsd: computed.costUsd,
               ...(costBasis !== 'metered' ? { costBasis } : {}),
+              usageAuthority: 'provider_response',
+              ...(chunk.usage.reasoningTokens != null
+                ? { reasoningTokens: chunk.usage.reasoningTokens }
+                : {}),
+              ...(costBasis === 'metered'
+                ? {
+                    costClassification: chunk.usage.reportedCostUsd != null
+                      ? 'provider_reported' as const
+                      : 'estimated' as const,
+                  }
+                : {}),
+              ...(providerFacts != null ? { providerFacts } : {}),
               // Only stamp the flag when true — keep events identical to
               // the pre-#24 wire shape for the common authoritative path
               // (back-compat for any external consumer parsing strictly).
@@ -1479,6 +1493,19 @@ async function* streamModelResponse(
   }
 
   return { content, usage, stopReason }
+}
+
+function providerFactsFromUsage(
+  usage: ProviderUsage,
+): NonNullable<TurnUsage['providerFacts']> | null {
+  const facts: NonNullable<TurnUsage['providerFacts']> = {
+    ...(usage.requestId != null ? { requestId: usage.requestId } : {}),
+    ...(usage.generationId != null ? { generationId: usage.generationId } : {}),
+    ...(usage.servedModelId != null ? { servedModelId: usage.servedModelId } : {}),
+    ...(usage.servedProvider != null ? { servedProvider: usage.servedProvider } : {}),
+    ...(usage.servedTier != null ? { servedTier: usage.servedTier } : {}),
+  }
+  return Object.keys(facts).length === 0 ? null : facts
 }
 
 // ---------------------------------------------------------------------------

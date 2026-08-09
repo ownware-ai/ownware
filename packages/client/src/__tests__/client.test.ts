@@ -647,7 +647,18 @@ beforeAll(async () => {
     }
     if (url === '/api/v1/run') {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ threadId: 't_1', agentId: 'root', model: 'ollama:llama3.2', status: 'running' }))
+      res.end(JSON.stringify({
+        threadId: 't_1',
+        agentId: 'root',
+        model: 'ollama:llama3.2',
+        modelSubstitution: {
+          configuredModel: 'anthropic:claude-sonnet-4-6',
+          effectiveModel: 'ollama:llama3.2',
+          configuredSource: 'profile',
+          reason: 'profile_default_unavailable',
+        },
+        status: 'running',
+      }))
       return
     }
     if (/\/agents\/root\/events/.test(url) || /\/api\/v1\/runs\/[^/]+\/events/.test(url)) {
@@ -747,6 +758,12 @@ describe('request shapes', () => {
     })
     expect(result.threadId).toBe('t_1')
     expect(result.model).toBe('ollama:llama3.2')
+    expect(result.modelSubstitution).toEqual({
+      configuredModel: 'anthropic:claude-sonnet-4-6',
+      effectiveModel: 'ollama:llama3.2',
+      configuredSource: 'profile',
+      reason: 'profile_default_unavailable',
+    })
     const last = seen[seen.length - 1]!
     expect(last.method).toBe('POST')
     expect(last.url).toBe('/api/v1/run')

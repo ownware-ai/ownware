@@ -624,6 +624,22 @@ export interface ProfileDetail extends ProfileSummary {
 // Run
 // ---------------------------------------------------------------------------
 
+export type ModelSubstitutionReason = 'profile_default_unavailable'
+
+/**
+ * Gateway dispatch receipt emitted only when the configured winner differs
+ * from the model actually dispatched.
+ *
+ * This proves a gateway selection decision. It does not prove provider
+ * acceptance, completion, capability support or billing.
+ */
+export interface ModelSubstitution {
+  readonly configuredModel: string
+  readonly effectiveModel: string
+  readonly configuredSource: 'profile'
+  readonly reason: ModelSubstitutionReason
+}
+
 export interface RunRequest {
   readonly prompt: string
   readonly profileId?: string

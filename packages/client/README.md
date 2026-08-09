@@ -39,6 +39,11 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `providerHubOverview()` / `providerHubHealth()` | `GET /api/v1/provider-hub` / `health` | Read the active central catalog generation, closed counts and last-known-good refresh health without credentials or account identity. |
 | `providerHubProviders()` / `providerHubConnections()` / `providerHubVerifications()` | Provider Hub read routes | Inspect provider routes, secret-free connection projections and independently versioned verification evidence. |
 | `providerHubModels(query?)` | `GET /api/v1/provider-hub/models` | Search one generation-bound page across fixed API-key, router, local, custom and Codex subscription routes with explicit connected/verified/recommended filters and applicable price scopes. |
+| `providerHubUsage(query?)` / `providerHubUsageSummary(query?)` | Provider Hub usage read routes | Read immutable authoritative provider-call facts and classification-separated latest-cost summaries; append order comes from durable observation sequence, not caller timestamps. |
+| `exportProviderHubUsageEvidence()` | `GET /api/v1/provider-hub/usage/export` | Export immutable usage facts, every append-only cost observation and the exact hashed pricebook snapshots supporting estimates. |
+| `reconcileProviderHubUsageCost(id, input)` | `POST /api/v1/provider-hub/usage/:id/cost-observations` | Append an operator reconciliation without replacing provider-reported, estimated, subscription, local or unknown evidence. |
+| `taskCatalog()` | `GET /api/v1/task-catalog` | Owner-only: list installed immutable task-pack versions, task-oriented metadata and current scope decisions. |
+| `setTaskPackScope(id, input)` | `PUT /api/v1/task-catalog/:id/scope` | Owner-only: compare-and-set a global, workspace or top-level-agent allow/deny/version decision. |
 | `refreshProviderHub(force?)` | `POST /api/v1/provider-hub/catalog/refresh` | Attempt a Models.dev refresh while retaining the validated last-known-good catalog on failure. |
 | `openAICompatibleConnections()` / `saveOpenAICompatibleConnection(input)` | Provider Hub compatible-connection routes | List or save a plug-and-play OpenAI-compatible endpoint. A submitted `key` is write-only and moves into a dedicated encrypted credential record. |
 | `discoverOpenAICompatibleModels(id)` / `removeOpenAICompatibleConnection(id)` | Provider Hub compatible-connection routes | Run bounded `/models` discovery, or remove the runtime registration and its dedicated managed credential. |
@@ -78,7 +83,7 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `deployment(profileId)` | `GET /api/v1/profiles/:id/deployment` | Read active candidate, monotonic revision, routing, observed health and drain count. |
 | `deleteCandidate(id)` | `DELETE /api/v1/profile-candidates/:id` | Delete only an unreferenced candidate; active, in-flight and rollback-retained candidates reject. |
 | `profiles()` | `GET /api/v1/profiles` | Read the minimal safe catalog; delegated callers see only their scoped profile. |
-| `run(input)` | `POST /api/v1/run` | Send a message with optional bounded one-turn untrusted attachments. Pass a UUID `idempotencyKey` and reuse it only to retry the exact request; delegated principals require one, plus `runs.attachments` when attachments are present. |
+| `run(input)` | `POST /api/v1/run` | Send a message with optional model and bounded one-turn untrusted attachments. Model precedence is request → thread → install default → profile; only an unavailable same-runtime profile default may be substituted, while runtime incompatibility always rejects. Pass a UUID `idempotencyKey` and reuse it only to retry the exact request; delegated principals require one, plus `runs.attachments` when attachments are present. |
 | `runSnapshot(runId)` | `GET /api/v1/runs/:runId` | Read the bounded durable lifecycle for one execution, including truthful indeterminate restart state. |
 | `streamReply(runId, opts?)` | SSE `GET /runs/:id/events` | ONE bounded reply as `delta` → `done`/`error`. A legacy thread ID still uses the older unbounded thread route. |
 | `events(runId, opts?)` | same SSE | The RAW event stream for one run — tool calls, permission requests, usage, everything. |
@@ -234,8 +239,13 @@ time/attempt limits, source preparation byte/time/attempt and one-resource limit
 effective workspace/profile source quota ceilings, delegation lifetimes,
 seven-day idempotency replay window, and its enabled/disabled rate-limit
 values. A successful `run()` result carries `timeoutMs`, the wall-clock limit
-selected from the resolved profile. Older v1 Gateways may omit `limits` and
-`timeoutMs`; the SDK keeps both optional for additive compatibility.
+selected from the resolved profile. Its `model` is the model actually
+dispatched. If profile-default fallback changed that choice,
+`modelSubstitution` records the configured and effective model, source, and
+fixed policy reason; an idempotent replay returns the same receipt. The receipt
+does not prove provider acceptance or completion. Older v1 Gateways may omit
+`limits`, `timeoutMs`, and `modelSubstitution`; the SDK keeps them optional for
+additive compatibility.
 
 The owner-side grant methods are `createAccessGrant`, `createDataViewQueryGrant`, `accessGrant`,
 `accessGrants`, and `revokeAccessGrant`; protected delegated retrieval is

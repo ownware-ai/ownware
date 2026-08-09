@@ -136,7 +136,7 @@ import { createConnectorAliasHandlers } from './handlers/connector-alias.js'
 import { createConnectorConnectHandlers } from './handlers/connector-connect.js'
 import { createConnectorDisconnectHandlers } from './handlers/connector-disconnect.js'
 import { createConnectorRuntimeSetupHandler } from './handlers/connector-runtime-setup.js'
-import { credentialVault } from '../connector/credentials/vault.js'
+import { CredentialVault, credentialVault } from '../connector/credentials/vault.js'
 import { InstallIdentity } from '../identity/install-identity.js'
 import { createDebugHandlers } from './handlers/debug.js'
 import { createWorkspaceHandlers } from './handlers/workspaces.js'
@@ -157,6 +157,7 @@ import {
   OpenAICompatibleConnectionManager,
   ProviderCatalogStore,
   ProviderHubService,
+  ProviderUsageRecorder,
   VerificationEvidenceStore,
   projectAmbientLlmConnections,
   projectCodexSubscription,
@@ -239,6 +240,8 @@ import {
   validateStoragePlan,
   type GatewayStorageSelection,
 } from '../storage/config.js'
+import { PluginService } from '../plugin/service.js'
+import { createTaskCatalogHandlers } from './handlers/task-catalog.js'
 
 // ---------------------------------------------------------------------------
 // Gateway options
@@ -271,6 +274,8 @@ export interface GatewayBaseOptions {
   corsOrigins?: readonly string[]
   /** Additional profile directories to discover (e.g., global profiles). */
   additionalProfileDirs?: string[]
+  /** Read-only built-in plugin package directories supplied by the host. */
+  builtinPluginDirs?: readonly string[]
   /** Data directory (default: OWNWARE_DATA_DIR env or ~/.ownware). */
   dataDir?: string
   /** Disable rate limiting (for testing). Default: false */
@@ -373,6 +378,7 @@ export class OwnwareGateway {
     tls: boolean
     sourceWorkerEnabled: boolean
     sourceQuotaLimits: SourceQuotaLimits
+    builtinPluginDirs: readonly string[]
   }
   private readonly _token: string
   /**
@@ -607,6 +613,7 @@ export class OwnwareGateway {
    * Codex or touches an account; the owner-only runtime routes opt into it.
    */
   private readonly codexControlPlane: CodexRuntimeControlPlane
+  readonly pluginService: PluginService
 
   constructor(opts: GatewayOptions) {
     const dataDir = opts.dataDir ?? process.env.OWNWARE_DATA_DIR ?? join(homedir(), DEFAULT_DATA_DIR_NAME)
@@ -634,6 +641,7 @@ export class OwnwareGateway {
       profilesDir: resolve(opts.profilesDir),
       cors: opts.cors ?? true,
       additionalProfileDirs: opts.additionalProfileDirs ?? [],
+      builtinPluginDirs: opts.builtinPluginDirs ?? [],
       host: opts.host ?? process.env.OWNWARE_HOST ?? '127.0.0.1',
       dataDir,
       corsOrigins: opts.corsOrigins ?? ['http://localhost:*', 'http://127.0.0.1:*'],
@@ -700,6 +708,7 @@ export class OwnwareGateway {
       sourceQuotaLimits: this.opts.sourceQuotaLimits,
       storagePlan,
     })
+    this.pluginService = new PluginService(this.opts.dataDir, this.state.pluginRepository)
     this.principalService = new ScopedPrincipalService({
       ownerToken: this._token,
       store: this.state.securityRepositories.principals,
@@ -1210,11 +1219,9 @@ export class OwnwareGateway {
    * that backed it, so the Settings → Credentials cost panel
    * (`aggregateCost`) reflects actual spend.
    *
-   * Maps `model` ("anthropic:claude-…") → providerId → canonical
-   * `variableName` → the stored credential, then records one
-   * post-flight true-up audit row tagged `detail.trueUp` so it sums
-   * into `actual_cost_usd` without inflating the call count
-   * (`aggregateCost` excludes true-up rows from `calls`).
+   * Maps an authoritatively completed provider call to its backing stored
+   * credential and records only the explicit provider-reported amount as an
+   * actual-cost true-up. Catalog estimates never enter `actual_cost_usd`.
    *
    * Best-effort: a missing provider/credential is a normal no-op (the
    * run used a key we don't track), and any failure is logged, never
@@ -1239,10 +1246,10 @@ export class OwnwareGateway {
         agentId: 'gateway-llm',
         threadId,
         actualCostUsd: costUsd,
-        detail: { trueUp: true, source: 'run-end', model },
+        detail: { trueUp: true, source: 'provider-reported-usage', model },
       })
-    } catch (err) {
-      console.error('[gateway] LLM cost attribution failed:', err)
+    } catch {
+      console.error('[gateway] provider-reported cost attribution failed')
     }
   }
 
@@ -1287,6 +1294,10 @@ export class OwnwareGateway {
     this.assertStartNotCancelled()
     bootLap('storage ready')
 
+    await this.pluginService.initialize(this.opts.builtinPluginDirs)
+    this.assertStartNotCancelled()
+    bootLap('plugins ready')
+
     // 0. Ensure the user profiles dir exists. Bundled is read-only.
     const globalProfilesDir = join(this.opts.dataDir, 'profiles')
     mkdirSync(globalProfilesDir, { recursive: true })
@@ -1314,6 +1325,7 @@ export class OwnwareGateway {
     // default) so the file vault winds down naturally and chunk F
     // can delete the implementation entirely.
     await this.state.securityRepositories.credentialMigrations.run({
+        vault: new CredentialVault(join(this.opts.dataDir, 'credentials')),
         log: (msg) => console.log(msg),
         deleteAfterImport: false,
       })
@@ -2456,7 +2468,10 @@ export class OwnwareGateway {
     })
     const providerHub = createProviderHubHandlers(
       providerHubService,
-      { openAICompatible: this.openAICompatibleConnections },
+      {
+        openAICompatible: this.openAICompatibleConnections,
+        usageEvidence: this.state.usageEvidenceRepository,
+      },
     )
 
     const run = createRunHandlers(this.state, this.registry, this.runner, {
@@ -2471,6 +2486,19 @@ export class OwnwareGateway {
       pendingReconciles: this.pendingReconciles,
       memorySystem: this.memorySystem,
       pickRunnableDefaultModel: () => providerHubService.pickRunnableDefaultModel(),
+      resolveModelExecutionAuthority: async (modelId) => {
+        const resolved = await providerHubService.resolveUsageModel(modelId)
+        return resolved == null
+          ? null
+          : {
+              runtimeId: resolved.route.transport.runtimeId,
+              ...(resolved.route.transport.adapterId == null
+                ? {}
+                : { adapterId: resolved.route.transport.adapterId }),
+            }
+      },
+      resolvePluginSkills: async context =>
+        (await this.pluginService.resolveSkills(context)).skills,
       // F4.b: route MCPManager state-change events through the same
       // bus the `/api/v1/connectors/events` SSE channel reads. Without
       // this wire, transport closes never hit the client's connector
@@ -2525,12 +2553,24 @@ export class OwnwareGateway {
       profileRegistry: this.registry,
       toolProviders,
     })
-    // Attribute each finished run's real cost back to the backing LLM
-    // credential. Fire-and-forget — the lookup is async and the sink
-    // owns its own error routing; a failure here must never disturb the
-    // run's completion path.
-    this.runner.setLlmCostSink(({ model, costUsd, threadId }) => {
-      void this.attributeLlmCostToCredential(model, costUsd, threadId)
+    const providerUsageRecorder = new ProviderUsageRecorder(
+      providerHubService,
+      this.state.usageEvidenceRepository,
+    )
+    this.runner.setProviderUsageSink(async input => {
+      const entry = await providerUsageRecorder.record(input)
+      // Only an explicit upstream cost is an actual-cost fact. Hub price
+      // estimates remain estimates and never true-up credential spend.
+      const providerReportedAmount = entry.cost.classification === 'provider_reported'
+        ? entry.cost.amountUsd
+        : null
+      if (providerReportedAmount !== null && providerReportedAmount > 0) {
+        await this.attributeLlmCostToCredential(
+          input.usage.model || input.requestedModel,
+          providerReportedAmount,
+          input.threadId,
+        )
+      }
     })
     // Agent Teams vertical. Same toolProviders as run-handler assembly
     // so member sessions see the exact tool set a solo session would.
@@ -2572,6 +2612,9 @@ export class OwnwareGateway {
     })
     const dashboard = createDashboardHandlers(this.state)
     const settings = createSettingsHandlers(this.state)
+    const taskCatalog = createTaskCatalogHandlers(this.pluginService, {
+      authEnabled: !this.authDisabled,
+    })
     const providers = createProviderHandlers({
       store: this.credentialStore,
       resolver: this.credentialResolver,
@@ -2866,6 +2909,15 @@ export class OwnwareGateway {
       state: this.state,
     })
     this.router.get('/api/v1/events', gatewayEventsHandler.streamGatewayEvents)
+
+    // Task catalog — UI terminology deliberately describes outcomes, while
+    // the storage/lifecycle implementation remains a versioned plugin system.
+    this.router.get('/api/v1/task-catalog', taskCatalog.list, { operation: 'task_catalog.list' })
+    this.router.put(
+      '/api/v1/task-catalog/:taskPackId/scope',
+      taskCatalog.setScope,
+      { operation: 'task_catalog.scope' },
+    )
 
     // Profiles
     this.router.get('/api/v1/profiles', profiles.listProfiles, { operation: 'profiles.list' })
@@ -3289,6 +3341,13 @@ export class OwnwareGateway {
     this.router.get('/api/v1/provider-hub/verifications', providerHub.verifications)
     this.router.get('/api/v1/provider-hub/models', providerHub.models)
     this.router.get('/api/v1/provider-hub/health', providerHub.health)
+    this.router.get('/api/v1/provider-hub/usage', providerHub.usage)
+    this.router.get('/api/v1/provider-hub/usage/summary', providerHub.usageSummary)
+    this.router.get('/api/v1/provider-hub/usage/export', providerHub.usageExport)
+    this.router.post(
+      '/api/v1/provider-hub/usage/:usageId/cost-observations',
+      providerHub.appendUsageCostObservation,
+    )
     this.router.post('/api/v1/provider-hub/catalog/refresh', providerHub.refresh)
     this.router.get(
       '/api/v1/provider-hub/connections/openai-compatible',
@@ -3457,6 +3516,20 @@ export class OwnwareGateway {
 
 const isMainModule = import.meta.url === `file://${process.argv[1]}`
 
+export function parseGatewayTaskPackDirs(argv: readonly string[]): readonly string[] {
+  const directories: string[] = []
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--task-pack') continue
+    const value = argv[index + 1]
+    if (value === undefined || value.trim() === '' || value.startsWith('--')) {
+      throw new TypeError('--task-pack requires a directory.')
+    }
+    directories.push(resolve(value))
+    index += 1
+  }
+  return [...new Set(directories)]
+}
+
 if (isMainModule) {
   const portIdx = process.argv.indexOf('--port')
   const envPort = process.env['GATEWAY_PORT'] ?? process.env['OWNWARE_PORT']
@@ -3491,6 +3564,7 @@ if (isMainModule) {
   // Only pass disableAuth when explicitly set — otherwise let the env
   // var logic in the constructor decide (opts.disableAuth ?? ...).
   const noAuthFlag = process.argv.includes('--no-auth')
+  const builtinPluginDirs = parseGatewayTaskPackDirs(process.argv.slice(2))
 
   // Surface a boot failure as a single structured line the desktop client's supervisor
   // parses, so the user sees the REAL reason (e.g. a MigrationSafetyError:
@@ -3512,6 +3586,7 @@ if (isMainModule) {
     const gateway = new OwnwareGateway({
       port,
       profilesDir,
+      builtinPluginDirs,
       ...(noAuthFlag ? { disableAuth: true } : {}),
     })
     gateway.start().catch(emitFatal)

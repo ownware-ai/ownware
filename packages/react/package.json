@@ -1,6 +1,6 @@
 {
   "name": "@ownware/react",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Ownware chat kit for React — a headless live-agent hook plus drop-in chat and agent-workspace components.",
   "type": "module",
   "main": "./dist/index.js",

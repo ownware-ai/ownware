@@ -62,7 +62,7 @@ describe('EventIngestor.ingest — agent_events + EventBus', () => {
   it('writes the redacted argument to disk AND publishes the same bytes live', async () => {
     const bus = new EventBus()
     const ingestor = new EventIngestor(
-      createSqliteCoreRepositoriesFromDatabase(db).events,
+      createSqliteCoreRepositoriesFromDatabase(db, db.rawMainHandle).events,
       bus,
     )
     const threadId = threadFixture()

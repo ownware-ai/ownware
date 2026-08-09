@@ -20,6 +20,7 @@ export interface ServeFlags {
   host?: string
   profilesDir?: string
   dataDir?: string
+  taskPackDirs?: string[]
   tls?: boolean
   /** Boot stored channels in-process (default true). `--no-channels` opts out. */
   channels?: boolean
@@ -47,6 +48,14 @@ export function parseServeFlags(argv: string[]): ServeFlags {
       case '--data-dir':
         flags.dataDir = resolve(argv[++i] ?? '.')
         break
+      case '--task-pack': {
+        const directory = argv[++i]
+        if (directory === undefined || directory.trim() === '' || directory.startsWith('--')) {
+          throw new Error('serve: --task-pack needs a directory')
+        }
+        flags.taskPackDirs = [...(flags.taskPackDirs ?? []), resolve(directory)]
+        break
+      }
       case '--tls':
         flags.tls = true
         break
@@ -88,6 +97,7 @@ export async function serveCommand(argv: string[]): Promise<void> {
     host,
     ...(flags.port !== undefined ? { port: flags.port } : {}),
     ...(flags.dataDir !== undefined ? { dataDir: flags.dataDir } : {}),
+    ...(flags.taskPackDirs !== undefined ? { builtinPluginDirs: flags.taskPackDirs } : {}),
     // Loopback first contact: plain HTTP unless the user opts in.
     // Non-loopback: TLS always (a --no-tls flag is refused below).
     tls: loopback ? (flags.tls ?? false) : true,

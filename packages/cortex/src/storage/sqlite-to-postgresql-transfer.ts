@@ -1,4 +1,5 @@
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
+import { POSTGRESQL_MIGRATION_MANIFEST } from './postgresql-migrations.js'
 import {
   canonicalPostgreSqlTransferSnapshot,
   canonicalPostgreSqlTransferSnapshotWithinTransaction,
@@ -26,6 +27,7 @@ type SessionClient = Pick<PostgreSqlClient | PostgreSqlPoolClient, 'query'>
 const TRANSFER_LOCK_NAMESPACE = 1_398_031_360
 const TRANSFER_LOCK_KEY = 14
 const INSERT_BATCH_SIZE = 128
+const CURRENT_SCHEMA_VERSION = POSTGRESQL_MIGRATION_MANIFEST.migrations.at(-1)!.version
 
 export type OfflineTransferErrorCode =
   | 'invalid_input'
@@ -222,8 +224,9 @@ function targetValue(column: LogicalColumnDescriptor, raw: unknown): unknown {
 }
 
 function columnsByTable(): ReadonlyMap<string, readonly LogicalColumnDescriptor[]> {
+  const currentColumns = currentPostgreSqlLogicalColumns()
   const grouped = new Map<string, LogicalColumnDescriptor[]>()
-  for (const column of currentPostgreSqlLogicalColumns()) {
+  for (const column of currentColumns) {
     if (column.table === '_migrations') continue
     const columns = grouped.get(column.table)
     if (columns === undefined) grouped.set(column.table, [column])
@@ -232,7 +235,8 @@ function columnsByTable(): ReadonlyMap<string, readonly LogicalColumnDescriptor[
   const names = [...grouped.keys()].sort()
   if (
     JSON.stringify(names) !== JSON.stringify(POSTGRESQL_TRANSFER_BUSINESS_TABLES) ||
-    [...grouped.values()].reduce((count, columns) => count + columns.length, 0) !== 686
+    [...grouped.values()].reduce((count, columns) => count + columns.length, 0) !==
+      currentColumns.filter((column) => column.table !== '_migrations').length
   ) {
     return fail('target_changed')
   }
@@ -370,8 +374,8 @@ function validOptions(options: OfflineSqliteToPostgreSqlTransferOptions): boolea
   return typeof options.sourcePath === 'string' && options.sourcePath.length > 0 &&
     Number.isSafeInteger(timeout) && timeout >= 1 && timeout <= 60_000 &&
     options.expectedTarget.state === 'schema_current_empty_ready' &&
-    options.expectedTarget.schemaVersion === 83 &&
-    options.expectedSource.schemaVersion === 83 &&
+    options.expectedTarget.schemaVersion === CURRENT_SCHEMA_VERSION &&
+    options.expectedSource.schemaVersion === CURRENT_SCHEMA_VERSION &&
     options.expectedSource.tableCount === POSTGRESQL_TRANSFER_BUSINESS_TABLES.length
 }
 

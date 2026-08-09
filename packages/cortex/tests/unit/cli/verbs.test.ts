@@ -61,11 +61,21 @@ describe('parseServeFlags', () => {
     expect(parseServeFlags(['--no-tls']).tls).toBe(false)
   })
 
+  it('parses repeatable built-in task-pack directories', () => {
+    expect(parseServeFlags(['--task-pack', './documents', '--task-pack', './research']).taskPackDirs)
+      .toEqual([join(process.cwd(), 'documents'), join(process.cwd(), 'research')])
+  })
+
   it('rejects an unknown flag loudly', () => {
     expect(() => parseServeFlags(['--hots', '0.0.0.0'])).toThrow(/unknown flag/)
   })
 
   it('rejects a non-numeric port', () => {
     expect(() => parseServeFlags(['--port', 'abc'])).toThrow(/invalid --port/)
+  })
+
+  it('rejects a task-pack flag with no directory', () => {
+    expect(() => parseServeFlags(['--task-pack', '--no-channels']))
+      .toThrow(/--task-pack needs a directory/)
   })
 })

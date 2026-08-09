@@ -327,7 +327,20 @@ export class AnthropicProvider implements ProviderAdapter {
       type: 'message_complete',
       content,
       stopReason: mapAnthropicStopReason(finalMessage.stop_reason),
-      usage: totalUsageIncludingIterations(finalMessage.usage),
+      usage: {
+        ...totalUsageIncludingIterations(finalMessage.usage),
+        requestId: finalMessage.id,
+        servedModelId: finalMessage.model,
+        ...(
+          typeof (finalMessage.usage as unknown as Record<string, unknown>)['service_tier'] === 'string'
+            ? {
+                servedTier: String(
+                  (finalMessage.usage as unknown as Record<string, unknown>)['service_tier'],
+                ),
+              }
+            : {}
+        ),
+      },
     }
   }
 

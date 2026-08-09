@@ -5,7 +5,7 @@ import {
 } from './canonical-storage-digest.js'
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
 import {
-  postgreSqlCatalogMatchesCurrentV83,
+  postgreSqlCatalogMatchesCurrentV85,
 } from './postgresql-catalog-certification.js'
 import {
   POSTGRESQL_CURRENT_SCHEMA_EXPECTATION,
@@ -89,7 +89,7 @@ export function currentPostgreSqlLogicalColumns(): readonly LogicalColumnDescrip
     } satisfies LogicalColumnDescriptor
   })
   if (
-    columns.length !== 690 ||
+    columns.length !== 749 ||
     new Set(columns.map((column) => column.key)).size !== columns.length
   ) {
     return fail('logical_schema_invalid')
@@ -165,7 +165,7 @@ async function scanTable(
 }
 
 /**
- * Canonicalize all 58 transferable tables from one PostgreSQL
+ * Canonicalize every certified transferable table from one PostgreSQL
  * REPEATABLE READ, READ ONLY snapshot. The caller supplies one dedicated
  * session; arbitrary pool calls cannot escape the snapshot.
  */
@@ -217,7 +217,7 @@ export async function canonicalPostgreSqlTransferSnapshotWithinTransaction(
     if (!await POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(client)) {
       return fail('schema_invalid')
     }
-    if (!await postgreSqlCatalogMatchesCurrentV83(client)) {
+    if (!await postgreSqlCatalogMatchesCurrentV85(client)) {
       return fail('schema_invalid')
     }
 

@@ -221,6 +221,117 @@ export interface ProviderHubPricebookEntry {
   }
 }
 
+export type ProviderHubCostClassification =
+  | 'estimated'
+  | 'provider_reported'
+  | 'reconciled'
+  | 'subscription'
+  | 'local'
+  | 'unknown'
+
+export interface ProviderHubUsageCost {
+  readonly classification: ProviderHubCostClassification
+  readonly amountUsd: number | null
+  readonly currency: 'USD'
+  readonly pricebookEntryId?: string
+  readonly pricebookVersion?: string
+  readonly observedAt: string
+  readonly reconciledAt?: string
+}
+
+export interface ProviderHubUsageEntry {
+  readonly id: string
+  readonly occurredAt: string
+  readonly threadId?: string
+  readonly profileId?: string
+  readonly providerFamilyId: string
+  readonly providerRouteId: string
+  readonly modelRouteId: string
+  readonly connectionId?: string
+  readonly wireModelId: string
+  readonly serviceTier?: string
+  readonly contextTier?: string
+  readonly region?: string
+  readonly billingKind: ProviderHubBillingKind
+  readonly tokens: {
+    readonly inputTextTokens?: number
+    readonly outputTextTokens?: number
+    readonly cacheReadTokens?: number
+    readonly cacheWriteTokens?: number
+    readonly reasoningTokens?: number
+    readonly inputAudioTokens?: number
+    readonly outputAudioTokens?: number
+  }
+  readonly units: {
+    readonly inputImages?: number
+    readonly outputImages?: number
+    readonly requests?: number
+    readonly toolCalls?: number
+  }
+  readonly cost: ProviderHubUsageCost
+  readonly providerFacts: {
+    readonly requestId?: string
+    readonly generationId?: string
+    readonly servedModelId?: string
+    readonly servedProvider?: string
+    readonly servedTier?: string
+    readonly finishReason?: string
+    readonly usagePayloadHash?: string
+  }
+  readonly durationMs?: number
+  readonly success: boolean
+}
+
+export interface ProviderHubUsageQuery {
+  readonly from?: string
+  readonly until?: string
+  readonly profileId?: string
+  readonly threadId?: string
+  readonly classification?: ProviderHubCostClassification
+  readonly limit?: number
+}
+
+export interface ProviderHubUsagePage {
+  readonly items: readonly ProviderHubUsageEntry[]
+}
+
+export interface ProviderHubUsageSummary {
+  readonly observations: Record<ProviderHubCostClassification, {
+    readonly requestCount: number
+    readonly amountUsd: number | null
+  }>
+  readonly tokens: {
+    readonly inputTextTokens: number
+    readonly outputTextTokens: number
+    readonly cacheReadTokens: number
+    readonly cacheWriteTokens: number
+    readonly reasoningTokens: number
+  }
+}
+
+export interface ProviderHubUsageEvidenceExport {
+  readonly entries: readonly {
+    readonly fact: Omit<ProviderHubUsageEntry, 'cost'>
+    readonly recordedAt: string
+    readonly costObservations: readonly {
+      readonly id: string
+      readonly sequence: number
+      readonly cost: ProviderHubUsageCost
+      readonly recordedAt: string
+    }[]
+  }[]
+  readonly pricebookSnapshots: readonly {
+    readonly entry: ProviderHubPricebookEntry
+    readonly recordedAt: string
+  }[]
+}
+
+export interface ProviderHubReconciledCostInput extends ProviderHubUsageCost {
+  readonly classification: 'reconciled'
+  readonly amountUsd: number
+  readonly reconciledAt: string
+}
+
 export interface ProviderHubOverview {
   readonly generation: {
     readonly schemaVersion: number
@@ -374,6 +485,14 @@ export interface OpenAICompatibleConnectionList {
 }
 
 export function providerHubModelQueryString(query: ProviderHubModelQuery): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) params.set(key, String(value))
+  }
+  return params.size === 0 ? '' : `?${params.toString()}`
+}
+
+export function providerHubUsageQueryString(query: ProviderHubUsageQuery): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) params.set(key, String(value))

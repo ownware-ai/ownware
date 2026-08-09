@@ -286,6 +286,10 @@ export class OpenAIProvider implements ProviderAdapter {
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
     }
+    let requestId: string | undefined
+    let servedModelId: string | undefined
+    let servedProvider: string | undefined
+    let servedTier: string | undefined
 
     // Wrap stream with stall detection
     const guardedStream = withStallGuard(stream, {
@@ -362,6 +366,15 @@ export class OpenAIProvider implements ProviderAdapter {
       if (step.kind === 'end') break
       // step.kind === 'chunk' is the only remaining variant
       const chunk: StreamChunk = step.chunk
+      const providerChunk = chunk as unknown as Record<string, unknown>
+      if (typeof chunk.id === 'string' && chunk.id.length > 0) requestId = chunk.id
+      if (typeof chunk.model === 'string' && chunk.model.length > 0) servedModelId = chunk.model
+      if (typeof providerChunk['provider'] === 'string') {
+        servedProvider = providerChunk['provider']
+      }
+      if (typeof providerChunk['service_tier'] === 'string') {
+        servedTier = providerChunk['service_tier']
+      }
       chunkCount++
       lastChunkAt = Date.now()
       const choice: StreamChunk['choices'][number] | undefined = chunk.choices?.[0]
@@ -556,7 +569,13 @@ export class OpenAIProvider implements ProviderAdapter {
       type: 'message_complete',
       content: contentBlocks,
       stopReason,
-      usage,
+      usage: {
+        ...usage,
+        ...(requestId === undefined ? {} : { requestId }),
+        ...(servedModelId === undefined ? {} : { servedModelId }),
+        ...(servedProvider === undefined ? {} : { servedProvider }),
+        ...(servedTier === undefined ? {} : { servedTier }),
+      },
     }
   }
 

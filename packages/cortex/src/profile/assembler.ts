@@ -32,6 +32,8 @@ import {
   createZoneConfig,
   DEFAULT_COMBINATION_RULES,
   ZONE_NAME_LEVELS,
+  SkillRegistry,
+  createSkillTool,
   compileToolPolicies,
   wrapToolsWithGuards,
 } from '@ownware/loom'
@@ -49,6 +51,7 @@ import type {
   SystemPromptBlock,
   HookRuntime,
   ReminderInjector,
+  SkillDefinition,
 } from '@ownware/loom'
 import type { LoadedProfile } from './loader.js'
 import { buildHookBinding, type HookBindingOptions } from './hooks.js'
@@ -173,6 +176,11 @@ export interface AssembledAgent {
  * was written before M2 still compiles and passes without change.
  */
 export interface AssembleOptions {
+  /**
+   * Centrally resolved skills contributed by enabled plugin packages.
+   * Callers must resolve scope before assembly; duplicate names fail closed.
+   */
+  readonly additionalSkills?: readonly SkillDefinition[]
   /**
    * @deprecated Prefer `toolProviders` with a
    * `WebSearchToolProvider`. Kept for back-compat with every M1.5
@@ -338,6 +346,8 @@ export interface ActiveSkillRef {
   readonly name: string
 }
 
+const MAX_ACTIVE_SKILLS = 128
+
 // ---------------------------------------------------------------------------
 // Assemble
 // ---------------------------------------------------------------------------
@@ -361,6 +371,16 @@ export async function assembleAgent(
   profile: LoadedProfile,
   options: AssembleOptions = {},
 ): Promise<AssembledAgent> {
+  if (options.additionalSkills !== undefined && options.additionalSkills.length > 0) {
+    const names = new Set(profile.skills.map(skill => skill.name))
+    for (const skill of options.additionalSkills) {
+      if (names.has(skill.name)) {
+        throw new TypeError('Profile and plugin skills must have unique names.')
+      }
+      names.add(skill.name)
+    }
+    profile = { ...profile, skills: [...profile.skills, ...options.additionalSkills] }
+  }
   // Canonicalize the model up front: a profile persisted with a friendly
   // display name or bare alias (e.g. "Deepseek V4 Flash" written by the builder
   // or a hand-edit) is healed to its real `provider:model` id, so EVERY
@@ -588,6 +608,19 @@ async function assembleTools(
     !tools.some(t => t.name === 'plan_draft')
   ) {
     tools.push(...createPlanTools())
+  }
+
+  // a.7) Lazy skill dispatcher. Only the small catalog is prompt-resident;
+  // instruction bodies enter the conversation after an explicit tool call.
+  const activeSkills = profile.skills.filter(skill => skill.active !== false)
+  if (activeSkills.length > 0) {
+    if (activeSkills.length > MAX_ACTIVE_SKILLS) {
+      throw new TypeError(`An agent may enable at most ${MAX_ACTIVE_SKILLS} skills.`)
+    }
+    if (tools.some(tool => tool.name === 'skill')) {
+      throw new TypeError('The skill dispatcher tool name is already registered.')
+    }
+    tools.push(createSkillTool(new SkillRegistry().registerAll(activeSkills)))
   }
 
   // (The desktop board tools + `open_pane` pane-substrate wiring were
@@ -1437,7 +1470,10 @@ async function buildSystemPrompt(
       const catalog = activeSkills.map(s =>
         `- /${s.name}: ${s.description}`,
       ).join('\n')
-      builder.add('skills', `# Available Skills\n\n${catalog}`)
+      builder.add(
+        'skills',
+        `# Available Skills\n\n${catalog}`,
+      )
     }
   }
 

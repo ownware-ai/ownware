@@ -1,5 +1,35 @@
 # @ownware/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- 40d7804: Add the central Provider Hub with a validated Models.dev catalog, explicit
+  route and verification truth, nine resolver-backed OpenAI-compatible provider
+  presets, and managed custom compatible endpoints for local or cloud inference.
+  Custom keys remain in Ownware's encrypted credential store, while the typed
+  client and OpenAPI contract expose only secret-free configuration and catalog
+  state. Provider Hub is also the single model-discovery and pricebook authority:
+  the React and CLI pickers consume it directly, ambient API-key and local Ollama
+  connections join the same view, and the deprecated `/api/v1/models` route is
+  only a compatibility projection of that assembled generation. Automatic
+  fallback additionally checks the live runtime adapter registry, while normal
+  model listing consumes only already-observed Codex state and never starts the
+  optional subscription runtime.
+
+### Patch Changes
+
+- Updated dependencies [c9bb51a]
+- Updated dependencies [40d7804]
+- Updated dependencies [40d7804]
+- Updated dependencies [40d7804]
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+  - @ownware/cortex@0.5.0
+  - @ownware/client@0.5.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -13,6 +13,7 @@ let profilesDir: string
 let dataDir: string
 let connectionId: string
 let fixtureCredentialHeader: string | undefined
+let fixtureCallCount = 0
 
 const originalSkipRegistry = process.env['OWNWARE_SKIP_MCP_REGISTRY']
 
@@ -31,10 +32,39 @@ beforeAll(async () => {
       ? req.headers['x-api-key']
       : undefined
     if (req.url === '/v1/chat/completions') {
+      fixtureCallCount += 1
+      const responseId = `chatcmpl-fixture-${fixtureCallCount}`
       res.statusCode = 200
       res.setHeader('content-type', 'text/event-stream')
-      res.write('data: {"id":"chatcmpl-fixture","object":"chat.completion.chunk","created":1,"model":"fixture-discovered","choices":[{"index":0,"delta":{"content":"compatible hello"},"finish_reason":null}]}\n\n')
-      res.write('data: {"id":"chatcmpl-fixture","object":"chat.completion.chunk","created":1,"model":"fixture-discovered","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n')
+      res.write(`data: ${JSON.stringify({
+        id: responseId,
+        object: 'chat.completion.chunk',
+        created: 1,
+        model: 'fixture-discovered',
+        service_tier: 'priority',
+        choices: [{ index: 0, delta: { content: 'compatible hello' }, finish_reason: null }],
+      })}\n\n`)
+      res.write(`data: ${JSON.stringify({
+        id: responseId,
+        object: 'chat.completion.chunk',
+        created: 1,
+        model: 'fixture-discovered',
+        service_tier: 'priority',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      })}\n\n`)
+      res.write(`data: ${JSON.stringify({
+        id: responseId,
+        object: 'chat.completion.chunk',
+        created: 1,
+        model: 'fixture-discovered',
+        service_tier: 'priority',
+        choices: [],
+        usage: {
+          prompt_tokens: 5 + fixtureCallCount,
+          completion_tokens: 2,
+          total_tokens: 7 + fixtureCallCount,
+        },
+      })}\n\n`)
       res.end('data: [DONE]\n\n')
       return
     }
@@ -150,11 +180,12 @@ describe('Provider Hub OpenAI-compatible gateway lifecycle', () => {
     expect(JSON.stringify(discovered.body)).not.toContain(plaintext)
     expect(discovered.body.health.status).toBe('healthy')
 
+    const firstPrompt = 'Answer through the compatible fixture; prompt-secret-canary.'
     const run = await json('/api/v1/run', {
       method: 'POST',
       body: {
         profileId: 'compatible-fixture',
-        prompt: 'Answer through the compatible fixture.',
+        prompt: firstPrompt,
         model: `${connectionId}:fixture-discovered`,
       },
     })
@@ -163,6 +194,103 @@ describe('Provider Hub OpenAI-compatible gateway lifecycle', () => {
     const eventText = await readRunToTerminal(String(run.body.runId))
     expect(eventText).toContain('compatible hello')
     expect(eventText).toContain('turn.end')
+
+    const second = await json('/api/v1/run', {
+      method: 'POST',
+      body: {
+        profileId: 'compatible-fixture',
+        threadId: run.body.threadId,
+        prompt: 'Continue without persisting this second prompt.',
+      },
+    })
+    expect(second.status).toBe(200)
+    expect(second.body.threadId).toBe(run.body.threadId)
+    await expect(readRunToTerminal(String(second.body.runId))).resolves.toContain('turn.end')
+
+    const threadUsage = await json(
+      `/api/v1/provider-hub/usage?threadId=${encodeURIComponent(String(run.body.threadId))}`,
+    )
+    expect(threadUsage.status).toBe(200)
+    expect(threadUsage.body.items).toHaveLength(2)
+    expect(threadUsage.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        profileId: 'compatible-fixture',
+        providerRouteId: `route:${connectionId}`,
+        modelRouteId: `${connectionId}:fixture-discovered`,
+        billingKind: 'local',
+        cost: { classification: 'local', amountUsd: null, currency: 'USD', observedAt: expect.any(String) },
+        providerFacts: expect.objectContaining({
+          servedModelId: 'fixture-discovered',
+          servedTier: 'priority',
+        }),
+      }),
+    ]))
+    const threadSummary = await json(
+      `/api/v1/provider-hub/usage/summary?threadId=${encodeURIComponent(String(run.body.threadId))}`,
+    )
+    const profileSummary = await json(
+      '/api/v1/provider-hub/usage/summary?profileId=compatible-fixture',
+    )
+    expect(threadSummary.body).toEqual(profileSummary.body)
+    expect(threadSummary.body).toMatchObject({
+      observations: { local: { requestCount: 2, amountUsd: null } },
+      tokens: { inputTextTokens: 13, outputTextTokens: 4 },
+    })
+    const evidenceBeforeRestart = await json('/api/v1/provider-hub/usage/export')
+    expect(evidenceBeforeRestart.body.entries).toHaveLength(2)
+    expect(evidenceBeforeRestart.body.pricebookSnapshots).toEqual([])
+    expect(JSON.stringify(evidenceBeforeRestart.body)).not.toContain(firstPrompt)
+    expect(JSON.stringify(evidenceBeforeRestart.body)).not.toContain(plaintext)
+
+    await gateway.stop()
+    gateway = new OwnwareGateway({
+      port: 0,
+      profilesDir,
+      dataDir,
+      tls: false,
+      disableAuth: true,
+      disableAccessLog: true,
+      disableRateLimit: true,
+    })
+    await gateway.start()
+    baseUrl = `http://127.0.0.1:${gateway.port}`
+    const evidenceAfterRestart = await json('/api/v1/provider-hub/usage/export')
+    expect(evidenceAfterRestart.body).toEqual(evidenceBeforeRestart.body)
+
+    const reconciledAt = '2026-08-09T08:00:00.000Z'
+    const usageId = String(evidenceAfterRestart.body.entries[0].fact.id)
+    const reconciled = await json(
+      `/api/v1/provider-hub/usage/${encodeURIComponent(String(
+        usageId,
+      ))}/cost-observations`,
+      {
+        method: 'POST',
+        body: {
+          classification: 'reconciled',
+          amountUsd: 0.0042,
+          currency: 'USD',
+          observedAt: reconciledAt,
+          reconciledAt,
+        },
+      },
+    )
+    if (reconciled.status !== 201) {
+      throw new Error(`Usage reconciliation failed: ${JSON.stringify(reconciled.body)}`)
+    }
+    expect(reconciled.body.cost).toMatchObject({
+      classification: 'reconciled',
+      amountUsd: 0.0042,
+    })
+    const afterReconciliation = await json('/api/v1/provider-hub/usage/export')
+    expect(afterReconciliation.body.entries.reduce(
+      (count: number, entry: { costObservations: unknown[] }) => (
+        count + entry.costObservations.length
+      ),
+      0,
+    )).toBe(3)
+    expect(evidenceAfterRestart.body.entries.every(
+      (entry: { costObservations: unknown[] }) => entry.costObservations.length === 1,
+    )).toBe(true)
 
     const configs = await json('/api/v1/provider-hub/connections/openai-compatible')
     expect(JSON.stringify(configs.body)).not.toContain(plaintext)

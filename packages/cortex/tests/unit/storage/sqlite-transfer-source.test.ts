@@ -8,8 +8,8 @@ import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 import { runMigrationsSafely } from '../../../src/gateway/db/migration-safety.js'
 import {
   assertSqliteTransferSnapshot,
-  SQLITE_V83_SCHEMA_OBJECT_COUNT,
-  SQLITE_V83_SCHEMA_OBJECT_HASH,
+  SQLITE_V85_SCHEMA_OBJECT_COUNT,
+  SQLITE_V85_SCHEMA_OBJECT_HASH,
   SqliteTransferPreflightError,
   SqliteTransferFindingsError,
   assertSqliteTransferSourceUnchanged,
@@ -106,13 +106,13 @@ describe('SQLite transfer source preflight', () => {
       snapshotAuthority: 'sqlite-read-transaction',
       writerExclusion: 'not-proven',
       authorizesTargetWrites: false,
-      schemaVersion: 83,
-      schemaObjectCount: SQLITE_V83_SCHEMA_OBJECT_COUNT,
-      schemaObjectDigest: SQLITE_V83_SCHEMA_OBJECT_HASH,
-      logicalColumnCount: 690,
-      tableCount: 58,
+      schemaVersion: 85,
+      schemaObjectCount: SQLITE_V85_SCHEMA_OBJECT_COUNT,
+      schemaObjectDigest: SQLITE_V85_SCHEMA_OBJECT_HASH,
+      logicalColumnCount: 749,
+      tableCount: 65,
     })
-    expect(receipt.tables).toHaveLength(58)
+    expect(receipt.tables).toHaveLength(65)
     expect(receipt.tables.map((table) => table.table)).toEqual(
       [...receipt.tables.map((table) => table.table)].sort(),
     )
@@ -169,7 +169,7 @@ describe('SQLite transfer source preflight', () => {
       })
       observedColumns += columns.length
     }
-    expect(observedColumns).toBe(690)
+    expect(observedColumns).toBe(749)
   })
 
   it('blocks unknown schema objects and divergent history without reflecting them', () => {

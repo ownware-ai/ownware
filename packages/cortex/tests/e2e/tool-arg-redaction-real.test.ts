@@ -147,7 +147,7 @@ describe.skipIf(!apiKey)('tool-argument redaction — real provider stream', () 
     cleanups.push(async () => db.close())
     const bus = new EventBus()
     const ingestor = new EventIngestor(
-      createSqliteCoreRepositoriesFromDatabase(db).events,
+      createSqliteCoreRepositoriesFromDatabase(db, db.rawMainHandle).events,
       bus,
     )
     const threadId = db.createThread('e2e-redaction', 'redaction').id

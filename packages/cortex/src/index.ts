@@ -455,6 +455,8 @@ export type {
   RunRequest,
   ResumeRequest,
   FileAttachmentInput,
+  ModelSubstitution,
+  ModelSubstitutionReason,
   // Catalog
   ToolInfo,
   ModelInfo,
