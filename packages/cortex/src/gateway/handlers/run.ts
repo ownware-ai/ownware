@@ -598,8 +598,16 @@ export function createRunHandlers(
     const preparedAttachments = preflightAttachments ?? await prepareAttachmentBatch(body.attachments)
 
     {
-      const deployment = await deps.candidateStore?.getActive(profileId)
-      if (deployment?.routingState === 'paused') {
+      const deployment = await deps.candidateStore?.getDeploymentState(profileId)
+      if (deployment?.state === 'undeployed') {
+        throw new RunStartError(
+          409,
+          'Profile is undeployed and is not accepting new runs.',
+          'profile_undeployed',
+          { deploymentRevision: deployment.deploymentRevision },
+        )
+      }
+      if (deployment?.state === 'active' && deployment.routingState === 'paused') {
         throw new RunStartError(
           409,
           'Profile is paused and is not accepting new runs.',

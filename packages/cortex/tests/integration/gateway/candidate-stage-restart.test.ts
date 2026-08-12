@@ -205,7 +205,11 @@ describe('candidate staging across a real Gateway restart', () => {
   it('undeploys first activation across restart and requires tombstone revision to reactivate', async () => {
     const gateway = await createTestGateway({ disableAuth: false })
     cleanupDir = gateway.tmpDir
-    const files = [file('agent.json', '{"name":"mini","description":"undeploy receiver"}')]
+    const profileId = 'candidate-only-undeploy-receiver'
+    const files = [file('agent.json', JSON.stringify({
+      name: profileId,
+      description: 'undeploy receiver',
+    }))]
     const headers = {
       authorization: `Bearer ${gateway.token}`,
       'content-type': 'application/json',
@@ -225,12 +229,12 @@ describe('candidate staging across a real Gateway restart', () => {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        profileId: 'mini',
+        profileId,
         candidateId,
         expectedActiveCandidateId: null,
       }),
     })).status).toBe(200)
-    expect((await fetch(`${gateway.baseUrl}/api/v1/profiles/mini/pause`, {
+    expect((await fetch(`${gateway.baseUrl}/api/v1/profiles/${profileId}/pause`, {
       method: 'POST',
       headers: {
         ...headers,
@@ -240,7 +244,7 @@ describe('candidate staging across a real Gateway restart', () => {
     })).status).toBe(200)
 
     const undeployKey = '56565656-abab-4565-8565-565656565656'
-    const undeploy = await fetch(`${gateway.baseUrl}/api/v1/profiles/mini/undeploy`, {
+    const undeploy = await fetch(`${gateway.baseUrl}/api/v1/profiles/${profileId}/undeploy`, {
       method: 'POST',
       headers: { ...headers, 'idempotency-key': undeployKey },
       body: JSON.stringify({
@@ -258,7 +262,7 @@ describe('candidate staging across a real Gateway restart', () => {
       activeRunCount: 0,
       code: null,
     })
-    const replay = await fetch(`${gateway.baseUrl}/api/v1/profiles/mini/undeploy`, {
+    const replay = await fetch(`${gateway.baseUrl}/api/v1/profiles/${profileId}/undeploy`, {
       method: 'POST',
       headers: { ...headers, 'idempotency-key': undeployKey },
       body: JSON.stringify({
@@ -275,7 +279,7 @@ describe('candidate staging across a real Gateway restart', () => {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          profileId: 'mini',
+          profileId,
           candidateId,
           expectedActiveCandidateId: null,
         }),
@@ -303,7 +307,7 @@ describe('candidate staging across a real Gateway restart', () => {
       authorization: `Bearer ${restarted.token}`,
       'content-type': 'application/json',
     }
-    const state = await fetch(`${baseUrl}/api/v1/profiles/mini/deployment-state`, {
+    const state = await fetch(`${baseUrl}/api/v1/profiles/${profileId}/deployment-state`, {
       headers: restartedHeaders,
     })
     expect(state.status).toBe(200)
@@ -316,7 +320,7 @@ describe('candidate staging across a real Gateway restart', () => {
     const run = await fetch(`${baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: restartedHeaders,
-      body: JSON.stringify({ profileId: 'mini', prompt: 'must remain closed' }),
+      body: JSON.stringify({ profileId, prompt: 'must remain closed' }),
     })
     expect(run.status).toBe(409)
     await expect(run.json()).resolves.toMatchObject({
@@ -327,7 +331,7 @@ describe('candidate staging across a real Gateway restart', () => {
       method: 'POST',
       headers: restartedHeaders,
       body: JSON.stringify({
-        profileId: 'mini',
+        profileId,
         candidateId,
         expectedActiveCandidateId: null,
         expectedDeploymentRevision: 3,
