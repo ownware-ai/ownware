@@ -183,8 +183,8 @@ describePostgreSql('offline SQLite-to-PostgreSQL transfer', () => {
         targetVerified: true,
         cutoverAutomatic: false,
         rollbackMode: 'reuse-unchanged-sqlite-before-target-runtime-writes',
-        schemaVersion: 85,
-        tableCount: 65,
+        schemaVersion: 86,
+        tableCount: 66,
         rowCount: 304,
       })
       expect(receipt.contentDigest).toBe(source.contentDigest)

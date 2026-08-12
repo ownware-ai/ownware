@@ -46,11 +46,13 @@ import {
   createDeleteCandidateHandler,
   createGetCandidateHandler,
   createGetDeploymentHandler,
+  createGetDeploymentStateHandler,
   createListCandidatesHandler,
   createPauseProfileHandler,
   createRollbackCandidateHandler,
   createResumeProfileHandler,
   createStageCandidateHandler,
+  createUndeployProfileHandler,
   validateCandidate,
 } from './handlers/candidates.js'
 import { CandidateStager } from '../profile/candidate-stager.js'
@@ -2877,6 +2879,11 @@ export class OwnwareGateway {
       createGetDeploymentHandler(candidateStore, this.runStore),
       { operation: 'profiles.deployment.read' },
     )
+    this.router.get(
+      '/api/v1/profiles/:profileId/deployment-state',
+      createGetDeploymentStateHandler(candidateStore, this.runStore),
+      { operation: 'profiles.deployment.state.read' },
+    )
     this.router.post(
       '/api/v1/profiles/:profileId/pause',
       createPauseProfileHandler(candidateDeployment, this.runIdempotency),
@@ -2886,6 +2893,11 @@ export class OwnwareGateway {
       '/api/v1/profiles/:profileId/resume',
       createResumeProfileHandler(candidateDeployment, this.runIdempotency),
       { operation: 'profiles.resume' },
+    )
+    this.router.post(
+      '/api/v1/profiles/:profileId/undeploy',
+      createUndeployProfileHandler(candidateDeployment, this.runIdempotency),
+      { operation: 'profiles.undeploy' },
     )
     // Canonical product catalog — cortex-owned, read by every client.
 

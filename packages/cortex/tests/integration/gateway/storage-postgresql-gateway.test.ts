@@ -60,7 +60,7 @@ describePostgreSql('PostgreSQL-backed public gateway', () => {
     await expect(gateway.state.storageHealth()).resolves.toMatchObject({
       kind: 'postgresql',
       state: 'ready',
-      schemaVersion: 85,
+      schemaVersion: 86,
     })
     const health = await fetch(`http://127.0.0.1:${gateway.port}/api/v1/health`)
     expect(health.status).toBe(200)

@@ -165,7 +165,9 @@ const identityOperations = {
 
 const candidateOperations = {
   get: 'read_failed', list: 'read_failed', getDeletion: 'read_failed', getActive: 'read_failed',
-  compareAndSetActive: 'write_failed', compareAndSetRouting: 'write_failed', recordHealth: 'write_failed',
+  getDeploymentState: 'read_failed', compareAndSetActive: 'write_failed',
+  compareAndSetUndeployed: 'write_failed', compareAndSetRouting: 'write_failed',
+  recordHealth: 'write_failed',
   beginDeletion: 'write_failed', deletionEligibility: 'read_failed', markDeleteFailed: 'write_failed',
   markDeleted: 'write_failed', begin: 'write_failed', markReady: 'write_failed', markFailed: 'write_failed',
   markCleanupFailed: 'write_failed', markCleanupResolved: 'write_failed', recoverInterrupted: 'write_failed',

@@ -131,6 +131,85 @@ describe('CandidateStore activation compare-and-set', () => {
     })
   })
 
+  it('persists undeploy as a monotonic tombstone and fences stale null activation', () => {
+    ready(FIRST)
+    ready(SECOND)
+    store.compareAndSetActive({
+      profileId: 'portable',
+      candidateId: FIRST,
+      expectedActiveCandidateId: null,
+    }, 100)
+    expect(store.compareAndSetUndeployed({
+      profileId: 'portable',
+      expectedActiveCandidateId: FIRST,
+      expectedDeploymentRevision: 1,
+    }, 105)).toMatchObject({
+      status: 'not_paused',
+      activeCandidateId: FIRST,
+      deploymentRevision: 1,
+    })
+    store.compareAndSetRouting({
+      profileId: 'portable',
+      expectedRevision: 1,
+      routingState: 'paused',
+    }, 110)
+    expect(store.compareAndSetUndeployed({
+      profileId: 'portable',
+      expectedActiveCandidateId: FIRST,
+      expectedDeploymentRevision: 1,
+    }, 115)).toMatchObject({
+      status: 'conflict',
+      activeCandidateId: FIRST,
+      deploymentRevision: 2,
+    })
+    expect(store.compareAndSetUndeployed({
+      profileId: 'portable',
+      expectedActiveCandidateId: FIRST,
+      expectedDeploymentRevision: 2,
+    }, 120)).toEqual({
+      status: 'undeployed',
+      previousCandidateId: FIRST,
+      activeCandidateId: null,
+      deploymentRevision: 3,
+      activeRunCount: 0,
+      undeployedAt: 120,
+    })
+    expect(store.getActive('portable')).toBeNull()
+    expect(store.getDeploymentState('portable')).toEqual({
+      state: 'undeployed',
+      profileId: 'portable',
+      previousCandidateId: FIRST,
+      deploymentRevision: 3,
+      undeployedAt: 120,
+      updatedAt: 120,
+    })
+    expect(store.compareAndSetActive({
+      profileId: 'portable',
+      candidateId: SECOND,
+      expectedActiveCandidateId: null,
+    }, 130)).toMatchObject({
+      status: 'conflict',
+      activeCandidateId: null,
+      deploymentRevision: 3,
+    })
+    expect(store.compareAndSetActive({
+      profileId: 'portable',
+      candidateId: SECOND,
+      expectedActiveCandidateId: null,
+      expectedDeploymentRevision: 3,
+    }, 140)).toMatchObject({
+      status: 'activated',
+      previousCandidateId: null,
+      activeCandidateId: SECOND,
+      deploymentRevision: 4,
+    })
+    expect(store.getDeploymentState('portable')).toMatchObject({
+      state: 'active',
+      candidateId: SECOND,
+      deploymentRevision: 4,
+    })
+  })
+
   it('records only observed health for the still-active candidate', () => {
     ready(FIRST)
     ready(SECOND)

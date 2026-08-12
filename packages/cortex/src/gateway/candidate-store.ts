@@ -24,6 +24,18 @@ export interface ActiveCandidateRecord {
   readonly updatedAt: number
 }
 
+export interface UndeployedCandidateRecord {
+  readonly profileId: string
+  readonly previousCandidateId: string
+  readonly deploymentRevision: number
+  readonly undeployedAt: number
+  readonly updatedAt: number
+}
+
+export type CandidateDeploymentState =
+  | ({ readonly state: 'active' } & ActiveCandidateRecord)
+  | ({ readonly state: 'undeployed' } & UndeployedCandidateRecord)
+
 export type DeploymentRoutingState = 'active' | 'paused'
 export type DeploymentHealth = 'unknown' | 'starting' | 'healthy' | 'degraded' | 'unhealthy'
 export const DEPLOYMENT_HEALTH_FRESH_MS = 5 * 60 * 1000
@@ -37,6 +49,16 @@ export type CandidateActivationResult = {
   readonly routingState: DeploymentRoutingState | null
   readonly health: DeploymentHealth | null
   readonly healthObservedAt: number | null
+}
+
+export type CandidateUndeploymentResult = {
+  readonly status: 'undeployed' | 'conflict' | 'not_deployed' |
+    'not_paused' | 'active_runs'
+  readonly previousCandidateId: string | null
+  readonly activeCandidateId: string | null
+  readonly deploymentRevision: number | null
+  readonly activeRunCount: number
+  readonly undeployedAt: number | null
 }
 
 export type DeploymentRoutingResult = {
@@ -87,6 +109,19 @@ interface ActiveCandidateRow {
   readonly routing_state: DeploymentRoutingState
   readonly health: DeploymentHealth
   readonly health_observed_at: number | null
+  readonly updated_at: number
+}
+
+interface DeploymentStateRow {
+  readonly state: 'active' | 'undeployed'
+  readonly profile_id: string
+  readonly candidate_id: string | null
+  readonly previous_candidate_id: string | null
+  readonly deployment_revision: number
+  readonly routing_state: DeploymentRoutingState | null
+  readonly health: DeploymentHealth | null
+  readonly health_observed_at: number | null
+  readonly undeployed_at: number | null
   readonly updated_at: number
 }
 
@@ -148,16 +183,71 @@ export class CandidateStore {
     } : null
   }
 
+  getDeploymentState(
+    profileId: string,
+    now: number = Date.now(),
+  ): CandidateDeploymentState | null {
+    // One statement gives readers a single storage snapshot while a concurrent
+    // activation or undeploy swaps the mutually exclusive authority rows.
+    const rows = this.db.prepare(`
+      SELECT 'active' AS state, profile_id, candidate_id,
+        NULL AS previous_candidate_id, deployment_revision, routing_state,
+        health, health_observed_at, NULL AS undeployed_at, updated_at
+      FROM profile_candidate_activations WHERE profile_id = ?
+      UNION ALL
+      SELECT 'undeployed' AS state, profile_id, NULL AS candidate_id,
+        previous_candidate_id, deployment_revision, NULL AS routing_state,
+        NULL AS health, NULL AS health_observed_at, undeployed_at, updated_at
+      FROM profile_candidate_deployment_tombstones WHERE profile_id = ?
+    `).all(profileId, profileId) as DeploymentStateRow[]
+    if (rows.length > 1) throw new Error('Candidate deployment state conflict')
+    const row = rows[0]
+    if (!row) return null
+    if (row.state === 'active') {
+      if (row.candidate_id === null || row.routing_state === null || row.health === null) {
+        throw new Error('Candidate deployment state invalid')
+      }
+      const stale = row.health !== 'unknown' &&
+        (row.health_observed_at === null ||
+          now - row.health_observed_at > DEPLOYMENT_HEALTH_FRESH_MS)
+      return {
+        state: 'active',
+        profileId: row.profile_id,
+        candidateId: row.candidate_id,
+        deploymentRevision: row.deployment_revision,
+        routingState: row.routing_state,
+        health: stale ? 'unknown' : row.health,
+        healthObservedAt: row.health_observed_at,
+        updatedAt: row.updated_at,
+      }
+    }
+    if (row.previous_candidate_id === null || row.undeployed_at === null) {
+      throw new Error('Candidate deployment state invalid')
+    }
+    return {
+      state: 'undeployed',
+      profileId: row.profile_id,
+      previousCandidateId: row.previous_candidate_id,
+      deploymentRevision: row.deployment_revision,
+      undeployedAt: row.undeployed_at,
+      updatedAt: row.updated_at,
+    }
+  }
+
   compareAndSetActive(input: {
     readonly profileId: string
     readonly candidateId: string
     readonly expectedActiveCandidateId: string | null
+    readonly expectedDeploymentRevision?: number | null
   }, now: number = Date.now()): CandidateActivationResult {
     return this.db.transaction(() => {
       const current = this.getActive(input.profileId, now)
+      const deployment = this.getDeploymentState(input.profileId, now)
+      const undeployed = deployment?.state === 'undeployed' ? deployment : null
       const currentId = current?.candidateId ?? null
       const unchangedState = {
-        deploymentRevision: current?.deploymentRevision ?? null,
+        deploymentRevision: current?.deploymentRevision ??
+          undeployed?.deploymentRevision ?? null,
         routingState: current?.routingState ?? null,
         health: current?.health ?? null,
         healthObservedAt: current?.healthObservedAt ?? null,
@@ -180,7 +270,14 @@ export class CandidateStore {
           ...unchangedState,
         } as const
       }
-      if (currentId !== input.expectedActiveCandidateId) {
+      const revisionMatches = current
+        ? input.expectedDeploymentRevision === undefined ||
+          input.expectedDeploymentRevision === current.deploymentRevision
+        : undeployed
+          ? input.expectedDeploymentRevision === undeployed.deploymentRevision
+          : input.expectedDeploymentRevision === undefined ||
+            input.expectedDeploymentRevision === null
+      if (currentId !== input.expectedActiveCandidateId || !revisionMatches) {
         return {
           status: 'conflict',
           previousCandidateId: currentId,
@@ -196,18 +293,37 @@ export class CandidateStore {
           ...unchangedState,
         } as const
       }
-      this.db.prepare(`
-        INSERT INTO profile_candidate_activations (
-          profile_id, candidate_id, deployment_revision, routing_state,
-          health, health_observed_at, updated_at
-        ) VALUES (?, ?, 1, 'active', 'starting', ?, ?)
-        ON CONFLICT(profile_id) DO UPDATE SET
-          candidate_id = excluded.candidate_id,
-          deployment_revision = profile_candidate_activations.deployment_revision + 1,
-          health = 'starting',
-          health_observed_at = excluded.health_observed_at,
-          updated_at = excluded.updated_at
-      `).run(input.profileId, input.candidateId, now, now)
+      if (current) {
+        const updated = this.db.prepare(`
+          UPDATE profile_candidate_activations
+          SET candidate_id = ?, deployment_revision = deployment_revision + 1,
+            health = 'starting', health_observed_at = ?, updated_at = ?
+          WHERE profile_id = ? AND candidate_id = ? AND deployment_revision = ?
+        `).run(
+          input.candidateId,
+          now,
+          now,
+          input.profileId,
+          current.candidateId,
+          current.deploymentRevision,
+        )
+        if (updated.changes !== 1) throw new Error('Candidate activation state conflict')
+      } else {
+        const deploymentRevision = (undeployed?.deploymentRevision ?? 0) + 1
+        if (undeployed) {
+          const removed = this.db.prepare(`
+            DELETE FROM profile_candidate_deployment_tombstones
+            WHERE profile_id = ? AND deployment_revision = ?
+          `).run(input.profileId, undeployed.deploymentRevision)
+          if (removed.changes !== 1) throw new Error('Candidate deployment state conflict')
+        }
+        this.db.prepare(`
+          INSERT INTO profile_candidate_activations (
+            profile_id, candidate_id, deployment_revision, routing_state,
+            health, health_observed_at, updated_at
+          ) VALUES (?, ?, ?, 'active', 'starting', ?, ?)
+        `).run(input.profileId, input.candidateId, deploymentRevision, now, now)
+      }
       const active = this.getActive(input.profileId, now)!
       this.db.prepare(`
         INSERT INTO profile_candidate_activation_history (
@@ -228,7 +344,70 @@ export class CandidateStore {
         health: active.health,
         healthObservedAt: active.healthObservedAt,
       } as const
-    })()
+    }).immediate()
+  }
+
+  compareAndSetUndeployed(input: {
+    readonly profileId: string
+    readonly expectedActiveCandidateId: string
+    readonly expectedDeploymentRevision: number
+  }, now: number = Date.now()): CandidateUndeploymentResult {
+    return this.db.transaction(() => {
+      const deployment = this.getDeploymentState(input.profileId, now)
+      const result = (
+        status: CandidateUndeploymentResult['status'],
+        activeRunCount: number,
+      ): CandidateUndeploymentResult => ({
+        status,
+        previousCandidateId: deployment?.state === 'active'
+          ? deployment.candidateId
+          : deployment?.state === 'undeployed' ? deployment.previousCandidateId : null,
+        activeCandidateId: deployment?.state === 'active' ? deployment.candidateId : null,
+        deploymentRevision: deployment?.deploymentRevision ?? null,
+        activeRunCount,
+        undeployedAt: deployment?.state === 'undeployed' ? deployment.undeployedAt : null,
+      })
+      if (!deployment || deployment.state === 'undeployed') {
+        return result('not_deployed', 0)
+      }
+      if (deployment.candidateId !== input.expectedActiveCandidateId ||
+          deployment.deploymentRevision !== input.expectedDeploymentRevision) {
+        return result('conflict', 0)
+      }
+      if (deployment.routingState !== 'paused') return result('not_paused', 0)
+      const activeRuns = this.db.prepare(`
+        SELECT COUNT(*) FROM gateway_runs
+        WHERE profile_id = ?
+          AND status IN ('accepted', 'running', 'waiting', 'cancel_requested')
+      `).pluck().get(input.profileId) as number
+      if (activeRuns > 0) return result('active_runs', activeRuns)
+
+      const removed = this.db.prepare(`
+        DELETE FROM profile_candidate_activations
+        WHERE profile_id = ? AND candidate_id = ? AND deployment_revision = ?
+          AND routing_state = 'paused'
+      `).run(
+        input.profileId,
+        input.expectedActiveCandidateId,
+        input.expectedDeploymentRevision,
+      )
+      if (removed.changes !== 1) throw new Error('Candidate undeployment state conflict')
+      const revision = input.expectedDeploymentRevision + 1
+      this.db.prepare(`
+        INSERT INTO profile_candidate_deployment_tombstones (
+          profile_id, previous_candidate_id, deployment_revision,
+          undeployed_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(input.profileId, input.expectedActiveCandidateId, revision, now, now)
+      return {
+        status: 'undeployed',
+        previousCandidateId: input.expectedActiveCandidateId,
+        activeCandidateId: null,
+        deploymentRevision: revision,
+        activeRunCount: 0,
+        undeployedAt: now,
+      } as const
+    }).immediate()
   }
 
   compareAndSetRouting(input: {

@@ -190,4 +190,35 @@ describe('candidate activation', () => {
       },
     })
   })
+
+  it('reports a post-undeploy refresh failure without hiding the durable tombstone', async () => {
+    const resolver = new CandidateProfileResolver({ candidatesRoot, store })
+    const activator = new CandidateActivator({ store, resolver })
+    await activator.activate({
+      profileId: 'portable', candidateId, expectedActiveCandidateId: null,
+    })
+    const deployment = new CandidateDeploymentManager({
+      store,
+      resolver,
+      activeRunCount: () => 0,
+      afterSwitch: async () => { throw new Error('injected undeploy refresh failure') },
+    })
+    await deployment.pause({ profileId: 'portable', expectedDeploymentRevision: 1 })
+
+    await expect(deployment.undeploy({
+      profileId: 'portable',
+      expectedActiveCandidateId: candidateId,
+      expectedDeploymentRevision: 2,
+    })).resolves.toMatchObject({
+      state: 'undeploy_failed',
+      changed: true,
+      previousCandidateId: candidateId,
+      activeCandidateId: null,
+      deploymentRevision: 3,
+      code: 'resolver_refresh_failed',
+    })
+    expect(store.getDeploymentState('portable')).toMatchObject({
+      state: 'undeployed', previousCandidateId: candidateId, deploymentRevision: 3,
+    })
+  })
 })

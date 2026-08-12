@@ -5,7 +5,7 @@ import {
 } from './canonical-storage-digest.js'
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
 import {
-  postgreSqlCatalogMatchesCurrentV85,
+  postgreSqlCatalogMatchesCurrentV86,
 } from './postgresql-catalog-certification.js'
 import {
   POSTGRESQL_CURRENT_SCHEMA_EXPECTATION,
@@ -14,6 +14,7 @@ import {
   validatePostgreSqlMigrationHistory,
 } from './postgresql-migrations.js'
 import {
+  SQLITE_V86_COLUMN_COUNT,
   logicalColumnSetHash,
   logicalKindForColumn,
   postgresqlProjectionForColumn,
@@ -89,7 +90,7 @@ export function currentPostgreSqlLogicalColumns(): readonly LogicalColumnDescrip
     } satisfies LogicalColumnDescriptor
   })
   if (
-    columns.length !== 749 ||
+    columns.length !== SQLITE_V86_COLUMN_COUNT ||
     new Set(columns.map((column) => column.key)).size !== columns.length
   ) {
     return fail('logical_schema_invalid')
@@ -217,7 +218,7 @@ export async function canonicalPostgreSqlTransferSnapshotWithinTransaction(
     if (!await POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(client)) {
       return fail('schema_invalid')
     }
-    if (!await postgreSqlCatalogMatchesCurrentV85(client)) {
+    if (!await postgreSqlCatalogMatchesCurrentV86(client)) {
       return fail('schema_invalid')
     }
 

@@ -52,7 +52,7 @@ describe('gateway storage lifecycle', () => {
     expect(gateway.state.storageLifecycleState).toBe('ready')
     await expect(gateway.state.storageHealth()).resolves.toMatchObject({
       state: 'ready',
-      schemaVersion: 85,
+      schemaVersion: 86,
     })
 
     const firstStart = gateway.start()

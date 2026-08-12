@@ -544,6 +544,8 @@ export interface ActivateCandidateInput {
   readonly profileId: string
   readonly candidateId: string
   readonly expectedActiveCandidateId: string | null
+  /** Required when reactivating a profile from a durable undeployed state. */
+  readonly expectedDeploymentRevision?: number | null
 }
 
 export interface CandidateActivationResult {
@@ -594,6 +596,28 @@ export interface ProfileDeploymentResult {
   readonly activeRunCount: number
 }
 
+export interface ProfileUndeployInput {
+  readonly profileId: string
+  readonly expectedActiveCandidateId: string
+  readonly expectedDeploymentRevision: number
+  readonly idempotencyKey: string
+}
+
+export interface ProfileUndeployResult {
+  readonly state: 'undeployed' | 'undeploy_failed'
+  readonly changed: true
+  readonly profileId: string
+  readonly previousCandidateId: string
+  readonly activeCandidateId: null
+  readonly deploymentRevision: number
+  readonly routingState: null
+  readonly health: null
+  readonly healthObservedAt: null
+  readonly activeRunCount: 0
+  readonly undeployedAt: number
+  readonly code: 'resolver_refresh_failed' | null
+}
+
 export type CandidatePublicState =
   | 'placing' | 'ready' | 'placement_failed' | 'cleanup_failed'
   | 'deleting' | 'delete_failed' | 'deleted'
@@ -628,6 +652,34 @@ export interface ProfileDeploymentStatus {
   readonly activeRunCount: number
   readonly updatedAt: number
 }
+
+export type ProfileDeploymentState =
+  | {
+      readonly state: 'active'
+      readonly profileId: string
+      readonly previousCandidateId: null
+      readonly activeCandidateId: string
+      readonly deploymentRevision: number
+      readonly routingState: ProfileRoutingState
+      readonly health: ProfileDeploymentHealth
+      readonly healthObservedAt: number | null
+      readonly activeRunCount: number
+      readonly undeployedAt: null
+      readonly updatedAt: number
+    }
+  | {
+      readonly state: 'undeployed'
+      readonly profileId: string
+      readonly previousCandidateId: string
+      readonly activeCandidateId: null
+      readonly deploymentRevision: number
+      readonly routingState: null
+      readonly health: null
+      readonly healthObservedAt: null
+      readonly activeRunCount: 0
+      readonly undeployedAt: number
+      readonly updatedAt: number
+    }
 
 export interface CandidateDeletionResult {
   readonly candidateId: string
@@ -1272,9 +1324,11 @@ export interface GatewayClient {
   rollbackCandidate(input: ActivateCandidateInput): Promise<CandidateRollbackResult>
   pauseProfile(input: ProfileDeploymentMutationInput): Promise<ProfileDeploymentResult>
   resumeProfile(input: ProfileDeploymentMutationInput): Promise<ProfileDeploymentResult>
+  undeployProfile(input: ProfileUndeployInput): Promise<ProfileUndeployResult>
   candidate(candidateId: string): Promise<CandidateStatus>
   candidates(profileId: string): Promise<CandidateList>
   deployment(profileId: string): Promise<ProfileDeploymentStatus>
+  deploymentState(profileId: string): Promise<ProfileDeploymentState>
   deleteCandidate(candidateId: string): Promise<CandidateDeletionResult>
   run(input: RunInput): Promise<RunResult>
   streamReply(runIdOrThreadId: string, opts?: StreamReplyOptions): AsyncIterable<RunStreamEvent>
@@ -1986,6 +2040,9 @@ export class OwnwareClient implements GatewayClient {
       profileId: input.profileId,
       candidateId: input.candidateId,
       expectedActiveCandidateId: input.expectedActiveCandidateId,
+      ...(input.expectedDeploymentRevision !== undefined
+        ? { expectedDeploymentRevision: input.expectedDeploymentRevision }
+        : {}),
     })
     return (await response.json()) as CandidateActivationResult
   }
@@ -1996,6 +2053,9 @@ export class OwnwareClient implements GatewayClient {
       profileId: input.profileId,
       candidateId: input.candidateId,
       expectedActiveCandidateId: input.expectedActiveCandidateId,
+      ...(input.expectedDeploymentRevision !== undefined
+        ? { expectedDeploymentRevision: input.expectedDeploymentRevision }
+        : {}),
     })
     return (await response.json()) as CandidateRollbackResult
   }
@@ -2008,6 +2068,25 @@ export class OwnwareClient implements GatewayClient {
   /** Reverify the exact active candidate and resume new-run acceptance. */
   async resumeProfile(input: ProfileDeploymentMutationInput): Promise<ProfileDeploymentResult> {
     return this.mutateProfileRouting('resume', input)
+  }
+
+  /** Remove a paused, drained candidate deployment without deleting candidate bytes. */
+  async undeployProfile(input: ProfileUndeployInput): Promise<ProfileUndeployResult> {
+    const headers = this.headers(true)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(input.profileId)}/undeploy`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          expectedActiveCandidateId: input.expectedActiveCandidateId,
+          expectedDeploymentRevision: input.expectedDeploymentRevision,
+        }),
+      },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProfileUndeployResult
   }
 
   private async mutateProfileRouting(
@@ -2058,6 +2137,16 @@ export class OwnwareClient implements GatewayClient {
     )
     if (!response.ok) throw await errorFromResponse(response)
     return (await response.json()) as ProfileDeploymentStatus
+  }
+
+  /** Read active or explicitly undeployed durable state without overloading legacy reads. */
+  async deploymentState(profileId: string): Promise<ProfileDeploymentState> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/deployment-state`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ProfileDeploymentState
   }
 
   /** Delete only an eligible unreferenced candidate; explicit failure remains non-success. */

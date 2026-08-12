@@ -15,7 +15,7 @@
 asyncapi: 3.0.0
 info:
   title: Ownware Gateway — run event stream
-  version: 0.37.0
+  version: 0.38.0
 
 channels:
   runEvents:

@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.37.0
+  version: 0.38.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -1294,6 +1294,10 @@ paths:
                   type: [string, 'null']
                   pattern: '^sha256:[0-9a-f]{64}$'
                   description: Null only when replacing the legacy/unversioned active profile.
+                expectedDeploymentRevision:
+                  type: [integer, 'null']
+                  minimum: 1
+                  description: Required when reactivating an explicitly undeployed profile.
               additionalProperties: false
       responses:
         '200':
@@ -1325,6 +1329,10 @@ paths:
                 expectedActiveCandidateId:
                   type: [string, 'null']
                   pattern: '^sha256:[0-9a-f]{64}$'
+                expectedDeploymentRevision:
+                  type: [integer, 'null']
+                  minimum: 1
+                  description: Required when the current durable state is explicitly undeployed.
               additionalProperties: false
       responses:
         '200':
@@ -1403,6 +1411,44 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProfileDeploymentResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles/{profileId}/undeploy:
+    post:
+      operationId: undeployProfile
+      summary: Remove a paused and drained candidate deployment without deleting its bytes.
+      parameters:
+        - in: path
+          name: profileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedActiveCandidateId, expectedDeploymentRevision]
+              properties:
+                expectedActiveCandidateId:
+                  type: string
+                  pattern: '^sha256:[0-9a-f]{64}$'
+                expectedDeploymentRevision: { type: integer, minimum: 1 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: Durable undeployed tombstone; candidate bytes remain staged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileUndeployResult' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
@@ -1500,6 +1546,25 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProfileDeploymentStatus' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/profiles/{profileId}/deployment-state:
+    get:
+      operationId: getProfileDeploymentState
+      summary: Read active or explicitly undeployed durable profile state.
+      parameters:
+        - in: path
+          name: profileId
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Discriminated durable state including its monotonic revision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileDeploymentState' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
@@ -3597,6 +3662,25 @@ components:
         healthObservedAt: { type: [integer, 'null'], minimum: 0 }
         activeRunCount: { type: integer, minimum: 0 }
       additionalProperties: false
+    ProfileUndeployResult:
+      type: object
+      required: [state, changed, profileId, previousCandidateId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, activeRunCount, undeployedAt, code]
+      properties:
+        state: { type: string, enum: [undeployed, undeploy_failed] }
+        changed: { type: boolean, const: true }
+        profileId: { type: string }
+        previousCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        activeCandidateId: { type: 'null' }
+        deploymentRevision: { type: integer, minimum: 1 }
+        routingState: { type: 'null' }
+        health: { type: 'null' }
+        healthObservedAt: { type: 'null' }
+        activeRunCount: { type: integer, const: 0 }
+        undeployedAt: { type: integer, minimum: 0 }
+        code:
+          type: [string, 'null']
+          enum: [resolver_refresh_failed, null]
+      additionalProperties: false
     CandidateStatus:
       type: object
       required: [candidateId, profileId, state, ready, fileCount, totalBytes, code, createdAt, updatedAt, deletedAt, deletionEligible, deletionBlockedBy]
@@ -3642,6 +3726,38 @@ components:
         activeRunCount: { type: integer, minimum: 0 }
         updatedAt: { type: integer, minimum: 0 }
       additionalProperties: false
+    ProfileDeploymentState:
+      oneOf:
+        - type: object
+          required: [state, profileId, previousCandidateId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, activeRunCount, undeployedAt, updatedAt]
+          properties:
+            state: { type: string, const: active }
+            profileId: { type: string }
+            previousCandidateId: { type: 'null' }
+            activeCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+            deploymentRevision: { type: integer, minimum: 1 }
+            routingState: { type: string, enum: [active, paused] }
+            health: { type: string, enum: [unknown, starting, healthy, degraded, unhealthy] }
+            healthObservedAt: { type: [integer, 'null'], minimum: 0 }
+            activeRunCount: { type: integer, minimum: 0 }
+            undeployedAt: { type: 'null' }
+            updatedAt: { type: integer, minimum: 0 }
+          additionalProperties: false
+        - type: object
+          required: [state, profileId, previousCandidateId, activeCandidateId, deploymentRevision, routingState, health, healthObservedAt, activeRunCount, undeployedAt, updatedAt]
+          properties:
+            state: { type: string, const: undeployed }
+            profileId: { type: string }
+            previousCandidateId: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+            activeCandidateId: { type: 'null' }
+            deploymentRevision: { type: integer, minimum: 1 }
+            routingState: { type: 'null' }
+            health: { type: 'null' }
+            healthObservedAt: { type: 'null' }
+            activeRunCount: { type: integer, const: 0 }
+            undeployedAt: { type: integer, minimum: 0 }
+            updatedAt: { type: integer, minimum: 0 }
+          additionalProperties: false
     PublicProfileSummary:
       type: object
       required: [id]

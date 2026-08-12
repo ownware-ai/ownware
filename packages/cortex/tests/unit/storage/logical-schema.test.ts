@@ -7,8 +7,8 @@ import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 import { runMigrationsSafely } from '../../../src/gateway/db/migration-safety.js'
 import {
   LogicalSchemaError,
-  SQLITE_V85_COLUMN_COUNT,
-  SQLITE_V85_COLUMN_SET_HASH,
+  SQLITE_V86_COLUMN_COUNT,
+  SQLITE_V86_COLUMN_SET_HASH,
   classifyLogicalColumns,
   physicalColumnSetHash,
   type PhysicalColumnDescriptor,
@@ -22,7 +22,7 @@ function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`
 }
 
-describe('v85 logical storage schema', () => {
+describe('v86 logical storage schema', () => {
   let dir: string
   let db: Database.Database
   let columns: PhysicalColumnDescriptor[]
@@ -64,11 +64,11 @@ describe('v85 logical storage schema', () => {
   })
 
   it('classifies every live column against an exact structural receipt', () => {
-    expect(columns).toHaveLength(SQLITE_V85_COLUMN_COUNT)
-    expect(physicalColumnSetHash(columns)).toBe(SQLITE_V85_COLUMN_SET_HASH)
+    expect(columns).toHaveLength(SQLITE_V86_COLUMN_COUNT)
+    expect(physicalColumnSetHash(columns)).toBe(SQLITE_V86_COLUMN_SET_HASH)
     const classified = classifyLogicalColumns(columns)
-    expect(classified).toHaveLength(749)
-    expect(new Set(classified.map((column) => column.key)).size).toBe(749)
+    expect(classified).toHaveLength(754)
+    expect(new Set(classified.map((column) => column.key)).size).toBe(754)
 
     const counts = Object.fromEntries(
       [...Map.groupBy(classified, (column) => column.kind)]
@@ -77,12 +77,12 @@ describe('v85 logical storage schema', () => {
     )
     expect(counts).toEqual({
       boolean: 10,
-      'epoch-milliseconds': 86,
+      'epoch-milliseconds': 88,
       'finite-real': 11,
       'iso-instant': 54,
       'json-value': 41,
-      'safe-integer': 83,
-      text: 464,
+      'safe-integer': 84,
+      text: 466,
     })
   })
 
@@ -94,10 +94,10 @@ describe('v85 logical storage schema', () => {
         .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
     )
     expect(counts).toEqual({
-      BIGINT: 169,
+      BIGINT: 172,
       BOOLEAN: 10,
       'DOUBLE PRECISION': 11,
-      TEXT: 559,
+      TEXT: 561,
     })
     expect(classified.find((column) => column.key === 'agent_events.payload'))
       .toMatchObject({ kind: 'json-value', postgresqlType: 'TEXT' })
@@ -132,7 +132,7 @@ describe('v85 logical storage schema', () => {
       examples[column.kind],
       column.postgresqlProjection,
     ))
-    expect(encoded).toHaveLength(SQLITE_V85_COLUMN_COUNT)
+    expect(encoded).toHaveLength(SQLITE_V86_COLUMN_COUNT)
     expect(encoded.every((value) => value.length > 0)).toBe(true)
   })
 

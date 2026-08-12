@@ -142,6 +142,24 @@ export function createPostgreSqlRunRepository(
     create(input, now = Date.now()) {
       return repositoryCall(context, 'runs', 'create', 'write_failed', async () =>
         withPostgreSqlTransaction(context.pool, async (client) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+            input.profileId,
+          ])
+          const undeployed = await client.query<{
+            readonly deployment_revision: string
+          }>(`
+            SELECT deployment_revision
+            FROM ownware.profile_candidate_deployment_tombstones
+            WHERE profile_id = $1
+          `, [input.profileId])
+          const tombstone = undeployed.rows[0]
+          if (tombstone !== undefined) {
+            throw new ProfileRunNotAcceptingError(
+              input.profileId,
+              safeInteger(tombstone.deployment_revision),
+              'undeployed',
+            )
+          }
           const deployment = await client.query<{
             readonly deployment_revision: string
             readonly routing_state: 'active' | 'paused'

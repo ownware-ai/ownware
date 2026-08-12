@@ -14,6 +14,7 @@ export class CandidateActivationRejected extends Error {
     readonly code: 'candidate_not_ready' | 'candidate_scope_mismatch' |
       'candidate_storage_inconsistent' | 'candidate_activation_conflict',
     readonly activeCandidateId: string | null,
+    readonly deploymentRevision: number | null = null,
   ) {
     super(code)
     this.name = 'CandidateActivationRejected'
@@ -97,6 +98,7 @@ export class CandidateActivator {
     readonly profileId: string
     readonly candidateId: string
     readonly expectedActiveCandidateId: string | null
+    readonly expectedDeploymentRevision?: number | null
   }): Promise<CandidateActivationResult> {
     await this.options.resolver.resolveCandidate(input.profileId, input.candidateId)
     const changed = await this.options.store.compareAndSetActive(input)
@@ -104,13 +106,22 @@ export class CandidateActivator {
       throw new CandidateActivationRejected(
         'candidate_activation_conflict',
         changed.activeCandidateId,
+        changed.deploymentRevision,
       )
     }
     if (changed.status === 'candidate_not_ready') {
-      throw new CandidateActivationRejected('candidate_not_ready', changed.activeCandidateId)
+      throw new CandidateActivationRejected(
+        'candidate_not_ready',
+        changed.activeCandidateId,
+        changed.deploymentRevision,
+      )
     }
     if (changed.status === 'candidate_scope_mismatch') {
-      throw new CandidateActivationRejected('candidate_scope_mismatch', changed.activeCandidateId)
+      throw new CandidateActivationRejected(
+        'candidate_scope_mismatch',
+        changed.activeCandidateId,
+        changed.deploymentRevision,
+      )
     }
     const activeCandidateId = changed.activeCandidateId
     if (activeCandidateId === null) throw new Error('Activation did not produce an active candidate')
@@ -166,6 +177,7 @@ export class CandidateActivator {
     readonly profileId: string
     readonly candidateId: string
     readonly expectedActiveCandidateId: string | null
+    readonly expectedDeploymentRevision?: number | null
   }): Promise<CandidateRollbackResult> {
     const result = await this.activate(input)
     return {
@@ -187,6 +199,33 @@ export interface CandidateDeploymentResult {
   readonly activeRunCount: number
 }
 
+export interface ProfileUndeploymentResult {
+  readonly state: 'undeployed' | 'undeploy_failed'
+  readonly changed: true
+  readonly profileId: string
+  readonly previousCandidateId: string
+  readonly activeCandidateId: null
+  readonly deploymentRevision: number
+  readonly routingState: null
+  readonly health: null
+  readonly healthObservedAt: null
+  readonly activeRunCount: 0
+  readonly undeployedAt: number
+  readonly code: 'resolver_refresh_failed' | null
+}
+
+export class CandidateUndeploymentRejected extends Error {
+  constructor(
+    readonly code: 'profile_not_deployed' | 'deployment_conflict' |
+      'deployment_not_paused' | 'deployment_runs_active',
+    readonly actual: Awaited<ReturnType<CandidateRepository['getDeploymentState']>>,
+    readonly activeRunCount: number,
+  ) {
+    super(code)
+    this.name = 'CandidateUndeploymentRejected'
+  }
+}
+
 export class CandidateDeploymentRejected extends Error {
   constructor(
     readonly code: 'profile_not_deployed' | 'deployment_conflict' |
@@ -203,6 +242,7 @@ export class CandidateDeploymentManager {
     readonly store: CandidateRepository
     readonly resolver: CandidateProfileResolver
     readonly activeRunCount: (profileId: string) => number | Promise<number>
+    readonly afterSwitch?: (profileId: string) => void | Promise<void>
   }) {}
 
   async pause(input: {
@@ -262,6 +302,53 @@ export class CandidateDeploymentManager {
       ...result,
       health: actual.health,
       healthObservedAt: actual.healthObservedAt,
+    }
+  }
+
+  async undeploy(input: {
+    readonly profileId: string
+    readonly expectedActiveCandidateId: string
+    readonly expectedDeploymentRevision: number
+  }): Promise<ProfileUndeploymentResult> {
+    const transition = await this.options.store.compareAndSetUndeployed(input)
+    if (transition.status !== 'undeployed') {
+      const codes = {
+        conflict: 'deployment_conflict',
+        not_deployed: 'profile_not_deployed',
+        not_paused: 'deployment_not_paused',
+        active_runs: 'deployment_runs_active',
+      } as const
+      throw new CandidateUndeploymentRejected(
+        codes[transition.status],
+        await this.options.store.getDeploymentState(input.profileId),
+        transition.activeRunCount,
+      )
+    }
+    if (transition.previousCandidateId === null ||
+        transition.deploymentRevision === null ||
+        transition.undeployedAt === null) {
+      throw new Error('Undeploy did not produce a durable tombstone')
+    }
+    let code: ProfileUndeploymentResult['code'] = null
+    try {
+      this.options.resolver.invalidate(input.profileId)
+      await this.options.afterSwitch?.(input.profileId)
+    } catch {
+      code = 'resolver_refresh_failed'
+    }
+    return {
+      state: code === null ? 'undeployed' : 'undeploy_failed',
+      changed: true,
+      profileId: input.profileId,
+      previousCandidateId: transition.previousCandidateId,
+      activeCandidateId: null,
+      deploymentRevision: transition.deploymentRevision,
+      routingState: null,
+      health: null,
+      healthObservedAt: null,
+      activeRunCount: 0,
+      undeployedAt: transition.undeployedAt,
+      code,
     }
   }
 

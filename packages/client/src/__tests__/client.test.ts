@@ -543,6 +543,28 @@ beforeAll(async () => {
       }))
       return
     }
+    if (url === '/api/v1/profiles/portable/undeploy') {
+      const expected = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+        expectedActiveCandidateId: string
+        expectedDeploymentRevision: number
+      }
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        state: 'undeployed',
+        changed: true,
+        profileId: 'portable',
+        previousCandidateId: expected.expectedActiveCandidateId,
+        activeCandidateId: null,
+        deploymentRevision: expected.expectedDeploymentRevision + 1,
+        routingState: null,
+        health: null,
+        healthObservedAt: null,
+        activeRunCount: 0,
+        undeployedAt: 124,
+        code: null,
+      }))
+      return
+    }
     if (/^\/api\/v1\/profile-candidates\/[^/]+$/.test(url)) {
       const candidateId = `sha256:${'a'.repeat(64)}`
       res.writeHead(200, { 'content-type': 'application/json' })
@@ -598,6 +620,23 @@ beforeAll(async () => {
         healthObservedAt: 123,
         activeRunCount: 0,
         updatedAt: 123,
+      }))
+      return
+    }
+    if (url === '/api/v1/profiles/portable/deployment-state') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        state: 'undeployed',
+        profileId: 'portable',
+        previousCandidateId: `sha256:${'a'.repeat(64)}`,
+        activeCandidateId: null,
+        deploymentRevision: 6,
+        routingState: null,
+        health: null,
+        healthObservedAt: null,
+        activeRunCount: 0,
+        undeployedAt: 124,
+        updatedAt: 124,
       }))
       return
     }
@@ -1375,6 +1414,22 @@ describe('request shapes', () => {
     expect(seen.at(-1)!.url).toBe('/api/v1/candidates/rollback')
   })
 
+  it('sends the durable tombstone revision when reactivating an undeployed profile', async () => {
+    const candidateId = `sha256:${'a'.repeat(64)}`
+    await client().activateCandidate({
+      profileId: 'portable',
+      candidateId,
+      expectedActiveCandidateId: null,
+      expectedDeploymentRevision: 6,
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      profileId: 'portable',
+      candidateId,
+      expectedActiveCandidateId: null,
+      expectedDeploymentRevision: 6,
+    })
+  })
+
   it('pauses and resumes a profile with exact revision and idempotency headers', async () => {
     const ownware = client()
     await expect(ownware.pauseProfile({
@@ -1403,6 +1458,30 @@ describe('request shapes', () => {
     })
   })
 
+  it('undeploys only with exact identity, revision and idempotency fences', async () => {
+    const candidateId = `sha256:${'a'.repeat(64)}`
+    await expect(client().undeployProfile({
+      profileId: 'portable',
+      expectedActiveCandidateId: candidateId,
+      expectedDeploymentRevision: 5,
+      idempotencyKey: '89898989-8989-4989-8989-898989898989',
+    })).resolves.toMatchObject({
+      state: 'undeployed',
+      previousCandidateId: candidateId,
+      activeCandidateId: null,
+      deploymentRevision: 6,
+      activeRunCount: 0,
+    })
+    expect(seen.at(-1)).toMatchObject({
+      url: '/api/v1/profiles/portable/undeploy',
+      idempotencyKey: '89898989-8989-4989-8989-898989898989',
+    })
+    expect(JSON.parse(seen.at(-1)!.body)).toEqual({
+      expectedActiveCandidateId: candidateId,
+      expectedDeploymentRevision: 5,
+    })
+  })
+
   it('reads bounded candidate/deployment status and deletes by opaque identity', async () => {
     const ownware = client()
     const candidateId = `sha256:${'a'.repeat(64)}`
@@ -1416,6 +1495,11 @@ describe('request shapes', () => {
     await expect(ownware.deployment('portable')).resolves.toMatchObject({
       activeCandidateId: candidateId, deploymentRevision: 5, health: 'healthy',
     })
+    await expect(ownware.deploymentState('portable')).resolves.toMatchObject({
+      state: 'undeployed', previousCandidateId: candidateId,
+      activeCandidateId: null, deploymentRevision: 6,
+    })
+    expect(seen.at(-1)!.url).toBe('/api/v1/profiles/portable/deployment-state')
     await expect(ownware.deleteCandidate(candidateId)).resolves.toMatchObject({
       candidateId, state: 'deleted', deleted: true,
     })

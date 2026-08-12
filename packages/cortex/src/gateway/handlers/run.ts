@@ -1683,10 +1683,13 @@ export function createRunHandlers(
       } catch (error) {
         if (!(error instanceof ProfileRunNotAcceptingError)) throw error
         state.deleteRuntime(threadId!)
+        const undeployed = error.routingState === 'undeployed'
         throw new RunStartError(
           409,
-          'Profile is paused and is not accepting new runs.',
-          'profile_paused',
+          undeployed
+            ? 'Profile is undeployed and is not accepting new runs.'
+            : 'Profile is paused and is not accepting new runs.',
+          undeployed ? 'profile_undeployed' : 'profile_paused',
           { deploymentRevision: error.deploymentRevision },
         )
       }

@@ -15,8 +15,8 @@ import type {
   PhysicalColumnDescriptor,
 } from './logical-schema.js'
 import {
-  SQLITE_V85_COLUMN_COUNT,
-  SQLITE_V85_COLUMN_SET_HASH,
+  SQLITE_V86_COLUMN_COUNT,
+  SQLITE_V86_COLUMN_SET_HASH,
   classifyLogicalColumns,
   logicalColumnSetHash,
   physicalColumnSetHash,
@@ -126,9 +126,9 @@ export class SqliteTransferFindingsError extends Error {
   }
 }
 
-export const SQLITE_V85_SCHEMA_OBJECT_COUNT = 181
-export const SQLITE_V85_SCHEMA_OBJECT_HASH =
-  'sha256:1ce8e12987548cd4335f6a576f8e052056c5622dd5d9edd81e376b827a57cfed'
+export const SQLITE_V86_SCHEMA_OBJECT_COUNT = 183
+export const SQLITE_V86_SCHEMA_OBJECT_HASH =
+  'sha256:c42c97ae949d4b84e143dc9cd067c3ae809b05c74a3a1c30cb1e276b5ca85df2'
 
 const SOURCE_RECEIPT_FORMAT = 'ownware-sqlite-transfer-source-v1'
 const MIGRATION_HISTORY_FORMAT = 'ownware-sqlite-transfer-history-v1'
@@ -686,16 +686,16 @@ export function preflightOpenSqliteTransferSnapshot(
 
   const objects = sqliteSchemaObjectReceipt(db)
   if (
-    objects.count !== SQLITE_V85_SCHEMA_OBJECT_COUNT ||
-    objects.digest !== SQLITE_V85_SCHEMA_OBJECT_HASH
+    objects.count !== SQLITE_V86_SCHEMA_OBJECT_COUNT ||
+    objects.digest !== SQLITE_V86_SCHEMA_OBJECT_HASH
   ) {
     return failDatabase('schema_objects_mismatch')
   }
 
   const physical = physicalColumns(db)
   if (
-    physical.length !== SQLITE_V85_COLUMN_COUNT ||
-    physicalColumnSetHash(physical) !== SQLITE_V85_COLUMN_SET_HASH
+    physical.length !== SQLITE_V86_COLUMN_COUNT ||
+    physicalColumnSetHash(physical) !== SQLITE_V86_COLUMN_SET_HASH
   ) {
     return failDatabase('schema_objects_mismatch')
   }

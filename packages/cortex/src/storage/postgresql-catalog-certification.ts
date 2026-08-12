@@ -17,11 +17,11 @@ const POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS: Readonly<Record<number, string>> 
     17: 'sha256:e1eb2410738e8cc813fab7c56f6f839b1200e9fa792d1af0be7b4185b38bd72b',
     18: 'sha256:c4ec4e9ae3914cb6a430042ab027d014043d52e8e80c53cc6e97508df5aeb5fd',
   })
-const POSTGRESQL_CURRENT_V85_CATALOG_DIGESTS: Readonly<Record<number, string>> =
+const POSTGRESQL_CURRENT_V86_CATALOG_DIGESTS: Readonly<Record<number, string>> =
   Object.freeze({
-    16: 'sha256:86e8da7a7f84d79c1b6512c2c784733cad1a7befc6723f40dd45bfa8e8c87795',
-    17: 'sha256:86e8da7a7f84d79c1b6512c2c784733cad1a7befc6723f40dd45bfa8e8c87795',
-    18: 'sha256:5e2a9c93b25142563cd258112a258bc73e9680ddae403aa1406b1905188507bf',
+    16: 'sha256:887f53e4b2baa1e9d84b42682e08cd05610dab2d58a674a5dc7a5dacbfcb91cc',
+    17: 'sha256:887f53e4b2baa1e9d84b42682e08cd05610dab2d58a674a5dc7a5dacbfcb91cc',
+    18: 'sha256:e05aedc0242d713cbc316769f79e5255d4ce6ffd1f0394dea382694c77955c15',
   })
 
 interface RelationRow {
@@ -296,8 +296,8 @@ export async function postgreSqlCatalogMatchesBaselineV82(
   return matchesGeneration(client, POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS)
 }
 
-export async function postgreSqlCatalogMatchesCurrentV85(
+export async function postgreSqlCatalogMatchesCurrentV86(
   client: QueryClient,
 ): Promise<boolean> {
-  return matchesGeneration(client, POSTGRESQL_CURRENT_V85_CATALOG_DIGESTS)
+  return matchesGeneration(client, POSTGRESQL_CURRENT_V86_CATALOG_DIGESTS)
 }

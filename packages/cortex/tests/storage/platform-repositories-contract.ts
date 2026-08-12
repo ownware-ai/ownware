@@ -263,6 +263,36 @@ export function runPlatformRepositoryContract(
           }, 120),
         ])
         expect(activations.map(result => result.status).sort()).toEqual(['activated', 'conflict'])
+        const active = await harness.repositories.candidates.getActive('platform-contract', 121)
+        expect(active?.deploymentRevision).toBe(1)
+        await expect(harness.repositories.candidates.compareAndSetRouting({
+          profileId: 'platform-contract',
+          expectedRevision: 1,
+          routingState: 'paused',
+        }, 122)).resolves.toMatchObject({ status: 'changed', deploymentRevision: 2 })
+        await expect(peer.repositories.candidates.compareAndSetUndeployed({
+          profileId: 'platform-contract',
+          expectedActiveCandidateId: candidate,
+          expectedDeploymentRevision: 2,
+        }, 123)).resolves.toMatchObject({
+          status: 'undeployed', activeCandidateId: null, deploymentRevision: 3,
+        })
+        await expect(harness.repositories.candidates.getDeploymentState(
+          'platform-contract', 124,
+        )).resolves.toMatchObject({
+          state: 'undeployed', previousCandidateId: candidate, deploymentRevision: 3,
+        })
+        await expect(harness.repositories.candidates.compareAndSetActive({
+          profileId: 'platform-contract',
+          candidateId: candidate,
+          expectedActiveCandidateId: null,
+        }, 125)).resolves.toMatchObject({ status: 'conflict', deploymentRevision: 3 })
+        await expect(harness.repositories.candidates.compareAndSetActive({
+          profileId: 'platform-contract',
+          candidateId: candidate,
+          expectedActiveCandidateId: null,
+          expectedDeploymentRevision: 3,
+        }, 126)).resolves.toMatchObject({ status: 'activated', deploymentRevision: 4 })
 
         const team = await harness.repositories.teams.createTeam({
           name: 'platform-contract-team',
@@ -302,9 +332,9 @@ export function runPlatformRepositoryContract(
         expect(leases.filter(result => result.acquired)).toHaveLength(1)
 
         await harness.reopen()
-        expect(await harness.repositories.candidates.getActive('platform-contract', 120)).toMatchObject({
+        expect(await harness.repositories.candidates.getActive('platform-contract', 127)).toMatchObject({
           candidateId: candidate,
-          deploymentRevision: 1,
+          deploymentRevision: 4,
         })
         expect((await harness.repositories.teams.listTasks(teamRun.id)).map(task => task.seq))
           .toEqual([1, 2])

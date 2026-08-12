@@ -33,6 +33,21 @@ export interface DeploymentMutationSnapshot {
   readonly activeRunCount: number
 }
 
+export interface ProfileUndeploymentSnapshot {
+  readonly state: 'undeployed' | 'undeploy_failed'
+  readonly changed: true
+  readonly profileId: string
+  readonly previousCandidateId: string
+  readonly activeCandidateId: null
+  readonly deploymentRevision: number
+  readonly routingState: null
+  readonly health: null
+  readonly healthObservedAt: null
+  readonly activeRunCount: 0
+  readonly undeployedAt: number
+  readonly code: 'resolver_refresh_failed' | null
+}
+
 export interface SourceRegistrationSnapshot {
   readonly sourceId: string
   readonly kind: 'file' | 'text' | 'visual' | 'structured_export' |
@@ -129,7 +144,8 @@ export interface AccessGrantMutationReceipt {
 }
 
 export type IdempotencySnapshot =
-  RunStartSnapshot | DeploymentMutationSnapshot | SourceRegistrationSnapshot |
+  RunStartSnapshot | DeploymentMutationSnapshot | ProfileUndeploymentSnapshot |
+  SourceRegistrationSnapshot |
   SourceUploadSessionSnapshot | SourceJobSnapshot | SourceDeletionSnapshot |
   AccessGrantMutationReceipt
 
@@ -392,6 +408,9 @@ export function validateIdempotencySnapshot(value: unknown): IdempotencySnapshot
   if (typeof row['sourceId'] === 'string') return validateSourceRegistrationSnapshot(row)
   if (row['state'] === 'active' || row['state'] === 'paused') {
     return validateDeploymentSnapshot(row)
+  }
+  if (row['state'] === 'undeployed' || row['state'] === 'undeploy_failed') {
+    return validateUndeploymentSnapshot(row)
   }
   if ((row['runId'] !== undefined &&
         (typeof row['runId'] !== 'string' || row['runId'].length > 128)) ||
@@ -717,5 +736,49 @@ function validateDeploymentSnapshot(row: Record<string, unknown>): DeploymentMut
     health: health as DeploymentMutationSnapshot['health'],
     healthObservedAt: observedAt as number | null,
     activeRunCount: activeRunCount as number,
+  }
+}
+
+function validateUndeploymentSnapshot(
+  row: Record<string, unknown>,
+): ProfileUndeploymentSnapshot {
+  const keys = new Set([
+    'state', 'changed', 'profileId', 'previousCandidateId', 'activeCandidateId',
+    'deploymentRevision', 'routingState', 'health', 'healthObservedAt',
+    'activeRunCount', 'undeployedAt', 'code',
+  ])
+  const candidateId = row['previousCandidateId']
+  const revision = row['deploymentRevision']
+  const undeployedAt = row['undeployedAt']
+  const code = row['code']
+  if ((row['state'] !== 'undeployed' && row['state'] !== 'undeploy_failed') ||
+      row['changed'] !== true || typeof row['profileId'] !== 'string' ||
+      row['profileId'].length === 0 || row['profileId'].length > 128 ||
+      typeof candidateId !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(candidateId) ||
+      row['activeCandidateId'] !== null ||
+      !Number.isSafeInteger(revision) || (revision as number) <= 0 ||
+      row['routingState'] !== null || row['health'] !== null ||
+      row['healthObservedAt'] !== null || row['activeRunCount'] !== 0 ||
+      !Number.isSafeInteger(undeployedAt) || (undeployedAt as number) < 0 ||
+      Object.keys(row).some((key) => !keys.has(key)) ||
+      !(
+        row['state'] === 'undeployed' && code === null ||
+        row['state'] === 'undeploy_failed' && code === 'resolver_refresh_failed'
+      )) {
+    throw new Error('Invalid profile undeployment snapshot')
+  }
+  return {
+    state: row['state'],
+    changed: true,
+    profileId: row['profileId'],
+    previousCandidateId: candidateId,
+    activeCandidateId: null,
+    deploymentRevision: revision as number,
+    routingState: null,
+    health: null,
+    healthObservedAt: null,
+    activeRunCount: 0,
+    undeployedAt: undeployedAt as number,
+    code: code as ProfileUndeploymentSnapshot['code'],
   }
 }

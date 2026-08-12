@@ -10,6 +10,7 @@ import {
   CandidateActivationRejected,
   type CandidateActivator,
   CandidateDeploymentRejected,
+  CandidateUndeploymentRejected,
   type CandidateDeploymentManager,
 } from '../../profile/candidate-activation.js'
 import {
@@ -168,6 +169,55 @@ export function createGetDeploymentHandler(
   }
 }
 
+export function createGetDeploymentStateHandler(
+  store: CandidateRepository,
+  runs: RunRepository,
+): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
+  return async (req, res, params): Promise<void> => {
+    const profileId = params['profileId']
+    if (!profileId || !isReadableCandidateScope(req, profileId)) {
+      sendError(res, 404, 'Profile deployment state not found.',
+        'profile_deployment_not_found', 'not_found')
+      return
+    }
+    const deployment = await store.getDeploymentState(profileId)
+    if (!deployment) {
+      sendError(res, 404, 'Profile deployment state not found.',
+        'profile_deployment_not_found', 'not_found')
+      return
+    }
+    if (deployment.state === 'undeployed') {
+      sendJSON(res, 200, {
+        state: 'undeployed',
+        profileId,
+        previousCandidateId: deployment.previousCandidateId,
+        activeCandidateId: null,
+        deploymentRevision: deployment.deploymentRevision,
+        routingState: null,
+        health: null,
+        healthObservedAt: null,
+        activeRunCount: 0,
+        undeployedAt: deployment.undeployedAt,
+        updatedAt: deployment.updatedAt,
+      })
+      return
+    }
+    sendJSON(res, 200, {
+      state: 'active',
+      profileId,
+      previousCandidateId: null,
+      activeCandidateId: deployment.candidateId,
+      deploymentRevision: deployment.deploymentRevision,
+      routingState: deployment.routingState,
+      health: deployment.health,
+      healthObservedAt: deployment.healthObservedAt,
+      activeRunCount: await runs.countActiveForProfile(profileId),
+      undeployedAt: null,
+      updatedAt: deployment.updatedAt,
+    })
+  }
+}
+
 export function createDeleteCandidateHandler(
   retirer: CandidateRetirer,
   store: CandidateRepository,
@@ -276,6 +326,64 @@ export function createResumeProfileHandler(
   }
 }
 
+export function createUndeployProfileHandler(
+  deployment: CandidateDeploymentManager,
+  idempotency: IdempotencyRepository,
+): (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => Promise<void> {
+  return async (req, res, params): Promise<void> => {
+    const profileId = params['profileId']
+    const body = await readJSON(req)
+    if (!profileId || !isPlainObject(body) ||
+        Object.keys(body).some((key) =>
+          key !== 'expectedActiveCandidateId' &&
+          key !== 'expectedDeploymentRevision') ||
+        !CANDIDATE_ID_PATTERN.test(String(body['expectedActiveCandidateId'])) ||
+        !Number.isSafeInteger(body['expectedDeploymentRevision']) ||
+        (body['expectedDeploymentRevision'] as number) < 1) {
+      sendError(
+        res,
+        400,
+        'Undeploy requires exact active candidate and deployment revision expectations.',
+        'deployment_undeploy_invalid',
+        'invalid_request',
+      )
+      return
+    }
+    if (!isProfileInPrincipalScope(req, profileId, res)) return
+    const input = {
+      profileId,
+      expectedActiveCandidateId: body['expectedActiveCandidateId'] as string,
+      expectedDeploymentRevision: body['expectedDeploymentRevision'] as number,
+    }
+    const fence = await claimDeploymentMutation(
+      req,
+      res,
+      idempotency,
+      'profiles.undeploy',
+      input,
+    )
+    if (!fence) return
+    if (fence.replay) {
+      res.setHeader('Idempotency-Replayed', 'true')
+      sendJSON(res, fence.replay.statusCode, fence.replay.result)
+      return
+    }
+    try {
+      const result = await deployment.undeploy(input)
+      await idempotency.complete({ ...fence.key, statusCode: 200, result })
+      sendJSON(res, 200, result)
+    } catch (error) {
+      if (error instanceof CandidateUndeploymentRejected) {
+        await idempotency.abandon(fence.key)
+        sendUndeploymentError(res, error)
+        return
+      }
+      await idempotency.markIndeterminate(fence.key)
+      throw error
+    }
+  }
+}
+
 export function createActivateCandidateHandler(
   activator: CandidateActivator,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -283,12 +391,16 @@ export function createActivateCandidateHandler(
     const body = await readJSON(req)
     if (!isPlainObject(body) ||
         Object.keys(body).some((key) => key !== 'profileId' && key !== 'candidateId' &&
-          key !== 'expectedActiveCandidateId') ||
+          key !== 'expectedActiveCandidateId' && key !== 'expectedDeploymentRevision') ||
         typeof body['profileId'] !== 'string' ||
         !CANDIDATE_ID_PATTERN.test(String(body['candidateId'])) ||
         !(body['expectedActiveCandidateId'] === null ||
           (typeof body['expectedActiveCandidateId'] === 'string' &&
-            CANDIDATE_ID_PATTERN.test(body['expectedActiveCandidateId'])))) {
+            CANDIDATE_ID_PATTERN.test(body['expectedActiveCandidateId']))) ||
+        !(body['expectedDeploymentRevision'] === undefined ||
+          body['expectedDeploymentRevision'] === null ||
+          (Number.isSafeInteger(body['expectedDeploymentRevision']) &&
+            (body['expectedDeploymentRevision'] as number) > 0))) {
       sendError(
         res,
         400,
@@ -314,6 +426,12 @@ export function createActivateCandidateHandler(
         profileId: body['profileId'],
         candidateId: body['candidateId'] as string,
         expectedActiveCandidateId: body['expectedActiveCandidateId'] as string | null,
+        ...(body['expectedDeploymentRevision'] !== undefined
+          ? {
+              expectedDeploymentRevision:
+                body['expectedDeploymentRevision'] as number | null,
+            }
+          : {}),
       }))
     } catch (error) {
       if (!(error instanceof CandidateActivationRejected)) throw error
@@ -325,7 +443,10 @@ export function createActivateCandidateHandler(
         activationRejectedMessage(error.code),
         error.code,
         status === 403 ? 'auth' : status === 500 ? 'unknown' : 'invalid_request',
-        { activeCandidateId: error.activeCandidateId },
+        {
+          activeCandidateId: error.activeCandidateId,
+          deploymentRevision: error.deploymentRevision,
+        },
       )
     }
   }
@@ -338,12 +459,16 @@ export function createRollbackCandidateHandler(
     const body = await readJSON(req)
     if (!isPlainObject(body) ||
         Object.keys(body).some((key) => key !== 'profileId' && key !== 'candidateId' &&
-          key !== 'expectedActiveCandidateId') ||
+          key !== 'expectedActiveCandidateId' && key !== 'expectedDeploymentRevision') ||
         typeof body['profileId'] !== 'string' ||
         !CANDIDATE_ID_PATTERN.test(String(body['candidateId'])) ||
         !(body['expectedActiveCandidateId'] === null ||
           (typeof body['expectedActiveCandidateId'] === 'string' &&
-            CANDIDATE_ID_PATTERN.test(body['expectedActiveCandidateId'])))) {
+            CANDIDATE_ID_PATTERN.test(body['expectedActiveCandidateId']))) ||
+        !(body['expectedDeploymentRevision'] === undefined ||
+          body['expectedDeploymentRevision'] === null ||
+          (Number.isSafeInteger(body['expectedDeploymentRevision']) &&
+            (body['expectedDeploymentRevision'] as number) > 0))) {
       sendError(
         res,
         400,
@@ -364,6 +489,12 @@ export function createRollbackCandidateHandler(
         profileId: body['profileId'],
         candidateId: body['candidateId'] as string,
         expectedActiveCandidateId: body['expectedActiveCandidateId'] as string | null,
+        ...(body['expectedDeploymentRevision'] !== undefined
+          ? {
+              expectedDeploymentRevision:
+                body['expectedDeploymentRevision'] as number | null,
+            }
+          : {}),
       }))
     } catch (error) {
       if (!(error instanceof CandidateActivationRejected)) throw error
@@ -376,7 +507,10 @@ export function createRollbackCandidateHandler(
         rollbackRejectedMessage(error.code),
         publicCode,
         status === 403 ? 'auth' : status === 500 ? 'unknown' : 'invalid_request',
-        { activeCandidateId: error.activeCandidateId },
+        {
+          activeCandidateId: error.activeCandidateId,
+          deploymentRevision: error.deploymentRevision,
+        },
       )
     }
   }
@@ -676,11 +810,40 @@ function sendDeploymentError(
   )
 }
 
+function sendUndeploymentError(
+  res: ServerResponse,
+  error: CandidateUndeploymentRejected,
+): void {
+  const status = error.code === 'profile_not_deployed' ? 404 : 409
+  const messages: Record<CandidateUndeploymentRejected['code'], string> = {
+    profile_not_deployed: 'Profile has no active candidate deployment.',
+    deployment_conflict: 'Deployment changed before this request.',
+    deployment_not_paused: 'Pause the profile before undeploying it.',
+    deployment_runs_active: 'Accepted profile runs must drain before undeploy.',
+  }
+  const actual = error.actual
+  sendError(
+    res,
+    status,
+    messages[error.code],
+    error.code,
+    status === 404 ? 'not_found' : 'invalid_request',
+    actual ? {
+      activeCandidateId: actual.state === 'active' ? actual.candidateId : null,
+      previousCandidateId:
+        actual.state === 'undeployed' ? actual.previousCandidateId : null,
+      deploymentRevision: actual.deploymentRevision,
+      routingState: actual.state === 'active' ? actual.routingState : null,
+      activeRunCount: error.activeRunCount,
+    } : undefined,
+  )
+}
+
 async function claimDeploymentMutation(
   req: IncomingMessage,
   res: ServerResponse,
   store: IdempotencyRepository,
-  operation: 'profiles.pause' | 'profiles.resume',
+  operation: 'profiles.pause' | 'profiles.resume' | 'profiles.undeploy',
   input: unknown,
 ): Promise<{
   readonly key: { principalKey: string; operation: string; key: string }

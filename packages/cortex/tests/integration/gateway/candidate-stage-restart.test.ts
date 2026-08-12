@@ -201,4 +201,154 @@ describe('candidate staging across a real Gateway restart', () => {
       routingState: 'active', deploymentRevision: 5, health: 'healthy',
     })
   })
+
+  it('undeploys first activation across restart and requires tombstone revision to reactivate', async () => {
+    const gateway = await createTestGateway({ disableAuth: false })
+    cleanupDir = gateway.tmpDir
+    const files = [file('agent.json', '{"name":"mini","description":"undeploy receiver"}')]
+    const headers = {
+      authorization: `Bearer ${gateway.token}`,
+      'content-type': 'application/json',
+    }
+    const validation = await fetch(`${gateway.baseUrl}/api/v1/candidates/validate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ files }),
+    })
+    const candidateId = (await validation.json() as { candidateId: string }).candidateId
+    expect((await fetch(`${gateway.baseUrl}/api/v1/candidates/stage`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ candidateId, files }),
+    })).status).toBe(200)
+    expect((await fetch(`${gateway.baseUrl}/api/v1/candidates/activate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        profileId: 'mini',
+        candidateId,
+        expectedActiveCandidateId: null,
+      }),
+    })).status).toBe(200)
+    expect((await fetch(`${gateway.baseUrl}/api/v1/profiles/mini/pause`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'idempotency-key': '45454545-abab-4454-8454-454545454545',
+      },
+      body: JSON.stringify({ expectedDeploymentRevision: 1 }),
+    })).status).toBe(200)
+
+    const undeployKey = '56565656-abab-4565-8565-565656565656'
+    const undeploy = await fetch(`${gateway.baseUrl}/api/v1/profiles/mini/undeploy`, {
+      method: 'POST',
+      headers: { ...headers, 'idempotency-key': undeployKey },
+      body: JSON.stringify({
+        expectedActiveCandidateId: candidateId,
+        expectedDeploymentRevision: 2,
+      }),
+    })
+    expect(undeploy.status).toBe(200)
+    await expect(undeploy.json()).resolves.toMatchObject({
+      state: 'undeployed',
+      changed: true,
+      previousCandidateId: candidateId,
+      activeCandidateId: null,
+      deploymentRevision: 3,
+      activeRunCount: 0,
+      code: null,
+    })
+    const replay = await fetch(`${gateway.baseUrl}/api/v1/profiles/mini/undeploy`, {
+      method: 'POST',
+      headers: { ...headers, 'idempotency-key': undeployKey },
+      body: JSON.stringify({
+        expectedActiveCandidateId: candidateId,
+        expectedDeploymentRevision: 2,
+      }),
+    })
+    expect(replay.status).toBe(200)
+    expect(replay.headers.get('idempotency-replayed')).toBe('true')
+
+    const staleActivation = await fetch(
+      `${gateway.baseUrl}/api/v1/candidates/activate`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          profileId: 'mini',
+          candidateId,
+          expectedActiveCandidateId: null,
+        }),
+      },
+    )
+    expect(staleActivation.status).toBe(409)
+    await expect(staleActivation.json()).resolves.toMatchObject({
+      error: 'candidate_activation_conflict',
+      activeCandidateId: null,
+      deploymentRevision: 3,
+    })
+    await gateway.stop({ cleanup: false })
+
+    restarted = new OwnwareGateway({
+      port: 0,
+      profilesDir: join(cleanupDir, 'profiles'),
+      dataDir: join(cleanupDir, 'data'),
+      dbPath: join(cleanupDir, 'test.db'),
+      tls: false,
+      disableAuth: false,
+    })
+    await restarted.start()
+    const baseUrl = `http://127.0.0.1:${restarted.port}`
+    const restartedHeaders = {
+      authorization: `Bearer ${restarted.token}`,
+      'content-type': 'application/json',
+    }
+    const state = await fetch(`${baseUrl}/api/v1/profiles/mini/deployment-state`, {
+      headers: restartedHeaders,
+    })
+    expect(state.status).toBe(200)
+    await expect(state.json()).resolves.toMatchObject({
+      state: 'undeployed',
+      previousCandidateId: candidateId,
+      activeCandidateId: null,
+      deploymentRevision: 3,
+    })
+    const run = await fetch(`${baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: restartedHeaders,
+      body: JSON.stringify({ profileId: 'mini', prompt: 'must remain closed' }),
+    })
+    expect(run.status).toBe(409)
+    await expect(run.json()).resolves.toMatchObject({
+      error: 'profile_undeployed',
+      deploymentRevision: 3,
+    })
+    const reactivate = await fetch(`${baseUrl}/api/v1/candidates/activate`, {
+      method: 'POST',
+      headers: restartedHeaders,
+      body: JSON.stringify({
+        profileId: 'mini',
+        candidateId,
+        expectedActiveCandidateId: null,
+        expectedDeploymentRevision: 3,
+      }),
+    })
+    expect(reactivate.status).toBe(200)
+    await expect(reactivate.json()).resolves.toMatchObject({
+      state: 'active',
+      previousCandidateId: null,
+      activeCandidateId: candidateId,
+      deploymentRevision: 4,
+    })
+    const candidate = await fetch(
+      `${baseUrl}/api/v1/profile-candidates/${encodeURIComponent(candidateId)}`,
+      { headers: restartedHeaders },
+    )
+    expect(candidate.status).toBe(200)
+    await expect(candidate.json()).resolves.toMatchObject({
+      candidateId,
+      state: 'ready',
+      ready: true,
+    })
+  })
 })

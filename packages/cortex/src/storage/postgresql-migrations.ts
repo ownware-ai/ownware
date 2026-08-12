@@ -299,6 +299,26 @@ CREATE TRIGGER plugin_migration_receipts_no_delete
   FOR EACH ROW EXECUTE FUNCTION ownware._reject_plugin_evidence_mutation();
 `
 
+const PROFILE_DEPLOYMENT_TOMBSTONES_SQL = `
+CREATE TABLE ownware.profile_candidate_deployment_tombstones (
+  profile_id TEXT PRIMARY KEY,
+  previous_candidate_id TEXT NOT NULL
+    REFERENCES ownware.profile_candidates(candidate_id),
+  deployment_revision BIGINT NOT NULL CHECK (
+    deployment_revision BETWEEN 1 AND 9007199254740991
+  ),
+  undeployed_at BIGINT NOT NULL CHECK (
+    undeployed_at BETWEEN 0 AND 9007199254740991
+  ),
+  updated_at BIGINT NOT NULL CHECK (
+    updated_at BETWEEN undeployed_at AND 9007199254740991
+  )
+);
+
+CREATE INDEX idx_profile_candidate_deployment_tombstones_candidate
+  ON ownware.profile_candidate_deployment_tombstones(previous_candidate_id);
+`
+
 const PROVIDER_USAGE_EVIDENCE_COLUMNS = [
   { table: 'provider_pricebook_snapshots', name: 'entry_id', type: 'TEXT', nullable: false, pkPosition: 1 },
   { table: 'provider_pricebook_snapshots', name: 'version', type: 'TEXT', nullable: false, pkPosition: 2 },
@@ -407,6 +427,52 @@ const PLUGIN_CONTROL_PLANE_INDEXES = [
     predicate: null,
   },
 ] as const
+
+const PROFILE_DEPLOYMENT_TOMBSTONE_COLUMNS = [
+  {
+    table: 'profile_candidate_deployment_tombstones',
+    name: 'profile_id',
+    type: 'TEXT',
+    nullable: false,
+    pkPosition: 1,
+  },
+  {
+    table: 'profile_candidate_deployment_tombstones',
+    name: 'previous_candidate_id',
+    type: 'TEXT',
+    nullable: false,
+    pkPosition: 0,
+  },
+  {
+    table: 'profile_candidate_deployment_tombstones',
+    name: 'deployment_revision',
+    type: 'BIGINT',
+    nullable: false,
+    pkPosition: 0,
+  },
+  {
+    table: 'profile_candidate_deployment_tombstones',
+    name: 'undeployed_at',
+    type: 'BIGINT',
+    nullable: false,
+    pkPosition: 0,
+  },
+  {
+    table: 'profile_candidate_deployment_tombstones',
+    name: 'updated_at',
+    type: 'BIGINT',
+    nullable: false,
+    pkPosition: 0,
+  },
+] as const
+
+const PROFILE_DEPLOYMENT_TOMBSTONE_INDEX = {
+  table: 'profile_candidate_deployment_tombstones',
+  name: 'idx_profile_candidate_deployment_tombstones_candidate',
+  unique: false,
+  columns: [{ name: 'previous_candidate_id', descending: false }],
+  predicate: null,
+} as const
 
 export const POSTGRESQL_MESSAGE_SEQUENCE_SCHEMA_EXPECTATION: PostgreSqlSchemaExpectation =
 Object.freeze({
@@ -517,7 +583,8 @@ export const POSTGRESQL_PROVIDER_USAGE_EVIDENCE_SCHEMA_EXPECTATION: PostgreSqlSc
   }),
 })
 
-export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION: PostgreSqlSchemaExpectation = Object.freeze({
+export const POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
   summary: Object.freeze({
     ...POSTGRESQL_BASELINE_SUMMARY,
     tableCount: POSTGRESQL_BASELINE_SUMMARY.tableCount + 7,
@@ -582,6 +649,47 @@ export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION: PostgreSqlSchemaExpectation 
   }),
 })
 
+export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.summary,
+    tableCount:
+      POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.summary.tableCount + 1,
+    columnCount:
+      POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.summary.columnCount + 5,
+    foreignKeyCount:
+      POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.summary.foreignKeyCount + 1,
+    explicitIndexCount:
+      POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.summary.explicitIndexCount + 1,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.manifest.columns,
+      ...PROFILE_DEPLOYMENT_TOMBSTONE_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints:
+      POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'profile_candidate_deployment_tombstones',
+        columns: ['previous_candidate_id'],
+        referencedTable: 'profile_candidates',
+        referencedColumns: ['candidate_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      PROFILE_DEPLOYMENT_TOMBSTONE_INDEX,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
 async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<boolean> {
   const result = await client.query<{
     readonly constraint_valid: boolean
@@ -623,6 +731,19 @@ async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<bo
 
 async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_CURRENT_SCHEMA_EXPECTATION) &&
+    await postgreSqlMessageSequenceMatches(client) &&
+    await postgreSqlProviderUsageEvidenceMatches(client) &&
+    await postgreSqlPluginControlPlaneMatches(client) &&
+    await postgreSqlProfileDeploymentTombstonesMatch(client)
+}
+
+async function postgreSqlPluginControlPlaneSchemaMatches(
+  client: QueryClient,
+): Promise<boolean> {
+  return await postgreSqlSchemaMatches(
+    client,
+    POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION,
+  ) &&
     await postgreSqlMessageSequenceMatches(client) &&
     await postgreSqlProviderUsageEvidenceMatches(client) &&
     await postgreSqlPluginControlPlaneMatches(client)
@@ -701,6 +822,21 @@ async function postgreSqlPluginControlPlaneMatches(client: QueryClient): Promise
   return result.rows[0]?.immutable_trigger_count === '4' && result.rows[0]?.data_valid === true
 }
 
+async function postgreSqlProfileDeploymentTombstonesMatch(
+  client: QueryClient,
+): Promise<boolean> {
+  const result = await client.query<{ readonly data_valid: boolean }>(`
+    SELECT NOT EXISTS (
+      SELECT 1 FROM ownware.profile_candidate_deployment_tombstones
+      WHERE deployment_revision NOT BETWEEN 1 AND 9007199254740991
+        OR undeployed_at NOT BETWEEN 0 AND 9007199254740991
+        OR updated_at < undeployed_at
+        OR updated_at > 9007199254740991
+    ) AS data_valid
+  `)
+  return result.rows[0]?.data_valid === true
+}
+
 const MESSAGE_SEQUENCE_MIGRATION: PostgreSqlMigration = Object.freeze({
   version: 83,
   name: '083_message_sequence',
@@ -719,6 +855,13 @@ const PLUGIN_CONTROL_PLANE_MIGRATION: PostgreSqlMigration = Object.freeze({
   version: 85,
   name: '085_plugin_control_plane',
   sql: PLUGIN_CONTROL_PLANE_SQL,
+  verifyApplied: postgreSqlPluginControlPlaneSchemaMatches,
+})
+
+const PROFILE_DEPLOYMENT_TOMBSTONES_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 86,
+  name: '086_profile_deployment_tombstones',
+  sql: PROFILE_DEPLOYMENT_TOMBSTONES_SQL,
   verifyApplied: postgreSqlCurrentSchemaMatches,
 })
 
@@ -729,6 +872,7 @@ export const POSTGRESQL_MIGRATION_MANIFEST: PostgreSqlMigrationManifest = Object
     MESSAGE_SEQUENCE_MIGRATION,
     PROVIDER_USAGE_EVIDENCE_MIGRATION,
     PLUGIN_CONTROL_PLANE_MIGRATION,
+    PROFILE_DEPLOYMENT_TOMBSTONES_MIGRATION,
   ]),
   logicalMigrations: STORAGE_LOGICAL_MIGRATIONS,
   verifyCurrentSchema: postgreSqlCurrentSchemaMatches,

@@ -27,9 +27,9 @@ export class LogicalSchemaError extends Error {
   }
 }
 
-export const SQLITE_V85_COLUMN_COUNT = 749
-export const SQLITE_V85_COLUMN_SET_HASH =
-  'sha256:3d5c7666cddab1ca3224a673edf7be1bec9a20a5b49782dbc8df691383afbb47'
+export const SQLITE_V86_COLUMN_COUNT = 754
+export const SQLITE_V86_COLUMN_SET_HASH =
+  'sha256:abf67b0f4e6ed2663e03d5c10df00ab3466cb093290da9b3ad461a38bc49f894'
 
 function keys(value: string): ReadonlySet<string> {
   return new Set(value.trim().split(/\s+/).filter(Boolean))
@@ -82,6 +82,8 @@ const EPOCH_MILLISECOND_COLUMNS = keys(`
   profile_candidate_activation_history.activated_at
   profile_candidate_activations.updated_at
   profile_candidate_activations.health_observed_at
+  profile_candidate_deployment_tombstones.undeployed_at
+  profile_candidate_deployment_tombstones.updated_at
   profile_candidate_deletions.started_at
   profile_candidate_deletions.updated_at
   profile_candidate_deletions.deleted_at
@@ -325,8 +327,8 @@ export function postgresqlProjectionForColumn(key: string): LogicalValueProjecti
 export function classifyLogicalColumns(
   columns: readonly PhysicalColumnDescriptor[],
 ): readonly LogicalColumnDescriptor[] {
-  if (columns.length !== SQLITE_V85_COLUMN_COUNT) return fail('column_count_mismatch')
-  if (physicalColumnSetHash(columns) !== SQLITE_V85_COLUMN_SET_HASH) {
+  if (columns.length !== SQLITE_V86_COLUMN_COUNT) return fail('column_count_mismatch')
+  if (physicalColumnSetHash(columns) !== SQLITE_V86_COLUMN_SET_HASH) {
     return fail('column_set_mismatch')
   }
 

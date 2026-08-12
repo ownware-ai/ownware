@@ -18,6 +18,7 @@ export const STORAGE_LOGICAL_MIGRATIONS = Object.freeze(
     { version: 83, name: '083_message_sequence' },
     { version: 84, name: '084_provider_usage_evidence' },
     { version: 85, name: '085_plugin_control_plane' },
+    { version: 86, name: '086_profile_deployment_tombstones' },
   ] satisfies readonly StorageMigrationIdentity[],
 )
 

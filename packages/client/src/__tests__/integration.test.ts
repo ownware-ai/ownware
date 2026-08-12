@@ -214,8 +214,8 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
       operations: [
         'candidates.validate', 'candidates.stage', 'candidates.activate', 'candidates.rollback',
         'candidates.read', 'candidates.list',
-        'profiles.pause', 'profiles.resume',
-        'profiles.deployment.read', 'profiles.list',
+        'profiles.pause', 'profiles.resume', 'profiles.undeploy',
+        'profiles.deployment.read', 'profiles.deployment.state.read', 'profiles.list',
       ],
     })
     const delegated = new OwnwareClient({
@@ -283,12 +283,40 @@ describe('OwnwareClient ⇄ OwnwareGateway', () => {
     })).resolves.toMatchObject({
       state: 'paused', deploymentRevision: 2,
     })
+    await expect(delegated.undeployProfile({
+      profileId: 'test-agent',
+      expectedActiveCandidateId: result.candidateId!,
+      expectedDeploymentRevision: 2,
+      idempotencyKey: 'efefefef-efef-4fef-8fef-efefefefefef',
+    })).resolves.toMatchObject({
+      state: 'undeployed', previousCandidateId: result.candidateId,
+      activeCandidateId: null, deploymentRevision: 3, activeRunCount: 0,
+    })
+    await expect(delegated.deploymentState('test-agent')).resolves.toMatchObject({
+      state: 'undeployed', previousCandidateId: result.candidateId,
+      activeCandidateId: null, deploymentRevision: 3,
+    })
+    await expect(delegated.activateCandidate({
+      profileId: 'test-agent',
+      candidateId: result.candidateId!,
+      expectedActiveCandidateId: null,
+      expectedDeploymentRevision: 3,
+    })).resolves.toMatchObject({
+      state: 'active', activeCandidateId: result.candidateId, deploymentRevision: 4,
+    })
+    await expect(delegated.pauseProfile({
+      profileId: 'test-agent',
+      expectedDeploymentRevision: 4,
+      idempotencyKey: 'f0f0f0f0-f0f0-40f0-80f0-f0f0f0f0f0f0',
+    })).resolves.toMatchObject({
+      state: 'paused', deploymentRevision: 5,
+    })
     await expect(delegated.resumeProfile({
       profileId: 'test-agent',
-      expectedDeploymentRevision: 2,
+      expectedDeploymentRevision: 5,
       idempotencyKey: 'dededede-dede-4ede-8ede-dededededede',
     })).resolves.toMatchObject({
-      state: 'active', deploymentRevision: 3, health: 'healthy',
+      state: 'active', deploymentRevision: 6, health: 'healthy',
     })
     await expect(ownware.run({ profileId: 'test-agent', prompt: 'candidate pin proof' }))
       .resolves.toMatchObject({ candidateId: result.candidateId })

@@ -43,6 +43,7 @@ older capability rather than inventing a value.
 | `0.35.0` | Run model precedence adds the async install default between durable thread and profile, rejects explicit unavailable/runtime-incompatible choices before dispatch, and returns an optional truthful substitution receipt when profile-default keyless fallback changes the model. |
 | `0.36.0` | Provider calls with authoritative runtime/provider usage now produce immutable usage facts, append-only classification-separated cost observations and exact pricebook snapshots, exposed through bounded reads, summary, lossless export and reconciliation APIs. |
 | `0.37.0` | Owner-controlled task packs add immutable local package identity, revisioned global/workspace/top-level-agent selection, lazy root-agent skills and typed catalog/scope APIs without granting tools or leaking the root registry into spawned helpers. |
+| `0.38.0` | Revision-fenced profile undeploy adds durable tombstones, pause-and-drain enforcement, idempotent replay, explicit undeployed reads and revision-aware redeployment without deleting staged candidate bytes. |
 
 Compatibility rules:
 
@@ -55,18 +56,24 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.37.0`,
-  `gateway.capabilities` is version 18, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.38.0`,
+  `gateway.capabilities` is version 19, `connections.list` is version 1,
   `models.list` and `provider_hub.read` are version 2,
   `principals.issue` is version 3,
   `runs.start` is version 6,
   `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 3,
-  and `candidates.validate`, `candidates.stage`, `candidates.activate` and
-  `candidates.rollback` are version 1.
+  and `candidates.validate` and `candidates.stage` are version 1, while
+  `candidates.activate` and `candidates.rollback` are version 2.
   `profiles.pause` and `profiles.resume` are also version 1 and require a UUID
   `Idempotency-Key` plus the exact expected deployment revision.
   `profiles.list`, `profiles.deployment.read`, `candidates.read`,
   `candidates.list` and `candidates.delete` are version 1.
+  `profiles.undeploy` and `profiles.deployment.state.read` are version 1.
+  Undeploy requires an exact active candidate, exact deployment revision,
+  paused routing, zero active runs and a UUID `Idempotency-Key`. It preserves
+  staged candidate bytes, writes a durable monotonic tombstone and rejects new
+  runs as `profile_undeployed`. Reactivation from that state requires the
+  exact tombstone revision; a stale null-active activation cannot resurrect it.
   `runs.attachments` is version 1 and requires a separately declared delegated
   operation plus the negotiated count/decoded-byte/filename limits.
   Delegated-created threads are durably bound to the verified delegate,

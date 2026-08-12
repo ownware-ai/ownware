@@ -9,6 +9,7 @@ import { ProfileRunNotAcceptingError } from '../../../src/gateway/run-store.js'
 import { threadPrincipalScopeDigest } from '../../../src/gateway/thread-principal-binding.js'
 import { PostgreSqlStorageAdapter } from '../../../src/storage/postgresql-adapter.js'
 import { createPostgreSqlCoreRepositories } from '../../../src/storage/postgresql-core-repositories.js'
+import { createPostgreSqlCandidateRepository } from '../../../src/storage/postgresql-candidate-repository.js'
 import { createPostgreSqlGatewayRepositories } from '../../../src/storage/postgresql-gateway-repositories.js'
 import {
   createPostgreSqlIdempotencyRepository,
@@ -22,6 +23,7 @@ import type {
   RunRepository,
   SecurityTransactionRepositories,
 } from '../../../src/storage/security-repositories.js'
+import type { CandidateRepository } from '../../../src/storage/platform-repositories.js'
 import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
@@ -62,6 +64,7 @@ describePostgreSql('PostgreSQL core/run/gateway concurrency invariants', () => {
   let gateway: GatewayRepositories
   let runs: RunRepository
   let idempotency: IdempotencyRepository
+  let candidates: CandidateRepository
 
   beforeAll(async () => {
     database = await createDisposablePostgreSqlDatabase(TEST_URL!)
@@ -103,6 +106,7 @@ describePostgreSql('PostgreSQL core/run/gateway concurrency invariants', () => {
     gateway = createPostgreSqlGatewayRepositories(context)
     runs = createPostgreSqlRunRepository(context, 'sto11-permission-hash-secret')
     idempotency = createPostgreSqlIdempotencyRepository(context, 'sto11-idempotency-owner')
+    candidates = createPostgreSqlCandidateRepository(context)
   }, 30_000)
 
   afterEach(() => {
@@ -673,6 +677,101 @@ describePostgreSql('PostgreSQL core/run/gateway concurrency invariants', () => {
       deploymentRevision: 3,
       routingState: 'paused',
     })
+  })
+
+  it('serializes run acceptance before pause and refuses undeploy until that run drains', async () => {
+    const profileId = 'sto11-undeploy-profile'
+    const candidateId = `sha256:${'c'.repeat(64)}`
+    await candidates.begin({
+      candidateId,
+      profileId,
+      attemptId: 'sto11-undeploy-attempt',
+      fileCount: 1,
+      totalBytes: 1,
+    }, 5_000)
+    await candidates.markReady(candidateId, 'sto11-undeploy-attempt', 5_001)
+    await expect(candidates.compareAndSetActive({
+      profileId,
+      candidateId,
+      expectedActiveCandidateId: null,
+    }, 5_002)).resolves.toMatchObject({ status: 'activated', deploymentRevision: 1 })
+
+    await pool.query(`
+      CREATE FUNCTION ownware.sto11_hold_undeploy_run_insert() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.profile_id = 'sto11-undeploy-profile' THEN
+          PERFORM pg_advisory_xact_lock(20260812, 86);
+        END IF;
+        RETURN NEW;
+      END
+      $$
+    `)
+    await pool.query(`
+      CREATE TRIGGER sto11_hold_undeploy_run_insert
+      BEFORE INSERT ON ownware.gateway_runs
+      FOR EACH ROW EXECUTE FUNCTION ownware.sto11_hold_undeploy_run_insert()
+    `)
+
+    const thread = await core.threads.create(profileId)
+    const blocker = await pool.connect()
+    let advisoryHeld = false
+    try {
+      await blocker.query('SELECT pg_advisory_lock(20260812, 86)')
+      advisoryHeld = true
+      const create = runs.create({
+        threadId: thread.id,
+        profileId,
+        candidateId,
+        model: 'sto11:model',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      }, 5_010)
+      await waitForLockWaiters(1)
+      const pause = candidates.compareAndSetRouting({
+        profileId,
+        expectedRevision: 1,
+        routingState: 'paused',
+      }, 5_020)
+      await waitForLockWaiters(2)
+      await blocker.query('SELECT pg_advisory_unlock(20260812, 86)')
+      advisoryHeld = false
+      const [accepted, paused] = await Promise.all([create, pause])
+      expect(accepted).toMatchObject({ profileId, candidateId, status: 'accepted' })
+      expect(paused).toMatchObject({ status: 'changed', deploymentRevision: 2 })
+
+      await expect(candidates.compareAndSetUndeployed({
+        profileId,
+        expectedActiveCandidateId: candidateId,
+        expectedDeploymentRevision: 2,
+      }, 5_030)).resolves.toMatchObject({
+        status: 'active_runs', deploymentRevision: 2, activeRunCount: 1,
+      })
+      await runs.markTerminal(accepted.runId, 'succeeded', { endSeq: 0, now: 5_040 })
+      await expect(candidates.compareAndSetUndeployed({
+        profileId,
+        expectedActiveCandidateId: candidateId,
+        expectedDeploymentRevision: 2,
+      }, 5_050)).resolves.toMatchObject({
+        status: 'undeployed', activeCandidateId: null, deploymentRevision: 3,
+      })
+      const laterThread = await core.threads.create(profileId)
+      await expect(runs.create({
+        threadId: laterThread.id,
+        profileId,
+        candidateId,
+        model: 'sto11:model',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      }, 5_060)).rejects.toMatchObject({
+        profileId, deploymentRevision: 3, routingState: 'undeployed',
+      })
+    } finally {
+      if (advisoryHeld) {
+        await blocker.query('SELECT pg_advisory_unlock(20260812, 86)').catch(() => {})
+      }
+      blocker.release()
+    }
   })
 
   it('keeps settings singular and audit appends complete under high contention', async () => {

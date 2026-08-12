@@ -2,10 +2,12 @@ import {
   DEPLOYMENT_HEALTH_FRESH_MS,
   type ActiveCandidateRecord,
   type CandidateActivationResult,
+  type CandidateDeploymentState,
   type CandidateDeletionClaim,
   type CandidateDeletionEligibility,
   type CandidateDeletionRecord,
   type CandidateRecord,
+  type CandidateUndeploymentResult,
   type DeploymentRoutingResult,
 } from "../gateway/candidate-store.js";
 import type { PostgreSqlRootRepositoryContext } from "./postgresql-adapter.js";
@@ -34,6 +36,18 @@ interface ActiveRow {
   readonly routing_state: ActiveCandidateRecord["routingState"];
   readonly health: ActiveCandidateRecord["health"];
   readonly health_observed_at: unknown | null;
+  readonly updated_at: unknown;
+}
+interface DeploymentStateRow {
+  readonly state: "active" | "undeployed";
+  readonly profile_id: string;
+  readonly candidate_id: string | null;
+  readonly previous_candidate_id: string | null;
+  readonly deployment_revision: unknown;
+  readonly routing_state: ActiveCandidateRecord["routingState"] | null;
+  readonly health: ActiveCandidateRecord["health"] | null;
+  readonly health_observed_at: unknown | null;
+  readonly undeployed_at: unknown | null;
   readonly updated_at: unknown;
 }
 interface DeletionRow {
@@ -107,6 +121,66 @@ async function getActive(client: Client, profileId: string, now: number) {
     )
   ).rows[0];
   return row === undefined ? null : active(row, now);
+}
+async function getDeploymentState(
+  client: Client,
+  profileId: string,
+  now: number,
+): Promise<CandidateDeploymentState | null> {
+  // A single statement uses one MVCC snapshot. Two separate reads could see
+  // the activation before a concurrent swap and its tombstone afterward.
+  const rows = (
+    await client.query<DeploymentStateRow>(
+      `SELECT 'active'::text AS state, profile_id, candidate_id,
+         NULL::text AS previous_candidate_id, deployment_revision,
+         routing_state, health, health_observed_at,
+         NULL::bigint AS undeployed_at, updated_at
+       FROM ownware.profile_candidate_activations WHERE profile_id=$1
+       UNION ALL
+       SELECT 'undeployed'::text AS state, profile_id, NULL::text AS candidate_id,
+         previous_candidate_id, deployment_revision, NULL::text AS routing_state,
+         NULL::text AS health, NULL::bigint AS health_observed_at,
+         undeployed_at, updated_at
+       FROM ownware.profile_candidate_deployment_tombstones WHERE profile_id=$1`,
+      [profileId],
+    )
+  ).rows;
+  if (rows.length > 1) throw new Error("Candidate deployment state conflict");
+  const row = rows[0];
+  if (row === undefined) return null;
+  if (row.state === "active") {
+    if (
+      row.candidate_id === null ||
+      row.routing_state === null ||
+      row.health === null
+    )
+      throw new Error("Candidate deployment state invalid");
+    return {
+      state: "active",
+      ...active(
+        {
+          profile_id: row.profile_id,
+          candidate_id: row.candidate_id,
+          deployment_revision: row.deployment_revision,
+          routing_state: row.routing_state,
+          health: row.health,
+          health_observed_at: row.health_observed_at,
+          updated_at: row.updated_at,
+        },
+        now,
+      ),
+    };
+  }
+  if (row.previous_candidate_id === null || row.undeployed_at === null)
+    throw new Error("Candidate deployment state invalid");
+  return {
+    state: "undeployed",
+    profileId: row.profile_id,
+    previousCandidateId: row.previous_candidate_id,
+    deploymentRevision: safeInteger(row.deployment_revision),
+    undeployedAt: safeInteger(row.undeployed_at),
+    updatedAt: safeInteger(row.updated_at),
+  };
 }
 const routing = (
   status: Exclude<DeploymentRoutingResult["status"], "not_deployed">,
@@ -197,16 +271,30 @@ export function createPostgreSqlCandidateRepository(
         getActive(client, profileId, now),
       );
     },
+    getDeploymentState(profileId, now = Date.now()) {
+      return call("getDeploymentState", false, (client) =>
+        getDeploymentState(client, profileId, now),
+      );
+    },
     compareAndSetActive(input, now = Date.now()) {
       return call("compareAndSetActive", true, () =>
         withPostgreSqlTransaction(context.pool, async (client) => {
           await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
             input.profileId,
           ]);
-          const current = await getActive(client, input.profileId, now),
+          const deployment = await getDeploymentState(
+              client,
+              input.profileId,
+              now,
+            ),
+            current = deployment?.state === "active" ? deployment : null,
+            undeployed = deployment?.state === "undeployed" ? deployment : null,
             currentId = current?.candidateId ?? null,
             unchanged = {
-              deploymentRevision: current?.deploymentRevision ?? null,
+              deploymentRevision:
+                current?.deploymentRevision ??
+                undeployed?.deploymentRevision ??
+                null,
               routingState: current?.routingState ?? null,
               health: current?.health ?? null,
               healthObservedAt: current?.healthObservedAt ?? null,
@@ -227,7 +315,17 @@ export function createPostgreSqlCandidateRepository(
               activeCandidateId: currentId,
               ...unchanged,
             };
-          if (currentId !== input.expectedActiveCandidateId)
+          const revisionMatches = current
+            ? input.expectedDeploymentRevision === undefined ||
+              input.expectedDeploymentRevision === current.deploymentRevision
+            : undeployed
+              ? input.expectedDeploymentRevision === undeployed.deploymentRevision
+              : input.expectedDeploymentRevision === undefined ||
+                input.expectedDeploymentRevision === null;
+          if (
+            currentId !== input.expectedActiveCandidateId ||
+            !revisionMatches
+          )
             return {
               status: "conflict",
               previousCandidateId: currentId,
@@ -241,10 +339,42 @@ export function createPostgreSqlCandidateRepository(
               activeCandidateId: currentId,
               ...unchanged,
             };
-          await client.query(
-            `INSERT INTO ownware.profile_candidate_activations(profile_id,candidate_id,deployment_revision,routing_state,health,health_observed_at,updated_at) VALUES($1,$2,1,'active','starting',$3,$3) ON CONFLICT(profile_id) DO UPDATE SET candidate_id=EXCLUDED.candidate_id,deployment_revision=ownware.profile_candidate_activations.deployment_revision+1,health='starting',health_observed_at=EXCLUDED.health_observed_at,updated_at=EXCLUDED.updated_at`,
-            [input.profileId, input.candidateId, now],
-          );
+          if (current !== null) {
+            const updated = await client.query(
+              `UPDATE ownware.profile_candidate_activations
+               SET candidate_id=$1,deployment_revision=deployment_revision+1,
+                 health='starting',health_observed_at=$2,updated_at=$2
+               WHERE profile_id=$3 AND candidate_id=$4
+                 AND deployment_revision=$5`,
+              [
+                input.candidateId,
+                now,
+                input.profileId,
+                current.candidateId,
+                current.deploymentRevision,
+              ],
+            );
+            if (updated.rowCount !== 1)
+              throw new Error("Candidate activation state conflict");
+          } else {
+            const revision = (undeployed?.deploymentRevision ?? 0) + 1;
+            if (undeployed !== null) {
+              const removed = await client.query(
+                `DELETE FROM ownware.profile_candidate_deployment_tombstones
+                 WHERE profile_id=$1 AND deployment_revision=$2`,
+                [input.profileId, undeployed.deploymentRevision],
+              );
+              if (removed.rowCount !== 1)
+                throw new Error("Candidate deployment state conflict");
+            }
+            await client.query(
+              `INSERT INTO ownware.profile_candidate_activations(
+                 profile_id,candidate_id,deployment_revision,routing_state,
+                 health,health_observed_at,updated_at
+               ) VALUES($1,$2,$3,'active','starting',$4,$4)`,
+              [input.profileId, input.candidateId, revision, now],
+            );
+          }
           const next = (await getActive(client, input.profileId, now))!;
           await client.query(
             "INSERT INTO ownware.profile_candidate_activation_history(profile_id,deployment_revision,candidate_id,activated_at) VALUES($1,$2,$3,$4)",
@@ -262,19 +392,112 @@ export function createPostgreSqlCandidateRepository(
         }),
       );
     },
+    compareAndSetUndeployed(input, now = Date.now()) {
+      return call("compareAndSetUndeployed", true, () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+            input.profileId,
+          ]);
+          const deployment = await getDeploymentState(
+            client,
+            input.profileId,
+            now,
+          );
+          const result = (
+            status: CandidateUndeploymentResult["status"],
+            activeRunCount: number,
+          ): CandidateUndeploymentResult => ({
+            status,
+            previousCandidateId:
+              deployment?.state === "active"
+                ? deployment.candidateId
+                : deployment?.state === "undeployed"
+                  ? deployment.previousCandidateId
+                  : null,
+            activeCandidateId:
+              deployment?.state === "active" ? deployment.candidateId : null,
+            deploymentRevision: deployment?.deploymentRevision ?? null,
+            activeRunCount,
+            undeployedAt:
+              deployment?.state === "undeployed"
+                ? deployment.undeployedAt
+                : null,
+          });
+          if (deployment === null || deployment.state === "undeployed")
+            return result("not_deployed", 0);
+          if (
+            deployment.candidateId !== input.expectedActiveCandidateId ||
+            deployment.deploymentRevision !== input.expectedDeploymentRevision
+          )
+            return result("conflict", 0);
+          if (deployment.routingState !== "paused")
+            return result("not_paused", 0);
+          const activeRuns = safeInteger(
+            (
+              await client.query<{ count: unknown }>(
+                `SELECT COUNT(*) AS count FROM ownware.gateway_runs
+                 WHERE profile_id=$1
+                   AND status IN ('accepted','running','waiting','cancel_requested')`,
+                [input.profileId],
+              )
+            ).rows[0]!.count,
+          );
+          if (activeRuns > 0) return result("active_runs", activeRuns);
+
+          const removed = await client.query(
+            `DELETE FROM ownware.profile_candidate_activations
+             WHERE profile_id=$1 AND candidate_id=$2
+               AND deployment_revision=$3 AND routing_state='paused'`,
+            [
+              input.profileId,
+              input.expectedActiveCandidateId,
+              input.expectedDeploymentRevision,
+            ],
+          );
+          if (removed.rowCount !== 1)
+            throw new Error("Candidate undeployment state conflict");
+          const revision = input.expectedDeploymentRevision + 1;
+          await client.query(
+            `INSERT INTO ownware.profile_candidate_deployment_tombstones(
+               profile_id,previous_candidate_id,deployment_revision,
+               undeployed_at,updated_at
+             ) VALUES($1,$2,$3,$4,$4)`,
+            [
+              input.profileId,
+              input.expectedActiveCandidateId,
+              revision,
+              now,
+            ],
+          );
+          return {
+            status: "undeployed",
+            previousCandidateId: input.expectedActiveCandidateId,
+            activeCandidateId: null,
+            deploymentRevision: revision,
+            activeRunCount: 0,
+            undeployedAt: now,
+          };
+        }),
+      );
+    },
     compareAndSetRouting(input, now = Date.now()) {
-      return call("compareAndSetRouting", true, async (client) => {
-        const result = await client.query(
-          `UPDATE ownware.profile_candidate_activations SET routing_state=$1,deployment_revision=deployment_revision+1,updated_at=$2 WHERE profile_id=$3 AND deployment_revision=$4 AND routing_state<>$1`,
-          [input.routingState, now, input.profileId, input.expectedRevision],
-        );
-        const current = await getActive(client, input.profileId, now);
-        if (current === null) return empty();
-        if (result.rowCount === 1) return routing("changed", current);
-        if (current.deploymentRevision !== input.expectedRevision)
-          return routing("conflict", current);
-        return routing("unchanged", current);
-      });
+      return call("compareAndSetRouting", true, () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+            input.profileId,
+          ]);
+          const result = await client.query(
+            `UPDATE ownware.profile_candidate_activations SET routing_state=$1,deployment_revision=deployment_revision+1,updated_at=$2 WHERE profile_id=$3 AND deployment_revision=$4 AND routing_state<>$1`,
+            [input.routingState, now, input.profileId, input.expectedRevision],
+          );
+          const current = await getActive(client, input.profileId, now);
+          if (current === null) return empty();
+          if (result.rowCount === 1) return routing("changed", current);
+          if (current.deploymentRevision !== input.expectedRevision)
+            return routing("conflict", current);
+          return routing("unchanged", current);
+        }),
+      );
     },
     recordHealth(input) {
       return call(

@@ -134,6 +134,32 @@ describe('RunIdempotencyStore', () => {
     })).toThrow('Invalid run model substitution')
   })
 
+  it('accepts only the closed truthful profile undeploy replay shape', () => {
+    const snapshot = {
+      state: 'undeployed' as const,
+      changed: true as const,
+      profileId: 'portable',
+      previousCandidateId: `sha256:${'a'.repeat(64)}`,
+      activeCandidateId: null,
+      deploymentRevision: 3,
+      routingState: null,
+      health: null,
+      healthObservedAt: null,
+      activeRunCount: 0 as const,
+      undeployedAt: 123,
+      code: null,
+    }
+    expect(validateIdempotencySnapshot(snapshot)).toEqual(snapshot)
+    expect(() => validateIdempotencySnapshot({
+      ...snapshot,
+      privateCandidatePath: '/private/candidate-canary',
+    })).toThrow('Invalid profile undeployment snapshot')
+    expect(() => validateIdempotencySnapshot({
+      ...snapshot,
+      state: 'undeploy_failed',
+    })).toThrow('Invalid profile undeployment snapshot')
+  })
+
   it('rejects payload conflict before changing the completed result', () => {
     const store = new RunIdempotencyStore(state.rawDbHandle, 'boot-a')
     expect(store.claim({ principalKey: scope, operation: 'runs.start', key, input: body }, 1_000).kind)

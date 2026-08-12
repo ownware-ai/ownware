@@ -80,9 +80,12 @@ export class ProfileRunNotAcceptingError extends Error {
   constructor(
     readonly profileId: string,
     readonly deploymentRevision: number,
-    readonly routingState: 'paused',
+    readonly routingState: 'paused' | 'undeployed',
   ) {
-    super(`Profile "${profileId}" is paused and is not accepting new runs`)
+    super(
+      'Profile "' + profileId + '" is ' + routingState +
+      ' and is not accepting new runs',
+    )
     this.name = 'ProfileRunNotAcceptingError'
   }
 }
@@ -119,6 +122,17 @@ export class GatewayRunStore {
         deployment_revision: number
         routing_state: 'active' | 'paused'
       } | undefined
+      const undeployed = this.db.prepare(`
+        SELECT deployment_revision
+        FROM profile_candidate_deployment_tombstones WHERE profile_id = ?
+      `).get(input.profileId) as { deployment_revision: number } | undefined
+      if (undeployed) {
+        throw new ProfileRunNotAcceptingError(
+          input.profileId,
+          undeployed.deployment_revision,
+          'undeployed',
+        )
+      }
       if (deployment?.routing_state === 'paused') {
         throw new ProfileRunNotAcceptingError(
           input.profileId,

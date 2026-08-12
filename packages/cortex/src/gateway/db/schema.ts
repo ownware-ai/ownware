@@ -4673,4 +4673,24 @@ export const MIGRATIONS: Migration[] = [
         BEGIN SELECT RAISE(ABORT, 'immutable plugin migration receipt'); END;
     `,
   },
+  {
+    version: 86,
+    name: '086_profile_deployment_tombstones',
+    sql: `
+      -- A missing activation row used to mean both "never deployed" and
+      -- "explicitly removed". Preserve the latter as a monotonic authority so
+      -- stale null-expected activation requests cannot resurrect a profile.
+      CREATE TABLE profile_candidate_deployment_tombstones (
+        profile_id            TEXT    PRIMARY KEY,
+        previous_candidate_id TEXT    NOT NULL
+          REFERENCES profile_candidates(candidate_id),
+        deployment_revision   INTEGER NOT NULL CHECK (deployment_revision > 0),
+        undeployed_at         INTEGER NOT NULL CHECK (undeployed_at >= 0),
+        updated_at            INTEGER NOT NULL CHECK (updated_at >= undeployed_at)
+      );
+
+      CREATE INDEX idx_profile_candidate_deployment_tombstones_candidate
+        ON profile_candidate_deployment_tombstones(previous_candidate_id);
+    `,
+  },
 ]

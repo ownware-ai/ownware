@@ -175,6 +175,16 @@ describe('profile deployment acceptance fence', () => {
       candidates.compareAndSetRouting({
         profileId: 'test', expectedRevision: 1, routingState: 'paused',
       })
+      expect(candidates.compareAndSetUndeployed({
+        profileId: 'test',
+        expectedActiveCandidateId: candidateId,
+        expectedDeploymentRevision: 2,
+      })).toMatchObject({
+        status: 'active_runs',
+        activeCandidateId: candidateId,
+        deploymentRevision: 2,
+        activeRunCount: 1,
+      })
       const blockedThread = await state.createThread('test')
       expect(() => runs.create({
         threadId: blockedThread.id, profileId: 'test', candidateId,
@@ -184,6 +194,27 @@ describe('profile deployment acceptance fence', () => {
 
       runs.markTerminal(first.runId, 'succeeded', { endSeq: 0 })
       expect(runs.countActiveForProfile('test')).toBe(0)
+      expect(candidates.compareAndSetUndeployed({
+        profileId: 'test',
+        expectedActiveCandidateId: candidateId,
+        expectedDeploymentRevision: 2,
+      })).toMatchObject({
+        status: 'undeployed',
+        activeCandidateId: null,
+        deploymentRevision: 3,
+      })
+      const undeployedThread = await state.createThread('test')
+      expect(() => runs.create({
+        threadId: undeployedThread.id,
+        profileId: 'test',
+        candidateId,
+        model: 'test:model',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      })).toThrow(expect.objectContaining({
+        routingState: 'undeployed',
+        deploymentRevision: 3,
+      }))
     } finally {
       state.close()
     }
