@@ -69,6 +69,11 @@ Compatibility rules:
   `profiles.list`, `profiles.deployment.read`, `candidates.read`,
   `candidates.list` and `candidates.delete` are version 1.
   `profiles.undeploy` and `profiles.deployment.state.read` are version 1.
+- `profiles()` follows the revision `0.38.0` OpenAPI response exactly: a successful
+  catalog is a top-level array. The Client rejects malformed top-level values,
+  malformed public summary fields, overlong identities and duplicate or
+  case-colliding identities with the safe `profile_catalog_invalid` code; it never
+  normalizes a malformed response to an empty catalog.
   Undeploy requires an exact active candidate, exact deployment revision,
   paused routing, zero active runs and a UUID `Idempotency-Key`. It preserves
   staged candidate bytes, writes a durable monotonic tombstone and rejects new

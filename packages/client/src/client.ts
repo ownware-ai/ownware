@@ -1390,6 +1390,108 @@ export class OwnwareError extends Error {
   }
 }
 
+const PROFILE_ID_MAX_LENGTH = 128
+const CANDIDATE_ID = /^sha256:[0-9a-f]{64}$/
+const PROFILE_AVAILABILITIES = new Set([
+  'available', 'paused', 'invalid', 'unavailable',
+])
+const PROFILE_DEPLOYMENT_HEALTH = new Set([
+  'unknown', 'starting', 'healthy', 'degraded', 'unhealthy',
+])
+
+function invalidProfileCatalog(status: number): OwnwareError {
+  return new OwnwareError({
+    message: 'Ownware profile catalog response was invalid',
+    status,
+    code: 'profile_catalog_invalid',
+    category: 'validation',
+  })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
+}
+
+function isOptionalNullableString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string'
+}
+
+function isOptionalNullableInteger(value: unknown, minimum: number): boolean {
+  return value === undefined || value === null ||
+    (typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum)
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+}
+
+function isCandidateFinding(value: unknown): value is CandidateFinding {
+  if (!isRecord(value)) return false
+  if (typeof value['code'] !== 'string' ||
+      (value['severity'] !== 'error' && value['severity'] !== 'warning') ||
+      typeof value['message'] !== 'string') {
+    return false
+  }
+  return value['subjects'] === undefined || isStringArray(value['subjects'])
+}
+
+function isProfileSummary(value: unknown): value is ProfileSummary {
+  if (!isRecord(value)) return false
+  const id = value['id']
+  if (typeof id !== 'string' || id.length === 0 || id.length > PROFILE_ID_MAX_LENGTH) {
+    return false
+  }
+  if (!isOptionalString(value['name']) ||
+      !isOptionalString(value['description']) ||
+      !isOptionalNullableString(value['displayName'])) {
+    return false
+  }
+  const availability = value['availability']
+  if (availability !== undefined &&
+      (typeof availability !== 'string' || !PROFILE_AVAILABILITIES.has(availability))) {
+    return false
+  }
+  const activeCandidateId = value['activeCandidateId']
+  if (activeCandidateId !== undefined && activeCandidateId !== null &&
+      (typeof activeCandidateId !== 'string' || !CANDIDATE_ID.test(activeCandidateId))) {
+    return false
+  }
+  if (!isOptionalNullableInteger(value['deploymentRevision'], 1)) return false
+  const health = value['health']
+  if (health !== undefined &&
+      (typeof health !== 'string' || !PROFILE_DEPLOYMENT_HEALTH.has(health))) {
+    return false
+  }
+  if (!isOptionalNullableInteger(value['healthObservedAt'], 0)) return false
+  if (value['requiredCapabilities'] !== undefined &&
+      !isStringArray(value['requiredCapabilities'])) {
+    return false
+  }
+  if (value['findings'] !== undefined &&
+      (!Array.isArray(value['findings']) || !value['findings'].every(isCandidateFinding))) {
+    return false
+  }
+  return true
+}
+
+function parseProfileCatalog(value: unknown, status: number): ProfileSummary[] {
+  if (!Array.isArray(value)) throw invalidProfileCatalog(status)
+  const identities = new Set<string>()
+  const result: ProfileSummary[] = []
+  for (const item of value) {
+    if (!isProfileSummary(item)) throw invalidProfileCatalog(status)
+    const identity = item.id.toLocaleLowerCase('en-US')
+    if (identities.has(identity)) throw invalidProfileCatalog(status)
+    identities.add(identity)
+    result.push(item)
+  }
+  return result
+}
+
 // ── the client ───────────────────────────────────────────────────────────────
 
 export class OwnwareClient implements GatewayClient {
@@ -2405,8 +2507,13 @@ export class OwnwareClient implements GatewayClient {
   async profiles(): Promise<ProfileSummary[]> {
     const res = await this.doFetch(`${this.base}/api/v1/profiles`, { headers: this.headers(false) })
     if (!res.ok) throw await errorFromResponse(res)
-    const data = (await res.json()) as ProfileSummary[] | { profiles?: ProfileSummary[] }
-    return Array.isArray(data) ? data : (data.profiles ?? [])
+    let data: unknown
+    try {
+      data = await res.json()
+    } catch {
+      throw invalidProfileCatalog(res.status)
+    }
+    return parseProfileCatalog(data, res.status)
   }
 
   /** Liveness — the one unauthenticated route. */
