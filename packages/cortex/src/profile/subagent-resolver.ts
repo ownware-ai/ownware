@@ -39,6 +39,10 @@ export interface ResolvedSubagentDef {
    * spawned session injects it on every turn as a `<system-reminder>`.
    */
   readonly persistentReminder?: string
+  /** Exact active parent skill definitions embedded into this helper. */
+  readonly grantedSkills?: readonly SkillDefinition[]
+  /** Body block appended after a referenced helper's full envelope is built. */
+  readonly grantedSkillsPrompt?: string
 }
 
 export interface ResolveSubagentInputs {
@@ -154,8 +158,14 @@ export function resolveSubagentDef(
   // prompt so the spawned agent sees the playbook from turn 1.
   const grantSkills = spec.grant?.skills ?? []
   let systemPrompt = baseSystemPrompt
+  let grantedSkills: readonly SkillDefinition[] | undefined
+  let grantedSkillsPrompt: string | undefined
   if (grantSkills.length > 0) {
-    const byName = new Map(parentSkills.map((s) => [s.name, s]))
+    const activeParentSkills = parentSkills.filter(skill => skill.active !== false)
+    const byName = new Map(activeParentSkills.map((s) => [s.name, s]))
+    if (byName.size !== activeParentSkills.length) {
+      throw new Error('Parent skill names must be unique before helper grants resolve.')
+    }
     const missing = grantSkills.filter((name) => !byName.has(name))
     if (missing.length > 0) {
       throw new Error(
@@ -166,9 +176,9 @@ export function resolveSubagentDef(
           `(via skills.dirs) before granting.`,
       )
     }
+    grantedSkills = Object.freeze(grantSkills.map(name => byName.get(name)!))
     const sections: string[] = []
-    for (const name of grantSkills) {
-      const skill = byName.get(name)!
+    for (const skill of grantedSkills) {
       sections.push(
         `## Granted Skill: /${skill.name}\n` +
           `\n` +
@@ -183,6 +193,7 @@ export function resolveSubagentDef(
       `The following playbooks were granted by the parent agent. Follow them when the task matches.\n` +
       `\n` +
       sections.join('\n\n')
+    grantedSkillsPrompt = block
     systemPrompt =
       baseSystemPrompt && baseSystemPrompt.length > 0
         ? `${baseSystemPrompt}\n\n${block}`
@@ -194,5 +205,13 @@ export function resolveSubagentDef(
   // its own override (no need yet); if the helper has it, it's used.
   const persistentReminder = refProfile?.config.criticalReminder
 
-  return { model, tools, systemPrompt, maxTurns, persistentReminder }
+  return {
+    model,
+    tools,
+    systemPrompt,
+    maxTurns,
+    persistentReminder,
+    ...(grantedSkills === undefined ? {} : { grantedSkills }),
+    ...(grantedSkillsPrompt === undefined ? {} : { grantedSkillsPrompt }),
+  }
 }

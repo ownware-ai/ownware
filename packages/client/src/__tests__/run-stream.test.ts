@@ -85,6 +85,84 @@ describe('interpretSseEvent — permission.request (H6)', () => {
     expect(stop).toBe(false)
   })
 
+  it('maps only a complete metadata-only sensitive-input request', () => {
+    const data = {
+      type: 'sensitive.input.request',
+      requestId: 'sensitive_1',
+      toolCallId: 'call_1',
+      toolName: 'browser_sensitive_type',
+      label: 'Password',
+      usage: 'Enter directly into the bound field',
+      agentId: null,
+      adapterRevision: 'ownware.browser-field-injection.v1',
+      seq: 9,
+    }
+    expect(interpretSseEvent('sensitive.input.request', data, 0)).toEqual({
+      event: {
+        type: 'sensitive-input',
+        requestId: 'sensitive_1',
+        toolCallId: 'call_1',
+        toolName: 'browser_sensitive_type',
+        label: 'Password',
+        usage: 'Enter directly into the bound field',
+        agentId: null,
+        adapterRevision: 'ownware.browser-field-injection.v1',
+        seq: 9,
+      },
+      stop: false,
+      seq: 9,
+    })
+    expect(interpretSseEvent('sensitive.input.request', {
+      ...data,
+      adapterRevision: undefined,
+    }, 0).event).toBeUndefined()
+  })
+
+  it('maps only a complete content-free skill activation observation', () => {
+    const data = {
+      type: 'skill.activation',
+      activationId: '55555555-5555-4555-8555-555555555555',
+      toolCallId: 'call_skill_1',
+      sourceRef: 'assistant',
+      sourceDigest: `hmac-sha256:${'a'.repeat(64)}`,
+      skillName: '分析',
+      skillDigest: `hmac-sha256:${'b'.repeat(64)}`,
+      agentId: null,
+      turnIndex: 2,
+      timestamp: 100,
+      seq: 10,
+    }
+    expect(interpretSseEvent('skill.activation', data, 0)).toEqual({
+      event: {
+        type: 'skill-activation',
+        activationId: data.activationId,
+        toolCallId: 'call_skill_1',
+        profileId: 'assistant',
+        profileDigest: data.sourceDigest,
+        skillName: '分析',
+        skillDigest: data.skillDigest,
+        agentId: null,
+        turnIndex: 2,
+        activatedAt: 100,
+        seq: 10,
+      },
+      stop: false,
+      seq: 10,
+    })
+    expect(interpretSseEvent('skill.activation', {
+      ...data,
+      skillDigest: undefined,
+    }, 0).event).toBeUndefined()
+    expect(interpretSseEvent('skill.activation', {
+      ...data,
+      sourceDigest: 'caller-says-this-is-proof',
+    }, 0).event).toBeUndefined()
+    expect(interpretSseEvent('skill.activation', {
+      ...data,
+      turnIndex: -1,
+    }, 0).event).toBeUndefined()
+  })
+
   it('regression: deltas and terminal events are unchanged', () => {
     expect(
       interpretSseEvent('text.delta', { type: 'text.delta', text: 'hi', seq: 1 }, 0).event,

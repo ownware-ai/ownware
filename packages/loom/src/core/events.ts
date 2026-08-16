@@ -371,6 +371,64 @@ export interface CredentialResponseEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Sensitive input (ephemeral HITL)
+// ---------------------------------------------------------------------------
+
+/** Metadata-only request. The value and opaque handle are never events. */
+export interface SensitiveInputRequestEvent {
+  readonly type: 'sensitive.input.request'
+  readonly requestId: string
+  readonly toolCallId: string
+  readonly toolName: string
+  readonly label: string
+  readonly usage: string
+  readonly agentId: string | null
+  readonly adapterRevision: string
+  readonly turnIndex: number
+}
+
+/** Terminal observation for one request; contains no value or handle. */
+export interface SensitiveInputResponseEvent {
+  readonly type: 'sensitive.input.response'
+  readonly requestId: string
+  readonly toolCallId: string
+  readonly toolName: string
+  readonly agentId: string | null
+  readonly adapterRevision: string
+  readonly status: 'injected' | 'denied' | 'failed' | 'indeterminate'
+  readonly reason?:
+    | 'adapter-unavailable'
+    | 'expired'
+    | 'revoked'
+    | 'binding-mismatch'
+    | 'injection-failed'
+  readonly turnIndex: number
+}
+
+// ---------------------------------------------------------------------------
+// Skill activation evidence
+// ---------------------------------------------------------------------------
+
+/**
+ * Content-free observation that the trusted dispatcher placed one exact
+ * frozen skill body into the conversation. Digests are host-owned opaque
+ * identities; this event never carries the body, caller args or description.
+ */
+export interface SkillActivationEvent {
+  readonly type: 'skill.activation'
+  readonly activationId: string
+  /** Root dispatcher call; null for a skill explicitly granted at helper spawn. */
+  readonly toolCallId: string | null
+  readonly sourceRef: string
+  readonly sourceDigest: string
+  readonly skillName: string
+  readonly skillDigest: string
+  readonly agentId: string | null
+  readonly turnIndex: number
+  readonly timestamp: number
+}
+
+// ---------------------------------------------------------------------------
 // Sub-agents
 // ---------------------------------------------------------------------------
 
@@ -529,6 +587,11 @@ export type LoomEvent =
   // Credentials
   | CredentialRequestEvent
   | CredentialResponseEvent
+  // Sensitive input
+  | SensitiveInputRequestEvent
+  | SensitiveInputResponseEvent
+  // Skill activation
+  | SkillActivationEvent
   // Agents
   | AgentSpawnEvent
   | AgentCompleteEvent
@@ -571,4 +634,15 @@ export function isCredentialEvent(event: LoomEvent): event is
   | CredentialRequestEvent
   | CredentialResponseEvent {
   return event.type === 'credential.request' || event.type === 'credential.response'
+}
+
+export function isSensitiveInputEvent(event: LoomEvent): event is
+  | SensitiveInputRequestEvent
+  | SensitiveInputResponseEvent {
+  return event.type === 'sensitive.input.request'
+    || event.type === 'sensitive.input.response'
+}
+
+export function isSkillEvent(event: LoomEvent): event is SkillActivationEvent {
+  return event.type === 'skill.activation'
 }

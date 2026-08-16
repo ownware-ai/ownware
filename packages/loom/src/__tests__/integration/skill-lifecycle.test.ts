@@ -161,20 +161,19 @@ describe('Registry Mutation → Re-match', () => {
     expect(matchSkill('/commit', registry.list())).toBeNull()
   })
 
-  it('overwriting a skill updates its content', () => {
+  it('rejects duplicate registration and preserves the original skill', () => {
     const registry = new SkillRegistry()
     const original = parseSkillFile(COMMIT_SKILL_MD)!
     registry.register(original)
 
-    // Overwrite with new content
-    registry.register({
+    expect(() => registry.register({
       ...original,
       description: 'Updated commit skill',
       content: 'New commit instructions...',
-    })
+    })).toThrow('Duplicate skill name')
 
     const skill = registry.get('commit')
-    expect(skill?.description).toBe('Updated commit skill')
-    expect(skill?.content).toBe('New commit instructions...')
+    expect(skill?.description).toBe(original.description)
+    expect(skill?.content).toBe(original.content)
   })
 })

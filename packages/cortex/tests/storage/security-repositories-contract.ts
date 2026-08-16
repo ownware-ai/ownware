@@ -489,6 +489,78 @@ export function runSecurityRepositoryContract(
       })
     })
 
+    it('keeps exact skill activations immutable, idempotent and gap-free after reopen', async () => {
+      let repositories = harness.repositories
+      const thread = await harness.core.threads.create('contract-skill-profile')
+      const run = await repositories.runs.create({
+        threadId: thread.id,
+        profileId: 'contract-skill-profile',
+        model: 'contract:model',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      }, 4_000)
+      const profileDigest = `hmac-sha256:${'a'.repeat(64)}`
+      const firstInput = {
+        activationId: '40000000-0000-4000-8000-000000000001',
+        runId: run.runId,
+        profileId: 'contract-skill-profile',
+        profileDigest,
+        skillName: 'unfamiliar.skill:α',
+        skillDigest: `hmac-sha256:${'b'.repeat(64)}`,
+        agentId: null,
+        toolCallId: 'contract_skill_call_1',
+        turnIndex: 2,
+      }
+      const first = await repositories.skillActivationReceipts.observe(firstInput, 4_010)
+      expect(await repositories.skillActivationReceipts.observe(firstInput, 9_999))
+        .toEqual(first)
+      await expect(repositories.skillActivationReceipts.observe({
+        ...firstInput,
+        skillDigest: `hmac-sha256:${'c'.repeat(64)}`,
+      }, 4_020)).rejects.toMatchObject({ code: 'identity_conflict' })
+
+      const [second, third] = await Promise.all([
+        repositories.skillActivationReceipts.observe({
+          ...firstInput,
+          activationId: '40000000-0000-4000-8000-000000000002',
+          skillName: 'helper-grant-a',
+          skillDigest: `hmac-sha256:${'d'.repeat(64)}`,
+          agentId: 'helper-contract',
+          toolCallId: null,
+          turnIndex: 0,
+        }, 4_030),
+        repositories.skillActivationReceipts.observe({
+          ...firstInput,
+          activationId: '40000000-0000-4000-8000-000000000003',
+          skillName: 'helper-grant-b',
+          skillDigest: `hmac-sha256:${'e'.repeat(64)}`,
+          agentId: 'helper-contract',
+          toolCallId: null,
+          turnIndex: 0,
+        }, 4_031),
+      ])
+      expect(new Set([second.sequence, third.sequence])).toEqual(new Set([2, 3]))
+
+      const page = await repositories.skillActivationReceipts.listForRun(
+        run.runId,
+        { limit: 2, cursor: null },
+      )
+      expect(page.items.map(receipt => receipt.sequence)).toEqual([1, 2])
+      expect(page.nextCursor).toBe(page.items[1]!.receiptId)
+      expect((await repositories.skillActivationReceipts.listForRun(
+        run.runId,
+        { limit: 2, cursor: page.nextCursor },
+      )).items.map(receipt => receipt.sequence)).toEqual([3])
+      expect(JSON.stringify([first, second, third])).not.toContain('PRIVATE_SKILL_BODY')
+
+      await harness.reopen()
+      repositories = harness.repositories
+      expect((await repositories.skillActivationReceipts.listForRun(
+        run.runId,
+        { limit: 10, cursor: null },
+      )).items.map(receipt => receipt.sequence)).toEqual([1, 2, 3])
+    })
+
     it('fences foreign idempotency owners and replays only the completed input', async () => {
       let repositories = harness.repositories
       const thread = await harness.core.threads.create('contract-idempotency-profile')

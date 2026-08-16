@@ -19,6 +19,7 @@ import type {
 } from '../credentials/types.js'
 import type { CredentialResolver } from '../credentials/resolver.js'
 import type { CredentialDescriptor } from '../credentials/descriptor.js'
+import type { SensitiveInputRequest } from '../sensitive-input/types.js'
 
 // ---------------------------------------------------------------------------
 // Tool context (passed to every tool execution)
@@ -38,6 +39,15 @@ export interface ToolContext {
   readonly rootSessionId: string
   /** Agent ID (null = root agent) */
   readonly agentId: string | null
+  /**
+   * Exact dispatcher call identity when execution is owned by the agent loop.
+   * Omitted by direct `executeTool` embedders that do not have a streamed call
+   * lifecycle. This is correlation only; a host must still verify the durable
+   * call identity before treating it as effect authority.
+   */
+  readonly toolCallId?: string
+  /** Loop turn containing `toolCallId`, when available. */
+  readonly turnIndex?: number
   /** Workspace root path */
   readonly workspacePath: string
   /**
@@ -192,6 +202,13 @@ export interface ToolProgress {
    * through a prior `request_credential` call.
    */
   readonly credentialRequest?: CredentialRequest
+  /**
+   * Requests one value through the host-owned sensitive-input channel. The
+   * request contains only display metadata and an exact injection binding.
+   * The loop resumes the generator with a `SensitiveInputResolution`; neither
+   * the handle nor value is exposed to the tool.
+   */
+  readonly sensitiveInputRequest?: SensitiveInputRequest
 }
 
 // ---------------------------------------------------------------------------

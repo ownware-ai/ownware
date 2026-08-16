@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import {
-  postgreSqlCatalogMatchesCurrentV89,
+  postgreSqlCatalogMatchesCurrentV90,
 } from './postgresql-catalog-certification.js'
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
 import {
@@ -424,7 +424,7 @@ export async function preflightPostgreSqlTransferTarget(
     if (!await exactNamespaceAndOwnership(migration)) {
       return fail('schema_unrecognized')
     }
-    if (!await postgreSqlCatalogMatchesCurrentV89(migration)) {
+    if (!await postgreSqlCatalogMatchesCurrentV90(migration)) {
       return fail('schema_manifest_mismatch')
     }
     await assertBusinessTablesEmpty(migration)
@@ -502,7 +502,7 @@ export async function lockAndValidateEmptyPostgreSqlTransferTarget(
       applied !== POSTGRESQL_MIGRATION_MANIFEST.migrations.length ||
       !await POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(client) ||
       !await exactNamespaceAndOwnership(client) ||
-      !await postgreSqlCatalogMatchesCurrentV89(client)
+      !await postgreSqlCatalogMatchesCurrentV90(client)
     ) {
       return fail('schema_manifest_mismatch')
     }

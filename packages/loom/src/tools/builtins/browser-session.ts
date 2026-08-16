@@ -20,6 +20,8 @@
  *   - No credential leakage in error messages
  */
 
+import type { SensitiveInputBinding } from '../../sensitive-input/types.js'
+
 // ---------------------------------------------------------------------------
 // Types (inlined to avoid hard dep on playwright-core at import time)
 // ---------------------------------------------------------------------------
@@ -124,6 +126,36 @@ export interface PageSnapshotResult {
   readonly truncated: boolean
 }
 
+export const BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION =
+  'ownware.browser-field-injection.v1'
+
+export type BrowserSensitiveFieldKind =
+  | 'password'
+  | 'one-time-code'
+  | 'credit-card-number'
+  | 'credit-card-security-code'
+
+/** Adapter-private and never included in a Loom event. */
+export interface BrowserSensitiveInputBinding extends SensitiveInputBinding {
+  readonly kind: 'browser-field'
+  readonly revision: typeof BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION
+  readonly cdpUrl: string
+  readonly origin: string
+  readonly targetId: string
+  readonly documentId: string
+  readonly elementToken: string
+  readonly fieldKind: BrowserSensitiveFieldKind
+  readonly submit: boolean
+}
+
+export type BrowserSensitiveInjectionResult =
+  | { readonly disposition: 'applied' }
+  | {
+      readonly disposition: 'not-applied'
+      readonly reason: 'binding-mismatch' | 'injection-failed'
+    }
+  | { readonly disposition: 'indeterminate' }
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -226,6 +258,37 @@ export function getPlaywrightError(): string | null {
 const connections = new Map<string, BrowserConnection>()
 const pageStates = new WeakMap<PlaywrightPage, PageState>()
 const pageTargetIds = new WeakMap<PlaywrightPage, string>()
+const pageDocumentIds = new WeakMap<PlaywrightPage, string>()
+const pageDocumentListeners = new WeakSet<PlaywrightPage>()
+const taintedPages = new WeakSet<PlaywrightPage>()
+const taintedCdpUrls = new Set<string>()
+
+/**
+ * Once a dedicated value crosses into a browser, arbitrary page output can
+ * reflect or transform it. That CDP context is therefore capture-blocked for
+ * the rest of this process; managed Gateway Chrome is one context per thread.
+ */
+export function assertBrowserOutputAllowed(cdpUrl: string): void {
+  if (taintedCdpUrls.has(cdpUrl)) {
+    throw new Error(
+      'Browser output is unavailable after sensitive input was injected. ' +
+      'Continue manually or start with a fresh managed browser context.',
+    )
+  }
+}
+
+export function isBrowserOutputTainted(cdpUrl: string): boolean {
+  return taintedCdpUrls.has(cdpUrl)
+}
+
+/**
+ * Trusted lifecycle hook for a host that has just launched a new browser
+ * process at this endpoint. Reusing a URL alone is not proof of freshness;
+ * callers must invoke this only from their authoritative launch-success seam.
+ */
+export function resetBrowserCaptureBarrierForFreshContext(cdpUrl: string): void {
+  taintedCdpUrls.delete(cdpUrl)
+}
 
 /**
  * Connect to a browser via CDP endpoint.
@@ -337,6 +400,7 @@ export function trackPageState(page: PlaywrightPage): PageState {
   }
 
   page.on('console', (msg: { type: () => string; text: () => string }) => {
+    if (taintedPages.has(page)) return
     if (state.consoleMessages.length >= MAX_CONSOLE_MESSAGES) {
       state.consoleMessages.shift()
     }
@@ -349,6 +413,7 @@ export function trackPageState(page: PlaywrightPage): PageState {
   })
 
   page.on('pageerror', (error: Error) => {
+    if (taintedPages.has(page)) return
     if (state.errors.length >= MAX_ERRORS) {
       state.errors.shift()
     }
@@ -371,6 +436,7 @@ export function trackPageState(page: PlaywrightPage): PageState {
     resourceType: () => string
     failure: () => { errorText: string } | null
   }) => {
+    if (taintedPages.has(page)) return
     if (state.networkFailures.length >= MAX_NETWORK_FAILURES) {
       state.networkFailures.shift()
     }
@@ -391,6 +457,7 @@ export function trackPageState(page: PlaywrightPage): PageState {
     statusText: () => string
     request: () => { method: () => string; resourceType: () => string }
   }) => {
+    if (taintedPages.has(page)) return
     const status = response.status()
     if (status < 400) return
     const request = response.request()
@@ -412,6 +479,258 @@ export function trackPageState(page: PlaywrightPage): PageState {
 
   pageStates.set(page, state)
   return state
+}
+
+function getDocumentId(page: PlaywrightPage): string {
+  let id = pageDocumentIds.get(page)
+  if (id === undefined) {
+    id = crypto.randomUUID()
+    pageDocumentIds.set(page, id)
+  }
+  if (!pageDocumentListeners.has(page)) {
+    pageDocumentListeners.add(page)
+    page.on('framenavigated', (frame: unknown) => {
+      try {
+        if (frame === page.mainFrame()) pageDocumentIds.set(page, crypto.randomUUID())
+      } catch {
+        pageDocumentIds.set(page, crypto.randomUUID())
+      }
+    })
+  }
+  return id
+}
+
+export async function inspectDeclaredSensitiveField(
+  page: PlaywrightPage,
+  opts: { readonly selector?: string; readonly ref?: string },
+): Promise<BrowserSensitiveFieldKind | null> {
+  const locator = resolveLocator(page, opts.selector, opts.ref)
+  const inspected = await inspectSensitiveLocator(locator)
+  return inspected.kind
+}
+
+export async function captureBrowserSensitiveInputBinding(
+  conn: BrowserConnection,
+  page: PlaywrightPage,
+  opts: {
+    readonly selector?: string
+    readonly ref?: string
+    readonly submit: boolean
+  },
+): Promise<BrowserSensitiveInputBinding> {
+  assertBrowserOutputAllowed(conn.cdpUrl)
+  const documentId = getDocumentId(page)
+  const elementToken = crypto.randomUUID()
+  const locator = resolveLocator(page, opts.selector, opts.ref)
+  const inspected = await inspectSensitiveLocator(locator, elementToken)
+  if (inspected.kind === null) {
+    throw new Error(
+      'The selected element is not a structurally declared supported sensitive field.',
+    )
+  }
+  if (!inspected.editable) {
+    throw new Error('The selected sensitive field is disabled or read-only.')
+  }
+  if (getDocumentId(page) !== documentId) {
+    throw new Error('The browser document changed while binding the sensitive field.')
+  }
+  const pageUrl = new URL(page.url())
+  if (pageUrl.protocol !== 'http:' && pageUrl.protocol !== 'https:') {
+    throw new Error('Sensitive browser input requires an HTTP(S) page.')
+  }
+  const targetId = await getExactTargetId(page)
+  return Object.freeze({
+    kind: 'browser-field',
+    revision: BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION,
+    cdpUrl: conn.cdpUrl,
+    origin: pageUrl.origin,
+    targetId,
+    documentId,
+    elementToken,
+    fieldKind: inspected.kind,
+    submit: opts.submit,
+  })
+}
+
+export function prepareBrowserSensitiveInputBinding(
+  binding: SensitiveInputBinding,
+): BrowserSensitiveInputBinding {
+  const value = binding as Partial<BrowserSensitiveInputBinding>
+  if (
+    value.kind !== 'browser-field'
+    || value.revision !== BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION
+    || !boundedString(value.cdpUrl, 2_048)
+    || !boundedString(value.origin, 512)
+    || !boundedString(value.targetId, 500)
+    || !boundedString(value.documentId, 200)
+    || !boundedString(value.elementToken, 200)
+    || !isBrowserSensitiveFieldKind(value.fieldKind)
+    || typeof value.submit !== 'boolean'
+  ) {
+    throw new TypeError('Browser sensitive-input binding is malformed.')
+  }
+  const origin = new URL(value.origin)
+  if (
+    (origin.protocol !== 'http:' && origin.protocol !== 'https:')
+    || origin.origin !== value.origin
+  ) {
+    throw new TypeError('Browser sensitive-input origin is not canonical HTTP(S).')
+  }
+  return Object.freeze({
+    kind: 'browser-field',
+    revision: BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION,
+    cdpUrl: value.cdpUrl,
+    origin: value.origin,
+    targetId: value.targetId,
+    documentId: value.documentId,
+    elementToken: value.elementToken,
+    fieldKind: value.fieldKind,
+    submit: value.submit,
+  })
+}
+
+export async function injectBrowserSensitiveInput(
+  binding: BrowserSensitiveInputBinding,
+  value: string,
+): Promise<BrowserSensitiveInjectionResult> {
+  if (taintedCdpUrls.has(binding.cdpUrl)) {
+    return { disposition: 'not-applied', reason: 'binding-mismatch' }
+  }
+
+  // The capture barrier is raised before the first operation that might write
+  // the value. It remains raised even when the final outcome is uncertain.
+  taintedCdpUrls.add(binding.cdpUrl)
+
+  let page: PlaywrightPage
+  try {
+    const conn = await connectBrowser(binding.cdpUrl)
+    page = await getPage(conn, binding.targetId)
+    taintedPages.add(page)
+    clearPageActivity(page)
+    if (getDocumentId(page) !== binding.documentId) {
+      return { disposition: 'not-applied', reason: 'binding-mismatch' }
+    }
+    const currentUrl = new URL(page.url())
+    if (currentUrl.origin !== binding.origin) {
+      return { disposition: 'not-applied', reason: 'binding-mismatch' }
+    }
+    const locator = page.locator(
+      `[data-ownware-sensitive-target="${binding.elementToken}"]`,
+    )
+    const inspected = await inspectSensitiveLocator(locator)
+    if (
+      inspected.kind !== binding.fieldKind
+      || !inspected.editable
+      || inspected.count !== 1
+    ) {
+      return { disposition: 'not-applied', reason: 'binding-mismatch' }
+    }
+
+    try {
+      await locator.fill(value, { timeout: DEFAULT_ACTION_TIMEOUT_MS })
+      if (binding.submit) {
+        await locator.press('Enter', { timeout: DEFAULT_ACTION_TIMEOUT_MS })
+      }
+      return { disposition: 'applied' }
+    } catch {
+      // Fill/submit may have applied before Playwright observed an error.
+      return { disposition: 'indeterminate' }
+    }
+  } catch {
+    return { disposition: 'not-applied', reason: 'injection-failed' }
+  }
+}
+
+function clearPageActivity(page: PlaywrightPage): void {
+  const state = pageStates.get(page)
+  if (state === undefined) return
+  state.consoleMessages.length = 0
+  state.errors.length = 0
+  state.networkFailures.length = 0
+  state.surfacedConsole = state.totalConsoleSeen
+  state.surfacedErrors = state.totalErrorsSeen
+  state.surfacedNetworkFailures = state.totalNetworkFailuresSeen
+}
+
+async function getExactTargetId(page: PlaywrightPage): Promise<string> {
+  const cdpSession = await page.context().newCDPSession(page)
+  try {
+    const { targetInfo } = await cdpSession.send('Target.getTargetInfo')
+    if (!boundedString(targetInfo?.targetId, 500)) {
+      throw new Error('Browser target identity is unavailable.')
+    }
+    pageTargetIds.set(page, targetInfo.targetId)
+    return targetInfo.targetId
+  } finally {
+    await cdpSession.detach().catch(() => {})
+  }
+}
+
+async function inspectSensitiveLocator(
+  locator: PlaywrightLocator,
+  elementToken?: string,
+): Promise<{
+  readonly kind: BrowserSensitiveFieldKind | null
+  readonly editable: boolean
+  readonly count: number
+}> {
+  const count = await locator.count()
+  if (count !== 1) return { kind: null, editable: false, count }
+  return await locator.evaluate((element: any, token: string | undefined) => {
+    if (element?.tagName !== 'INPUT' || element.isConnected !== true) {
+      return { kind: null, editable: false, count: 1 }
+    }
+    const type = element.type.toLowerCase()
+    const rawAutocomplete = element.autocomplete.toLowerCase()
+    const tokens: string[] = []
+    let current = ''
+    for (const char of rawAutocomplete) {
+      if (char === ' ' || char === '\t' || char === '\n' || char === '\f' || char === '\r') {
+        if (current.length > 0) tokens.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    if (current.length > 0) tokens.push(current)
+
+    let kind: BrowserSensitiveFieldKind | null = null
+    if (
+      type === 'password'
+      || tokens.includes('current-password')
+      || tokens.includes('new-password')
+    ) {
+      kind = 'password'
+    } else if (tokens.includes('one-time-code')) {
+      kind = 'one-time-code'
+    } else if (tokens.includes('cc-number')) {
+      kind = 'credit-card-number'
+    } else if (tokens.includes('cc-csc')) {
+      kind = 'credit-card-security-code'
+    }
+
+    if (kind !== null && token !== undefined) {
+      element.setAttribute('data-ownware-sensitive-target', token)
+    }
+    return {
+      kind,
+      editable: !element.disabled && !element.readOnly,
+      count: 1,
+    }
+  }, elementToken)
+}
+
+function isBrowserSensitiveFieldKind(
+  value: unknown,
+): value is BrowserSensitiveFieldKind {
+  return value === 'password'
+    || value === 'one-time-code'
+    || value === 'credit-card-number'
+    || value === 'credit-card-security-code'
+}
+
+function boundedString(value: unknown, max: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= max
 }
 
 /**
@@ -733,7 +1052,7 @@ export async function typeIntoElement(
 
   await waitForSettle(page)
 
-  return `Typed "${opts.text.length > 50 ? opts.text.slice(0, 50) + '...' : opts.text}" into element`
+  return 'Typed text into element'
 }
 
 /**

@@ -425,12 +425,16 @@ describe.skipIf(!CAN_RUN)('browser tools — real Chrome (B1+B2 mechanics)', () 
       ctx,
     )) as ToolResult
     expect(type.isError, `Type by ref failed: ${type.content}`).toBe(false)
-    expect(type.content).toContain('Typed "user@example.com"')
+    // Ordinary typing confirms the action without duplicating the caller's
+    // text in the action message. The live post-action snapshot below remains
+    // the authoritative observation that the non-sensitive field changed.
+    expect(type.content).toContain('Typed text into element')
 
     // The post-action snapshot in the result should reflect the
     // typed value. The browser fixture re-renders nothing, but the
     // input is in the snapshot tree.
     expect(type.content).toContain('Page: "Ref Fixture"')
+    expect(type.content).toContain('user@example.com')
   }, 30_000)
 
   it('ref-locator: a stale ref (from an older snapshot) cleanly errors instead of clicking the wrong thing', async () => {

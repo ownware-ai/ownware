@@ -18,7 +18,7 @@
  */
 
 import type { Tool } from '@ownware/loom'
-import { builtinTools } from '@ownware/loom'
+import { builtinBrowserSensitiveInputTool, builtinTools } from '@ownware/loom'
 import type {
   AuthMode,
   Connector,
@@ -427,6 +427,10 @@ class BuiltinSourceProvider implements ConnectorSourceProvider {
     // builder is supplied we fall through to the generic grouping path.
     const byCategory = new Map<ConnectorCategory, Tool[]>()
     for (const tool of builtinTools) {
+      // This interaction is available only after a run client negotiates the
+      // dedicated transport and a trusted host binds an injector to this exact
+      // Tool object. A static ready connector card cannot express those facts.
+      if (tool === builtinBrowserSensitiveInputTool) continue
       const cat = toolCategoryToConnectorCategory(tool.category)
       const existing = byCategory.get(cat)
       if (existing) existing.push(tool)

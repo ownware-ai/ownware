@@ -22,6 +22,8 @@ export const STORAGE_LOGICAL_MIGRATIONS = Object.freeze(
     { version: 87, name: '087_effect_evidence' },
     { version: 88, name: '088_permission_intent_binding' },
     { version: 89, name: '089_egress_evidence' },
+    { version: 90, name: '090_skill_activation_receipts' },
+    { version: 91, name: '091_effect_reversals' },
   ] satisfies readonly StorageMigrationIdentity[],
 )
 

@@ -39,6 +39,12 @@ import type {
   CredentialValue,
   EnvCredentialEntry,
 } from '../credentials/types.js'
+import type {
+  OpaqueSensitiveInputHandle,
+  SensitiveInputProvision,
+  SensitiveInputRequest,
+  SensitiveInputResolution,
+} from '../sensitive-input/types.js'
 import type { CompactionManager } from '../compaction/manager.js'
 import type { CheckpointStore } from '../checkpoint/types.js'
 import { ProviderError, ToolError, ContextWindowExceededError } from './errors.js'
@@ -62,6 +68,10 @@ import type { CacheProfile } from './cache-control.js'
 import { buildCacheMarker } from './cache-control.js'
 import { dropStaleToolResults } from '../compaction/tool-result-drop.js'
 import { compactSupersededBrowserSnapshots } from '../compaction/browser-snapshot-supersede.js'
+import {
+  consumeSkillActivationMark,
+  type SkillActivationMark,
+} from '../tools/builtins/skill.js'
 
 // ---------------------------------------------------------------------------
 // Credential callback types (injectable at session level)
@@ -112,6 +122,54 @@ interface ResolvedCredentialCallbacks {
 // returned type is `readonly`.
 const EMPTY_ENV_CREDENTIALS: readonly EnvCredentialEntry[] = Object.freeze([])
 const EMPTY_CREDENTIAL_VALUES: readonly CredentialValue[] = Object.freeze([])
+
+// ---------------------------------------------------------------------------
+// Sensitive-input callback types (host authority; no plaintext return path)
+// ---------------------------------------------------------------------------
+
+export type RequestSensitiveInputFn = (
+  request: SensitiveInputRequest & {
+    readonly requestId: string
+    readonly toolCallId: string
+    readonly toolName: string
+    readonly agentId: string | null
+    readonly tool: Tool
+  },
+) => SensitiveInputRequestStart
+
+/**
+ * Host request registration is synchronous. Only the pending branch may be
+ * published as an interactive event; immediate failures stay internal and
+ * cannot create a request that no endpoint can resolve.
+ */
+export type SensitiveInputRequestStart =
+  | Exclude<SensitiveInputProvision, { readonly status: 'provided' }>
+  | {
+      readonly status: 'pending'
+      readonly adapterRevision: string
+      readonly provision: Promise<SensitiveInputProvision>
+    }
+
+export type ConsumeSensitiveInputFn = (
+  handle: OpaqueSensitiveInputHandle,
+) => Promise<SensitiveInputResolution>
+
+export type RedactSensitiveTextFn = (text: string) => string
+
+export interface SensitiveInputCallbacks {
+  /** Host-authoritative object-identity registration check. */
+  readonly isRegistered?: (tool: Tool) => boolean
+  readonly request?: RequestSensitiveInputFn
+  readonly consume?: ConsumeSensitiveInputFn
+  readonly redactText?: RedactSensitiveTextFn
+}
+
+interface ResolvedSensitiveInputCallbacks {
+  readonly isRegistered: (tool: Tool) => boolean
+  readonly request: RequestSensitiveInputFn
+  readonly consume: ConsumeSensitiveInputFn
+  readonly redactText: RedactSensitiveTextFn
+}
 
 // ---------------------------------------------------------------------------
 // Loop parameters
@@ -167,6 +225,8 @@ export interface LoopParams {
    * vault integration (Cortex) must wire all four.
    */
   credentials?: CredentialCallbacks
+  /** Host-owned, one-use sensitive-input authority. */
+  sensitiveInputs?: SensitiveInputCallbacks
   /**
    * Unified credential resolver (board: credentials-unification — C20).
    * When set, the loop forwards it onto every `ToolContext` so tools
@@ -369,6 +429,15 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
     resolveCredential: params.credentials?.resolveCredential ?? (() => null),
     listEnvCredentials: params.credentials?.listEnvCredentials ?? (() => EMPTY_ENV_CREDENTIALS),
     listAllCredentialValues: params.credentials?.listAllCredentialValues ?? (() => EMPTY_CREDENTIAL_VALUES),
+  }
+  const resolvedSensitiveInputs: ResolvedSensitiveInputCallbacks = {
+    isRegistered: params.sensitiveInputs?.isRegistered ?? (() => false),
+    request: params.sensitiveInputs?.request ?? (() => ({ status: 'unavailable' })),
+    consume: params.sensitiveInputs?.consume ?? (async () => ({
+      status: 'failed',
+      reason: 'adapter-unavailable',
+    })),
+    redactText: params.sensitiveInputs?.redactText ?? ((text) => text),
   }
 
   const state: LoopState = {
@@ -1236,6 +1305,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       params.authorizeToolExecution,
       params.permissionPolicyRevision,
       resolvedCredentials,
+      resolvedSensitiveInputs,
       params.credentialResolver,
       state.toolResultCache,
       params.hooks,
@@ -1565,6 +1635,7 @@ async function* executeTools(
   authorizeToolExecution: LoopParams['authorizeToolExecution'],
   permissionPolicyRevision: string | undefined,
   credentials: ResolvedCredentialCallbacks,
+  sensitiveInputs: ResolvedSensitiveInputCallbacks,
   credentialResolver: CredentialResolver | undefined,
   cache: ToolResultCache,
   hooks: HookRuntime | undefined,
@@ -1619,7 +1690,7 @@ async function* executeTools(
   // Execute read-only tools in parallel
   if (readOnlyCalls.length > 0) {
     const parallel = readOnlyCalls.map(({ call, tool }) =>
-      executeSingleTool(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, credentialResolver, cache, hooks, reminders),
+      executeSingleTool(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, sensitiveInputs, credentialResolver, cache, hooks, reminders),
     )
 
     for await (const { events, result } of parallelExecute(parallel)) {
@@ -1633,7 +1704,7 @@ async function* executeTools(
   // Execute write tools serially — use generator directly so
   // permission.request events stream to SSE BEFORE blocking on approval
   for (const { call, tool } of writeCalls) {
-    const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, credentialResolver, cache, hooks, reminders)
+    const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, sensitiveInputs, credentialResolver, cache, hooks, reminders)
     let iterResult = await gen.next()
     while (!iterResult.done) {
       yield iterResult.value
@@ -1659,6 +1730,7 @@ async function* executeSingleToolGen(
   authorizeToolExecution: LoopParams['authorizeToolExecution'],
   permissionPolicyRevision: string | undefined,
   credentials: ResolvedCredentialCallbacks,
+  sensitiveInputs: ResolvedSensitiveInputCallbacks,
   credentialResolver: CredentialResolver | undefined,
   cache: ToolResultCache,
   hooks: HookRuntime | undefined,
@@ -1960,6 +2032,8 @@ async function* executeSingleToolGen(
     sessionId: config.sessionId,
     rootSessionId: config.rootSessionId ?? config.sessionId,
     agentId: config.agentId,
+    toolCallId: call.id,
+    turnIndex,
     workspacePath: effectiveCwd,
     additionalWorkspaceRoots: config.additionalWorkspaceRoots,
     config,
@@ -1990,10 +2064,16 @@ async function* executeSingleToolGen(
   const cacheKey = tool.cacheKey
     ? tool.cacheKey(call.input as Record<string, unknown>, context)
     : null
-  const cachedResult = cacheKey != null ? cache.get(tool.name, cacheKey) : null
+  // A registered sensitive-input tool must always execute: replaying a cached
+  // success would bypass the host prompt and exact one-use injection boundary.
+  const sensitiveInputCapable = sensitiveInputs.isRegistered(tool)
+  const cachedResult = !sensitiveInputCapable && cacheKey != null
+    ? cache.get(tool.name, cacheKey)
+    : null
 
   try {
     let result: ToolResult
+    let skillActivation: SkillActivationMark | null = null
     let cacheHit = false
     if (cachedResult) {
       result = cachedResult
@@ -2058,11 +2138,100 @@ async function* executeSingleToolGen(
           // TNext on ToolProgress generators is `unknown` — the tool
           // casts back to `CredentialHandle | null` at the yield site.
           iterResult = await resultOrGenerator.next(handle as unknown as undefined)
+        } else if (progress.sensitiveInputRequest !== undefined) {
+          const sensitiveRequest = progress.sensitiveInputRequest
+          const requestId = crypto.randomUUID()
+
+          // Open the host request before publishing the event. The broker
+          // registers synchronously, so a fast client cannot race the public
+          // event and receive a false "unknown request" response.
+          const requestStart = (() => {
+            try {
+              return sensitiveInputs.request({
+                ...sensitiveRequest,
+                requestId,
+                toolCallId: call.id,
+                toolName: call.name,
+                agentId: config.agentId ?? null,
+                tool,
+              })
+            } catch {
+              return { status: 'unavailable' as const }
+            }
+          })()
+
+          if (requestStart.status !== 'pending') {
+            const resolution: SensitiveInputResolution = requestStart.status === 'denied'
+              ? { status: 'denied' }
+              : requestStart.status === 'expired'
+                ? { status: 'failed', reason: 'expired' }
+                : requestStart.status === 'revoked'
+                  ? { status: 'failed', reason: 'revoked' }
+                  : { status: 'failed', reason: 'adapter-unavailable' }
+            iterResult = await resultOrGenerator.next(
+              resolution as unknown as undefined,
+            )
+            continue
+          }
+
+          yield {
+            type: 'sensitive.input.request',
+            requestId,
+            toolCallId: call.id,
+            toolName: call.name,
+            label: sensitiveRequest.label,
+            usage: sensitiveRequest.usage,
+            agentId: config.agentId ?? null,
+            adapterRevision: requestStart.adapterRevision,
+            turnIndex,
+          }
+
+          const provision = await requestStart.provision.catch(
+            (): SensitiveInputProvision => ({ status: 'unavailable' }),
+          )
+          let resolution: SensitiveInputResolution
+          switch (provision.status) {
+          case 'provided':
+            try {
+              resolution = await sensitiveInputs.consume(provision.handle)
+            } catch {
+              // Once consume starts, an exception cannot prove that the
+              // external injector applied nothing. The one-use handle remains
+              // spent and the result is deliberately non-retryable.
+              resolution = { status: 'indeterminate' }
+            }
+            break
+          case 'denied':
+            resolution = { status: 'denied' }
+            break
+          case 'expired':
+            resolution = { status: 'failed', reason: 'expired' }
+            break
+          case 'revoked':
+            resolution = { status: 'failed', reason: 'revoked' }
+            break
+          case 'unavailable':
+            resolution = { status: 'failed', reason: 'adapter-unavailable' }
+            break
+          }
+
+          yield {
+            type: 'sensitive.input.response',
+            requestId,
+            toolCallId: call.id,
+            toolName: call.name,
+            agentId: config.agentId ?? null,
+            adapterRevision: requestStart.adapterRevision,
+            status: resolution.status,
+            ...(resolution.status === 'failed' ? { reason: resolution.reason } : {}),
+            turnIndex,
+          }
+          iterResult = await resultOrGenerator.next(resolution as unknown as undefined)
         } else {
           yield {
             type: 'tool.call.progress',
             toolCallId: call.id,
-            progress: progress.message,
+            progress: sensitiveInputs.redactText(progress.message),
             turnIndex,
           }
           iterResult = await resultOrGenerator.next()
@@ -2090,12 +2259,23 @@ async function* executeSingleToolGen(
       }
     }
 
-      // Populate cache with the RAW result (pre-truncation). Truncation
+      // The trusted dispatcher privately marks the exact result object that
+      // carried a frozen skill body. Consume that mark before any result
+      // cloning/redaction. A same-name tool or matching result prose cannot
+      // create this evidence.
+      skillActivation = consumeSkillActivationMark(result)
+
+      // Populate cache with the redacted pre-truncation result. Truncation
       // is a downstream presentation concern; the cached value should
-      // remain whatever the tool actually computed so future hits can
+      // retain the complete safe output so future hits can
       // re-truncate at whatever cap is in force at that moment.
-      if (cacheKey != null) cache.set(tool.name, cacheKey, result)
+      result = redactToolResult(result, sensitiveInputs.redactText)
+      if (!sensitiveInputCapable && cacheKey != null) cache.set(tool.name, cacheKey, result)
     }
+
+    // Cached results predate the current sensitive value and still cross the
+    // same presentation boundary. Redact them again against the live set.
+    if (cacheHit) result = redactToolResult(result, sensitiveInputs.redactText)
 
     // Cap result size — UTF-8 byte budget, head+tail preservation so error
     // tails (stack traces, exit codes) survive truncation. When a spill dir
@@ -2127,6 +2307,20 @@ async function* executeSingleToolGen(
 
     const durationMs = Date.now() - startTime
     const outputBytesToModel = Buffer.byteLength(result.content, 'utf8')
+    if (skillActivation !== null) {
+      yield {
+        type: 'skill.activation',
+        activationId: crypto.randomUUID(),
+        toolCallId: call.id,
+        sourceRef: skillActivation.sourceRef,
+        sourceDigest: skillActivation.sourceDigest,
+        skillName: skillActivation.skillName,
+        skillDigest: skillActivation.skillDigest,
+        agentId: config.agentId ?? null,
+        turnIndex,
+        timestamp: Date.now(),
+      }
+    }
     yield {
       type: 'tool.call.end',
       toolCallId: call.id,
@@ -2166,7 +2360,9 @@ async function* executeSingleToolGen(
     return { toolCall, result }
   } catch (error) {
     const durationMs = Date.now() - startTime
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorMessage = sensitiveInputs.redactText(
+      error instanceof Error ? error.message : String(error),
+    )
 
     yield {
       type: 'tool.call.end',
@@ -2180,6 +2376,75 @@ async function* executeSingleToolGen(
 
     return { toolCall, result: { content: `Error: ${errorMessage}`, isError: true } }
   }
+}
+
+function redactToolResult(
+  result: ToolResult,
+  redactText: RedactSensitiveTextFn,
+): ToolResult {
+  return {
+    ...result,
+    content: redactText(result.content),
+    ...(result.metadata === undefined
+      ? {}
+      : { metadata: redactMetadata(result.metadata, redactText, new WeakSet()) }),
+  }
+}
+
+function redactMetadata(
+  value: Record<string, unknown>,
+  redactText: RedactSensitiveTextFn,
+  ancestors: WeakSet<object>,
+): Record<string, unknown> {
+  if (ancestors.has(value)) return { redacted: '[REDACTED:CYCLIC_METADATA]' }
+  ancestors.add(value)
+  try {
+    const output: Record<string, unknown> = {}
+    for (const key of Object.getOwnPropertyNames(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor?.enumerable || !('value' in descriptor)) continue
+      output[key] = redactMetadataValue(descriptor.value, redactText, ancestors)
+    }
+    return output
+  } finally {
+    ancestors.delete(value)
+  }
+}
+
+function redactMetadataValue(
+  value: unknown,
+  redactText: RedactSensitiveTextFn,
+  ancestors: WeakSet<object>,
+): unknown {
+  if (typeof value === 'string') return redactText(value)
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) return '[REDACTED:CYCLIC_METADATA]'
+    ancestors.add(value)
+    try {
+      return value.map(item => redactMetadataValue(item, redactText, ancestors))
+    } finally {
+      ancestors.delete(value)
+    }
+  }
+  if (value !== null && typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype === Object.prototype || prototype === null) {
+      return redactMetadata(value as Record<string, unknown>, redactText, ancestors)
+    }
+    // Tool metadata is a JSON record by contract. Unknown prototypes can
+    // carry a hostile toJSON()/getter that reveals a value only during event
+    // persistence, after ordinary string traversal. Fail closed instead of
+    // invoking or forwarding such behavior.
+    return '[REDACTED:UNSUPPORTED_METADATA_OBJECT]'
+  }
+  if (
+    value === null
+    || typeof value === 'boolean'
+    || (typeof value === 'number' && Number.isFinite(value))
+  ) {
+    return value
+  }
+  return '[REDACTED:UNSUPPORTED_METADATA_VALUE]'
 }
 
 /**
@@ -2197,6 +2462,7 @@ async function executeSingleTool(
   authorizeToolExecution: LoopParams['authorizeToolExecution'],
   permissionPolicyRevision: string | undefined,
   credentials: ResolvedCredentialCallbacks,
+  sensitiveInputs: ResolvedSensitiveInputCallbacks,
   credentialResolver: CredentialResolver | undefined,
   cache: ToolResultCache,
   hooks: HookRuntime | undefined,
@@ -2207,7 +2473,7 @@ async function executeSingleTool(
   // to stream immediately (HITL), use executeSingleToolGen directly —
   // which is why `request_credential` is declared `isReadOnly: false`.
   const events: LoomEvent[] = []
-  const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, credentialResolver, cache, hooks, reminders)
+  const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, sensitiveInputs, credentialResolver, cache, hooks, reminders)
   let iterResult = await gen.next()
   while (!iterResult.done) {
     events.push(iterResult.value)

@@ -11,7 +11,7 @@
 
 import type { LoomConfig } from '../core/config.js'
 import type { LoomEvent, AgentSpawnEvent, AgentCompleteEvent, AgentTerminalStatus } from '../core/events.js'
-import type { LoopResult } from '../core/loop.js'
+import type { LoopResult, SensitiveInputCallbacks } from '../core/loop.js'
 import { loop } from '../core/loop.js'
 import { createLinkedAbortController } from '../core/abort.js'
 import type { Message } from '../messages/types.js'
@@ -87,6 +87,7 @@ export class AgentSpawner {
     context: ToolExecutionAuthorizationContext,
   ) => Promise<boolean>) | undefined
   private readonly permissionPolicyRevision: string | undefined
+  private readonly sensitiveInputs: SensitiveInputCallbacks | undefined
 
   constructor(opts: {
     provider: ProviderAdapter
@@ -113,6 +114,8 @@ export class AgentSpawner {
     ) => Promise<boolean>
     /** Opaque parent policy revision inherited by helpers. */
     permissionPolicyRevision?: string
+    /** Parent run's host-owned sensitive-input boundary; inherited unchanged. */
+    sensitiveInputs?: SensitiveInputCallbacks
   }) {
     this.provider = opts.provider
     this.parentTools = opts.tools
@@ -122,6 +125,7 @@ export class AgentSpawner {
     this.requestApproval = opts.requestApproval ?? (async () => true)
     this.authorizeToolExecution = opts.authorizeToolExecution
     this.permissionPolicyRevision = opts.permissionPolicyRevision
+    this.sensitiveInputs = opts.sensitiveInputs
   }
 
   /**
@@ -425,6 +429,21 @@ export class AgentSpawner {
     }
     yield spawnEvent as LoomEvent
 
+    for (const activation of spec.grantedSkillActivations ?? []) {
+      yield {
+        type: 'skill.activation',
+        activationId: crypto.randomUUID(),
+        toolCallId: null,
+        sourceRef: activation.sourceRef,
+        sourceDigest: activation.sourceDigest,
+        skillName: activation.skillName,
+        skillDigest: activation.skillDigest,
+        agentId: handle.id,
+        turnIndex: 0,
+        timestamp: Date.now(),
+      } as LoomEvent
+    }
+
     const startTime = Date.now()
 
     const loopResult: LoopResult = yield* loop({
@@ -443,6 +462,9 @@ export class AgentSpawner {
       ...(this.permissionPolicyRevision === undefined
         ? {}
         : { permissionPolicyRevision: this.permissionPolicyRevision }),
+      ...(this.sensitiveInputs === undefined
+        ? {}
+        : { sensitiveInputs: this.sensitiveInputs }),
       ...(spec.persistentReminder && spec.persistentReminder.trim().length > 0
         ? { persistentReminder: spec.persistentReminder }
         : {}),

@@ -31,10 +31,10 @@
  */
 
 /**
- * The minimum surface every registered HITL must expose. Both today's
- * HITLs (`HumanInTheLoop` in Loom, `CredentialHITL` in cortex) already
- * have `denyAll()` + a `pendingCount` getter — the registry plugs them
- * in via {@link asHitlLike} without touching either class.
+ * The minimum surface every registered HITL must expose. Permission,
+ * credential and sensitive-input authorities all provide `denyAll()` plus a
+ * `pendingCount` getter; the registry plugs them in via {@link asHitlLike}
+ * without coupling the abort path to their concrete classes.
  *
  * `name` is for observability: the abort handler logs `<name>` with the
  * pre-deny pending count so an incident trace shows exactly which HITL
@@ -64,7 +64,7 @@ export interface HITLLike {
  * into `SessionCompanions.hitls`.
  *
  * We never spread the source — spreading an instance does not copy
- * getter descriptors, and `pendingCount` on both live HITLs is a
+ * getter descriptors, and `pendingCount` on live HITLs is a
  * getter. Instead we install a getter on the returned object that
  * forwards to the source, preserving liveness.
  *

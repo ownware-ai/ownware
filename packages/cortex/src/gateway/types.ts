@@ -642,6 +642,9 @@ export interface ModelSubstitution {
   readonly reason: ModelSubstitutionReason
 }
 
+export const SENSITIVE_INPUT_INTERACTION_CAPABILITY = 'sensitive-input.v1' as const
+export const SENSITIVE_INPUT_MAX_BYTES = 64 * 1024
+
 export interface RunRequest {
   readonly prompt: string
   readonly profileId?: string
@@ -650,6 +653,11 @@ export interface RunRequest {
   readonly model?: string
   /** Per-run outbound envelope; can tighten but never widen the profile default. */
   readonly egressMode?: 'unrestricted' | 'local-only'
+  /**
+   * Interactive transports the caller can complete for this session. The set
+   * is immutable for a cached thread; changing it requires a new thread.
+   */
+  readonly interactionCapabilities?: readonly string[]
   /** File attachments from the client (images, PDFs, notebooks, text files). */
   readonly attachments?: readonly FileAttachmentInput[]
   /**

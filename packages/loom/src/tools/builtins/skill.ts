@@ -18,7 +18,7 @@
  * dispatch mechanism; Cortex owns "which skills exist for this profile."
  */
 
-import type { Tool } from '../types.js'
+import type { Tool, ToolResult } from '../types.js'
 import { defineTool } from '../types.js'
 import type { SkillRegistry } from '../../skills/registry.js'
 import type { ReminderInjector } from '../../reminders/index.js'
@@ -32,6 +32,39 @@ export interface SkillToolOptions {
    * model's primary input on a single channel.
    */
   readonly reminders?: ReminderInjector
+  /**
+   * Host-owned, content-free identity for the exact frozen skill catalogue.
+   * Omit when the host cannot bind catalogue identity authoritatively; the
+   * dispatcher still works, but emits no activation evidence.
+   */
+  readonly activationEvidence?: SkillActivationEvidenceCatalog
+}
+
+export interface SkillActivationEvidenceCatalog {
+  readonly sourceRef: string
+  readonly sourceDigest: string
+  readonly skills: readonly {
+    readonly name: string
+    readonly digest: string
+  }[]
+}
+
+export interface SkillActivationMark {
+  readonly sourceRef: string
+  readonly sourceDigest: string
+  readonly skillName: string
+  readonly skillDigest: string
+}
+
+const activationMarks = new WeakMap<ToolResult, SkillActivationMark>()
+
+/** Engine-internal one-use observation of the exact result created below. */
+export function consumeSkillActivationMark(
+  result: ToolResult,
+): SkillActivationMark | null {
+  const mark = activationMarks.get(result) ?? null
+  if (mark !== null) activationMarks.delete(result)
+  return mark
 }
 
 /**
@@ -44,6 +77,13 @@ export function createSkillTool(
   opts: SkillToolOptions = {},
 ): Tool {
   const { reminders } = opts
+  // Freeze the dispatcher view at assembly. Registry mutation or a profile
+  // file change during a run cannot silently change which body is activated.
+  const skills = new Map(registry.list().map(skill => [skill.name, skill] as const))
+  const activationEvidence = prepareActivationEvidence(
+    opts.activationEvidence,
+    [...skills.values()].filter(skill => skill.active !== false),
+  )
   return defineTool({
     name: 'skill',
     egress: {
@@ -81,10 +121,9 @@ export function createSkillTool(
     async execute(input, _context) {
       const { name, args } = input as { name: string; args?: string }
 
-      const skill = registry.get(name)
+      const skill = skills.get(name)
       if (!skill) {
-        const available = registry
-          .list()
+        const available = [...skills.values()]
           .filter(s => s.active !== false)
           .map(s => s.name)
         const list = available.length > 0 ? available.join(', ') : '(none registered)'
@@ -118,7 +157,7 @@ export function createSkillTool(
         context: `Skill "${skill.name}" is active for this turn — ${skill.description}`,
       })
 
-      return {
+      const result: ToolResult = {
         content: sections.join('\n'),
         isError: false,
         metadata: {
@@ -127,6 +166,65 @@ export function createSkillTool(
           ...(skill.allowedTools ? { skillAllowedTools: [...skill.allowedTools] } : {}),
         },
       }
+      const digest = activationEvidence?.skills.get(skill.name)
+      if (activationEvidence !== null && digest !== undefined) {
+        activationMarks.set(result, Object.freeze({
+          sourceRef: activationEvidence.sourceRef,
+          sourceDigest: activationEvidence.sourceDigest,
+          skillName: skill.name,
+          skillDigest: digest,
+        }))
+      }
+      return result
     },
   })
+}
+
+interface PreparedActivationEvidence {
+  readonly sourceRef: string
+  readonly sourceDigest: string
+  readonly skills: ReadonlyMap<string, string>
+}
+
+function prepareActivationEvidence(
+  evidence: SkillActivationEvidenceCatalog | undefined,
+  activeSkills: readonly { readonly name: string }[],
+): PreparedActivationEvidence | null {
+  if (evidence === undefined) return null
+  validateBoundedIdentity(evidence.sourceRef, 'sourceRef')
+  validateBoundedIdentity(evidence.sourceDigest, 'sourceDigest')
+  const identities = new Map<string, string>()
+  for (const entry of evidence.skills) {
+    validateBoundedIdentity(entry.name, 'skill name')
+    validateBoundedIdentity(entry.digest, 'skill digest')
+    if (identities.has(entry.name)) {
+      throw new TypeError(`Duplicate skill evidence name: "${entry.name}".`)
+    }
+    identities.set(entry.name, entry.digest)
+  }
+  if (
+    identities.size !== activeSkills.length
+    || activeSkills.some(skill => !identities.has(skill.name))
+  ) {
+    throw new TypeError('Skill activation evidence must cover the exact active catalogue.')
+  }
+  return Object.freeze({
+    sourceRef: evidence.sourceRef,
+    sourceDigest: evidence.sourceDigest,
+    skills: identities,
+  })
+}
+
+function validateBoundedIdentity(value: string, label: string): void {
+  if (
+    typeof value !== 'string'
+    || value.length === 0
+    || value.length > 240
+    || [...value].some(char => {
+      const code = char.codePointAt(0) ?? 0
+      return code < 0x20 || code === 0x7f
+    })
+  ) {
+    throw new TypeError(`Skill activation ${label} is malformed.`)
+  }
 }

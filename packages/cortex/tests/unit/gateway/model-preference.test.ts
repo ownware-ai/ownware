@@ -125,6 +125,7 @@ describe('run model runtime authority', () => {
       getThread: vi.fn(async () => thread),
       getSession: vi.fn(() => ({})),
       getSessionCandidateId: vi.fn(() => 'sha256:old'),
+      getSessionCompanions: vi.fn(() => undefined),
       getSetting: vi.fn(async () => undefined),
       resetSession,
       setThreadModel,

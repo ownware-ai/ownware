@@ -68,12 +68,26 @@ describe('SkillRegistry', () => {
       expect(result).toBe(registry)
     })
 
-    it('overwrites existing skill with same name', () => {
+    it('rejects an existing name without replacing its frozen body', () => {
       const updated = { ...commitSkill, description: 'Updated description' }
       registry.register(commitSkill)
-      registry.register(updated)
+      expect(() => registry.register(updated)).toThrow(/Duplicate skill name/)
       expect(registry.size).toBe(1)
-      expect(registry.get('commit')?.description).toBe('Updated description')
+      expect(registry.get('commit')?.description).toBe('Create a git commit')
+    })
+
+    it('snapshots and freezes mutable caller input', () => {
+      const allowedTools = ['read_file']
+      const mutable = { ...commitSkill, allowedTools }
+      registry.register(mutable)
+      mutable.content = 'changed after registration'
+      allowedTools.push('shell')
+      expect(registry.get('commit')).toMatchObject({
+        content: 'Help the user create a commit...',
+        allowedTools: ['read_file'],
+      })
+      expect(Object.isFrozen(registry.get('commit'))).toBe(true)
+      expect(Object.isFrozen(registry.get('commit')?.allowedTools)).toBe(true)
     })
   })
 
@@ -90,6 +104,12 @@ describe('SkillRegistry', () => {
     it('returns this for chaining', () => {
       const result = registry.registerAll([commitSkill])
       expect(result).toBe(registry)
+    })
+
+    it('fails duplicate batches atomically', () => {
+      expect(() => registry.registerAll([commitSkill, reviewSkill, commitSkill]))
+        .toThrow(/Duplicate skill name/)
+      expect(registry.size).toBe(0)
     })
   })
 

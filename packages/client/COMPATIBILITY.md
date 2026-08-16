@@ -48,6 +48,17 @@ older capability rather than inventing a value.
 | `0.40.0` | Runs expose paginated immutable effect receipts with monotonic per-run append order, stable effect/tool correlation, payload-free named authority, idempotent observations and honest restart reconciliation. Structural identifiers are not a general secret-classification proof. |
 | `0.41.0` | Exact permission decisions bind one run/request/agent/tool/input/policy/tool revision, expose intent revision 1, and are consumed once at the final supported dispatch boundary. Schedule approvals use an atomic claim and become indeterminate after an interrupted claim; target freshness is guaranteed only by tools declaring an authority-backed conditional-effect contract. |
 | `0.42.0` | Run-scoped egress mode and immutable, content-free egress receipts expose mediated destinations and honest route gaps. `local-only` admits only platform-mediated literal-loopback dispatch; custom, remote and uncontained routes fail closed. |
+| `0.43.0` | Capability-negotiated, one-use sensitive-input submission adds metadata-only SSE events and a dedicated non-JSON value channel. The first supported adapter binds and revalidates a live managed-browser field, blocks ordinary typing into structurally sensitive fields, and closes Ownware's page-capture path before injection. |
+| `0.44.0` | Exact, immutable skill-activation receipts identify the frozen profile/skill content placed into a root conversation or explicitly granted helper conversation. They are content-free dispatcher evidence, not proof of provider processing or behavioral compliance; external runtime skill mechanisms remain unsupported. |
+
+The `0.44.0` skill-activation support envelope is intentionally narrow. Native
+root dispatch covers profile-local and centrally selected skills after final
+assembly. Helper placement covers only an explicit `grant.skills` resolved from
+the parent profile's local skills; centrally selected skills are not currently
+grantable to helpers. Same-name custom tools, prompt prose, reminders, metadata
+and external-runtime reports cannot create a receipt. Absence of a receipt means
+Ownware did not observe a supported placement boundary; it does not establish
+that instructions were absent, ignored or violated.
 
 Compatibility rules:
 
@@ -60,14 +71,16 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.42.0`,
-  `gateway.capabilities` is version 23, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.44.0`,
+  `gateway.capabilities` is version 25, `connections.list` is version 1,
   `models.list` and `provider_hub.read` are version 2,
   `principals.issue` is version 3,
-  `runs.start` is version 7,
+  `runs.start` is version 8,
   `runs.snapshot` is version 5, `runs.abort` is version 4, while `runs.events` and
-  `runs.resume` are version 3, `runs.effects.read` and `runs.egress.read` are version 1, and
+  `runs.resume` are version 3, `runs.effects.read`, `runs.egress.read` and
+  `runs.skill-activations.read` are version 1, and
   `runs.permissions.decide` is version 1,
+  `runs.sensitive-input.submit` and `runs.sensitive-input.deny` are version 1,
   and `candidates.validate` and `candidates.stage` are version 1, while
   `candidates.activate` and `candidates.rollback` are version 2.
   `profiles.pause` and `profiles.resume` are also version 1 and require a UUID
@@ -105,6 +118,29 @@ Compatibility rules:
   durable admission/block/observation at named boundaries. They do not prove
   packet delivery, remote effects, whole-machine network isolation, or that an
   arbitrary payload contains no secret.
+- `sensitive-input.v1` is opt-in and currently supports only root-agent
+  injection into a live, exclusively owned, ephemeral Chrome process launched
+  by the Gateway. Embedded/customer-supplied browsers, reusable Chrome profile
+  directories, active helpers, custom same-name tools, messaging channels and
+  other sinks are unsupported and fail before a public request is emitted.
+  Supported fields are established from live DOM declarations: password input
+  type, or the standard autocomplete tokens for one-time code, card number and
+  card security code. Names, labels and model claims are not classification
+  authority. Ordinary browser typing preflights and rejects those structural
+  fields; arbitrary text fields remain outside the guarantee.
+- A value submitted through the dedicated bounded `text/plain` route is held
+  only in the active in-memory broker, represented to the engine by a one-use
+  opaque handle, and omitted from events, messages, snapshots and responses.
+  Immediately before the page write, the adapter revalidates exact process,
+  target, document, origin, marked element, field declaration and editability,
+  then permanently disables Ownware page capture for that process. Exact-value
+  redaction is defense in depth, not secret detection. The destination page,
+  its scripts, browser extensions and remote service necessarily may observe
+  or normalize the value; injection success is not login/payment success.
+  Failures after a possible write are `indeterminate`, never safe-retry proof.
+  Pasting a secret into a prompt, ordinary tool argument or unsupported field
+  has no equivalent guarantee, and arbitrary in-process extensions expand the
+  trusted computing base.
 - `profiles()` follows the revision `0.42.0` OpenAPI response exactly: a successful
   catalog is a top-level array. The Client rejects malformed top-level values,
   malformed public summary fields, overlong identities and duplicate or

@@ -95,7 +95,10 @@ export function sha256PermissionRevision(value: unknown): string {
  * same declared name/schema/permission surface; it does not prove arbitrary
  * implementation prose or remote authority state.
  */
-export function permissionToolRevision(tool: Tool): string {
+export function permissionToolRevision(
+  tool: Tool,
+  sensitiveInputRevision: string | null = null,
+): string {
   const conditionalRevision = tool.conditionalEffect?.contractRevision ?? null
   const egressRevision = tool.egress?.contractRevision ?? null
   if (
@@ -103,11 +106,15 @@ export function permissionToolRevision(tool: Tool): string {
       && !/^[A-Za-z0-9_.:-]{1,200}$/.test(conditionalRevision))
     || (egressRevision !== null
       && !/^[A-Za-z0-9_.:-]{1,200}$/.test(egressRevision))
+    || (sensitiveInputRevision !== null
+      && !/^[A-Za-z0-9_.:-]{1,200}$/.test(sensitiveInputRevision))
   ) {
     throw new Error('Tool contract revision is invalid')
   }
-  return sha256PermissionRevision({
-    revision: 'ownware.permission-tool.v1',
+  const material = {
+    revision: sensitiveInputRevision === null
+      ? 'ownware.permission-tool.v1'
+      : 'ownware.permission-tool.v2',
     name: tool.name,
     inputSchema: tool.inputSchema,
     isReadOnly: tool.isReadOnly ?? false,
@@ -117,7 +124,9 @@ export function permissionToolRevision(tool: Tool): string {
     conditionalEffectRevision: conditionalRevision,
     egressRevision,
     egressMediation: tool.egress?.mediation ?? null,
-  })
+    ...(sensitiveInputRevision === null ? {} : { sensitiveInputRevision }),
+  }
+  return sha256PermissionRevision(material)
 }
 
 export function permissionPolicyRevision(input: {
@@ -130,6 +139,8 @@ export function permissionPolicyRevision(input: {
   readonly egressMode: EgressMode
   readonly zoneConfig: unknown
   readonly tools: readonly Tool[]
+  /** Exact-object trusted adapter revisions assembled for this session. */
+  readonly sensitiveInputContracts?: ReadonlyMap<Tool, string>
 }): string {
   return sha256PermissionRevision({
     revision: 'ownware.permission-policy.v1',
@@ -142,7 +153,10 @@ export function permissionPolicyRevision(input: {
     egressMode: input.egressMode,
     zoneConfig: input.zoneConfig,
     tools: [...input.tools]
-      .map((tool) => permissionToolRevision(tool))
+      .map((tool) => permissionToolRevision(
+        tool,
+        input.sensitiveInputContracts?.get(tool) ?? null,
+      ))
       .sort(),
   })
 }

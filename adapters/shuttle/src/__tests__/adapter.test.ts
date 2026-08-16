@@ -102,6 +102,71 @@ describe('ShuttleAdapter — the 3 steps', () => {
     expect(await adapter.handle(dm('1', '   '))).toBeNull()
     expect(gateway.runs).toHaveLength(0)
   })
+
+  it('fails closed if a gateway sends sensitive input to a messaging channel', async () => {
+    class MisconfiguredGateway extends MockGateway {
+      override async *streamReply(): AsyncIterable<RunStreamEvent> {
+        yield {
+          type: 'sensitive-input',
+          requestId: 'sensitive-1',
+          toolCallId: 'tool-1',
+          toolName: 'browser_sensitive_type',
+          label: 'Password',
+          usage: 'Enter the account password',
+          agentId: null,
+          adapterRevision: 'ownware.browser-field-injection.v1',
+          seq: 1,
+        }
+      }
+    }
+
+    const gateway = new MisconfiguredGateway()
+    const transport = new RecordingTransport()
+    const adapter = new ShuttleAdapter(
+      { profileId: 'acme', channel: 'telegram', delivery: { mode: 'final' } },
+      { gateway, threads: new InMemoryThreadMap(), transport },
+    )
+
+    const result = await adapter.handle(dm('100', 'log me in'))
+
+    expect(gateway.runs[0]?.interactionCapabilities).toBeUndefined()
+    expect(result?.text).toContain('cannot collect sensitive input')
+    expect(transport.sent[0]?.text).toContain('cannot collect sensitive input')
+  })
+
+  it('keeps skill evidence out of user-facing channel replies', async () => {
+    class EvidenceGateway extends MockGateway {
+      override async *streamReply(): AsyncIterable<RunStreamEvent> {
+        yield {
+          type: 'skill-activation',
+          activationId: '55555555-5555-4555-8555-555555555555',
+          toolCallId: 'call_skill_1',
+          profileId: 'acme',
+          profileDigest: `hmac-sha256:${'a'.repeat(64)}`,
+          skillName: 'review',
+          skillDigest: `hmac-sha256:${'b'.repeat(64)}`,
+          agentId: null,
+          turnIndex: 1,
+          activatedAt: 100,
+          seq: 1,
+        }
+        yield { type: 'delta', text: 'Reviewed.', seq: 2 }
+        yield { type: 'done', seq: 3 }
+      }
+    }
+
+    const gateway = new EvidenceGateway()
+    const transport = new RecordingTransport()
+    const adapter = new ShuttleAdapter(
+      { profileId: 'acme', channel: 'telegram', delivery: { mode: 'final' } },
+      { gateway, threads: new InMemoryThreadMap(), transport },
+    )
+
+    const result = await adapter.handle(dm('100', 'review this'))
+
+    expect(result?.text).toBe('Reviewed.')
+    expect(transport.sent).toEqual([{ target: 'tg:100', text: 'Reviewed.' }])
+  })
 })
 
 describe('ShuttleAdapter — group / @mention policy', () => {

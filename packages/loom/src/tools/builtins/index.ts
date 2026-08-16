@@ -25,7 +25,7 @@ import { agentTools } from './agent.js'
 import { orchestrateTools } from './orchestrate.js'
 import { webFetchTools } from './web-fetch.js'
 import { webSearchTools } from './web-search.js'
-import { browserTools } from './browser.js'
+import { browserSensitiveType, browserTools } from './browser.js'
 import { memoryTools } from './memory.js'
 import { taskTools } from './tasks.js'
 import { imageGenerateTools } from './image-generate.js'
@@ -46,6 +46,8 @@ function declareEgress(
 }
 
 /** All built-in tools */
+const declaredBrowserTools = declareEgress(browserTools, 'uncontained')
+
 export const builtinTools: Tool[] = [
   ...declareEgress(filesystemTools, 'none'),
   ...declareEgress(shellTools, 'uncontained'),
@@ -54,13 +56,21 @@ export const builtinTools: Tool[] = [
   ...declareEgress(orchestrateTools, 'none'),
   ...declareEgress(webFetchTools, 'uncontained'),
   ...declareEgress(webSearchTools, 'uncontained'),
-  ...declareEgress(browserTools, 'uncontained'),
+  ...declaredBrowserTools,
   ...declareEgress(memoryTools, 'none'),
   ...declareEgress(taskTools, 'none'),
   ...declareEgress(imageGenerateTools, 'uncontained'),
   ...declareEgress(speechTools, 'uncontained'),
   ...declareEgress(credentialTools, 'none'),
 ]
+
+/**
+ * Exact final Tool object trusted hosts may bind to their browser-sensitive
+ * injector. The object has already crossed the built-in egress declaration
+ * seam; matching by name would let an unrelated profile tool claim authority.
+ */
+export const builtinBrowserSensitiveInputTool: Tool =
+  declaredBrowserTools[browserTools.indexOf(browserSensitiveType)]!
 
 /**
  * Create the standard set of built-in tools.

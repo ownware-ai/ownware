@@ -64,6 +64,10 @@ import {
 } from '../csv-data-view-selection.js'
 import { PROTECTED_DATA_VIEW_SELECTION_MAX_ROWS } from '../protected-data-view-selection.js'
 import { SOURCE_DATA_VIEW_JOB_MAX_ATTEMPTS } from '../source-data-view-store.js'
+import {
+  SENSITIVE_INPUT_INTERACTION_CAPABILITY,
+  SENSITIVE_INPUT_MAX_BYTES,
+} from '../types.js'
 
 const PUBLIC_CAPABILITIES = [
   { id: 'access_grants.create', version: 3 },
@@ -78,7 +82,7 @@ const PUBLIC_CAPABILITIES = [
   { id: 'candidates.stage', version: 1 },
   { id: 'candidates.validate', version: 1 },
   { id: 'connections.list', version: 1 },
-  { id: 'gateway.capabilities', version: 23 },
+  { id: 'gateway.capabilities', version: 26 },
   { id: 'gateway.health', version: 1 },
   { id: 'models.list', version: 2 },
   { id: 'principals.issue', version: 3 },
@@ -99,10 +103,15 @@ const PUBLIC_CAPABILITIES = [
   { id: 'runs.events', version: 3 },
   { id: 'runs.effects.read', version: 1 },
   { id: 'runs.egress.read', version: 1 },
+  { id: 'runs.skill-activations.read', version: 1 },
+  { id: 'runs.reversals.execute', version: 1 },
+  { id: 'runs.reversals.read', version: 1 },
   { id: 'runs.permissions.decide', version: 1 },
   { id: 'runs.resume', version: 3 },
   { id: 'runs.snapshot', version: 5 },
-  { id: 'runs.start', version: 7 },
+  { id: 'runs.sensitive-input.deny', version: 1 },
+  { id: 'runs.sensitive-input.submit', version: 1 },
+  { id: 'runs.start', version: 8 },
   { id: 'runtimes.codex.login', version: 1 },
   { id: 'runtimes.codex.logout', version: 1 },
   { id: 'runtimes.codex.models', version: 1 },
@@ -140,7 +149,7 @@ export function createCapabilitiesHandler(
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.42.0',
+        revision: '0.45.0',
       },
       capabilities: PUBLIC_CAPABILITIES,
       limits: {
@@ -155,6 +164,11 @@ export function createCapabilitiesHandler(
           maxItemDecodedBytes: ATTACHMENT_MAX_ITEM_BYTES,
           maxTotalDecodedBytes: ATTACHMENT_MAX_TOTAL_BYTES,
           maxFilenameCharacters: ATTACHMENT_MAX_FILENAME_CHARS,
+        },
+        sensitiveInput: {
+          interactionCapability: SENSITIVE_INPUT_INTERACTION_CAPABILITY,
+          contentType: 'text/plain; charset=utf-8',
+          maxBytes: SENSITIVE_INPUT_MAX_BYTES,
         },
         sourceList: { maxPageSize: SOURCE_LIST_MAX_LIMIT },
         connectionList: { maxPageSize: CONNECTION_LIST_MAX_LIMIT },

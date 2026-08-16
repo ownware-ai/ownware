@@ -161,7 +161,19 @@ export const agentSpawn: Tool = defineTool({
     try {
       // Resolve sub-agent definition from profile config (if subagent_type specified)
       const subagentDefs = configAny.subagentDefs as
-        Record<string, { model?: string; tools?: string[]; systemPrompt?: string; maxTurns?: number; persistentReminder?: string }> | undefined
+        Record<string, {
+          model?: string
+          tools?: string[]
+          systemPrompt?: string
+          maxTurns?: number
+          persistentReminder?: string
+          grantedSkillActivations?: readonly {
+            sourceRef: string
+            sourceDigest: string
+            skillName: string
+            skillDigest: string
+          }[]
+        }> | undefined
       const def = subagent_type && subagentDefs ? subagentDefs[subagent_type] : undefined
 
       // Inherit the parent's workspace cwd so the sub-agent's env footer
@@ -189,6 +201,9 @@ export const agentSpawn: Tool = defineTool({
         ...(def?.persistentReminder && def.persistentReminder.trim().length > 0
           ? { persistentReminder: def.persistentReminder }
           : {}),
+        ...(def?.grantedSkillActivations === undefined
+          ? {}
+          : { grantedSkillActivations: def.grantedSkillActivations }),
       }
 
       // Seed the sub-agent's conversation with the task as the first user

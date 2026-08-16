@@ -20,7 +20,7 @@ src/
 │   ├── loop.ts           # THE HEART — while(true) agent loop (~760 lines)
 │   ├── session.ts        # Session lifecycle, multi-turn state
 │   ├── config.ts         # LoomConfig with defaults
-│   ├── events.ts         # 27 event types (discriminated union)
+│   ├── events.ts         # 32 event types (discriminated union)
 │   ├── errors.ts         # Error hierarchy (Provider, Tool, Abort, etc.)
 │   └── abort.ts          # AbortController utilities
 ├── provider/
@@ -155,6 +155,25 @@ which fails closed when the host selects `local-only`.
 - Count-token and compaction provider calls are dispatches too. Thread the same
   egress controller through them, and do not launch post-run background work
   outside the run lifetime.
+
+## Skill activation evidence
+
+The engine may emit `skill.activation` only when the exact successful
+`ToolResult` created by `createSkillTool` crosses the loop's trusted dispatcher,
+or when `AgentSpawner` places a host-supplied explicit grant into a helper's
+conversation before that helper loop begins.
+
+- Evidence identity is supplied by the host. Loom does not hash profiles,
+  choose trust roots, persist receipts or infer authority from a tool name.
+- The activation mark is private, object-identity-bound and one-use. Metadata,
+  reminders, prose and a same-name custom tool cannot manufacture it.
+- Freeze the skill definition and dispatcher catalogue at assembly. Registry or
+  file mutation during a run must not silently change the activated body.
+- Events carry bounded identity metadata only—never skill content, caller args,
+  descriptions or tool results.
+- Activation proves placement into the conversation. It does not prove provider
+  processing, instruction compliance, model behavior, tool correctness or an
+  external effect.
 
 ## Testing
 

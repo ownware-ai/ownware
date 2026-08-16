@@ -102,6 +102,9 @@ export type {
   PermissionResponseEvent,
   CredentialRequestEvent,
   CredentialResponseEvent,
+  SensitiveInputRequestEvent,
+  SensitiveInputResponseEvent,
+  SkillActivationEvent,
   AgentSpawnEvent,
   AgentCompleteEvent,
   CheckpointSavedEvent,
@@ -112,7 +115,14 @@ export type {
   AuditEvent,
   ErrorEvent,
 } from './core/events.js'
-export { isToolEvent, isContentEvent, isSecurityEvent, isCredentialEvent } from './core/events.js'
+export {
+  isToolEvent,
+  isContentEvent,
+  isSecurityEvent,
+  isCredentialEvent,
+  isSensitiveInputEvent,
+  isSkillEvent,
+} from './core/events.js'
 
 // Reminders — engine-level `<system-reminder>` injection subsystem.
 // Runtime emits typed events (mode transitions, hook outcomes, compaction
@@ -162,7 +172,10 @@ export {
 // from the active session's `SkillRegistry` and returns its body as the
 // tool result. Pair with the existing skills loader/registry.
 export { createSkillTool } from './tools/builtins/skill.js'
-export type { SkillToolOptions } from './tools/builtins/skill.js'
+export type {
+  SkillToolOptions,
+  SkillActivationEvidenceCatalog,
+} from './tools/builtins/skill.js'
 export { SkillRegistry } from './skills/registry.js'
 export { loadSkills, parseSkillFile } from './skills/loader.js'
 
@@ -260,6 +273,24 @@ export {
   isOpaqueCredentialHandle,
   unsafeCreateHandle,
 } from './credentials/handle.js'
+export type {
+  SensitiveInputBinding,
+  SensitiveInputRequest,
+  SensitiveInputProvision,
+  SensitiveInputResolution,
+  OpaqueSensitiveInputHandle,
+} from './sensitive-input/types.js'
+export type {
+  SensitiveInputCallbacks,
+  SensitiveInputRequestStart,
+  RequestSensitiveInputFn,
+  ConsumeSensitiveInputFn,
+  RedactSensitiveTextFn,
+} from './core/loop.js'
+export {
+  isOpaqueSensitiveInputHandle,
+  unsafeCreateSensitiveInputHandle,
+} from './sensitive-input/types.js'
 export type {
   CredentialResolver,
   ResolveContext,
@@ -422,7 +453,11 @@ export { taskTools, todoWrite } from './tools/builtins/tasks.js'
 export { imageGenerateTools } from './tools/builtins/image-generate.js'
 export { speechTools } from './tools/builtins/speech.js'
 export { credentialTools } from './tools/builtins/credential.js'
-export { builtinTools, createBuiltinTools } from './tools/builtins/index.js'
+export {
+  builtinTools,
+  builtinBrowserSensitiveInputTool,
+  createBuiltinTools,
+} from './tools/builtins/index.js'
 
 // Pluggable provider interfaces (consumers inject implementations)
 export type {
@@ -490,12 +525,19 @@ export {
   waitForCondition,
   scrollIntoView,
   getPlaywrightError,
+  BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION,
+  prepareBrowserSensitiveInputBinding,
+  injectBrowserSensitiveInput,
+  resetBrowserCaptureBarrierForFreshContext,
 } from './tools/builtins/browser-session.js'
 export type {
   BrowserConnection,
   BrowserTab,
   ScreenshotResult,
   SnapshotResult,
+  BrowserSensitiveFieldKind,
+  BrowserSensitiveInputBinding,
+  BrowserSensitiveInjectionResult,
 } from './tools/builtins/browser-session.js'
 
 // Browser launcher — spawn + lifecycle for a Chromium-family browser

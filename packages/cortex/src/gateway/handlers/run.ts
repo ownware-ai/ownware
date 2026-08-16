@@ -25,11 +25,15 @@ import {
   Session, HumanInTheLoop, mergeConfig, AgentSpawner,
   launchChrome, createDeferredChromeLauncher, resolveProvider, getProvider,
   executeTool,
+  BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION,
+  builtinBrowserSensitiveInputTool,
+  resetBrowserCaptureBarrierForFreshContext,
 } from '@ownware/loom'
 import type {
   ContentBlock, ZoneDecision, RunningChrome, LaunchChromeOptions, Tool,
   ToolContext, ToolCall, ToolResult,
-  SkillDefinition,
+  SkillDefinition, SkillActivationEvidenceCatalog,
+  SensitiveInputBinding, OpaqueSensitiveInputHandle,
 } from '@ownware/loom'
 import { processAttachments, categorizeFile } from '@ownware/loom'
 import {
@@ -63,6 +67,7 @@ import type {
   AttachmentMeta,
   ModelSubstitution,
 } from '../types.js'
+import { SENSITIVE_INPUT_INTERACTION_CAPABILITY } from '../types.js'
 import type { UserMessageEvent } from '../events.js'
 import type { LoomEvent } from '@ownware/loom'
 import { permissionStore } from '../../permissions/store.js'
@@ -88,6 +93,17 @@ import {
   permissionToolRevision,
 } from '../permission-intent.js'
 import { projectPermissionEvidenceEvent } from '../event-ingestor.js'
+import { SensitiveInputBroker } from '../sensitive-input-broker.js'
+import { createBrowserSensitiveInputAdapter } from '../browser-sensitive-input-adapter.js'
+import {
+  EffectReversalAdapterRegistry,
+  createMemoryProposalReversalAdapter,
+  wrapMemoryProposalReversalTool,
+} from '../effect-reversal-adapters.js'
+import {
+  EffectReversalStoreError,
+  type EffectReversalRepository,
+} from '../effect-reversal-store.js'
 
 const FileAttachmentInputSchema = z.object({
   filename: z.string().min(1).max(ATTACHMENT_MAX_FILENAME_CHARS),
@@ -130,6 +146,7 @@ const RunRequestSchema = z.object({
   workspaceId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
   egressMode: z.enum(['unrestricted', 'local-only']).optional(),
+  interactionCapabilities: z.array(z.string().min(1).max(100)).max(32).optional(),
   attachments: z.array(FileAttachmentInputSchema).max(ATTACHMENT_MAX_COUNT).optional(),
   activeContext: ActiveContextInputSchema.optional(),
   /**
@@ -213,6 +230,10 @@ import {
   type EgressReceiptRepository,
 } from '../egress-receipt-store.js'
 import { RunEgressControl } from '../egress-control.js'
+import {
+  SkillActivationReceiptError,
+  type SkillActivationReceiptRepository,
+} from '../skill-activation-receipt-store.js'
 import type { CandidateProfileResolver } from '../../profile/candidate-activation.js'
 import type {
   IdempotencyRepository,
@@ -242,6 +263,10 @@ export interface RunHandlerDeps {
   readonly effectReceipts?: EffectReceiptRepository
   /** Append-only outbound observations and local-only enforcement authority. */
   readonly egressReceipts?: EgressReceiptRepository
+  /** Exact, payload-free evidence that a bound skill body entered a conversation. */
+  readonly skillActivationReceipts?: SkillActivationReceiptRepository
+  /** Exact registered reversal offers and execution receipts. */
+  readonly effectReversals?: EffectReversalRepository
   /** Durable public retry fence. Scheduler calls do not pass through it. */
   readonly idempotencyStore?: IdempotencyRepository
   /** Resolve and verify the currently active immutable candidate, when one exists. */
@@ -383,6 +408,10 @@ export function createRunHandlers(
   runner: SessionRunner,
   deps: RunHandlerDeps,
 ) {
+  const effectReversalAdapters = new EffectReversalAdapterRegistry()
+  if (deps.effectReversals !== undefined) {
+    effectReversalAdapters.register(createMemoryProposalReversalAdapter(deps.effectReversals))
+  }
 
   async function delegatedThreadAccessAllowed(
     principal: RuntimePrincipal | undefined,
@@ -622,6 +651,9 @@ export function createRunHandlers(
     const profileId = body.profileId ?? 'example'
     let threadId = body.threadId
     const workspaceId = body.workspaceId
+    const sensitiveInputEnabled = body.interactionCapabilities?.includes(
+      SENSITIVE_INPUT_INTERACTION_CAPABILITY,
+    ) === true
     // Scheduler/channel callers share the same pre-mutation attachment gate.
     const preparedAttachments = preflightAttachments ?? await prepareAttachmentBatch(body.attachments)
 
@@ -716,7 +748,7 @@ export function createRunHandlers(
       }
       const profile = resolvedCandidate?.profile ?? await registry.get(profileId)
       const effectiveEgressMode = (
-        profile.config.security.egressMode === 'local-only'
+        profile.config.security?.egressMode === 'local-only'
         || body.egressMode === 'local-only'
       ) ? 'local-only' as const : 'unrestricted' as const
       if (effectiveEgressMode === 'local-only' && deps.egressReceipts === undefined) {
@@ -749,6 +781,17 @@ export function createRunHandlers(
             sessionEgressMode: cachedCompanions.egressMode,
             requestedEgressMode: effectiveEgressMode,
           },
+        )
+      }
+      if (
+        session !== undefined
+        && cachedCompanions !== undefined
+        && (cachedCompanions.sensitiveInputEnabled ?? false) !== sensitiveInputEnabled
+      ) {
+        throw new RunStartError(
+          409,
+          'A thread cannot change its interactive transport capabilities after session assembly. Start a new thread.',
+          'interaction_capabilities_session_mismatch',
         )
       }
       const requestModel = body.model
@@ -915,6 +958,21 @@ export function createRunHandlers(
       const profileToAssemble = effectiveModel !== profile.config.model
         ? { ...profile, config: { ...profile.config, model: effectiveModel } }
         : profile
+      const embeddedCdpUrl = process.env.OWNWARE_BROWSER_CDP_URL
+      const embeddedTargetId = process.env.OWNWARE_BROWSER_TARGET_ID
+      const brokerUrl = process.env.OWNWARE_BROWSER_BROKER_URL
+      const embeddedBrowserHasPin =
+        (embeddedTargetId != null && embeddedTargetId !== '') ||
+        (brokerUrl != null && brokerUrl !== '')
+      const embeddedBrowserConfigured =
+        embeddedCdpUrl != null && embeddedCdpUrl !== '' && embeddedBrowserHasPin
+      const browserSensitiveHostEligible =
+        sensitiveInputEnabled
+        && !embeddedBrowserConfigured
+        && profileToAssemble.config.browser.autoLaunch !== false
+        && profileToAssemble.config.browser.userDataDir === undefined
+        && !profileToAssemble.config.browser.extraArgs.some(arg =>
+          arg === '--user-data-dir' || arg.startsWith('--user-data-dir='))
       const memoryAssembly = principal?.kind === 'delegated'
         ? { memory: { disabled: true as const } }
         : deps.memorySystem !== undefined
@@ -953,8 +1011,26 @@ export function createRunHandlers(
         let hookApprovalPolicyRevision: string | null = null
         const hookApprovalThreadId = threadId!
 
+        const rootSkillActivationEvidence: {
+          current: SkillActivationEvidenceCatalog | null
+        } = { current: null }
         const assembled = await assembleAgent(profileToAssemble, {
           egressMode: effectiveEgressMode,
+          createSkillActivationEvidence: (assembledProfile, activeSkills) => {
+            const evidence = state.skillActivationEvidence.createCatalog(
+              profileId,
+              assembledProfile,
+              activeSkills,
+            )
+            rootSkillActivationEvidence.current = evidence
+            return evidence
+          },
+          ...(browserSensitiveHostEligible
+            ? {}
+            : {
+                isToolAvailable: (tool: Tool) =>
+                  tool !== builtinBrowserSensitiveInputTool,
+              }),
           ...(deps.resolvePluginSkills === undefined
             ? {}
             : {
@@ -1132,6 +1208,7 @@ export function createRunHandlers(
         // reliably kill it even if the first browser tool call races a
         // teardown.
         let browserCdpUrlProvider: (() => Promise<string>) | undefined
+        let browserUsesManagedChrome = false
         let browserDefaultTargetId: string | undefined
         let browserActiveTargetProvider: (() => Promise<string | null>) | undefined
         let browserCreateTabHook:
@@ -1155,19 +1232,11 @@ export function createRunHandlers(
         // `OWNWARE_BROWSER_TARGET_ID` pins the exact target so Loom never grabs
         // the client's own UI. Absent in the cloud / standalone packaging (no
         // Electron) → the deferred headless launcher below is used as before.
-        const embeddedCdpUrl = process.env.OWNWARE_BROWSER_CDP_URL
-        const embeddedTargetId = process.env.OWNWARE_BROWSER_TARGET_ID
-        const brokerUrl = process.env.OWNWARE_BROWSER_BROKER_URL
-
         // Embedded mode needs the CDP url AND a way to pin the right target —
         // either a static target id OR the broker (which reports the active
         // tab). Without one of those, a bare connectOverCDP could grab the
         // client's OWN UI, so we fall back to headless Chrome.
-        const hasPin =
-          (embeddedTargetId != null && embeddedTargetId !== '') ||
-          (brokerUrl != null && brokerUrl !== '')
-
-        if (wantsBrowser && embeddedCdpUrl != null && embeddedCdpUrl !== '' && hasPin) {
+        if (wantsBrowser && embeddedBrowserConfigured) {
           const url = embeddedCdpUrl
           browserCdpUrlProvider = () => Promise.resolve(url)
           // Desktop embedded browser → allow the agent to preview localhost dev
@@ -1201,6 +1270,7 @@ export function createRunHandlers(
             }
           }
         } else if (wantsBrowser) {
+          browserUsesManagedChrome = true
           const launchFn = deps.launchChromeFn ?? launchChrome
           const launchOpts: LaunchChromeOptions = {
             headless: profileToAssemble.config.browser.headless,
@@ -1219,6 +1289,7 @@ export function createRunHandlers(
             launchOptions: launchOpts,
             launchFn,
             onLaunched: running => {
+              resetBrowserCaptureBarrierForFreshContext(running.cdpUrl)
               state.setChromeLaunch(capturedThreadIdForChrome, running)
             },
           })
@@ -1256,6 +1327,42 @@ export function createRunHandlers(
           additionalWorkspaceRoots: sessionAdditionalRoots,
         })
 
+        const sensitiveInputBroker = new SensitiveInputBroker()
+        const sensitiveInputContracts = new Map<Tool, string>()
+        if (browserUsesManagedChrome && assembled.browserSensitiveInputTool !== null) {
+          sensitiveInputContracts.set(
+            assembled.browserSensitiveInputTool,
+            BROWSER_SENSITIVE_INPUT_ADAPTER_REVISION,
+          )
+        }
+        const sensitiveInputs = {
+          isRegistered: (tool: Tool) => sensitiveInputBroker.isRegistered(tool),
+          request: (input: {
+            readonly requestId: string
+            readonly toolCallId: string
+            readonly toolName: string
+            readonly agentId: string | null
+            readonly tool: Tool
+            readonly label: string
+            readonly usage: string
+            readonly binding: SensitiveInputBinding
+          }) => sensitiveInputBroker.request({
+            requestId: input.requestId,
+            toolCallId: input.toolCallId,
+            toolName: input.toolName,
+            agentId: input.agentId,
+            tool: input.tool,
+            request: {
+              label: input.label,
+              usage: input.usage,
+              binding: input.binding,
+            },
+          }),
+          consume: (handle: OpaqueSensitiveInputHandle) =>
+            sensitiveInputBroker.consume(handle),
+          redactText: (text: string) => sensitiveInputBroker.redact(text),
+        }
+
         const effectivePermissionMode = body.safetyLevel != null
           ? 'auto' as const
           : profile.config.security.permissionMode
@@ -1269,6 +1376,7 @@ export function createRunHandlers(
           egressMode: effectiveEgressMode,
           zoneConfig: profileToAssemble.config.security,
           tools: assembled.tools,
+          sensitiveInputContracts,
         })
         hookApprovalPolicyRevision = sessionPermissionPolicyRevision
 
@@ -1367,6 +1475,7 @@ export function createRunHandlers(
           requestApproval,
           authorizeToolExecution,
           permissionPolicyRevision: sessionPermissionPolicyRevision,
+          sensitiveInputs,
           onEvent: async (event, subagentId) => {
             trace('spawner-recv', capturedThreadId, subagentId, event.type)
             try {
@@ -1415,6 +1524,27 @@ export function createRunHandlers(
                 if (hitl.pendingCount === 0) {
                   await deps.runStore.markRunningAfterDecision(activeRun.runId)
                 }
+              } else if (event.type === 'skill.activation') {
+                if (
+                  activeRun == null
+                  || deps.skillActivationReceipts == null
+                  || event.agentId !== subagentId
+                  || event.toolCallId !== null
+                  || event.sourceRef !== profileId
+                ) {
+                  throw new Error('Subagent skill activation receipt authority is unavailable')
+                }
+                await deps.skillActivationReceipts.observe({
+                  activationId: event.activationId,
+                  runId: activeRun.runId,
+                  profileId,
+                  profileDigest: event.sourceDigest,
+                  skillName: event.skillName,
+                  skillDigest: event.skillDigest,
+                  agentId: event.agentId,
+                  toolCallId: event.toolCallId,
+                  turnIndex: event.turnIndex,
+                }, event.timestamp)
               }
               await state.eventIngestor.ingestSubagentEvent(
                 capturedThreadId,
@@ -1466,6 +1596,20 @@ export function createRunHandlers(
           },
         })
 
+        if (browserUsesManagedChrome && assembled.browserSensitiveInputTool !== null) {
+          sensitiveInputBroker.register(
+            assembled.browserSensitiveInputTool,
+            createBrowserSensitiveInputAdapter({
+              hasActiveHelpers: () => spawner.listActive().length > 0,
+              isEphemeralManagedContext: cdpUrl => {
+                const running = state.getChromeLaunch(threadId!)
+                return running?.cdpUrl === cdpUrl
+                  && running.userDataDirIsTemporary
+              },
+            }),
+          )
+        }
+
         // Resolve subagent specs. A subagent may be declared inline
         // (with systemPrompt/model/tools embedded in the parent profile)
         // or by reference (`{ name, profile: "<helper-name>" }`) which
@@ -1477,7 +1621,17 @@ export function createRunHandlers(
         // against the parent's assembled tool set.
         const parentToolNames = new Set(spawnerToolPool.map(t => t.name))
         const subagentDefs: Record<string, {
-          model?: string; tools?: string[]; systemPrompt?: string; maxTurns?: number; persistentReminder?: string
+          model?: string
+          tools?: string[]
+          systemPrompt?: string
+          maxTurns?: number
+          persistentReminder?: string
+          grantedSkillActivations?: readonly {
+            sourceRef: string
+            sourceDigest: string
+            skillName: string
+            skillDigest: string
+          }[]
         }> = {}
         for (const sa of profile.config.subagents) {
           let refProfile: Awaited<ReturnType<typeof registry.get>> | null = null
@@ -1589,6 +1743,41 @@ export function createRunHandlers(
               refProfile,
               helperTools,
             )
+            if (resolved.grantedSkillsPrompt !== undefined) {
+              envelopedSystemPrompt = `${envelopedSystemPrompt}\n\n${resolved.grantedSkillsPrompt}`
+            }
+          }
+
+          let grantedSkillActivations:
+            | readonly {
+                sourceRef: string
+                sourceDigest: string
+                skillName: string
+                skillDigest: string
+              }[]
+            | undefined
+          if (resolved.grantedSkills !== undefined) {
+            const activationEvidence = rootSkillActivationEvidence.current
+            if (activationEvidence === null) {
+              throw new Error('Granted skill activation identity is unavailable.')
+            }
+            const digestByName = new Map(
+              activationEvidence.skills.map(entry => [entry.name, entry.digest]),
+            )
+            grantedSkillActivations = Object.freeze(
+              resolved.grantedSkills.map(skill => {
+                const skillDigest = digestByName.get(skill.name)
+                if (skillDigest === undefined) {
+                  throw new Error(`Granted skill "${skill.name}" lacks activation identity.`)
+                }
+                return Object.freeze({
+                  sourceRef: activationEvidence.sourceRef,
+                  sourceDigest: activationEvidence.sourceDigest,
+                  skillName: skill.name,
+                  skillDigest,
+                })
+              }),
+            )
           }
 
           subagentDefs[sa.name] = {
@@ -1609,6 +1798,9 @@ export function createRunHandlers(
             ...(resolved.persistentReminder && resolved.persistentReminder.trim().length > 0
               ? { persistentReminder: resolved.persistentReminder }
               : {}),
+            ...(grantedSkillActivations === undefined
+              ? {}
+              : { grantedSkillActivations }),
           }
         }
 
@@ -1727,6 +1919,29 @@ export function createRunHandlers(
         // sub-agent.) Interactive runs (no safetyLevel) are a no-op.
         envelopeSpawnerPool(spawnerToolPool, body.safetyLevel, holdSink)
 
+        // Root-only reversible-effect adapter. Registration is by the exact
+        // post-policy remember Tool object returned by assembly. Helpers keep
+        // the unwrapped pool and therefore cannot mint offers accidentally.
+        const rootSessionTools =
+          assembled.rememberProposalTool !== null && deps.effectReversals !== undefined
+            ? assembled.tools.map((tool) => (
+                tool === assembled.rememberProposalTool
+                  ? wrapMemoryProposalReversalTool(tool, {
+                      profileId,
+                      threadId: threadId!,
+                      repository: deps.effectReversals!,
+                      getActiveRunId: () => runner.get(threadId!)?.runId ?? null,
+                      onObservationFailure: ({ toolCallId, code }) => {
+                        console.error(
+                          '[effect-reversal] offer observation unavailable',
+                          { toolCallId, code },
+                        )
+                      },
+                    })
+                  : tool
+              ))
+            : assembled.tools
+
         session = new Session({
           config: sessionConfig,
           provider: assembled.provider,
@@ -1737,8 +1952,8 @@ export function createRunHandlers(
           // Interactive / HTTP runs pass no safetyLevel → full assembled set.
           tools:
             body.safetyLevel != null
-              ? applyRunSafety(assembled.tools, body.safetyLevel, holdSink)
-              : assembled.tools,
+              ? applyRunSafety(rootSessionTools, body.safetyLevel, holdSink)
+              : rootSessionTools,
           checkpoint: assembled.checkpointStore,
 
           // Profile-declared lifecycle hooks (assembler compiled them via
@@ -1761,6 +1976,7 @@ export function createRunHandlers(
           requestApproval,
           authorizeToolExecution,
           permissionPolicyRevision: sessionPermissionPolicyRevision,
+          sensitiveInputs,
 
           // Credential isolation wiring — see packages/cortex/CLAUDE.md.
           // All four callbacks read from the per-thread credentialRuntime
@@ -1802,15 +2018,15 @@ export function createRunHandlers(
         // break HITL because the session would still hold a reference
         // to the old one in its requestApproval closure.
         // Registry: every HITL this session owns, in register order.
-        // The abort handler iterates this exact array — the two direct
-        // `hitl` / `credentialHITL` fields above stay for callers that
-        // need type-specific access (e.g. credential endpoints calling
-        // `credentialHITL.respond`). A new HITL adds one line here
+        // The abort handler iterates this exact array. Direct companion
+        // fields remain for endpoints that need type-specific access (for
+        // example `credentialHITL.respond` or broker request lookup). A new HITL adds one line here
         // (`asHitlLike('<name>', theNewHitl)`) and the abort path picks
         // it up structurally.
         const hitls: readonly HITLLike[] = [
           asHitlLike('permission', hitl),
           asHitlLike('credential', credentialHITL),
+          asHitlLike('sensitive-input', sensitiveInputBroker),
         ]
         state.setSessionCompanions(threadId, {
           egressMode: effectiveEgressMode,
@@ -1819,6 +2035,8 @@ export function createRunHandlers(
           permissionPolicyRevision: sessionPermissionPolicyRevision,
           getLastZoneDecision: () => lastZoneDecision,
           credentialHITL,
+          sensitiveInputBroker,
+          sensitiveInputEnabled,
           credentialRuntime,
           // Side-task model is profile-declared. When absent (most
           // profiles today), the gateway keeps using the non-LLM
@@ -1963,17 +2181,24 @@ export function createRunHandlers(
       const egressControl = deps.egressReceipts === undefined
         ? undefined
         : new RunEgressControl(effectiveEgressMode, runId, deps.egressReceipts)
-      const handle = runner.start({
-        runId,
-        threadId: threadId!,
-        profileId,
-        model: modelString,
-        permissionPolicyRevision: companions.permissionPolicyRevision,
-        ...(egressControl === undefined ? {} : { egressControl }),
-        prompt: promptContent,
-        attachments: attachmentMeta,
-        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-      })
+      companions.sensitiveInputBroker?.beginRun(runId)
+      let handle: ReturnType<SessionRunner['start']>
+      try {
+        handle = runner.start({
+          runId,
+          threadId: threadId!,
+          profileId,
+          model: modelString,
+          permissionPolicyRevision: companions.permissionPolicyRevision,
+          ...(egressControl === undefined ? {} : { egressControl }),
+          prompt: promptContent,
+          attachments: attachmentMeta,
+          ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        })
+      } catch (error) {
+        companions.sensitiveInputBroker?.endRun(runId)
+        throw error
+      }
 
       // 7. Return — caller (HTTP handler / scheduler) connects/awaits.
       return {
@@ -2758,6 +2983,258 @@ export function createRunHandlers(
     }
   }
 
+  // GET /api/v1/runs/:runId/skill-activation-receipts — exact dispatcher evidence.
+  async function listSkillActivationReceipts(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const snapshot = await deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    }) || !await delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+    if (deps.skillActivationReceipts === undefined) {
+      sendError(
+        res,
+        503,
+        'Skill activation evidence is unavailable',
+        'skill_activation_evidence_unavailable',
+        'overload',
+      )
+      return
+    }
+    res.setHeader('Cache-Control', 'no-store')
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (
+      [...url.searchParams.keys()].some(key => key !== 'limit' && key !== 'cursor')
+      || url.searchParams.getAll('limit').length > 1
+      || url.searchParams.getAll('cursor').length > 1
+    ) {
+      sendError(
+        res,
+        400,
+        'Skill activation receipt page is invalid',
+        'skill_activation_receipt_page_invalid',
+        'invalid_request',
+      )
+      return
+    }
+    const rawLimit = url.searchParams.get('limit')
+    const limit = rawLimit === null ? 50 : Number(rawLimit)
+    const cursor = url.searchParams.get('cursor')
+    if (
+      !Number.isSafeInteger(limit)
+      || limit < 1
+      || limit > 100
+      || (rawLimit !== null && !isCanonicalPageLimit(rawLimit))
+    ) {
+      sendError(
+        res,
+        400,
+        'Skill activation receipt page is invalid',
+        'skill_activation_receipt_page_invalid',
+        'invalid_request',
+      )
+      return
+    }
+    try {
+      sendJSON(
+        res,
+        200,
+        await deps.skillActivationReceipts.listForRun(runId, { limit, cursor }),
+      )
+    } catch (error) {
+      if (error instanceof SkillActivationReceiptError && error.code === 'cursor_invalid') {
+        sendError(
+          res,
+          400,
+          'Skill activation receipt cursor is invalid',
+          'skill_activation_receipt_cursor_invalid',
+          'invalid_request',
+        )
+        return
+      }
+      throw error
+    }
+  }
+
+  async function reversalRunSnapshot(
+    req: IncomingMessage,
+    res: ServerResponse,
+    runId: string,
+  ): Promise<Awaited<ReturnType<RunRepository['get']>>> {
+    const snapshot = await deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return null
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    }) || !await delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return null
+    }
+    if (deps.effectReversals === undefined) {
+      sendError(res, 503, 'Effect reversal evidence is unavailable', 'effect_reversal_unavailable', 'overload')
+      return null
+    }
+    res.setHeader('Cache-Control', 'no-store')
+    return snapshot
+  }
+
+  function reversalPage(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): { readonly limit: number; readonly cursor: string | null } | null {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (
+      [...url.searchParams.keys()].some(key => key !== 'limit' && key !== 'cursor')
+      || url.searchParams.getAll('limit').length > 1
+      || url.searchParams.getAll('cursor').length > 1
+    ) {
+      sendError(res, 400, 'Effect reversal page is invalid', 'effect_reversal_page_invalid', 'invalid_request')
+      return null
+    }
+    const rawLimit = url.searchParams.get('limit')
+    const limit = rawLimit === null ? 50 : Number(rawLimit)
+    if (
+      !Number.isSafeInteger(limit)
+      || limit < 1
+      || limit > 100
+      || (rawLimit !== null && !isCanonicalPageLimit(rawLimit))
+    ) {
+      sendError(res, 400, 'Effect reversal page is invalid', 'effect_reversal_page_invalid', 'invalid_request')
+      return null
+    }
+    return { limit, cursor: url.searchParams.get('cursor') }
+  }
+
+  // GET /api/v1/runs/:runId/reversal-offers — content-free exact offers.
+  async function listEffectReversalOffers(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    if (await reversalRunSnapshot(req, res, runId) === null) return
+    const page = reversalPage(req, res)
+    if (page === null) return
+    try {
+      sendJSON(res, 200, await deps.effectReversals!.listOffersForRun(runId, page))
+    } catch (error) {
+      if (error instanceof EffectReversalStoreError && error.code === 'cursor_invalid') {
+        sendError(res, 400, 'Effect reversal cursor is invalid', 'effect_reversal_cursor_invalid', 'invalid_request')
+        return
+      }
+      throw error
+    }
+  }
+
+  // GET /api/v1/runs/:runId/reversal-receipts — immutable execution evidence.
+  async function listEffectReversalReceipts(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    if (await reversalRunSnapshot(req, res, runId) === null) return
+    const page = reversalPage(req, res)
+    if (page === null) return
+    try {
+      sendJSON(res, 200, await deps.effectReversals!.listReceiptsForRun(runId, page))
+    } catch (error) {
+      if (error instanceof EffectReversalStoreError && error.code === 'cursor_invalid') {
+        sendError(res, 400, 'Effect reversal cursor is invalid', 'effect_reversal_cursor_invalid', 'invalid_request')
+        return
+      }
+      throw error
+    }
+  }
+
+  // POST /api/v1/runs/:runId/reversal-offers/:offerId/execute
+  async function executeEffectReversal(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const offerId = params['offerId']!
+    const snapshot = await reversalRunSnapshot(req, res, runId)
+    if (snapshot === null) return
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if ([...url.searchParams.keys()].length > 0) {
+      sendError(res, 400, 'Effect reversal execution input is invalid', 'effect_reversal_input_invalid', 'invalid_request')
+      return
+    }
+    const header = req.headers['idempotency-key']
+    const idempotencyKey = Array.isArray(header) ? undefined : header
+    if (idempotencyKey === undefined || !isValidIdempotencyKey(idempotencyKey)) {
+      sendError(res, 400, 'Idempotency-Key must be a UUID', 'idempotency_key_invalid', 'invalid_request')
+      return
+    }
+    const offer = await deps.effectReversals!.getOffer(runId, offerId)
+    if (offer === null) {
+      sendError(res, 404, 'Effect reversal offer was not found', 'effect_reversal_offer_not_found', 'not_found')
+      return
+    }
+    if (!effectReversalAdapters.has(offer)) {
+      sendError(
+        res,
+        409,
+        'The registered adapter for this effect reversal is unavailable',
+        'effect_reversal_adapter_unavailable',
+        'invalid_request',
+      )
+      return
+    }
+    const principal = getRequestPrincipal(req)
+    const result = await effectReversalAdapters.execute(offer, {
+      runId,
+      offerId,
+      idempotencyKey,
+      actorKind: principal?.kind === 'delegated' ? 'delegated' : 'owner',
+    })
+    if (result.disposition === 'missing') {
+      sendError(res, 404, 'Effect reversal offer was not found', 'effect_reversal_offer_not_found', 'not_found')
+      return
+    }
+    if (result.disposition === 'replayed') res.setHeader('Idempotency-Replayed', 'true')
+    if (result.disposition === 'executed' && result.receipt.outcome === 'confirmed') {
+      state.memoryEventBus.emit({
+        type: 'memory.proposal.resolved',
+        profileId: snapshot.profileId,
+        proposalId: result.targetRef,
+        status: 'rejected',
+        at: new Date(result.receipt.observedAt).toISOString(),
+      })
+    }
+    sendJSON(res, 200, {
+      disposition: result.disposition,
+      offer: result.offer,
+      receipt: result.receipt,
+    })
+  }
+
   // GET /api/v1/runs/active
   async function listActiveRuns(_req: IncomingMessage, res: ServerResponse): Promise<void> {
     const active = runner.listActive()
@@ -3020,7 +3497,18 @@ export function createRunHandlers(
 
   return {
     run, startProfileRun, resume, decidePermission, cancelRun, abort, getRun,
-    listEffectReceipts, listEgressReceipts, listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
+    listEffectReceipts, listEgressReceipts, listSkillActivationReceipts,
+    listEffectReversalOffers, listEffectReversalReceipts, executeEffectReversal,
+    listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
     executeHeldTool,
   }
+}
+
+function isCanonicalPageLimit(value: string): boolean {
+  if (value.length < 1 || value.length > 3 || value.charCodeAt(0) === 0x30) return false
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code < 0x30 || code > 0x39) return false
+  }
+  return true
 }

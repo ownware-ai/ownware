@@ -29,6 +29,14 @@ import {
   EgressReceiptStore,
   EgressReceiptStoreError,
 } from '../gateway/egress-receipt-store.js'
+import {
+  SkillActivationReceiptError,
+  SkillActivationReceiptStore,
+} from '../gateway/skill-activation-receipt-store.js'
+import {
+  EffectReversalStore,
+  EffectReversalStoreError,
+} from '../gateway/effect-reversal-store.js'
 import { ThreadPrincipalBindingStore } from '../gateway/thread-principal-binding.js'
 import type { Thread } from '../gateway/types.js'
 import {
@@ -66,6 +74,8 @@ function isPreservedDomainError(error: unknown): boolean {
     error instanceof ProfileRunNotAcceptingError ||
     error instanceof EffectReceiptStoreError ||
     error instanceof EgressReceiptStoreError ||
+    error instanceof SkillActivationReceiptError ||
+    error instanceof EffectReversalStoreError ||
     error instanceof CodexThreadReferenceStoreError
 }
 
@@ -133,6 +143,8 @@ export function createSqliteSecurityRepositories(
   const runs = new GatewayRunStore(database, options.permissionHashSecret)
   const effectReceipts = new EffectReceiptStore(database)
   const egressReceipts = new EgressReceiptStore(database)
+  const skillActivationReceipts = new SkillActivationReceiptStore(database)
+  const effectReversals = new EffectReversalStore(database, effectReceipts)
   const idempotency = new RunIdempotencyStore(database, options.idempotencyLeaseOwner)
   const grants = new AccessGrantStore(
     database,
@@ -344,6 +356,58 @@ export function createSqliteSecurityRepositories(
       async reconcileInterrupted(reasonCode, now) {
         return repositoryCall(assertActive, 'egress_receipts', 'reconcile_interrupted', 'write_failed', () =>
           egressReceipts.reconcileInterrupted(reasonCode, now))
+      },
+    },
+    skillActivationReceipts: {
+      async observe(input, now) {
+        return repositoryCall(
+          assertActive,
+          'skill_activation_receipts',
+          'observe',
+          'write_failed',
+          () => skillActivationReceipts.observe(input, now),
+        )
+      },
+      async listForRun(runId, page) {
+        return repositoryCall(
+          assertActive,
+          'skill_activation_receipts',
+          'list',
+          'read_failed',
+          () => skillActivationReceipts.listForRun(runId, page),
+        )
+      },
+    },
+    effectReversals: {
+      async observeMemoryProposal(input, now) {
+        return repositoryCall(
+          assertActive,
+          'effect_reversals',
+          'observe_memory_proposal',
+          'write_failed',
+          () => effectReversals.observeMemoryProposal(input, now),
+        )
+      },
+      async getOffer(runId, offerId) {
+        return repositoryCall(assertActive, 'effect_reversals', 'get_offer', 'read_failed', () =>
+          effectReversals.getOffer(runId, offerId))
+      },
+      async listOffersForRun(runId, page) {
+        return repositoryCall(assertActive, 'effect_reversals', 'list_offers', 'read_failed', () =>
+          effectReversals.listOffersForRun(runId, page))
+      },
+      async executeMemoryProposal(input, now) {
+        return repositoryCall(
+          assertActive,
+          'effect_reversals',
+          'execute_memory_proposal',
+          'write_failed',
+          () => effectReversals.executeMemoryProposal(input, now),
+        )
+      },
+      async listReceiptsForRun(runId, page) {
+        return repositoryCall(assertActive, 'effect_reversals', 'list_receipts', 'read_failed', () =>
+          effectReversals.listReceiptsForRun(runId, page))
       },
     },
     idempotency: {

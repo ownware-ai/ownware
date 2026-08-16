@@ -301,7 +301,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
         await expect(storage.health()).resolves.toMatchObject({
           kind: 'postgresql',
           state: 'ready',
-          schemaVersion: 89,
+          schemaVersion: 90,
         })
       }
       await expect(migrationHistory(database.url)).resolves.toEqual(
@@ -317,7 +317,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       await restart.initialize()
       await expect(restart.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 89,
+        schemaVersion: 90,
       })
       expect(baselineExecutions).toBe(1)
       await expect(migrationHistory(database.url)).resolves
@@ -386,7 +386,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
         await restart.initialize()
         await expect(restart.health()).resolves.toMatchObject({
           state: 'ready',
-          schemaVersion: 89,
+          schemaVersion: 90,
         })
       } finally {
         await restart.close().catch(() => {})
@@ -575,7 +575,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       await older.initialize()
       await expect(older.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 89,
+        schemaVersion: 90,
       })
 
       // Multi-gateway runtime remains unsupported, but an accidentally

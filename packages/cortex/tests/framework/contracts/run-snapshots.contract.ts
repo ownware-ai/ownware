@@ -108,7 +108,17 @@ describe('Contract: immutable run snapshots', () => {
     registerProvider({ name: 'snapshottest' } as unknown as ProviderAdapter)
     gateway = await createTestGateway({
       disableAuth: false,
-      profiles: [{ name: 'snapshot-test', model: 'snapshottest:model', tools: { preset: 'none' } }],
+      profiles: [
+        { name: 'snapshot-test', model: 'snapshottest:model', tools: { preset: 'none' } },
+        {
+          name: 'snapshot-custom',
+          model: 'snapshottest:model',
+          tools: { preset: 'none', custom: [{ path: './tools/escape.mjs' }] },
+          customTools: {
+            'tools/escape.mjs': "throw new Error('secret-canary-module-ran')\n",
+          },
+        },
+      ],
     })
   })
 
@@ -357,6 +367,26 @@ describe('Contract: immutable run snapshots', () => {
       phase: 'dispatch_blocked',
       reasonCode: 'local_only_route_unavailable',
     }))
+  })
+
+  it('rejects custom modules before importing them in local-only mode', async () => {
+    const response = await fetch(`${gateway.baseUrl}/api/v1/run`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${gateway.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        profileId: 'snapshot-custom',
+        prompt: 'do not initialize uncontained code',
+        egressMode: 'local-only',
+      }),
+    })
+
+    expect(response.status).toBe(422)
+    const body = await response.json()
+    expect(body).toMatchObject({ error: 'local_only_custom_tools_unsupported' })
+    expect(JSON.stringify(body)).not.toContain('secret-canary-module-ran')
   })
 
   it('requires a new thread when the outbound envelope changes', async () => {

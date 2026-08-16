@@ -294,6 +294,23 @@ export class ShuttleAdapter {
           // (the gateway resolved or timed the requests out).
           pending.delete(key)
           yield { type: 'done' }
+        } else if (ev.type === 'progress') {
+          // Shuttle transports intentionally render only user-facing text. Tool
+          // progress remains available to richer clients through the wire.
+          continue
+        } else if (ev.type === 'sensitive-input') {
+          // Messaging channels never advertise the dedicated sensitive-input
+          // capability and must not collect secrets as ordinary chat text. If a
+          // misconfigured gateway sends this event anyway, fail closed.
+          pending.delete(key)
+          yield {
+            type: 'error',
+            message: 'This channel cannot collect sensitive input. Use a secure interactive client.',
+          }
+        } else if (ev.type === 'skill-activation') {
+          // Evidence is available to richer clients and the receipt API; it
+          // is not user-facing reply text on a messaging channel.
+          continue
         } else {
           pending.delete(key)
           yield { type: 'error', message: ev.message }

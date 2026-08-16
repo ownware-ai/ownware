@@ -25,6 +25,7 @@
 
 import { defineTool } from '../types.js'
 import type { Tool, ToolContext } from '../types.js'
+import type { SensitiveInputResolution } from '../../sensitive-input/types.js'
 import { headTailTruncate } from '../../messages/truncate.js'
 import {
   connectBrowser,
@@ -51,6 +52,9 @@ import {
   consumePageActivity,
   formatActivityBlock,
   getPlaywrightError,
+  assertBrowserOutputAllowed,
+  inspectDeclaredSensitiveField,
+  captureBrowserSensitiveInputBinding,
   type BrowserConnection,
 } from './browser-session.js'
 
@@ -99,7 +103,9 @@ async function getConnection(context: ToolContext): Promise<BrowserConnection> {
     )
   }
 
-  return connectBrowser(cdpUrl)
+  const connection = await connectBrowser(cdpUrl)
+  assertBrowserOutputAllowed(connection.cdpUrl)
+  return connection
 }
 
 /**
@@ -452,6 +458,15 @@ export const browserType: Tool = defineTool({
     try {
       const conn = await getConnection(context)
       const page = await getTargetPage(conn, input, context)
+      const sensitiveKind = await inspectDeclaredSensitiveField(page, { selector, ref })
+      if (sensitiveKind !== null) {
+        return {
+          content:
+            'Plain browser typing is blocked for structurally declared sensitive fields. ' +
+            'Use browser_sensitive_type so the value bypasses the model and tool input.',
+          isError: true,
+        }
+      }
       const result = await typeIntoElement(page, {
         selector,
         ref,
@@ -467,6 +482,105 @@ export const browserType: Tool = defineTool({
       })
     } catch (e) {
       return browserError(e)
+    }
+  },
+})
+
+// ---------------------------------------------------------------------------
+// browser_sensitive_type
+// ---------------------------------------------------------------------------
+
+export const browserSensitiveType: Tool = defineTool({
+  name: 'browser_sensitive_type',
+  description:
+    'Ask the user to enter a value directly into a structurally declared sensitive browser field.\n' +
+    '- Use only for password, one-time-code, card-number, or card-security-code fields.\n' +
+    '- Do not request or place the value in tool input; the host injects it through a one-use channel.\n' +
+    '- After injection, browser capture is disabled for this ephemeral managed context and the user continues manually.',
+  category: 'browser',
+  uiDescriptor: {
+    kind: 'external-action',
+    summary: { verb: 'Requested sensitive browser input' },
+  },
+  isReadOnly: false,
+  requiresPermission: true,
+  timeoutMs: 10_000,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      selector: {
+        type: 'string',
+        description: 'CSS selector for the sensitive input element.',
+      },
+      ref: {
+        type: 'string',
+        description: 'Aria snapshot ref for the sensitive input element.',
+      },
+      submit: {
+        type: 'boolean',
+        description: 'Press Enter after injection. Default: false.',
+      },
+      targetId: {
+        type: 'string',
+        description: 'Target tab ID. Omit for active tab.',
+      },
+    },
+    required: [],
+  },
+  async *execute(input, context) {
+    const { selector, ref } = input as { selector?: string; ref?: string }
+    if (!selector && !ref) {
+      return { content: 'Either "selector" or "ref" must be provided.', isError: true }
+    }
+
+    let binding
+    try {
+      const conn = await getConnection(context)
+      const page = await getTargetPage(conn, input, context)
+      binding = await captureBrowserSensitiveInputBinding(conn, page, {
+        selector,
+        ref,
+        submit: input.submit === true,
+      })
+    } catch (error) {
+      return browserError(error)
+    }
+
+    const labels = {
+      password: 'Password',
+      'one-time-code': 'One-time code',
+      'credit-card-number': 'Card number',
+      'credit-card-security-code': 'Card security code',
+    } as const
+    const resolution = (yield {
+      message: 'Waiting for sensitive browser input',
+      sensitiveInputRequest: {
+        label: labels[binding.fieldKind],
+        usage: `Enter directly into the bound field at ${binding.origin}`,
+        binding,
+      },
+    }) as SensitiveInputResolution
+
+    switch (resolution.status) {
+      case 'injected':
+        return {
+          content:
+            'Sensitive input was injected. Browser capture is now disabled for this ephemeral managed context; continue manually.',
+          isError: false,
+        }
+      case 'denied':
+        return { content: 'Sensitive input was declined by the user.', isError: true }
+      case 'indeterminate':
+        return {
+          content:
+            'Sensitive input may have been applied, but the final browser outcome is unknown. Do not retry automatically.',
+          isError: true,
+        }
+      case 'failed':
+        return {
+          content: `Sensitive input was not applied (${resolution.reason}).`,
+          isError: true,
+        }
     }
   },
 })
@@ -1199,6 +1313,22 @@ export const browserFillForm: Tool = defineTool({
     try {
       const conn = await getConnection(context)
       const page = await getTargetPage(conn, input, context)
+      // Preflight every field before the first mutation. A later sensitive
+      // field blocks the entire form rather than leaving a partial fill.
+      for (const field of fields) {
+        const sensitiveKind = await inspectDeclaredSensitiveField(page, {
+          selector: field.selector,
+          ref: field.ref,
+        })
+        if (sensitiveKind !== null) {
+          return {
+            content:
+              'Plain form filling is blocked because at least one field is ' +
+              'structurally declared sensitive. Use browser_sensitive_type for that field.',
+            isError: true,
+          }
+        }
+      }
       const result = await fillForm(page, fields)
       return withSnapshot(page, result, input.attachSnapshot !== false, {
         fieldCount: fields.length,
@@ -1304,6 +1434,7 @@ export const browserTools: Tool[] = [
   browserNavigate,
   browserClick,
   browserType,
+  browserSensitiveType,
   browserScreenshot,
   browserSnapshot,
   browserEvaluate,

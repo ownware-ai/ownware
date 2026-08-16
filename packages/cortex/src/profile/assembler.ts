@@ -13,6 +13,7 @@ import {
   createDefaultConfig,
   mergeConfig,
   builtinTools,
+  builtinBrowserSensitiveInputTool,
   filesystemTools,
   shellTools,
   credentialTools,
@@ -52,6 +53,7 @@ import type {
   HookRuntime,
   ReminderInjector,
   SkillDefinition,
+  SkillActivationEvidenceCatalog,
   EgressMode,
 } from '@ownware/loom'
 import type { LoadedProfile } from './loader.js'
@@ -97,6 +99,18 @@ export interface AssembledAgent {
   readonly config: LoomConfig
   /** All tools merged, filtered, and validated */
   readonly tools: Tool[]
+  /**
+   * Exact post-policy descendant of Ownware's trusted sensitive-browser
+   * built-in, or null when the profile/provider pipeline removed it. This is
+   * lineage, not a tool-name lookup; the gateway registers only this object.
+   */
+  readonly browserSensitiveInputTool: Tool | null
+  /**
+   * Exact post-policy descendant of the session-bound `remember` tool, or
+   * null when memory proposals are unavailable. Reversal authority is bound
+   * to this object identity; a same-name custom tool is never sufficient.
+   */
+  readonly rememberProposalTool: Tool | null
   /**
    * Assembled system prompt as cache-aware blocks.
    *
@@ -178,6 +192,13 @@ export interface AssembledAgent {
  */
 export interface AssembleOptions {
   /**
+   * Host/runtime availability filter applied to exact assembled tool objects
+   * before provider composition and prompt generation. This is capability
+   * negotiation, not profile authorization; omitted means all profile tools
+   * remain available.
+   */
+  readonly isToolAvailable?: (tool: Tool) => boolean
+  /**
    * Assembly-time outbound envelope. Local-only never imports arbitrary
    * custom-tool modules, starts MCP transports, or invokes connector
    * providers whose catalogue resolution is not proven local.
@@ -188,6 +209,15 @@ export interface AssembleOptions {
    * Callers must resolve scope before assembly; duplicate names fail closed.
    */
   readonly additionalSkills?: readonly SkillDefinition[]
+  /**
+   * Trusted host identity seam for the exact post-merge active skill
+   * catalogue. Omit outside a host that can bind profile identity; skills
+   * still dispatch, but no activation receipt is emitted.
+   */
+  readonly createSkillActivationEvidence?: (
+    profile: LoadedProfile,
+    activeSkills: readonly SkillDefinition[],
+  ) => SkillActivationEvidenceCatalog
   /**
    * @deprecated Prefer `toolProviders` with a
    * `WebSearchToolProvider`. Kept for back-compat with every M1.5
@@ -431,20 +461,24 @@ export async function assembleAgent(
   const memoryContext = await resolveMemoryContext(profile, options)
 
   // 3. Assemble tools (including MCP tools and not-ready stubs)
-  const tools0 = await assembleTools(
+  const assembledTools0 = await assembleTools(
     profile,
     mcpManager,
     mcpStubs,
     memoryContext,
     options.egressMode ?? 'unrestricted',
+    options.createSkillActivationEvidence,
   )
+  const tools0 = options.isToolAvailable === undefined
+    ? assembledTools0
+    : assembledTools0.filter(options.isToolAvailable)
 
   // 4. Run connector tool providers — the vendor-agnostic seam every
   //    future source plugs into. The legacy `webSearchService` option
   //    is auto-wrapped into a provider so M1.5 callers keep working.
   const providers = resolveToolProviders(options)
   const {
-    tools: providedTools,
+    tools: providedTools0,
     configOverlays,
     connectorTools,
   } = await runToolProviders(
@@ -453,12 +487,30 @@ export async function assembleAgent(
     tools0,
     options.egressMode ?? 'unrestricted',
   )
+  // Host availability applies to the final contributed surface as well as
+  // profile-built tools. This keeps the seam general for a new provider that
+  // contributes an exact host-bound Tool object; names never grant authority.
+  const providedTools = options.isToolAvailable === undefined
+    ? providedTools0
+    : providedTools0.filter(options.isToolAvailable)
 
   // 4b. Compile per-tool input policies into Loom ToolGuards and wrap
   //     matching tools. Tools not targeted by any guard are returned
   //     ref-equal (no-op). Compilation runs ONCE per assembly — regexes
   //     and matchers are closure-captured, not rebuilt per call.
+  const browserSensitiveInputIndex = providedTools.indexOf(
+    builtinBrowserSensitiveInputTool,
+  )
+  const rememberProposalToolIndex = memoryContext?.rememberTool == null
+    ? -1
+    : providedTools.indexOf(memoryContext.rememberTool)
   const tools = applyProfilePolicies(profile, providedTools)
+  const browserSensitiveInputTool = browserSensitiveInputIndex < 0
+    ? null
+    : tools[browserSensitiveInputIndex] ?? null
+  const rememberProposalTool = rememberProposalToolIndex < 0
+    ? null
+    : tools[rememberProposalToolIndex] ?? null
 
   // 5. Build system prompt (tools passed for usage rules fragment)
   const systemPrompt = await buildSystemPrompt(
@@ -524,6 +576,8 @@ export async function assembleAgent(
   return {
     config,
     tools,
+    browserSensitiveInputTool,
+    rememberProposalTool,
     systemPrompt,
     provider,
     checkpointStore,
@@ -545,6 +599,10 @@ async function assembleTools(
   mcpStubs: Tool[],
   memoryContext: MemoryContext | null,
   egressMode: EgressMode,
+  createSkillActivationEvidence?: (
+    profile: LoadedProfile,
+    activeSkills: readonly SkillDefinition[],
+  ) => SkillActivationEvidenceCatalog,
 ): Promise<Tool[]> {
   const toolsConfig = profile.config.tools
   let tools: Tool[] = []
@@ -635,7 +693,19 @@ async function assembleTools(
     if (tools.some(tool => tool.name === 'skill')) {
       throw new TypeError('The skill dispatcher tool name is already registered.')
     }
-    tools.push(createSkillTool(new SkillRegistry().registerAll(activeSkills)))
+    tools.push(createSkillTool(
+      new SkillRegistry().registerAll(activeSkills),
+      {
+        ...(createSkillActivationEvidence === undefined
+          ? {}
+          : {
+              activationEvidence: createSkillActivationEvidence(
+                profile,
+                activeSkills,
+              ),
+            }),
+      },
+    ))
   }
 
   // (The desktop board tools + `open_pane` pane-substrate wiring were
@@ -1205,13 +1275,17 @@ async function resolveMemoryContext(
     rememberTool = createRememberTool({
       hook: {
         async propose(input) {
-          const proposal = await proposalsRef.propose({
+          const disposition = await proposalsRef.proposeWithDisposition({
             profileId,
             threadId: capturedThreadId,
             content: input.content,
             ...(input.kind !== undefined ? { kind: input.kind } : {}),
           })
-          return { proposalId: proposal.id }
+          return {
+            proposalId: disposition.proposal.id,
+            created: disposition.created,
+            targetRevision: disposition.proposal.createdAt,
+          }
         },
       },
     })

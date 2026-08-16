@@ -8,6 +8,13 @@
 
 import type { TurnUsage } from '../core/events.js'
 
+export interface GrantedSkillActivation {
+  readonly sourceRef: string
+  readonly sourceDigest: string
+  readonly skillName: string
+  readonly skillDigest: string
+}
+
 // ---------------------------------------------------------------------------
 // Agent specification
 // ---------------------------------------------------------------------------
@@ -38,6 +45,12 @@ export interface AgentSpec {
    * comes from the profile, not the engine.
    */
   readonly persistentReminder?: string
+  /**
+   * Exact skills already embedded into this helper's system prompt by the
+   * trusted host. The spawner emits one activation observation immediately
+   * after the helper exists and before its first provider request.
+   */
+  readonly grantedSkillActivations?: readonly GrantedSkillActivation[]
 }
 
 // ---------------------------------------------------------------------------

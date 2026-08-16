@@ -218,4 +218,49 @@ describe('CLI ↔ gateway over the wire', () => {
     expect(transcript2).toContain(`↺ resumed ${threadId}`)
     expect(transcript2.toLowerCase()).toContain('pong')
   }, 180_000)
+
+  it('runs a real Ollama turn inside the enforced local-only envelope', async () => {
+    if (!(await ollamaAvailable())) return
+
+    const started = await client.run({
+      profileId: 'test-agent',
+      model: OLLAMA_MODEL,
+      prompt: 'Reply with exactly the word pong. EGRESS_PROMPT_SECRET_CANARY',
+      egressMode: 'local-only',
+    })
+    expect(started.egressMode).toBe('local-only')
+
+    let reply = ''
+    let lastSeq = 0
+    for await (const frame of client.events(started.runId ?? started.threadId, {})) {
+      const interpreted = interpretSseEvent(frame.type, frame.data, lastSeq)
+      lastSeq = interpreted.seq
+      if (interpreted.event?.type === 'delta') reply += interpreted.event.text
+      if (interpreted.event?.type === 'error') throw new Error(interpreted.event.message)
+      if (interpreted.stop) break
+    }
+    expect(reply.toLowerCase()).toContain('pong')
+
+    const receipts = await client.listEgressReceipts(started.runId!)
+    expect(receipts.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: 'local-only',
+        sourceKind: 'provider',
+        sourceRef: 'ollama',
+        mediation: 'platform_fetch',
+        destinationOrigin: 'http://127.0.0.1:11434',
+        phase: 'dispatch_started',
+      }),
+      expect.objectContaining({
+        mode: 'local-only',
+        sourceKind: 'provider',
+        sourceRef: 'ollama',
+        mediation: 'platform_fetch',
+        destinationOrigin: 'http://127.0.0.1:11434',
+        phase: 'response_observed',
+      }),
+    ]))
+    expect(JSON.stringify(receipts)).not.toContain('EGRESS_PROMPT_SECRET_CANARY')
+    expect(JSON.stringify(receipts)).not.toContain('pong')
+  }, 180_000)
 })

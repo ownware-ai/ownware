@@ -67,7 +67,19 @@ interface InjectedSpawner {
 
 type SubagentDefs = Record<
   string,
-  { model?: string; tools?: string[]; systemPrompt?: string; maxTurns?: number; persistentReminder?: string }
+  {
+    model?: string
+    tools?: string[]
+    systemPrompt?: string
+    maxTurns?: number
+    persistentReminder?: string
+    grantedSkillActivations?: readonly {
+      sourceRef: string
+      sourceDigest: string
+      skillName: string
+      skillDigest: string
+    }[]
+  }
 > | undefined
 
 // ---------------------------------------------------------------------------
@@ -87,6 +99,9 @@ function buildSpec(task: TaskInput, defs: SubagentDefs, workspacePath: string | 
     ...(def?.persistentReminder && def.persistentReminder.trim().length > 0
       ? { persistentReminder: def.persistentReminder }
       : {}),
+    ...(def?.grantedSkillActivations === undefined
+      ? {}
+      : { grantedSkillActivations: def.grantedSkillActivations }),
   }
 }
 

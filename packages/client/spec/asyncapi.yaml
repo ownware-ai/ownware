@@ -15,7 +15,7 @@
 asyncapi: 3.0.0
 info:
   title: Ownware Gateway — run event stream
-  version: 0.42.0
+  version: 0.44.0
 
 channels:
   runEvents:
@@ -84,6 +84,65 @@ channels:
             requestId: { type: string }
             operationHash: { type: string, pattern: '^[0-9a-f]{64}$' }
             intentRevision: { type: integer, const: 1 }
+      sensitiveInputRequest:
+        name: sensitive.input.request
+        summary: >
+          The run is waiting for one value through the dedicated opaque
+          sensitive-input endpoint. The event contains metadata only; clients
+          submit or deny by exact runId/requestId.
+        payload:
+          type: object
+          required: [type, seq, requestId, toolCallId, toolName, label, usage, agentId, adapterRevision]
+          properties:
+            type: { const: sensitive.input.request }
+            seq: { type: integer }
+            requestId: { type: string }
+            toolCallId: { type: string }
+            toolName: { type: string }
+            label: { type: string }
+            usage: { type: string }
+            agentId: { type: [string, 'null'] }
+            adapterRevision: { type: string }
+      sensitiveInputResponse:
+        name: sensitive.input.response
+        summary: Metadata-only terminal observation for one sensitive-input request.
+        payload:
+          type: object
+          required: [type, seq, requestId, toolCallId, toolName, agentId, adapterRevision, status]
+          properties:
+            type: { const: sensitive.input.response }
+            seq: { type: integer }
+            requestId: { type: string }
+            toolCallId: { type: string }
+            toolName: { type: string }
+            agentId: { type: [string, 'null'] }
+            adapterRevision: { type: string }
+            status: { type: string, enum: [injected, denied, failed, indeterminate] }
+            reason:
+              type: string
+              enum: [adapter-unavailable, expired, revoked, binding-mismatch, injection-failed]
+      skillActivation:
+        name: skill.activation
+        summary: >
+          Content-free observation that an exact bound skill body entered a
+          root or explicitly granted helper conversation. This is dispatcher
+          evidence, not behavioral-compliance evidence.
+        payload:
+          type: object
+          additionalProperties: false
+          required: [type, seq, activationId, toolCallId, sourceRef, sourceDigest, skillName, skillDigest, agentId, turnIndex, timestamp]
+          properties:
+            type: { const: skill.activation }
+            seq: { type: integer }
+            activationId: { type: string, format: uuid }
+            toolCallId: { type: [string, 'null'] }
+            sourceRef: { type: string, minLength: 1, maxLength: 240 }
+            sourceDigest: { type: string, pattern: '^hmac-sha256:[0-9a-f]{64}$' }
+            skillName: { type: string, minLength: 1, maxLength: 240 }
+            skillDigest: { type: string, pattern: '^hmac-sha256:[0-9a-f]{64}$' }
+            agentId: { type: [string, 'null'] }
+            turnIndex: { type: integer, minimum: 0 }
+            timestamp: { type: integer, minimum: 0 }
       turnEnd:
         name: turn.end
         summary: >

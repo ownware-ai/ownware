@@ -111,6 +111,7 @@ type MemoryProposalPort = Pick<SqliteMemoryProposalsStore,
   | 'listForThread'
   | 'countPendingForProfile'
   | 'propose'
+  | 'proposeWithDisposition'
   | 'accept'
   | 'reject'
 >

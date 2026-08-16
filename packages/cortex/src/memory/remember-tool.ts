@@ -19,7 +19,7 @@
  * adapter for Loom's `todo_write`.
  */
 
-import { defineTool, type Tool } from '@ownware/loom'
+import { defineTool, type Tool, type ToolResult } from '@ownware/loom'
 import { RememberInputSchema, type MemoryKind, MAX_MEMORY_CONTENT_CHARS } from './schema.js'
 
 export interface RememberHook {
@@ -28,7 +28,13 @@ export interface RememberHook {
    * Throws on validation failure — the tool surfaces the error message
    * to the model verbatim.
    */
-  propose(input: { content: string; kind?: MemoryKind }): Promise<{ proposalId: string }>
+  propose(input: { content: string; kind?: MemoryKind }): Promise<{
+    readonly proposalId: string
+    /** True only when this invocation inserted the proposal. */
+    readonly created?: boolean
+    /** Opaque authoritative revision captured from the inserted row. */
+    readonly targetRevision?: string
+  }>
 }
 
 export interface RememberToolDeps {
@@ -63,6 +69,26 @@ Phrasing:
 - Write the fact in third-person about the user ("User uses Bun, not npm").
 - Self-contained — future-you will read this without the original conversation context.
 - Concise. One fact per call. Multiple facts → multiple calls.`
+
+interface RememberProposalEffectMark {
+  readonly proposalId: string
+  readonly targetRevision: string
+}
+
+const REMEMBER_PROPOSAL_EFFECTS = new WeakMap<ToolResult, RememberProposalEffectMark>()
+
+/**
+ * Internal, one-use authority carrier consumed by the trusted gateway wrapper.
+ * Tool metadata and matching prose cannot manufacture this object-identity
+ * mark. Deliberately not re-exported from the memory package barrel.
+ */
+export function consumeRememberProposalEffect(
+  result: ToolResult,
+): RememberProposalEffectMark | null {
+  const mark = REMEMBER_PROPOSAL_EFFECTS.get(result) ?? null
+  if (mark !== null) REMEMBER_PROPOSAL_EFFECTS.delete(result)
+  return mark
+}
 
 export function createRememberTool(deps: RememberToolDeps): Tool {
   return defineTool({
@@ -105,19 +131,23 @@ export function createRememberTool(deps: RememberToolDeps): Tool {
       }
 
       try {
-        const { proposalId } = await deps.hook.propose({
+        const { proposalId, created, targetRevision } = await deps.hook.propose({
           content: parsed.data.content.trim(),
           kind: parsed.data.kind,
         })
         deps.onProposed?.(proposalId)
-        return Promise.resolve({
+        const result: ToolResult = {
           content:
             'Proposed for the user to review.\n' +
             'They will see this in the Memory tab and choose to keep, edit, or discard it. ' +
             'It is NOT yet stored — do not assume future sessions will know this until the user accepts.',
           isError: false,
           metadata: { proposalId },
-        })
+        }
+        if (created === true && targetRevision !== undefined) {
+          REMEMBER_PROPOSAL_EFFECTS.set(result, { proposalId, targetRevision })
+        }
+        return Promise.resolve(result)
       } catch (err) {
         return Promise.resolve({
           content: `Failed to propose memory: ${err instanceof Error ? err.message : String(err)}`,

@@ -11,7 +11,7 @@
 import type { LoomConfig } from './config.js'
 import type { SystemPrompt } from './system-prompt.js'
 import type { LoomEvent, TurnUsage } from './events.js'
-import type { CredentialCallbacks, LoopResult } from './loop.js'
+import type { CredentialCallbacks, LoopResult, SensitiveInputCallbacks } from './loop.js'
 import type { CredentialResolver } from '../credentials/resolver.js'
 import type { EgressControl } from '../egress/types.js'
 import type { Message, ContentBlock } from '../messages/types.js'
@@ -192,6 +192,7 @@ export class Session {
   private customAuthorizeToolExecution?: AuthorizeToolExecutionFn
   private permissionPolicyRevision?: string
   private credentialCallbacks?: CredentialCallbacks
+  private sensitiveInputCallbacks?: SensitiveInputCallbacks
   /**
    * Unified credential resolver (board: credentials-unification — C20).
    * When set, the loop forwards it onto every `ToolContext` so tools
@@ -336,6 +337,8 @@ export class Session {
      * resolves return null, lists are empty.
      */
     credentials?: CredentialCallbacks
+    /** Host-owned opaque sensitive-input prompt and injection boundary. */
+    sensitiveInputs?: SensitiveInputCallbacks
     /**
      * Unified credential resolver (board: credentials-unification —
      * C20). When set, the loop forwards it onto every `ToolContext`
@@ -424,6 +427,7 @@ export class Session {
     this.customAuthorizeToolExecution = opts.authorizeToolExecution
     this.permissionPolicyRevision = opts.permissionPolicyRevision
     this.credentialCallbacks = opts.credentials
+    this.sensitiveInputCallbacks = opts.sensitiveInputs
     this.credentialResolver = opts.credentialResolver
     this.reminders = opts.reminders
     this.hooks = opts.hooks
@@ -534,6 +538,9 @@ export class Session {
         ? { permissionPolicyRevision: this.permissionPolicyRevision }
         : {}),
       ...(this.credentialCallbacks ? { credentials: this.credentialCallbacks } : {}),
+      ...(this.sensitiveInputCallbacks
+        ? { sensitiveInputs: this.sensitiveInputCallbacks }
+        : {}),
       ...(this.credentialResolver ? { credentialResolver: this.credentialResolver } : {}),
       ...(this.toolResultCacheOverride ? { toolResultCache: this.toolResultCacheOverride } : {}),
       ...(this.reminders ? { reminders: this.reminders } : {}),

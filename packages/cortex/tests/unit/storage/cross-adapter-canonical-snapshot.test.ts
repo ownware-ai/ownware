@@ -11,7 +11,7 @@ import {
   type PostgreSqlRepositoryFactories,
 } from '../../../src/storage/postgresql-adapter.js'
 import {
-  postgreSqlCatalogMatchesCurrentV89,
+  postgreSqlCatalogMatchesCurrentV90,
 } from '../../../src/storage/postgresql-catalog-certification.js'
 import { canonicalPostgreSqlTransferSnapshot } from '../../../src/storage/postgresql-canonical-snapshot.js'
 import { validateStoragePlan, type ValidatedPostgreSqlPlan } from '../../../src/storage/config.js'
@@ -59,7 +59,7 @@ describePostgreSql('cross-adapter canonical transfer snapshot', () => {
       await adapter.initialize()
       await adapter.close()
       await postgresql.connect()
-      await expect(postgreSqlCatalogMatchesCurrentV89(postgresql)).resolves.toBe(true)
+      await expect(postgreSqlCatalogMatchesCurrentV90(postgresql)).resolves.toBe(true)
 
       const instant = '2026-08-02T03:04:05.678Z'
       const principal = 'delegated\0workspace-a\0profile-a'
@@ -251,9 +251,9 @@ describePostgreSql('cross-adapter canonical transfer snapshot', () => {
         tables: sqliteReceipt.tables,
       })
       expect(postgresqlReceipt).toMatchObject({
-        schemaVersion: 89,
-        logicalColumnCount: 810,
-        tableCount: 74,
+        schemaVersion: 90,
+        logicalColumnCount: 821,
+        tableCount: 75,
         rowCount: 8,
       })
     } finally {

@@ -5076,4 +5076,195 @@ export const MIGRATIONS: Migration[] = [
         BEGIN SELECT RAISE(ABORT, 'egress receipts are immutable'); END;
     `,
   },
+  {
+    version: 90,
+    name: '090_skill_activation_receipts',
+    sql: `
+      CREATE TABLE skill_activation_receipts (
+        receipt_id        TEXT    PRIMARY KEY CHECK (
+          length(receipt_id) = 36
+          AND substr(receipt_id, 9, 1) = '-'
+          AND substr(receipt_id, 14, 1) = '-'
+          AND substr(receipt_id, 19, 1) = '-'
+          AND substr(receipt_id, 24, 1) = '-'
+          AND replace(receipt_id, '-', '') NOT GLOB '*[^0-9a-f]*'
+          AND substr(receipt_id, 15, 1) IN ('1', '2', '3', '4', '5')
+          AND substr(receipt_id, 20, 1) IN ('8', '9', 'a', 'b')
+        ),
+        receipt_seq       INTEGER NOT NULL CHECK (receipt_seq > 0),
+        run_id            TEXT    NOT NULL REFERENCES gateway_runs(id),
+        profile_id        TEXT    NOT NULL CHECK (
+          length(profile_id) BETWEEN 1 AND 240
+          AND profile_id NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+        ),
+        profile_digest    TEXT    NOT NULL CHECK (
+          length(profile_digest) = 76
+          AND substr(profile_digest, 1, 12) = 'hmac-sha256:'
+          AND substr(profile_digest, 13) NOT GLOB '*[^0-9a-f]*'
+        ),
+        skill_name        TEXT    NOT NULL CHECK (
+          length(skill_name) BETWEEN 1 AND 240
+          AND skill_name NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+        ),
+        skill_digest      TEXT    NOT NULL CHECK (
+          length(skill_digest) = 76
+          AND substr(skill_digest, 1, 12) = 'hmac-sha256:'
+          AND substr(skill_digest, 13) NOT GLOB '*[^0-9a-f]*'
+        ),
+        agent_id          TEXT CHECK (
+          agent_id IS NULL OR (
+            length(agent_id) BETWEEN 1 AND 240
+            AND agent_id NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+          )
+        ),
+        tool_call_id      TEXT CHECK (
+          tool_call_id IS NULL OR (
+            length(tool_call_id) BETWEEN 1 AND 240
+            AND tool_call_id NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+          )
+        ),
+        turn_index        INTEGER NOT NULL CHECK (turn_index >= 0),
+        activated_at      INTEGER NOT NULL CHECK (activated_at >= 0),
+        UNIQUE (run_id, receipt_seq)
+      );
+
+      CREATE INDEX idx_skill_activation_receipts_run
+        ON skill_activation_receipts(run_id, receipt_seq);
+
+      CREATE TRIGGER skill_activation_receipts_no_update
+        BEFORE UPDATE ON skill_activation_receipts
+        BEGIN SELECT RAISE(ABORT, 'skill activation receipts are immutable'); END;
+      CREATE TRIGGER skill_activation_receipts_no_delete
+        BEFORE DELETE ON skill_activation_receipts
+        BEGIN SELECT RAISE(ABORT, 'skill activation receipts are immutable'); END;
+    `,
+  },
+  {
+    version: 91,
+    name: '091_effect_reversals',
+    sql: `
+      -- The authority that resolved a proposal is private control-plane
+      -- lineage. It is never returned by the memory API.
+      ALTER TABLE memory_proposals ADD COLUMN resolution_authority_ref TEXT
+        CHECK (
+          resolution_authority_ref IS NULL OR (
+            length(resolution_authority_ref) = 36
+            AND substr(resolution_authority_ref, 9, 1) = '-'
+            AND substr(resolution_authority_ref, 14, 1) = '-'
+            AND substr(resolution_authority_ref, 19, 1) = '-'
+            AND substr(resolution_authority_ref, 24, 1) = '-'
+            AND replace(resolution_authority_ref, '-', '') NOT GLOB '*[^0-9a-f]*'
+          )
+        );
+
+      CREATE TABLE effect_reversal_offers (
+        offer_id          TEXT    PRIMARY KEY CHECK (length(offer_id) = 36),
+        offer_seq         INTEGER NOT NULL CHECK (offer_seq > 0),
+        run_id            TEXT    NOT NULL REFERENCES gateway_runs(id),
+        effect_id         TEXT    NOT NULL,
+        adapter_ref       TEXT    NOT NULL CHECK (
+          length(adapter_ref) BETWEEN 1 AND 160
+          AND adapter_ref NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        adapter_revision  TEXT    NOT NULL CHECK (
+          length(adapter_revision) BETWEEN 1 AND 80
+          AND adapter_revision NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        operation_kind    TEXT    NOT NULL CHECK (operation_kind IN ('inverse', 'compensation')),
+        status            TEXT    NOT NULL CHECK (status IN ('available', 'confirmed', 'stale', 'expired')),
+        target_kind       TEXT    NOT NULL CHECK (target_kind = 'memory_proposal'),
+        target_ref        TEXT    NOT NULL CHECK (
+          length(target_ref) BETWEEN 1 AND 200
+          AND target_ref NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        target_revision   TEXT    NOT NULL CHECK (
+          length(target_revision) BETWEEN 1 AND 200
+          AND target_revision NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+        ),
+        target_profile_id TEXT    NOT NULL CHECK (
+          length(target_profile_id) BETWEEN 1 AND 240
+          AND target_profile_id NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+        ),
+        target_thread_id  TEXT    NOT NULL CHECK (
+          length(target_thread_id) BETWEEN 1 AND 240
+          AND target_thread_id NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+        ),
+        created_at        INTEGER NOT NULL CHECK (created_at >= 0),
+        expires_at        INTEGER CHECK (expires_at IS NULL OR expires_at > created_at),
+        resolved_at       INTEGER CHECK (
+          (status = 'available' AND resolved_at IS NULL)
+          OR (status <> 'available' AND resolved_at IS NOT NULL AND resolved_at >= created_at)
+        ),
+        FOREIGN KEY (effect_id, run_id)
+          REFERENCES effect_identities(effect_id, run_id),
+        UNIQUE (offer_id, run_id),
+        UNIQUE (run_id, offer_seq),
+        UNIQUE (effect_id, adapter_ref, adapter_revision)
+      );
+
+      CREATE TABLE effect_reversal_receipts (
+        receipt_id       TEXT    PRIMARY KEY CHECK (length(receipt_id) = 36),
+        receipt_seq      INTEGER NOT NULL CHECK (receipt_seq > 0),
+        offer_id         TEXT    NOT NULL,
+        run_id           TEXT    NOT NULL,
+        effect_id        TEXT    NOT NULL,
+        operation_kind   TEXT    NOT NULL CHECK (operation_kind IN ('inverse', 'compensation')),
+        outcome          TEXT    NOT NULL CHECK (outcome IN ('confirmed', 'stale', 'expired')),
+        authority_ref    TEXT    NOT NULL CHECK (
+          length(authority_ref) BETWEEN 1 AND 241
+          AND authority_ref NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        actor_kind       TEXT    NOT NULL CHECK (actor_kind IN ('owner', 'delegated')),
+        idempotency_key  TEXT    NOT NULL CHECK (length(idempotency_key) = 36),
+        observed_at      INTEGER NOT NULL CHECK (observed_at >= 0),
+        FOREIGN KEY (offer_id, run_id)
+          REFERENCES effect_reversal_offers(offer_id, run_id),
+        FOREIGN KEY (effect_id, run_id)
+          REFERENCES effect_identities(effect_id, run_id),
+        UNIQUE (run_id, receipt_seq),
+        UNIQUE (offer_id),
+        UNIQUE (offer_id, idempotency_key)
+      );
+
+      CREATE INDEX idx_effect_reversal_offers_run
+        ON effect_reversal_offers(run_id, offer_seq);
+      CREATE INDEX idx_effect_reversal_receipts_run
+        ON effect_reversal_receipts(run_id, receipt_seq);
+
+      CREATE TRIGGER effect_reversal_offers_immutable_identity
+        BEFORE UPDATE ON effect_reversal_offers
+        WHEN OLD.offer_id IS NOT NEW.offer_id
+          OR OLD.offer_seq IS NOT NEW.offer_seq
+          OR OLD.run_id IS NOT NEW.run_id
+          OR OLD.effect_id IS NOT NEW.effect_id
+          OR OLD.adapter_ref IS NOT NEW.adapter_ref
+          OR OLD.adapter_revision IS NOT NEW.adapter_revision
+          OR OLD.operation_kind IS NOT NEW.operation_kind
+          OR OLD.target_kind IS NOT NEW.target_kind
+          OR OLD.target_ref IS NOT NEW.target_ref
+          OR OLD.target_revision IS NOT NEW.target_revision
+          OR OLD.target_profile_id IS NOT NEW.target_profile_id
+          OR OLD.target_thread_id IS NOT NEW.target_thread_id
+          OR OLD.created_at IS NOT NEW.created_at
+          OR OLD.expires_at IS NOT NEW.expires_at
+        BEGIN SELECT RAISE(ABORT, 'effect reversal offer identity is immutable'); END;
+
+      CREATE TRIGGER effect_reversal_offers_validate_transition
+        BEFORE UPDATE ON effect_reversal_offers
+        WHEN OLD.status <> 'available'
+          OR NEW.status NOT IN ('confirmed', 'stale', 'expired')
+          OR NEW.resolved_at IS NULL
+        BEGIN SELECT RAISE(ABORT, 'invalid effect reversal offer transition'); END;
+
+      CREATE TRIGGER effect_reversal_offers_no_delete
+        BEFORE DELETE ON effect_reversal_offers
+        BEGIN SELECT RAISE(ABORT, 'effect reversal offers are immutable evidence'); END;
+      CREATE TRIGGER effect_reversal_receipts_no_update
+        BEFORE UPDATE ON effect_reversal_receipts
+        BEGIN SELECT RAISE(ABORT, 'effect reversal receipts are immutable'); END;
+      CREATE TRIGGER effect_reversal_receipts_no_delete
+        BEFORE DELETE ON effect_reversal_receipts
+        BEGIN SELECT RAISE(ABORT, 'effect reversal receipts are immutable'); END;
+    `,
+  },
 ]

@@ -67,6 +67,10 @@ export interface ProfileDefinition {
      */
     composio?: { toolkits?: string[] }
   }
+  /** Browser runtime settings written into the test profile verbatim. */
+  readonly browser?: Readonly<Record<string, unknown>>
+  /** Security settings written into the test profile verbatim. */
+  readonly security?: Readonly<Record<string, unknown>>
   /**
    * Raw `subagents` array, written verbatim into agent.json under the
    * lowercase `subagents` key (matches ProfileSchema). Each entry must
@@ -264,6 +268,12 @@ async function writeProfileToDisk(profilesDir: string, profile: ProfileDefinitio
   }
   if (profile.subagents && profile.subagents.length > 0) {
     config['subagents'] = profile.subagents
+  }
+  if (profile.browser) {
+    config['browser'] = profile.browser
+  }
+  if (profile.security) {
+    config['security'] = profile.security
   }
 
   await writeFile(join(dir, 'agent.json'), JSON.stringify(config, null, 2))

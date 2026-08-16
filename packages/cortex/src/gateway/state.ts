@@ -19,6 +19,7 @@ import { randomBytes } from 'node:crypto'
 import type { CredentialHITL } from '../credential/hitl.js'
 import type { ThreadCredentialRuntime } from '../credential/runtime.js'
 import type { HITLLike } from './hitl-registry.js'
+import type { SensitiveInputBroker } from './sensitive-input-broker.js'
 import type { ExecutionRuntime } from '../runtime/port.js'
 import type {
   Thread, ThreadMessage, Workspace, WorkspaceDetail,
@@ -77,6 +78,7 @@ import type { EvidenceSearchCache } from './evidence-search-cache.js'
 import type { SourceQuotaLimits } from './source-quota-policy.js'
 import { MemoryEventBus } from '../memory/event-bus.js'
 import { TaskEventBus } from '../tasks/event-bus.js'
+import { SkillActivationEvidenceAuthority } from './skill-activation-evidence.js'
 
 const MAX_EVENT_LOG_SIZE = 2000
 
@@ -169,6 +171,10 @@ export interface SessionCompanions {
    * gateway credential endpoints call `.respond` / `.deny` on it.
    */
   readonly credentialHITL: CredentialHITL
+  /** Dedicated in-memory value authority; absent on non-interactive hosts. */
+  readonly sensitiveInputBroker?: SensitiveInputBroker
+  /** Fixed client transport negotiation for the lifetime of the cached session. */
+  readonly sensitiveInputEnabled?: boolean
   /**
    * Per-thread credential state. Holds the vault-backed handles visible
    * to this session (auto-imported .env + runtime-stored) plus the
@@ -189,8 +195,8 @@ export interface SessionCompanions {
    * Every HITL this session owns, in register order. The abort handler
    * iterates this array and calls `denyAll()` on each so a user abort
    * structurally unblocks any parked HITL await — regardless of which
-   * or how many HITLs the session has. `hitl` and `credentialHITL`
-   * above are the two today; both are also present here (wrapped via
+   * or how many HITLs the session has. Type-specific authority fields
+   * above remain available to direct callers; all are also present here (wrapped via
    * `asHitlLike`). New HITLs register here at construction time and
    * the abort path handles them automatically — no edit to the abort
    * handler per new HITL.
@@ -287,6 +293,8 @@ export class GatewayState {
    * the durable log from the selected storage adapter.
    */
   readonly eventBus = new EventBus()
+  /** Install-local keyed identity authority for run skill catalogues. */
+  readonly skillActivationEvidence: SkillActivationEvidenceAuthority
   /**
    * Single write path for every parent/subagent event. Writes to durable storage
    * then publishes to the bus — "live is always a suffix of disk".
@@ -301,6 +309,9 @@ export class GatewayState {
     readonly storagePlan?: ValidatedStoragePlan
   } = {}) {
     const permissionHashSecret = options.permissionHashSecret ?? randomBytes(32).toString('hex')
+    this.skillActivationEvidence = new SkillActivationEvidenceAuthority(
+      permissionHashSecret,
+    )
     const plan = options.storagePlan ?? {
       kind: 'sqlite' as const,
       path: dbPath,
@@ -396,6 +407,10 @@ export class GatewayState {
       runs: deferredRepository(() => root().security.runs),
       effectReceipts: deferredRepository(() => root().security.effectReceipts),
       egressReceipts: deferredRepository(() => root().security.egressReceipts),
+      skillActivationReceipts: deferredRepository(
+        () => root().security.skillActivationReceipts,
+      ),
+      effectReversals: deferredRepository(() => root().security.effectReversals),
       idempotency: deferredRepository(() => root().security.idempotency),
       accessGrants: deferredRepository(() => root().security.accessGrants),
       oauthRefresh: deferredRepository(() => root().security.oauthRefresh),
@@ -637,6 +652,7 @@ export class GatewayState {
     const companions = this.sessionCompanions.get(id)
     if (companions) {
       try { companions.credentialHITL.dispose() } catch { /* best-effort */ }
+      try { companions.sensitiveInputBroker?.dispose() } catch { /* best-effort */ }
       void companions.credentialRuntime.cleanup().catch(() => { /* best-effort */ })
     }
 
@@ -808,6 +824,7 @@ export class GatewayState {
     const companions = this.sessionCompanions.get(threadId)
     if (companions) {
       try { companions.credentialHITL.dispose() } catch { /* best-effort */ }
+      try { companions.sensitiveInputBroker?.dispose() } catch { /* best-effort */ }
       try { await companions.credentialRuntime.cleanup() } catch { /* best-effort */ }
     }
     this.sessions.delete(threadId)

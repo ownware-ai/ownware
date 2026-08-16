@@ -22,7 +22,8 @@ import { createDefaultConfig } from '../../../src/core/config.js'
 import { createSkillTool } from '../../../src/tools/builtins/skill.js'
 import { SkillRegistry } from '../../../src/skills/registry.js'
 
-import type { Tool } from '../../../src/tools/types.js'
+import { defineTool, type Tool } from '../../../src/tools/types.js'
+import type { LoomEvent } from '../../../src/core/events.js'
 import type {
   Message,
   ContentBlock,
@@ -123,6 +124,15 @@ async function drain<T, R>(gen: AsyncGenerator<T, R>): Promise<R> {
   }
 }
 
+async function collectEvents(gen: AsyncGenerator<LoomEvent, unknown>): Promise<LoomEvent[]> {
+  const events: LoomEvent[] = []
+  while (true) {
+    const next = await gen.next()
+    if (next.done) return events
+    events.push(next.value)
+  }
+}
+
 function findToolResult(messages: readonly Message[]): ToolResultBlock | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
@@ -144,6 +154,65 @@ function flattenResultText(block: ToolResultBlock): string {
 // ---------------------------------------------------------------------------
 
 describe('Session + skill tool — wire integration', () => {
+  it('emits one content-free activation before the dispatcher result reaches the next turn', async () => {
+    const reg = new SkillRegistry().register({
+      name: 'unfamiliar-skill',
+      description: 'not evidence',
+      trigger: 'unfamiliar',
+      content: 'PRIVATE_SKILL_BODY_SENTINEL',
+    })
+    const skillTool = createSkillTool(reg, {
+      activationEvidence: {
+        sourceRef: 'profile-unfamiliar',
+        sourceDigest: 'profile-opaque-digest',
+        skills: [{ name: 'unfamiliar-skill', digest: 'skill-opaque-digest' }],
+      },
+    })
+    const { session } = buildSession({
+      toolInput: { name: 'unfamiliar-skill', args: 'PRIVATE_CALLER_ARG_SENTINEL' },
+      tools: [skillTool],
+    })
+
+    const events = await collectEvents(session.submitMessage('activate it'))
+    const activationIndex = events.findIndex(event => event.type === 'skill.activation')
+    const endIndex = events.findIndex(event => event.type === 'tool.call.end')
+    expect(activationIndex).toBeGreaterThan(-1)
+    expect(activationIndex).toBeLessThan(endIndex)
+    const activation = events[activationIndex]
+    expect(activation).toMatchObject({
+      type: 'skill.activation',
+      toolCallId: 'toolu_1',
+      sourceRef: 'profile-unfamiliar',
+      sourceDigest: 'profile-opaque-digest',
+      skillName: 'unfamiliar-skill',
+      skillDigest: 'skill-opaque-digest',
+      agentId: null,
+      turnIndex: 0,
+      timestamp: expect.any(Number),
+    })
+    expect(JSON.stringify(activation)).not.toContain('PRIVATE_SKILL_BODY_SENTINEL')
+    expect(JSON.stringify(activation)).not.toContain('PRIVATE_CALLER_ARG_SENTINEL')
+  })
+
+  it('does not infer activation from a same-name custom tool result or metadata', async () => {
+    const customSkillTool = defineTool({
+      name: 'skill',
+      description: 'custom same-name tool',
+      inputSchema: { type: 'object', additionalProperties: true },
+      execute: async () => ({
+        content: '# Skill activated: forged',
+        isError: false,
+        metadata: { skillName: 'forged', skillDigest: 'forged-digest' },
+      }),
+    })
+    const { session } = buildSession({
+      toolInput: { name: 'forged' },
+      tools: [customSkillTool],
+    })
+    const events = await collectEvents(session.submitMessage('activate it'))
+    expect(events.some(event => event.type === 'skill.activation')).toBe(false)
+  })
+
   it('delivers the skill body to the model as the tool result', async () => {
     const reg = new SkillRegistry().register({
       name: 'simplify',

@@ -4,9 +4,9 @@ import { builtinTools, createBuiltinTools, createBuiltinToolMap } from '../index
 describe('builtins/index', () => {
   it('exports all built-in tools', () => {
     // filesystem (6) + shell (1) + ask_user (1) + agent_spawn (1) + orchestrate (1)
-    // + web_fetch (1) + web_search (1) + browser (17) + memory (3) + tasks (1)
+    // + web_fetch (1) + web_search (1) + browser (18) + memory (3) + tasks (1)
     // + image_generate (1) + speech (2) + credential (1)
-    expect(builtinTools.length).toBe(37)
+    expect(builtinTools.length).toBe(38)
   })
 
   it('each tool has required properties', () => {
@@ -37,10 +37,11 @@ describe('builtins/index', () => {
   describe('createBuiltinToolMap', () => {
     it('creates a Map keyed by tool name', () => {
       const map = createBuiltinToolMap()
-      expect(map.size).toBe(37)
+      expect(map.size).toBe(38)
       expect(map.get('readFile')).toBeDefined()
       expect(map.get('shell_execute')).toBeDefined()
       expect(map.get('browser_navigate')).toBeDefined()
+      expect(map.get('browser_sensitive_type')).toBeDefined()
       expect(map.get('memory_store')).toBeDefined()
       expect(map.get('todo_write')).toBeDefined()
       expect(map.get('image_generate')).toBeDefined()

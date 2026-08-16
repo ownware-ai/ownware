@@ -377,8 +377,11 @@ export function createPostgreSqlMemoryProposalRepository(
         ),
       );
     },
-    propose(input) {
-      return call("propose", true, async () => {
+    async propose(input) {
+      return (await this.proposeWithDisposition(input)).proposal;
+    },
+    proposeWithDisposition(input) {
+      return call("proposeWithDisposition", true, async () => {
         const content = input.content.trim();
         if (content.length === 0)
           throw new Error("Proposal content cannot be empty.");
@@ -395,7 +398,9 @@ export function createPostgreSqlMemoryProposalRepository(
                 [input.threadId, content],
               )
             ).rows[0];
-            if (existing !== undefined) return proposal(existing);
+            if (existing !== undefined) {
+              return { proposal: proposal(existing), created: false };
+            }
             const id = newId("prop"),
               now = new Date().toISOString();
             await client.query(
@@ -409,16 +414,18 @@ export function createPostgreSqlMemoryProposalRepository(
                 now,
               ],
             );
-            return (await getOn(client, id))!;
+            return { proposal: (await getOn(client, id))!, created: true };
           },
         );
-        bus.emit({
-          type: "memory.proposed",
-          profileId: value.profileId,
-          threadId: value.threadId,
-          proposalId: value.id,
-          at: value.createdAt,
-        });
+        if (value.created) {
+          bus.emit({
+            type: "memory.proposed",
+            profileId: value.proposal.profileId,
+            threadId: value.proposal.threadId,
+            proposalId: value.proposal.id,
+            at: value.proposal.createdAt,
+          });
+        }
         return value;
       });
     },

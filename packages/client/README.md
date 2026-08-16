@@ -83,12 +83,17 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `deployment(profileId)` | `GET /api/v1/profiles/:id/deployment` | Read active candidate, monotonic revision, routing, observed health and drain count. |
 | `deleteCandidate(id)` | `DELETE /api/v1/profile-candidates/:id` | Delete only an unreferenced candidate; active, in-flight and rollback-retained candidates reject. |
 | `profiles()` | `GET /api/v1/profiles` | Read the minimal safe catalog; delegated callers see only their scoped profile. |
-| `run(input)` | `POST /api/v1/run` | Send a message with optional model and bounded one-turn untrusted attachments. Model precedence is request → thread → install default → profile; only an unavailable same-runtime profile default may be substituted, while runtime incompatibility always rejects. Pass a UUID `idempotencyKey` and reuse it only to retry the exact request; delegated principals require one, plus `runs.attachments` when attachments are present. |
+| `run(input)` | `POST /api/v1/run` | Send a message with optional model and bounded one-turn untrusted attachments. Include `interactionCapabilities: ['sensitive-input.v1']` only when this caller can answer the dedicated request event; the set is fixed for the cached thread. Model precedence is request → thread → install default → profile; only an unavailable same-runtime profile default may be substituted, while runtime incompatibility always rejects. Pass a UUID `idempotencyKey` and reuse it only to retry the exact request; delegated principals require one, plus `runs.attachments` when attachments are present. |
 | `runSnapshot(runId)` | `GET /api/v1/runs/:runId` | Read the bounded durable lifecycle for one execution, including truthful indeterminate restart state. |
+| `listEffectReceipts(runId, options?)` | `GET /api/v1/runs/:runId/effect-receipts` | Page immutable payload-free observations of action intent, outcome and authority-confirmed effects without claiming generic reversibility. |
+| `listEgressReceipts(runId, options?)` | `GET /api/v1/runs/:runId/egress-receipts` | Page immutable content-free observations from the platform's known outbound dispatch boundaries. |
+| `listSkillActivationReceipts(runId, options?)` | `GET /api/v1/runs/:runId/skill-activation-receipts` | Page immutable content-free proof that an exact frozen skill entered a root or explicitly granted helper conversation; this is not proof of provider processing or behavioral compliance. |
 | `streamReply(runId, opts?)` | SSE `GET /runs/:id/events` | ONE bounded reply as `delta` → `done`/`error`. A legacy thread ID still uses the older unbounded thread route. |
 | `events(runId, opts?)` | same SSE | The RAW event stream for one run — tool calls, permission requests, usage, everything. |
 | `resume(threadId, { action })` | `POST /threads/:id/resume` | Owner-only legacy UI compatibility; delegated/public callers cannot use this bulk-capable route. |
 | `decidePermission(runId, requestId, input)` | `POST /runs/:runId/permissions/:requestId/decision` | Decide one exact request using its emitted `operationHash`; never bulk-decides siblings. |
+| `submitSensitiveInput(runId, requestId, value)` | `POST /runs/:runId/sensitive-input/:requestId` | Submit bounded UTF-8 over the dedicated `text/plain` transport. The response never echoes the value and proves broker acceptance, not successful injection. |
+| `denySensitiveInput(runId, requestId)` | `POST /runs/:runId/sensitive-input/:requestId/deny` | Decline one exact pending sensitive-input request without sending a value. |
 | `cancel(runId)` | `POST /runs/:runId/cancel` | Durably request cancellation of one exact run; `cancel_requested` is not confirmed cancellation. |
 | `abort(threadId)` | `POST /threads/:id/abort` | Owner-only legacy UI compatibility; delegated/public callers cannot use this thread route. |
 | `models()` | `GET /api/v1/models` | Deprecated array compatibility view; projected from Provider Hub. New clients use `providerHubModels()`. |
@@ -99,6 +104,15 @@ stream each returned `runId` independently. Reconnect a dropped stream by
 passing the highest `seq` you saw as `{ since }`. Invalid, earlier-run,
 ahead-of-run and expired cursors fail explicitly instead of replaying from zero;
 `runSnapshot(runId).earliestRetainedCursor` reports the current safe floor.
+Sensitive input is opt-in transport negotiation, not secret detection. A
+capable client includes `sensitive-input.v1`, waits for a `sensitive-input`
+stream event, then calls exactly one of `submitSensitiveInput` or
+`denySensitiveInput`. Ordinary typed text has no general “contains no secret”
+guarantee; use this dedicated path for supported browser fields. The current
+adapter is deliberately narrow: an exclusively owned root agent, a fresh
+ephemeral Gateway-managed Chrome process, and live DOM-declared password,
+one-time-code, card-number or card-security-code fields. Embedded/persistent
+browsers, helpers, messaging channels and other sinks fail closed.
 For delegated callers, continuation and every run-scoped read or action require
 the thread's durable authority binding to match the verified delegate,
 workspace, profile, subject, purpose and channel context. Unbound or mismatched

@@ -42,6 +42,30 @@ export type RunStreamEvent =
       readonly message: string
       readonly seq: number
     }
+  | {
+      readonly type: 'sensitive-input'
+      readonly requestId: string
+      readonly toolCallId: string
+      readonly toolName: string
+      readonly label: string
+      readonly usage: string
+      readonly agentId: string | null
+      readonly adapterRevision: string
+      readonly seq: number
+    }
+  | {
+      readonly type: 'skill-activation'
+      readonly activationId: string
+      readonly toolCallId: string | null
+      readonly profileId: string
+      readonly profileDigest: string
+      readonly skillName: string
+      readonly skillDigest: string
+      readonly agentId: string | null
+      readonly turnIndex: number
+      readonly activatedAt: number
+      readonly seq: number
+    }
 
 /** Stop reasons on a `turn.end` that mean the loop CONTINUES (not the run's end). */
 const CONTINUE_STOP_REASONS = new Set(['tool_use', 'pause_turn'])
@@ -100,6 +124,93 @@ export function interpretSseEvent(
       if (message === '') return { stop: false, seq }
       return { event: { type: 'progress', toolCallId, message, seq }, stop: false, seq }
     }
+    case 'sensitive.input.request': {
+      const requestId = stringField(data, 'requestId')
+      const toolCallId = stringField(data, 'toolCallId')
+      const toolName = stringField(data, 'toolName')
+      const label = stringField(data, 'label')
+      const usage = stringField(data, 'usage')
+      const adapterRevision = stringField(data, 'adapterRevision')
+      const agentId = typeof data['agentId'] === 'string'
+        ? data['agentId']
+        : data['agentId'] === null ? null : undefined
+      if (
+        requestId === undefined
+        || toolCallId === undefined
+        || toolName === undefined
+        || label === undefined
+        || usage === undefined
+        || adapterRevision === undefined
+        || agentId === undefined
+      ) {
+        return { stop: false, seq }
+      }
+      return {
+        event: {
+          type: 'sensitive-input',
+          requestId,
+          toolCallId,
+          toolName,
+          label,
+          usage,
+          agentId,
+          adapterRevision,
+          seq,
+        },
+        stop: false,
+        seq,
+      }
+    }
+    case 'skill.activation': {
+      const activationId = boundedIdentityField(data, 'activationId')
+      const profileId = boundedIdentityField(data, 'sourceRef')
+      const profileDigest = stringField(data, 'sourceDigest')
+      const skillName = boundedIdentityField(data, 'skillName')
+      const skillDigest = stringField(data, 'skillDigest')
+      const toolCallId = typeof data['toolCallId'] === 'string'
+        ? boundedIdentity(data['toolCallId'])
+        : data['toolCallId'] === null ? null : undefined
+      const agentId = typeof data['agentId'] === 'string'
+        ? boundedIdentity(data['agentId'])
+        : data['agentId'] === null ? null : undefined
+      const turnIndex = nonNegativeSafeInteger(data['turnIndex'])
+        ? data['turnIndex'] as number
+        : undefined
+      const activatedAt = nonNegativeSafeInteger(data['timestamp'])
+        ? data['timestamp'] as number
+        : undefined
+      if (
+        activationId === undefined
+        || !uuidIdentity(activationId)
+        || toolCallId === undefined
+        || profileId === undefined
+        || profileDigest === undefined
+        || !keyedDigest(profileDigest)
+        || skillName === undefined
+        || skillDigest === undefined
+        || !keyedDigest(skillDigest)
+        || agentId === undefined
+        || turnIndex === undefined
+        || activatedAt === undefined
+      ) return { stop: false, seq }
+      return {
+        event: {
+          type: 'skill-activation',
+          activationId,
+          toolCallId,
+          profileId,
+          profileDigest,
+          skillName,
+          skillDigest,
+          agentId,
+          turnIndex,
+          activatedAt,
+          seq,
+        },
+        stop: false,
+        seq,
+      }
+    }
     case 'turn.end': {
       const reason = typeof data['stopReason'] === 'string' ? (data['stopReason'] as string) : 'end_turn'
       if (CONTINUE_STOP_REASONS.has(reason)) return { stop: false, seq }
@@ -120,4 +231,65 @@ export function interpretSseEvent(
     default:
       return { stop: false, seq }
   }
+}
+
+function stringField(
+  data: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = data[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function boundedIdentityField(
+  data: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = data[key]
+  return typeof value === 'string' ? boundedIdentity(value) : undefined
+}
+
+function boundedIdentity(value: string): string | undefined {
+  if (value.length === 0 || value.length > 240) return undefined
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return undefined
+  }
+  return value
+}
+
+function nonNegativeSafeInteger(value: unknown): boolean {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+function keyedDigest(value: string): boolean {
+  const prefix = 'hmac-sha256:'
+  if (value.length !== prefix.length + 64 || !value.startsWith(prefix)) return false
+  for (let index = prefix.length; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (!(
+      (code >= 0x30 && code <= 0x39)
+      || (code >= 0x61 && code <= 0x66)
+    )) return false
+  }
+  return true
+}
+
+function uuidIdentity(value: string): boolean {
+  if (value.length !== 36) return false
+  for (let index = 0; index < value.length; index += 1) {
+    if (index === 8 || index === 13 || index === 18 || index === 23) {
+      if (value[index] !== '-') return false
+      continue
+    }
+    const code = value.charCodeAt(index)
+    if (!(
+      (code >= 0x30 && code <= 0x39)
+      || (code >= 0x61 && code <= 0x66)
+    )) return false
+  }
+  const version = value.charCodeAt(14)
+  const variant = value.charCodeAt(19)
+  return version >= 0x31 && version <= 0x35
+    && (variant === 0x38 || variant === 0x39 || variant === 0x61 || variant === 0x62)
 }

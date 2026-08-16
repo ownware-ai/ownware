@@ -26,6 +26,8 @@ import {
 } from './postgresql-run-repositories.js'
 import { createPostgreSqlEffectReceiptRepository } from './postgresql-effect-receipt-repository.js'
 import { createPostgreSqlEgressReceiptRepository } from './postgresql-egress-receipt-repository.js'
+import { createPostgreSqlSkillActivationReceiptRepository } from './postgresql-skill-activation-repository.js'
+import { createPostgreSqlEffectReversalRepository } from './postgresql-effect-reversal-repository.js'
 import { threadPrincipalScopeDigest } from '../gateway/thread-principal-binding.js'
 
 export interface PostgreSqlSecurityRepositoryOptions {
@@ -51,6 +53,8 @@ export function createPostgreSqlSecurityRepositories(
     runs: createPostgreSqlRunRepository(context, options.permissionHashSecret),
     effectReceipts: createPostgreSqlEffectReceiptRepository(context),
     egressReceipts: createPostgreSqlEgressReceiptRepository(context),
+    skillActivationReceipts: createPostgreSqlSkillActivationReceiptRepository(context),
+    effectReversals: createPostgreSqlEffectReversalRepository(context),
     idempotency: createPostgreSqlIdempotencyRepository(context, options.idempotencyLeaseOwner),
     accessGrants: createPostgreSqlAccessGrantRepository(context, options.evidenceSearchCache),
     oauthRefresh: createPostgreSqlOAuthRefreshRepository(context, options.oauthRefreshOwner),

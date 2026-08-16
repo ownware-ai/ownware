@@ -35,11 +35,15 @@ export type {
   EgressReasonCode,
   EgressReceiptPage,
   EgressReceiptListOptions,
+  SkillActivationReceipt,
+  SkillActivationReceiptPage,
+  SkillActivationReceiptListOptions,
   StreamReplyOptions,
   GatewayEvent,
   ResumeInput,
   PermissionDecisionInput,
   PermissionDecisionResult,
+  SensitiveInputDecisionResult,
   RunCancellationResult,
   ModelEntry,
   ProfileSummary,
@@ -149,7 +153,12 @@ export type {
   OwnwareClientOptions,
   HttpGatewayClientOptions,
 } from './client.js'
-export { OwnwareClient, OwnwareError, HttpGatewayClient } from './client.js'
+export {
+  OwnwareClient,
+  OwnwareError,
+  HttpGatewayClient,
+  SENSITIVE_INPUT_INTERACTION_CAPABILITY,
+} from './client.js'
 
 export type { RunStreamEvent } from './run-stream.js'
 export { interpretSseEvent } from './run-stream.js'

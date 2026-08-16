@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.42.0
+  version: 0.44.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -1708,6 +1708,15 @@ paths:
                     $ref: '#/components/schemas/RunAttachmentInput'
                 egressMode:
                   $ref: '#/components/schemas/EgressMode'
+                interactionCapabilities:
+                  type: array
+                  maxItems: 32
+                  description: >
+                    Interactive transports the caller is prepared to complete.
+                    Include sensitive-input.v1 to expose trusted sensitive-input
+                    tools when the host also owns a supported ephemeral adapter.
+                    The set is fixed for the cached thread lifetime.
+                  items: { type: string, minLength: 1, maxLength: 100 }
       responses:
         '200':
           description: Run started in the background.
@@ -1841,6 +1850,47 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EgressReceiptPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/skill-activation-receipts:
+    get:
+      operationId: listSkillActivationReceipts
+      summary: Page exact, content-free skill dispatcher observations for one run.
+      description: >
+        A receipt proves that the trusted in-process dispatcher placed the
+        exact frozen skill body identified by an install-local keyed digest
+        into the root conversation, or that an explicitly granted skill body
+        entered a helper conversation before its first provider call. It does
+        not prove provider processing, model behavior, instruction compliance,
+        tool correctness or real-world effects. Same-name custom tools,
+        metadata, reminders and prose cannot create receipts. External runtime
+        skill mechanisms are outside this capability.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Oldest-first immutable observations with an exclusive opaque cursor.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkillActivationReceiptPage' }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
@@ -1992,6 +2042,74 @@ paths:
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '413': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/sensitive-input/{requestId}:
+    post:
+      operationId: submitSensitiveInput
+      summary: Submit one value to an exact pending sensitive-input request.
+      description: >
+        The value uses a dedicated bounded UTF-8 text transport. It is held
+        only in the run-scoped in-memory broker, never persisted or echoed,
+        and can be consumed by the registered adapter at most once. A 200
+        response proves acceptance by the broker, not successful injection.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              minLength: 1
+              description: Valid UTF-8 with a maximum encoded size of 65536 bytes.
+      responses:
+        '200':
+          description: The one-use value was accepted by the in-memory broker.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SensitiveInputDecisionResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '415': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/sensitive-input/{requestId}/deny:
+    post:
+      operationId: denySensitiveInput
+      summary: Decline one exact pending sensitive-input request.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The pending request was declined.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SensitiveInputDecisionResult' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/runs/{runId}/cancel:
     post:
@@ -2874,6 +2992,15 @@ components:
         cancellation:
           type: string
           enum: [requested, already_requested, already_terminal]
+    SensitiveInputDecisionResult:
+      type: object
+      additionalProperties: false
+      required: [runId, requestId, accepted, status]
+      properties:
+        runId: { type: string, format: uuid }
+        requestId: { type: string }
+        accepted: { type: boolean, const: true }
+        status: { type: string, enum: [provided, denied] }
     RunConsequence:
       type: string
       enum: [none_observed, output_observed, effect_possible, effect_confirmed]
@@ -2991,6 +3118,42 @@ components:
           maxItems: 100
           items: { $ref: '#/components/schemas/EgressReceipt' }
         nextCursor: { type: [string, 'null'], format: uuid }
+    SkillActivationReceipt:
+      type: object
+      additionalProperties: false
+      required: [receiptId, sequence, runId, profileId, profileDigest, skillName, skillDigest, agentId, toolCallId, turnIndex, activatedAt]
+      properties:
+        receiptId: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        runId: { type: string, format: uuid }
+        profileId: { type: string, minLength: 1, maxLength: 240 }
+        profileDigest:
+          type: string
+          pattern: '^hmac-sha256:[0-9a-f]{64}$'
+          description: Opaque install-local identity of the exact assembled profile catalogue.
+        skillName: { type: string, minLength: 1, maxLength: 240 }
+        skillDigest:
+          type: string
+          pattern: '^hmac-sha256:[0-9a-f]{64}$'
+          description: Opaque install-local identity of the exact frozen skill definition.
+        agentId:
+          type: [string, 'null']
+          description: Null for the root agent; concrete for an explicitly granted helper.
+        toolCallId:
+          type: [string, 'null']
+          description: Exact root dispatcher call; null for activation at helper spawn.
+        turnIndex: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        activatedAt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+    SkillActivationReceiptPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/SkillActivationReceipt' }
+        nextCursor: { type: [string, 'null'], format: uuid }
     RunAttachmentInput:
       type: object
       required: [filename, data, mimeType]
@@ -3014,7 +3177,7 @@ components:
       additionalProperties: false
     PublicGatewayLimits:
       type: object
-      required: [jsonBodyBytes, candidateUpload, runAttachments, sourceList, connectionList, sourceUpload, sourceInspection, sourcePreparation, sourceDataView, accessGrants, sourceContent, sourceSearch, sourceQuota, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
+      required: [jsonBodyBytes, candidateUpload, runAttachments, sensitiveInput, sourceList, connectionList, sourceUpload, sourceInspection, sourcePreparation, sourceDataView, accessGrants, sourceContent, sourceSearch, sourceQuota, delegationDefaultTtlSeconds, delegationMaxTtlSeconds, idempotencyRetentionSeconds, rateLimit]
       properties:
         jsonBodyBytes:
           type: integer
@@ -3036,6 +3199,14 @@ components:
             maxItemDecodedBytes: { type: integer, const: 4194304 }
             maxTotalDecodedBytes: { type: integer, const: 6291456 }
             maxFilenameCharacters: { type: integer, const: 255 }
+          additionalProperties: false
+        sensitiveInput:
+          type: object
+          required: [interactionCapability, contentType, maxBytes]
+          properties:
+            interactionCapability: { type: string, const: sensitive-input.v1 }
+            contentType: { type: string, const: 'text/plain; charset=utf-8' }
+            maxBytes: { type: integer, const: 65536 }
           additionalProperties: false
         sourceList:
           type: object

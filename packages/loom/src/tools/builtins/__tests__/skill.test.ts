@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 
-import { createSkillTool } from '../skill.js'
+import { consumeSkillActivationMark, createSkillTool } from '../skill.js'
 import { SkillRegistry } from '../../../skills/registry.js'
 import {
   ReminderInjector,
@@ -163,5 +163,60 @@ describe('createSkillTool', () => {
     const tool = createSkillTool(new SkillRegistry())
     expect(tool.isReadOnly).toBe(true)
     expect(tool.requiresPermission).toBe(false)
+  })
+
+  it('marks only the exact successful result once under an exact catalogue', async () => {
+    const reg = new SkillRegistry().register(makeSkill())
+    const tool = createSkillTool(reg, {
+      activationEvidence: {
+        sourceRef: 'profile-a',
+        sourceDigest: 'opaque-profile-revision',
+        skills: [{ name: 'simplify', digest: 'opaque-skill-revision' }],
+      },
+    })
+    const result = await tool.execute({ name: 'simplify' }, makeContext())
+    expect(consumeSkillActivationMark(result)).toEqual({
+      sourceRef: 'profile-a',
+      sourceDigest: 'opaque-profile-revision',
+      skillName: 'simplify',
+      skillDigest: 'opaque-skill-revision',
+    })
+    expect(consumeSkillActivationMark(result)).toBeNull()
+    expect(consumeSkillActivationMark({
+      content: result.content,
+      metadata: result.metadata,
+      isError: false,
+    })).toBeNull()
+  })
+
+  it('rejects incomplete, duplicate and unknown evidence catalogues', () => {
+    const reg = new SkillRegistry().register(makeSkill())
+    expect(() => createSkillTool(reg, {
+      activationEvidence: {
+        sourceRef: 'profile-a',
+        sourceDigest: 'profile-digest',
+        skills: [],
+      },
+    })).toThrow(/exact active catalogue/)
+    expect(() => createSkillTool(reg, {
+      activationEvidence: {
+        sourceRef: 'profile-a',
+        sourceDigest: 'profile-digest',
+        skills: [
+          { name: 'simplify', digest: 'first' },
+          { name: 'simplify', digest: 'second' },
+        ],
+      },
+    })).toThrow(/Duplicate skill evidence name/)
+  })
+
+  it('uses the assembly snapshot even if the registry changes later', async () => {
+    const reg = new SkillRegistry().register(makeSkill())
+    const tool = createSkillTool(reg)
+    reg.remove('simplify')
+    reg.register(makeSkill({ content: 'MUTATED BODY' }))
+    const result = await tool.execute({ name: 'simplify' }, makeContext())
+    expect(result.content).toContain('Walk every changed file')
+    expect(result.content).not.toContain('MUTATED BODY')
   })
 })

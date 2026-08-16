@@ -74,6 +74,7 @@ import {
   type ScheduleDeliverySink,
 } from '../schedules/index.js'
 import { createCredentialHandlers } from './handlers/credentials.js'
+import { createSensitiveInputHandlers } from './handlers/sensitive-input.js'
 import {
   createCredentialAuditHandlers,
   createCredentialStoreHandlers,
@@ -722,6 +723,7 @@ export class OwnwareGateway {
       this.runStore,
       this.state.securityRepositories.effectReceipts,
       this.state.securityRepositories.egressReceipts,
+      this.state.securityRepositories.skillActivationReceipts,
     )
     this.registry = new ProfileRegistry()
     this.connectorStatusBus = createConnectorStatusBus()
@@ -2508,6 +2510,8 @@ export class OwnwareGateway {
       runStore: this.runStore,
       effectReceipts: this.state.securityRepositories.effectReceipts,
       egressReceipts: this.state.securityRepositories.egressReceipts,
+      skillActivationReceipts: this.state.securityRepositories.skillActivationReceipts,
+      effectReversals: this.state.securityRepositories.effectReversals,
       idempotencyStore: this.runIdempotency,
       candidateResolver,
       candidateStore,
@@ -2660,6 +2664,7 @@ export class OwnwareGateway {
     const activity = createActivityHandlers(this.state)
     const agentEvents = createAgentEventHandlers(this.state, this.runStore)
     const permissions = createPermissionHandlers(this.state)
+    const sensitiveInputs = createSensitiveInputHandlers(this.state, this.runStore)
     const principals = createPrincipalHandlers({
       state: this.state,
       registry: this.registry,
@@ -3107,6 +3112,26 @@ export class OwnwareGateway {
       run.listEgressReceipts,
       { operation: 'runs.egress.read' },
     )
+    this.router.get(
+      '/api/v1/runs/:runId/skill-activation-receipts',
+      run.listSkillActivationReceipts,
+      { operation: 'runs.skill-activations.read' },
+    )
+    this.router.get(
+      '/api/v1/runs/:runId/reversal-offers',
+      run.listEffectReversalOffers,
+      { operation: 'runs.reversals.read' },
+    )
+    this.router.get(
+      '/api/v1/runs/:runId/reversal-receipts',
+      run.listEffectReversalReceipts,
+      { operation: 'runs.reversals.read' },
+    )
+    this.router.post(
+      '/api/v1/runs/:runId/reversal-offers/:offerId/execute',
+      run.executeEffectReversal,
+      { operation: 'runs.reversals.execute' },
+    )
     this.router.get('/api/v1/runs/:runId', run.getRun, { operation: 'runs.snapshot' })
     this.router.get('/api/v1/runs/:runId/events', agentEvents.streamRunEvents, { operation: 'runs.events' })
     this.router.post('/api/v1/threads/:threadId/resume', run.resume, { operation: 'runs.resume.legacy' })
@@ -3114,6 +3139,16 @@ export class OwnwareGateway {
       '/api/v1/runs/:runId/permissions/:requestId/decision',
       run.decidePermission,
       { operation: 'runs.resume' },
+    )
+    this.router.post(
+      '/api/v1/runs/:runId/sensitive-input/:requestId',
+      sensitiveInputs.submit,
+      { operation: 'runs.sensitive-input.submit' },
+    )
+    this.router.post(
+      '/api/v1/runs/:runId/sensitive-input/:requestId/deny',
+      sensitiveInputs.deny,
+      { operation: 'runs.sensitive-input.deny' },
     )
     this.router.post('/api/v1/runs/:runId/cancel', run.cancelRun, { operation: 'runs.abort' })
     this.router.post('/api/v1/threads/:threadId/abort', run.abort, { operation: 'runs.abort.legacy' })

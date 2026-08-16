@@ -15,8 +15,8 @@ import type {
   PhysicalColumnDescriptor,
 } from './logical-schema.js'
 import {
-  SQLITE_V89_COLUMN_COUNT,
-  SQLITE_V89_COLUMN_SET_HASH,
+  SQLITE_V90_COLUMN_COUNT,
+  SQLITE_V90_COLUMN_SET_HASH,
   classifyLogicalColumns,
   logicalColumnSetHash,
   physicalColumnSetHash,
@@ -126,17 +126,21 @@ export class SqliteTransferFindingsError extends Error {
   }
 }
 
-export const SQLITE_V89_SCHEMA_OBJECT_COUNT = 215
-export const SQLITE_V89_SCHEMA_OBJECT_HASH =
-  'sha256:1e2b9fa533ba715f46bce838abbaebaf964846a2acedddc423dbd7c255a1e2a2'
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V88_SCHEMA_OBJECT_COUNT = SQLITE_V89_SCHEMA_OBJECT_COUNT
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V88_SCHEMA_OBJECT_HASH = SQLITE_V89_SCHEMA_OBJECT_HASH
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V87_SCHEMA_OBJECT_COUNT = SQLITE_V89_SCHEMA_OBJECT_COUNT
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V87_SCHEMA_OBJECT_HASH = SQLITE_V89_SCHEMA_OBJECT_HASH
+export const SQLITE_V90_SCHEMA_OBJECT_COUNT = 219
+export const SQLITE_V90_SCHEMA_OBJECT_HASH =
+  'sha256:a7f18757947c33529968d778a108f80a9fded0db26e1dc1287867984b8083d3d'
+/** @deprecated Internal compatibility alias; current schema is v90. */
+export const SQLITE_V89_SCHEMA_OBJECT_COUNT = SQLITE_V90_SCHEMA_OBJECT_COUNT
+/** @deprecated Internal compatibility alias; current schema is v90. */
+export const SQLITE_V89_SCHEMA_OBJECT_HASH = SQLITE_V90_SCHEMA_OBJECT_HASH
+/** @deprecated Internal compatibility alias; current schema is v90. */
+export const SQLITE_V88_SCHEMA_OBJECT_COUNT = SQLITE_V90_SCHEMA_OBJECT_COUNT
+/** @deprecated Internal compatibility alias; current schema is v90. */
+export const SQLITE_V88_SCHEMA_OBJECT_HASH = SQLITE_V90_SCHEMA_OBJECT_HASH
+/** @deprecated Internal compatibility alias; current schema is v90. */
+export const SQLITE_V87_SCHEMA_OBJECT_COUNT = SQLITE_V90_SCHEMA_OBJECT_COUNT
+/** @deprecated Internal compatibility alias; current schema is v90. */
+export const SQLITE_V87_SCHEMA_OBJECT_HASH = SQLITE_V90_SCHEMA_OBJECT_HASH
 
 const SOURCE_RECEIPT_FORMAT = 'ownware-sqlite-transfer-source-v1'
 const MIGRATION_HISTORY_FORMAT = 'ownware-sqlite-transfer-history-v1'
@@ -694,16 +698,16 @@ export function preflightOpenSqliteTransferSnapshot(
 
   const objects = sqliteSchemaObjectReceipt(db)
   if (
-    objects.count !== SQLITE_V89_SCHEMA_OBJECT_COUNT ||
-    objects.digest !== SQLITE_V89_SCHEMA_OBJECT_HASH
+    objects.count !== SQLITE_V90_SCHEMA_OBJECT_COUNT ||
+    objects.digest !== SQLITE_V90_SCHEMA_OBJECT_HASH
   ) {
     return failDatabase('schema_objects_mismatch')
   }
 
   const physical = physicalColumns(db)
   if (
-    physical.length !== SQLITE_V89_COLUMN_COUNT ||
-    physicalColumnSetHash(physical) !== SQLITE_V89_COLUMN_SET_HASH
+    physical.length !== SQLITE_V90_COLUMN_COUNT ||
+    physicalColumnSetHash(physical) !== SQLITE_V90_COLUMN_SET_HASH
   ) {
     return failDatabase('schema_objects_mismatch')
   }

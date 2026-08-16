@@ -51,7 +51,8 @@ export class HookRuntime {
    *
    * Returns `{ continue: true }` when all hooks allow, or
    * `{ continue: false, blockedHook, blockedReason }` on the first
-   * block. Never throws.
+   * block. Hook implementation failures are contained by `executeHook`;
+   * host-authority failures deliberately propagate.
    */
   async run(
     ctx: HookContext,

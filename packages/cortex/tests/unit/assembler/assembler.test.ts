@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { systemPromptToText } from '@ownware/loom'
+import {
+  builtinBrowserSensitiveInputTool,
+  systemPromptToText,
+  type Tool,
+} from '@ownware/loom'
 import { assembleAgent } from '../../../src/profile/assembler.js'
 import { loadProfile } from '../../../src/profile/loader.js'
 import { createMinimalProfile, createTempProfile, EXAMPLE_PROFILE_DIR } from '../../helpers/fixtures.js'
@@ -140,6 +144,43 @@ describe('assembleAgent: tools', () => {
     const names = agent.tools.map(t => t.name)
     const unique = new Set(names)
     expect(names.length).toBe(unique.size)
+  })
+
+  it('applies host availability to the final tool surface without trusting names', async () => {
+    const { dir } = track(await createMinimalProfile({
+      tools: { preset: 'full' },
+    }))
+    const profile = await loadProfile(dir)
+    const providerTool: Tool = {
+      name: 'provider_host_bound',
+      description: 'test provider tool',
+      inputSchema: { type: 'object', properties: {} },
+      egress: {
+        contractRevision: 'ownware.tool-egress.v1',
+        mediation: 'none',
+      },
+      execute: async () => ({ content: 'unused', isError: false }),
+    }
+    const observed = new Set<Tool>()
+    const agent = await assembleAgent(profile, {
+      isToolAvailable(tool) {
+        observed.add(tool)
+        return tool !== builtinBrowserSensitiveInputTool && tool !== providerTool
+      },
+      toolProviders: [{
+        source: 'test-provider',
+        assemblyEgress: 'none',
+        async getToolsForProfile() {
+          return { tools: [providerTool], stubs: [] }
+        },
+      }],
+    })
+
+    expect(observed.has(builtinBrowserSensitiveInputTool)).toBe(true)
+    expect(observed.has(providerTool)).toBe(true)
+    expect(agent.tools).not.toContain(builtinBrowserSensitiveInputTool)
+    expect(agent.tools).not.toContain(providerTool)
+    expect(agent.browserSensitiveInputTool).toBeNull()
   })
 })
 

@@ -63,6 +63,17 @@ export interface RunInput {
   readonly idempotencyKey?: string
   /** Tighten this run to verified literal-loopback dispatch only. */
   readonly egressMode?: EgressMode
+  /** Interactive transports this caller is prepared to complete. */
+  readonly interactionCapabilities?: readonly string[]
+}
+
+export const SENSITIVE_INPUT_INTERACTION_CAPABILITY = 'sensitive-input.v1' as const
+
+export interface SensitiveInputDecisionResult {
+  readonly runId: string
+  readonly requestId: string
+  readonly accepted: true
+  readonly status: 'provided' | 'denied'
 }
 
 export type EgressMode = 'unrestricted' | 'local-only'
@@ -225,6 +236,35 @@ export interface EgressReceiptPage {
 }
 
 export interface EgressReceiptListOptions {
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+export interface SkillActivationReceipt {
+  readonly receiptId: string
+  /** Gap-free append order within this run. */
+  readonly sequence: number
+  readonly runId: string
+  /** Exact profile catalogue identity; install-local and opaque. */
+  readonly profileId: string
+  readonly profileDigest: string
+  readonly skillName: string
+  /** Exact frozen skill identity; install-local and opaque. */
+  readonly skillDigest: string
+  /** Null for the root agent, concrete for an explicitly granted helper. */
+  readonly agentId: string | null
+  /** Exact dispatcher call; null when the skill entered at helper spawn. */
+  readonly toolCallId: string | null
+  readonly turnIndex: number
+  readonly activatedAt: number
+}
+
+export interface SkillActivationReceiptPage {
+  readonly items: readonly SkillActivationReceipt[]
+  readonly nextCursor: string | null
+}
+
+export interface SkillActivationReceiptListOptions {
   readonly limit?: number
   readonly cursor?: string
 }
@@ -442,6 +482,11 @@ export interface PublicGatewayLimits {
     readonly maxItemDecodedBytes: number
     readonly maxTotalDecodedBytes: number
     readonly maxFilenameCharacters: number
+  }
+  readonly sensitiveInput?: {
+    readonly interactionCapability: string
+    readonly contentType: 'text/plain; charset=utf-8'
+    readonly maxBytes: number
   }
   readonly sourceList?: {
     readonly maxPageSize: number
@@ -1448,6 +1493,17 @@ export interface GatewayClient {
     requestId: string,
     input: PermissionDecisionInput,
   ): Promise<PermissionDecisionResult>
+  /** Submit one value through the dedicated non-JSON, non-echo transport. */
+  submitSensitiveInput(
+    runId: string,
+    requestId: string,
+    value: string,
+  ): Promise<SensitiveInputDecisionResult>
+  /** Decline one exact pending sensitive-input request. */
+  denySensitiveInput(
+    runId: string,
+    requestId: string,
+  ): Promise<SensitiveInputDecisionResult>
   /** Durably request cancellation for one immutable run. */
   cancel(runId: string): Promise<RunCancellationResult>
   /** Read one immutable run's bounded durable lifecycle snapshot. */
@@ -1462,6 +1518,11 @@ export interface GatewayClient {
     runId: string,
     options?: EgressReceiptListOptions,
   ): Promise<EgressReceiptPage>
+  /** Read exact evidence that a bound skill body entered a conversation. */
+  listSkillActivationReceipts(
+    runId: string,
+    options?: SkillActivationReceiptListOptions,
+  ): Promise<SkillActivationReceiptPage>
 }
 
 export interface OwnwareClientOptions {
@@ -2386,6 +2447,9 @@ export class OwnwareClient implements GatewayClient {
     if (input.workspaceId) body['workspaceId'] = input.workspaceId
     if (input.attachments) body['attachments'] = input.attachments
     if (input.egressMode) body['egressMode'] = input.egressMode
+    if (input.interactionCapabilities) {
+      body['interactionCapabilities'] = input.interactionCapabilities
+    }
 
     const headers = this.headers(true)
     if (input.idempotencyKey) headers['Idempotency-Key'] = input.idempotencyKey
@@ -2513,6 +2577,35 @@ export class OwnwareClient implements GatewayClient {
     return (await res.json()) as PermissionDecisionResult
   }
 
+  /** Submit one sensitive value without JSON serialization or response echo. */
+  async submitSensitiveInput(
+    runId: string,
+    requestId: string,
+    value: string,
+  ): Promise<SensitiveInputDecisionResult> {
+    const headers = this.headers(false)
+    headers['Content-Type'] = 'text/plain; charset=utf-8'
+    const response = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/sensitive-input/${encodeURIComponent(requestId)}`,
+      { method: 'POST', headers, body: value },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SensitiveInputDecisionResult
+  }
+
+  /** Decline one exact pending sensitive-input request. */
+  async denySensitiveInput(
+    runId: string,
+    requestId: string,
+  ): Promise<SensitiveInputDecisionResult> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/sensitive-input/${encodeURIComponent(requestId)}/deny`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as SensitiveInputDecisionResult
+  }
+
   /** Durably request cancellation for one immutable run. */
   async cancel(runId: string): Promise<RunCancellationResult> {
     const res = await this.post(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, {})
@@ -2566,6 +2659,23 @@ export class OwnwareClient implements GatewayClient {
     )
     if (!res.ok) throw await errorFromResponse(res)
     return (await res.json()) as EgressReceiptPage
+  }
+
+  /** Read exact, content-free skill dispatcher observations for one run. */
+  async listSkillActivationReceipts(
+    runId: string,
+    options: SkillActivationReceiptListOptions = {},
+  ): Promise<SkillActivationReceiptPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/skill-activation-receipts${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return (await res.json()) as SkillActivationReceiptPage
   }
 
   /**

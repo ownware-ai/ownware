@@ -197,6 +197,27 @@ to explicit `outcome_unknown`; it never manufactures a success or failure.
   test. Arbitrary in-process extensions enlarge the trusted computing base; a
   declaration alone does not prove containment.
 
+## Exact skill activation receipts
+
+`skill-activation-evidence.ts` binds the assembled profile and each frozen skill
+to install-local keyed digests. `skill-activation-receipt-store.ts` persists the
+engine's exact dispatcher observation before `EventIngestor` can publish the
+corresponding `skill.activation` event.
+
+- Root receipts are accepted only from the native in-process engine, with a
+  concrete dispatcher call and the active profile identity.
+- Helper receipts are accepted only from `AgentSpawner` for the concrete helper
+  identity and an explicit `grant.skills` resolution, before the helper's first
+  provider request. The root lazy skill tool is never shared into the helper.
+- Same-name tools, metadata, reminders, profile prose and external-runtime
+  canonical events are not authority and cannot create receipts.
+- SQLite and PostgreSQL allocate one gap-free per-run receipt sequence, preserve
+  exact idempotence, reject conflicting identity reuse and keep rows immutable.
+- HTTP/SSE expose identities, correlation, order and time only. Never add the
+  skill body, description, trigger, caller args, prompt or tool result.
+- The receipt proves exact conversation placement, not provider processing,
+  behavioral compliance, model correctness, tool success or external effects.
+
 ## Never do
 
 - Do not write to `agent_events` from anything other than `EventIngestor`.
@@ -241,6 +262,8 @@ repository ports so SQLite and PostgreSQL retain the same behavior.
   turn finalizer.
 - `egress-control.ts` + `egress-receipt-store.ts` — run policy, durable
   pre-dispatch authority, content-free observations and terminal reconciliation.
+- `skill-activation-evidence.ts` + `skill-activation-receipt-store.ts` — exact
+  install-local skill identity and immutable content-free placement evidence.
 - `event-ingestor.ts` — single write path for `agent_events`.
 - `event-bus.ts` — in-process fan-out for live SSE subscribers.
 - `events.ts` — gateway event contract (Loom events + gateway-owned

@@ -160,9 +160,9 @@ describe('formatSnapshotBlock', () => {
   })
 })
 
-describe('browserTools registry — B1 doesn\'t change the tool count', () => {
-  it('still exports 17 tools', () => {
-    expect(browserTools.length).toBe(17)
+describe('browserTools registry', () => {
+  it('exports the dedicated sensitive-input tool alongside the existing tools', () => {
+    expect(browserTools.length).toBe(18)
   })
 
   it('every tool has a category of "browser"', () => {

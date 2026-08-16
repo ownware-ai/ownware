@@ -325,7 +325,12 @@ export class EffectReceiptStore {
     })()
   }
 
-  private observeInTransaction(input: ObserveEffectInput, now: number): EffectReceipt {
+  /**
+   * Adapter-internal composition seam. The caller must already own the
+   * SQLite transaction. This is intentionally absent from the repository
+   * interface so ordinary gateway code cannot bypass transaction ownership.
+   */
+  observeInTransaction(input: ObserveEffectInput, now: number): EffectReceipt {
     const run = this.db.prepare('SELECT 1 FROM gateway_runs WHERE id = ?').get(input.runId)
     if (run === undefined) throw new EffectReceiptStoreError('run_missing')
 

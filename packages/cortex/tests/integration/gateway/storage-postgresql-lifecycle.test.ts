@@ -91,7 +91,7 @@ describePostgreSql('PostgreSQL storage lifecycle', () => {
       await expect(first.health()).resolves.toEqual(expect.objectContaining({
         kind: 'postgresql',
         state: 'ready',
-        schemaVersion: 89,
+        schemaVersion: 90,
       }))
       expect(capturedPool).toBeDefined()
 

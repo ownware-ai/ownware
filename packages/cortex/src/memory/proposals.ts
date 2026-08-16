@@ -75,6 +75,17 @@ export interface ProposeInput {
   readonly kind?: MemoryKind
 }
 
+/**
+ * Authoritative disposition of one proposal attempt. `created` is true only
+ * when this call inserted the returned proposal. A deduplicated lookup is not
+ * creation authority and must never be used to offer reversal of an older
+ * proposal.
+ */
+export interface ProposeDisposition {
+  readonly proposal: MemoryProposal
+  readonly created: boolean
+}
+
 export interface AcceptInput {
   /** Final content if the user edited it. Defaults to proposed_content. */
   readonly content?: string
@@ -172,6 +183,10 @@ export class SqliteMemoryProposalsStore {
    * avoid a confused agent re-proposing the same fact every turn.
    */
   propose(input: ProposeInput): MemoryProposal {
+    return this.proposeWithDisposition(input).proposal
+  }
+
+  proposeWithDisposition(input: ProposeInput): ProposeDisposition {
     const trimmed = input.content.trim()
     if (trimmed.length === 0) {
       throw new Error('Proposal content cannot be empty.')
@@ -184,7 +199,7 @@ export class SqliteMemoryProposalsStore {
        ORDER BY created_at DESC
        LIMIT 1`,
     ).get(input.threadId, trimmed) as ProposalRow | undefined
-    if (existing) return rowToProposal(existing)
+    if (existing) return { proposal: rowToProposal(existing), created: false }
 
     const id = newProposalId()
     const now = new Date().toISOString()
@@ -209,7 +224,7 @@ export class SqliteMemoryProposalsStore {
       at: now,
     })
 
-    return proposal
+    return { proposal, created: true }
   }
 
   /**

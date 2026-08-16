@@ -27,17 +27,25 @@ export class LogicalSchemaError extends Error {
   }
 }
 
-export const SQLITE_V89_COLUMN_COUNT = 810
-export const SQLITE_V89_COLUMN_SET_HASH =
-  'sha256:b07a002f239813283457e538901aeb909a557eb2fedfe052dcbe6a294c43b18e'
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V88_COLUMN_COUNT = SQLITE_V89_COLUMN_COUNT
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V88_COLUMN_SET_HASH = SQLITE_V89_COLUMN_SET_HASH
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V87_COLUMN_COUNT = SQLITE_V89_COLUMN_COUNT
-/** @deprecated Internal compatibility alias; current schema is v89. */
-export const SQLITE_V87_COLUMN_SET_HASH = SQLITE_V89_COLUMN_SET_HASH
+export const SQLITE_V91_COLUMN_COUNT = 849
+export const SQLITE_V91_COLUMN_SET_HASH =
+  'sha256:2781daa865a832d7c3d2db1a523fa7faa1fa7ab639bb24613c49e757e1511cd3'
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V90_COLUMN_COUNT = SQLITE_V91_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V90_COLUMN_SET_HASH = SQLITE_V91_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V89_COLUMN_COUNT = SQLITE_V91_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V89_COLUMN_SET_HASH = SQLITE_V91_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V88_COLUMN_COUNT = SQLITE_V90_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V88_COLUMN_SET_HASH = SQLITE_V90_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V87_COLUMN_COUNT = SQLITE_V90_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V87_COLUMN_SET_HASH = SQLITE_V90_COLUMN_SET_HASH
 
 function keys(value: string): ReadonlySet<string> {
   return new Set(value.trim().split(/\s+/).filter(Boolean))
@@ -82,6 +90,10 @@ const EPOCH_MILLISECOND_COLUMNS = keys(`
   delegated_principals.revoked_at
   effect_identities.first_observed_at
   effect_receipts.observed_at
+  effect_reversal_offers.created_at
+  effect_reversal_offers.expires_at
+  effect_reversal_offers.resolved_at
+  effect_reversal_receipts.observed_at
   egress_dispatches.first_observed_at
   egress_receipts.observed_at
   gateway_runs.accepted_at
@@ -110,6 +122,7 @@ const EPOCH_MILLISECOND_COLUMNS = keys(`
   run_permission_consumptions.consumed_at
   schedule_approval_bindings.bound_at
   schedule_approval_claims.claimed_at
+  skill_activation_receipts.activated_at
   runtime_sources.created_at
   runtime_sources.updated_at
   schedule_approvals.created_at
@@ -343,8 +356,8 @@ export function postgresqlProjectionForColumn(key: string): LogicalValueProjecti
 export function classifyLogicalColumns(
   columns: readonly PhysicalColumnDescriptor[],
 ): readonly LogicalColumnDescriptor[] {
-  if (columns.length !== SQLITE_V89_COLUMN_COUNT) return fail('column_count_mismatch')
-  if (physicalColumnSetHash(columns) !== SQLITE_V89_COLUMN_SET_HASH) {
+  if (columns.length !== SQLITE_V91_COLUMN_COUNT) return fail('column_count_mismatch')
+  if (physicalColumnSetHash(columns) !== SQLITE_V91_COLUMN_SET_HASH) {
     return fail('column_set_mismatch')
   }
 

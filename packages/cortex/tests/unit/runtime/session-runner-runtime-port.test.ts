@@ -154,6 +154,51 @@ describe('SessionRunner execution-runtime port', () => {
     expect(JSON.stringify(errors)).not.toContain('secret prompt')
   })
 
+  it('rejects external-runtime skill claims without creating a receipt or public activation', async () => {
+    const thread = await state.createThread('test')
+    const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
+    const receipts = state.securityRepositories.skillActivationReceipts
+    runner = new SessionRunner(state, runStore, undefined, undefined, receipts)
+    const run = runStore.create({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'synthetic',
+      timeoutMs: 60_000,
+      startSeq: 0,
+    })
+    const runtime = externalRuntime([{
+      kind: 'canonical',
+      sourceSequence: 1,
+      event: {
+        type: 'skill.activation',
+        activationId: '55555555-5555-4555-8555-555555555555',
+        toolCallId: 'external-call',
+        sourceRef: 'test',
+        sourceDigest: `hmac-sha256:${'a'.repeat(64)}`,
+        skillName: 'same-name-is-not-authority',
+        skillDigest: `hmac-sha256:${'b'.repeat(64)}`,
+        agentId: null,
+        turnIndex: 0,
+        timestamp: 1_000,
+      },
+    }])
+    state.setRuntime(thread.id, { zoneManager: null, execution: runtime })
+
+    await expect(runner.start({
+      runId: run.runId,
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'synthetic',
+      prompt: 'do not trust external self-attestation',
+    }).done).resolves.toMatchObject({ status: 'error' })
+
+    await expect(receipts.listForRun(run.runId, { limit: 10, cursor: null }))
+      .resolves.toEqual({ items: [], nextCursor: null })
+    const events = await state.listAgentEvents({ threadId: thread.id, agentId: 'root' })
+    expect(events.some(event => event.type === 'skill.activation')).toBe(false)
+    expect(events.filter(event => event.type === 'error')).toHaveLength(1)
+  })
+
   it('records provider-authoritative interruption as aborted rather than completed or failed', async () => {
     const thread = await state.createThread('test')
     const runtime = externalRuntime([

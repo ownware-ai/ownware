@@ -708,6 +708,199 @@ CREATE TRIGGER egress_receipts_no_delete
   FOR EACH ROW EXECUTE FUNCTION ownware._reject_egress_evidence_mutation();
 `
 
+const SKILL_ACTIVATION_RECEIPTS_SQL = `
+CREATE TABLE ownware.skill_activation_receipts (
+  receipt_id TEXT PRIMARY KEY CHECK (
+    receipt_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  receipt_seq BIGINT NOT NULL CHECK (
+    receipt_seq BETWEEN 1 AND 9007199254740991
+  ),
+  run_id TEXT NOT NULL REFERENCES ownware.gateway_runs(id),
+  profile_id TEXT NOT NULL CHECK (
+    length(profile_id) BETWEEN 1 AND 240 AND profile_id !~ '[[:cntrl:]]'
+  ),
+  profile_digest TEXT NOT NULL CHECK (
+    profile_digest ~ '^hmac-sha256:[0-9a-f]{64}$'
+  ),
+  skill_name TEXT NOT NULL CHECK (
+    length(skill_name) BETWEEN 1 AND 240 AND skill_name !~ '[[:cntrl:]]'
+  ),
+  skill_digest TEXT NOT NULL CHECK (
+    skill_digest ~ '^hmac-sha256:[0-9a-f]{64}$'
+  ),
+  agent_id TEXT CHECK (
+    agent_id IS NULL OR (
+      length(agent_id) BETWEEN 1 AND 240 AND agent_id !~ '[[:cntrl:]]'
+    )
+  ),
+  tool_call_id TEXT CHECK (
+    tool_call_id IS NULL OR (
+      length(tool_call_id) BETWEEN 1 AND 240 AND tool_call_id !~ '[[:cntrl:]]'
+    )
+  ),
+  turn_index BIGINT NOT NULL CHECK (
+    turn_index BETWEEN 0 AND 9007199254740991
+  ),
+  activated_at BIGINT NOT NULL CHECK (
+    activated_at BETWEEN 0 AND 9007199254740991
+  ),
+  UNIQUE (run_id, receipt_seq)
+);
+
+CREATE INDEX idx_skill_activation_receipts_run
+  ON ownware.skill_activation_receipts(run_id, receipt_seq);
+
+CREATE FUNCTION ownware._reject_skill_activation_receipt_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'skill activation receipts are immutable';
+END;
+$$;
+CREATE TRIGGER skill_activation_receipts_no_update
+  BEFORE UPDATE ON ownware.skill_activation_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_skill_activation_receipt_mutation();
+CREATE TRIGGER skill_activation_receipts_no_delete
+  BEFORE DELETE ON ownware.skill_activation_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_skill_activation_receipt_mutation();
+`
+
+const EFFECT_REVERSALS_SQL = `
+ALTER TABLE ownware.memory_proposals
+  ADD COLUMN resolution_authority_ref TEXT;
+ALTER TABLE ownware.memory_proposals
+  ADD CONSTRAINT ck_memory_proposals_resolution_authority_ref CHECK (
+    resolution_authority_ref IS NULL OR
+    resolution_authority_ref ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  );
+
+CREATE TABLE ownware.effect_reversal_offers (
+  offer_id TEXT PRIMARY KEY CHECK (
+    offer_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  offer_seq BIGINT NOT NULL CHECK (offer_seq BETWEEN 1 AND 9007199254740991),
+  run_id TEXT NOT NULL REFERENCES ownware.gateway_runs(id),
+  effect_id TEXT NOT NULL,
+  adapter_ref TEXT NOT NULL CHECK (
+    length(adapter_ref) BETWEEN 1 AND 160 AND adapter_ref ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  adapter_revision TEXT NOT NULL CHECK (
+    length(adapter_revision) BETWEEN 1 AND 80 AND adapter_revision ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  operation_kind TEXT NOT NULL CHECK (operation_kind IN ('inverse', 'compensation')),
+  status TEXT NOT NULL CHECK (status IN ('available', 'confirmed', 'stale', 'expired')),
+  target_kind TEXT NOT NULL CHECK (target_kind = 'memory_proposal'),
+  target_ref TEXT NOT NULL CHECK (
+    length(target_ref) BETWEEN 1 AND 200 AND target_ref ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  target_revision TEXT NOT NULL CHECK (
+    length(target_revision) BETWEEN 1 AND 200 AND target_revision !~ '[[:cntrl:]]'
+  ),
+  target_profile_id TEXT NOT NULL CHECK (
+    length(target_profile_id) BETWEEN 1 AND 240 AND target_profile_id !~ '[[:cntrl:]]'
+  ),
+  target_thread_id TEXT NOT NULL CHECK (
+    length(target_thread_id) BETWEEN 1 AND 240 AND target_thread_id !~ '[[:cntrl:]]'
+  ),
+  created_at BIGINT NOT NULL CHECK (created_at BETWEEN 0 AND 9007199254740991),
+  expires_at BIGINT CHECK (
+    expires_at IS NULL OR expires_at BETWEEN created_at + 1 AND 9007199254740991
+  ),
+  resolved_at BIGINT CHECK (
+    (status = 'available' AND resolved_at IS NULL) OR
+    (status <> 'available' AND resolved_at BETWEEN created_at AND 9007199254740991)
+  ),
+  FOREIGN KEY (effect_id, run_id)
+    REFERENCES ownware.effect_identities(effect_id, run_id),
+  UNIQUE (offer_id, run_id),
+  UNIQUE (run_id, offer_seq),
+  UNIQUE (effect_id, adapter_ref, adapter_revision)
+);
+
+CREATE TABLE ownware.effect_reversal_receipts (
+  receipt_id TEXT PRIMARY KEY CHECK (
+    receipt_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  receipt_seq BIGINT NOT NULL CHECK (receipt_seq BETWEEN 1 AND 9007199254740991),
+  offer_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  effect_id TEXT NOT NULL,
+  operation_kind TEXT NOT NULL CHECK (operation_kind IN ('inverse', 'compensation')),
+  outcome TEXT NOT NULL CHECK (outcome IN ('confirmed', 'stale', 'expired')),
+  authority_ref TEXT NOT NULL CHECK (
+    length(authority_ref) BETWEEN 1 AND 241 AND authority_ref ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  actor_kind TEXT NOT NULL CHECK (actor_kind IN ('owner', 'delegated')),
+  idempotency_key TEXT NOT NULL CHECK (
+    idempotency_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  observed_at BIGINT NOT NULL CHECK (observed_at BETWEEN 0 AND 9007199254740991),
+  FOREIGN KEY (offer_id, run_id)
+    REFERENCES ownware.effect_reversal_offers(offer_id, run_id),
+  FOREIGN KEY (effect_id, run_id)
+    REFERENCES ownware.effect_identities(effect_id, run_id),
+  UNIQUE (run_id, receipt_seq),
+  UNIQUE (offer_id),
+  UNIQUE (offer_id, idempotency_key)
+);
+
+CREATE INDEX idx_effect_reversal_offers_run
+  ON ownware.effect_reversal_offers(run_id, offer_seq);
+CREATE INDEX idx_effect_reversal_receipts_run
+  ON ownware.effect_reversal_receipts(run_id, receipt_seq);
+
+CREATE FUNCTION ownware._enforce_effect_reversal_offer_update()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF
+    OLD.offer_id IS DISTINCT FROM NEW.offer_id
+    OR OLD.offer_seq IS DISTINCT FROM NEW.offer_seq
+    OR OLD.run_id IS DISTINCT FROM NEW.run_id
+    OR OLD.effect_id IS DISTINCT FROM NEW.effect_id
+    OR OLD.adapter_ref IS DISTINCT FROM NEW.adapter_ref
+    OR OLD.adapter_revision IS DISTINCT FROM NEW.adapter_revision
+    OR OLD.operation_kind IS DISTINCT FROM NEW.operation_kind
+    OR OLD.target_kind IS DISTINCT FROM NEW.target_kind
+    OR OLD.target_ref IS DISTINCT FROM NEW.target_ref
+    OR OLD.target_revision IS DISTINCT FROM NEW.target_revision
+    OR OLD.target_profile_id IS DISTINCT FROM NEW.target_profile_id
+    OR OLD.target_thread_id IS DISTINCT FROM NEW.target_thread_id
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    OR OLD.expires_at IS DISTINCT FROM NEW.expires_at
+  THEN
+    RAISE EXCEPTION 'effect reversal offer identity is immutable';
+  END IF;
+  IF
+    OLD.status <> 'available'
+    OR NEW.status NOT IN ('confirmed', 'stale', 'expired')
+    OR NEW.resolved_at IS NULL
+  THEN
+    RAISE EXCEPTION 'invalid effect reversal offer transition';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION ownware._reject_effect_reversal_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'effect reversal evidence is immutable';
+END;
+$$;
+CREATE TRIGGER effect_reversal_offers_validate_update
+  BEFORE UPDATE ON ownware.effect_reversal_offers
+  FOR EACH ROW EXECUTE FUNCTION ownware._enforce_effect_reversal_offer_update();
+CREATE TRIGGER effect_reversal_offers_no_delete
+  BEFORE DELETE ON ownware.effect_reversal_offers
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_reversal_mutation();
+CREATE TRIGGER effect_reversal_receipts_no_update
+  BEFORE UPDATE ON ownware.effect_reversal_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_reversal_mutation();
+CREATE TRIGGER effect_reversal_receipts_no_delete
+  BEFORE DELETE ON ownware.effect_reversal_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_reversal_mutation();
+`
+
 const PROVIDER_USAGE_EVIDENCE_COLUMNS = [
   { table: 'provider_pricebook_snapshots', name: 'entry_id', type: 'TEXT', nullable: false, pkPosition: 1 },
   { table: 'provider_pricebook_snapshots', name: 'version', type: 'TEXT', nullable: false, pkPosition: 2 },
@@ -1010,6 +1203,85 @@ const EGRESS_EVIDENCE_INDEXES = [
   {
     table: 'egress_receipts',
     name: 'idx_egress_receipts_run',
+    unique: false,
+    columns: [
+      { name: 'run_id', descending: false },
+      { name: 'receipt_seq', descending: false },
+    ],
+    predicate: null,
+  },
+] as const
+
+const SKILL_ACTIVATION_RECEIPT_COLUMNS = [
+  { table: 'skill_activation_receipts', name: 'receipt_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'skill_activation_receipts', name: 'receipt_seq', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'profile_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'profile_digest', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'skill_name', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'skill_digest', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'agent_id', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'tool_call_id', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'turn_index', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'skill_activation_receipts', name: 'activated_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+] as const
+
+const SKILL_ACTIVATION_RECEIPT_INDEX = {
+  table: 'skill_activation_receipts',
+  name: 'idx_skill_activation_receipts_run',
+  unique: false,
+  columns: [
+    { name: 'run_id', descending: false },
+    { name: 'receipt_seq', descending: false },
+  ],
+  predicate: null,
+} as const
+
+const EFFECT_REVERSAL_COLUMNS = [
+  { table: 'memory_proposals', name: 'resolution_authority_ref', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'offer_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'effect_reversal_offers', name: 'offer_seq', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'effect_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'adapter_ref', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'adapter_revision', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'operation_kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'status', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'target_kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'target_ref', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'target_revision', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'target_profile_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'target_thread_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'created_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'expires_at', type: 'BIGINT', nullable: true, pkPosition: 0 },
+  { table: 'effect_reversal_offers', name: 'resolved_at', type: 'BIGINT', nullable: true, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'receipt_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'effect_reversal_receipts', name: 'receipt_seq', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'offer_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'effect_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'operation_kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'outcome', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'authority_ref', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'actor_kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'idempotency_key', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_reversal_receipts', name: 'observed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+] as const
+
+const EFFECT_REVERSAL_INDEXES = [
+  {
+    table: 'effect_reversal_offers',
+    name: 'idx_effect_reversal_offers_run',
+    unique: false,
+    columns: [
+      { name: 'run_id', descending: false },
+      { name: 'offer_seq', descending: false },
+    ],
+    predicate: null,
+  },
+  {
+    table: 'effect_reversal_receipts',
+    name: 'idx_effect_reversal_receipts_run',
     unique: false,
     columns: [
       { name: 'run_id', descending: false },
@@ -1361,7 +1633,7 @@ PostgreSqlSchemaExpectation = Object.freeze({
   }),
 })
 
-export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+const POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION:
 PostgreSqlSchemaExpectation = Object.freeze({
   summary: Object.freeze({
     ...POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary,
@@ -1415,6 +1687,122 @@ PostgreSqlSchemaExpectation = Object.freeze({
   }),
 })
 
+export const POSTGRESQL_V90_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary,
+    tableCount: POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary.tableCount + 1,
+    columnCount: POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary.columnCount + 11,
+    foreignKeyCount: POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary.foreignKeyCount + 1,
+    uniqueConstraintCount:
+      POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary.uniqueConstraintCount + 1,
+    explicitIndexCount:
+      POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary.explicitIndexCount + 1,
+    triggerCount: POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.summary.triggerCount + 2,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.manifest.columns,
+      ...SKILL_ACTIVATION_RECEIPT_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: Object.freeze([
+      ...POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+      { table: 'skill_activation_receipts', columns: ['run_id', 'receipt_seq'] },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'skill_activation_receipts',
+        columns: ['run_id'],
+        referencedTable: 'gateway_runs',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      SKILL_ACTIVATION_RECEIPT_INDEX,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
+export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_V90_SCHEMA_EXPECTATION.summary,
+    tableCount: POSTGRESQL_V90_SCHEMA_EXPECTATION.summary.tableCount + 2,
+    columnCount: POSTGRESQL_V90_SCHEMA_EXPECTATION.summary.columnCount + 28,
+    foreignKeyCount: POSTGRESQL_V90_SCHEMA_EXPECTATION.summary.foreignKeyCount + 4,
+    uniqueConstraintCount: POSTGRESQL_V90_SCHEMA_EXPECTATION.summary.uniqueConstraintCount + 6,
+    explicitIndexCount: POSTGRESQL_V90_SCHEMA_EXPECTATION.summary.explicitIndexCount + 2,
+    triggerCount: POSTGRESQL_V90_SCHEMA_EXPECTATION.summary.triggerCount + 4,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_V90_SCHEMA_EXPECTATION.manifest.columns,
+      ...EFFECT_REVERSAL_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: Object.freeze([
+      ...POSTGRESQL_V90_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+      { table: 'effect_reversal_offers', columns: ['offer_id', 'run_id'] },
+      { table: 'effect_reversal_offers', columns: ['run_id', 'offer_seq'] },
+      { table: 'effect_reversal_offers', columns: ['effect_id', 'adapter_ref', 'adapter_revision'] },
+      { table: 'effect_reversal_receipts', columns: ['run_id', 'receipt_seq'] },
+      { table: 'effect_reversal_receipts', columns: ['offer_id'] },
+      { table: 'effect_reversal_receipts', columns: ['offer_id', 'idempotency_key'] },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_V90_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'effect_reversal_offers',
+        columns: ['run_id'],
+        referencedTable: 'gateway_runs',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+      {
+        table: 'effect_reversal_offers',
+        columns: ['effect_id', 'run_id'],
+        referencedTable: 'effect_identities',
+        referencedColumns: ['effect_id', 'run_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+      {
+        table: 'effect_reversal_receipts',
+        columns: ['offer_id', 'run_id'],
+        referencedTable: 'effect_reversal_offers',
+        referencedColumns: ['offer_id', 'run_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+      {
+        table: 'effect_reversal_receipts',
+        columns: ['effect_id', 'run_id'],
+        referencedTable: 'effect_identities',
+        referencedColumns: ['effect_id', 'run_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_V90_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      ...EFFECT_REVERSAL_INDEXES,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
 async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<boolean> {
   const result = await client.query<{
     readonly constraint_valid: boolean
@@ -1456,6 +1844,87 @@ async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<bo
 
 async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_CURRENT_SCHEMA_EXPECTATION) &&
+    await postgreSqlV90SchemaMatches(client) &&
+    await postgreSqlEffectReversalsMatch(client)
+}
+
+async function postgreSqlV90SchemaMatches(client: QueryClient): Promise<boolean> {
+  return await postgreSqlSchemaMatches(client, POSTGRESQL_V90_SCHEMA_EXPECTATION) &&
+    await postgreSqlMessageSequenceMatches(client) &&
+    await postgreSqlProviderUsageEvidenceMatches(client) &&
+    await postgreSqlPluginControlPlaneMatches(client) &&
+    await postgreSqlProfileDeploymentTombstonesMatch(client) &&
+    await postgreSqlRunConsequenceMatches(client) &&
+    await postgreSqlEffectEvidenceMatches(client) &&
+    await postgreSqlPermissionIntentBindingMatches(client) &&
+    await postgreSqlEgressEvidenceMatches(client) &&
+    await postgreSqlSkillActivationReceiptsMatch(client)
+}
+
+async function postgreSqlEffectReversalsMatch(client: QueryClient): Promise<boolean> {
+  const result = await client.query<{
+    readonly check_valid: boolean
+    readonly trigger_count: string
+    readonly function_count: string
+    readonly data_valid: boolean
+  }>(`
+    SELECT
+      COALESCE((
+        SELECT constraint_record.convalidated
+        FROM pg_catalog.pg_constraint AS constraint_record
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = constraint_record.connamespace
+        WHERE namespace.nspname = 'ownware'
+          AND constraint_record.conrelid = 'ownware.memory_proposals'::regclass
+          AND constraint_record.conname = 'ck_memory_proposals_resolution_authority_ref'
+          AND constraint_record.contype = 'c'
+      ), FALSE) AS check_valid,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND (
+           (relation.relname = 'effect_reversal_offers' AND trigger_record.tgname IN (
+             'effect_reversal_offers_validate_update', 'effect_reversal_offers_no_delete'
+           ))
+           OR (relation.relname = 'effect_reversal_receipts' AND trigger_record.tgname IN (
+             'effect_reversal_receipts_no_update', 'effect_reversal_receipts_no_delete'
+           ))
+         )
+         AND trigger_record.tgenabled = 'O') AS trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname IN (
+           '_enforce_effect_reversal_offer_update', '_reject_effect_reversal_mutation'
+         )) AS function_count,
+      NOT EXISTS (
+        SELECT 1 FROM ownware.effect_reversal_offers AS offer
+        WHERE (offer.status = 'available') <> (offer.resolved_at IS NULL)
+          OR (offer.expires_at IS NOT NULL AND offer.expires_at <= offer.created_at)
+      ) AND NOT EXISTS (
+        SELECT 1 FROM ownware.effect_reversal_receipts AS receipt
+        JOIN ownware.effect_reversal_offers AS offer ON offer.offer_id = receipt.offer_id
+        WHERE receipt.run_id <> offer.run_id
+          OR receipt.effect_id <> offer.effect_id
+          OR receipt.operation_kind <> offer.operation_kind
+          OR receipt.outcome <> offer.status
+      ) AS data_valid
+  `)
+  const row = result.rows[0]
+  return row?.check_valid === true &&
+    row.trigger_count === '4' &&
+    row.function_count === '2' &&
+    row.data_valid === true
+}
+
+async function postgreSqlEgressEvidenceSchemaMatches(client: QueryClient): Promise<boolean> {
+  return await postgreSqlSchemaMatches(
+    client,
+    POSTGRESQL_EGRESS_EVIDENCE_SCHEMA_EXPECTATION,
+  ) &&
     await postgreSqlMessageSequenceMatches(client) &&
     await postgreSqlProviderUsageEvidenceMatches(client) &&
     await postgreSqlPluginControlPlaneMatches(client) &&
@@ -1464,6 +1933,45 @@ async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<bool
     await postgreSqlEffectEvidenceMatches(client) &&
     await postgreSqlPermissionIntentBindingMatches(client) &&
     await postgreSqlEgressEvidenceMatches(client)
+}
+
+async function postgreSqlSkillActivationReceiptsMatch(client: QueryClient): Promise<boolean> {
+  const result = await client.query<{
+    readonly immutable_trigger_count: string
+    readonly immutable_function_count: string
+    readonly data_valid: boolean
+  }>(`
+    SELECT
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND relation.relname = 'skill_activation_receipts'
+         AND trigger_record.tgname IN (
+           'skill_activation_receipts_no_update',
+           'skill_activation_receipts_no_delete'
+         )
+         AND trigger_record.tgenabled = 'O') AS immutable_trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname = '_reject_skill_activation_receipt_mutation')
+        AS immutable_function_count,
+      NOT EXISTS (
+        SELECT 1 FROM ownware.skill_activation_receipts
+        WHERE receipt_seq NOT BETWEEN 1 AND 9007199254740991
+          OR turn_index NOT BETWEEN 0 AND 9007199254740991
+          OR activated_at NOT BETWEEN 0 AND 9007199254740991
+          OR profile_digest !~ '^hmac-sha256:[0-9a-f]{64}$'
+          OR skill_digest !~ '^hmac-sha256:[0-9a-f]{64}$'
+      ) AS data_valid
+  `)
+  const row = result.rows[0]
+  return row?.immutable_trigger_count === '2' &&
+    row.immutable_function_count === '1' &&
+    row.data_valid === true
 }
 
 async function postgreSqlPermissionIntentSchemaMatches(client: QueryClient): Promise<boolean> {
@@ -1942,6 +2450,20 @@ const EGRESS_EVIDENCE_MIGRATION: PostgreSqlMigration = Object.freeze({
   version: 89,
   name: '089_egress_evidence',
   sql: EGRESS_EVIDENCE_SQL,
+  verifyApplied: postgreSqlEgressEvidenceSchemaMatches,
+})
+
+const SKILL_ACTIVATION_RECEIPTS_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 90,
+  name: '090_skill_activation_receipts',
+  sql: SKILL_ACTIVATION_RECEIPTS_SQL,
+  verifyApplied: postgreSqlV90SchemaMatches,
+})
+
+const EFFECT_REVERSALS_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 91,
+  name: '091_effect_reversals',
+  sql: EFFECT_REVERSALS_SQL,
   verifyApplied: postgreSqlCurrentSchemaMatches,
 })
 
@@ -1956,6 +2478,8 @@ export const POSTGRESQL_MIGRATION_MANIFEST: PostgreSqlMigrationManifest = Object
     EFFECT_EVIDENCE_MIGRATION,
     PERMISSION_INTENT_BINDING_MIGRATION,
     EGRESS_EVIDENCE_MIGRATION,
+    SKILL_ACTIVATION_RECEIPTS_MIGRATION,
+    EFFECT_REVERSALS_MIGRATION,
   ]),
   logicalMigrations: STORAGE_LOGICAL_MIGRATIONS,
   verifyCurrentSchema: postgreSqlCurrentSchemaMatches,

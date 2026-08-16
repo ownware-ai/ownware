@@ -156,7 +156,8 @@ const memoryOperations = {
 
 const proposalOperations = {
   getById: 'read_failed', listForProfile: 'read_failed', listForThread: 'read_failed',
-  countPendingForProfile: 'read_failed', propose: 'write_failed', accept: 'write_failed',
+  countPendingForProfile: 'read_failed', propose: 'write_failed',
+  proposeWithDisposition: 'write_failed', accept: 'write_failed',
   reject: 'write_failed',
 } as const satisfies Record<keyof MemoryProposalRepository, StorageRepositoryErrorCode>
 

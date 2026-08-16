@@ -44,6 +44,7 @@ import { projectPermissionEvidenceEvent } from './event-ingestor.js'
 import type { TurnInterruptedEvent } from './events.js'
 import { redactEventForStorage, redactToolInput } from './redact-event.js'
 import { trace, traceEnabled } from './trace.js'
+import { denyAllHitls } from './hitl-registry.js'
 import type { PendingReconciles } from './pending-reconcile.js'
 import type { ProfileRegistry } from '../profile/registry.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
@@ -51,6 +52,7 @@ import { reconcileSessionTools } from '../profile/reconcile.js'
 import type { RunRepository } from '../storage/security-repositories.js'
 import type { EffectReceiptRepository } from './effect-receipt-store.js'
 import type { EgressReceiptRepository } from './egress-receipt-store.js'
+import type { SkillActivationReceiptRepository } from './skill-activation-receipt-store.js'
 import {
   ManagedExecutionRuntime,
   RuntimeContractError,
@@ -216,6 +218,7 @@ export class SessionRunner {
     private readonly runStore?: RunRepository,
     private readonly effectReceipts?: EffectReceiptRepository,
     private readonly egressReceipts?: EgressReceiptRepository,
+    private readonly skillActivationReceipts?: SkillActivationReceiptRepository,
   ) {}
 
   /** Install the reconcile dependencies. Called once during boot. */
@@ -337,6 +340,8 @@ export class SessionRunner {
   async drainAll(abortFirst = false): Promise<void> {
     if (abortFirst) {
       for (const [threadId] of this.runs) {
+        const companions = this.state.getSessionCompanions(threadId)
+        if (companions) denyAllHitls(companions.hitls)
         const execution = this.state.getRuntime(threadId)?.execution
         if (execution) {
           void execution.cancel('system').catch((err) => {
@@ -367,6 +372,8 @@ export class SessionRunner {
       run.status = 'error'
       return { status: 'error', turnCount: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, error: 'Missing session or runtime' }
     }
+
+    const acceptsNativeSkillActivationEvidence = runtime.execution === undefined
 
     // The absence of an explicit selection is the byte-compatible legacy
     // path. It still crosses the same execution boundary as an external
@@ -561,6 +568,30 @@ export class SessionRunner {
           await this.runStore.advanceConsequence(run.runId, envelope.consequence)
         }
 
+        if (event.type === 'skill.activation') {
+          if (
+            !acceptsNativeSkillActivationEvidence
+            ||
+            this.skillActivationReceipts === undefined
+            || event.sourceRef !== profileId
+            || event.agentId !== null
+            || event.toolCallId === null
+          ) {
+            throw new Error('Skill activation receipt authority is unavailable')
+          }
+          await this.skillActivationReceipts.observe({
+            activationId: event.activationId,
+            runId: run.runId,
+            profileId,
+            profileDigest: event.sourceDigest,
+            skillName: event.skillName,
+            skillDigest: event.skillDigest,
+            agentId: event.agentId,
+            toolCallId: event.toolCallId,
+            turnIndex: event.turnIndex,
+          }, event.timestamp)
+        }
+
         if (event.type === 'turn.start') {
           turnStartedAt.set(event.turnIndex, event.timestamp)
         } else if (
@@ -628,6 +659,28 @@ export class SessionRunner {
             runtime.execution
               ? !runtime.execution.hasPendingPermission(event.requestId)
               : runtime.hitl?.pendingCount === 0
+          ) {
+            await this.runStore.markRunningAfterDecision(run.runId)
+          }
+        } else if (event.type === 'sensitive.input.request') {
+          const broker = this.state.getSessionCompanions(threadId)?.sensitiveInputBroker
+          const pending = broker?.getPending(run.runId, event.requestId)
+          if (
+            pending === undefined
+            || pending.toolCallId !== event.toolCallId
+            || pending.toolName !== event.toolName
+            || pending.agentId !== event.agentId
+            || pending.adapterRevision !== event.adapterRevision
+          ) {
+            throw new Error('Sensitive-input request authority is unavailable')
+          }
+          if (this.runStore) await this.runStore.markWaiting(run.runId)
+        } else if (event.type === 'sensitive.input.response' && this.runStore) {
+          const companions = this.state.getSessionCompanions(threadId)
+          if (
+            (companions?.hitl.pendingCount ?? 0) === 0
+            && (companions?.credentialHITL.pendingCount ?? 0) === 0
+            && (companions?.sensitiveInputBroker?.pendingCount ?? 0) === 0
           ) {
             await this.runStore.markRunningAfterDecision(run.runId)
           }
@@ -772,6 +825,11 @@ export class SessionRunner {
           } as LoomEvent)
         } catch { /* best effort */ }
       }
+
+      // Values and one-use handles are run-scoped. Runtime teardown is the
+      // last point at which an adapter could still consume one, so revoke the
+      // broker immediately afterwards and before any post-run side work.
+      this.state.getSessionCompanions(threadId)?.sensitiveInputBroker?.endRun(run.runId)
 
       // Drop the lifecycle callback so any late sub-agent event can't
       // mutate a stale accumulator. Late events still land in
@@ -1379,6 +1437,9 @@ export class SessionRunner {
       case 'checkpoint.saved':
       case 'security.redact':
       case 'audit.entry':
+      case 'sensitive.input.request':
+      case 'sensitive.input.response':
+      case 'skill.activation':
         break
 
       case 'credential.request': {

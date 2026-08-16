@@ -38,6 +38,8 @@ import type {
 import type { Thread } from '../gateway/types.js'
 import type { EffectReceiptRepository } from '../gateway/effect-receipt-store.js'
 import type { EgressReceiptRepository } from '../gateway/egress-receipt-store.js'
+import type { SkillActivationReceiptRepository } from '../gateway/skill-activation-receipt-store.js'
+import type { EffectReversalRepository } from '../gateway/effect-reversal-store.js'
 import type { CodexThreadReference } from '../runtime/codex/official-thread.js'
 import type { EgressMode } from '@ownware/loom'
 
@@ -282,6 +284,8 @@ export interface SecurityRepositories {
   readonly runs: RunRepository
   readonly effectReceipts: EffectReceiptRepository
   readonly egressReceipts: EgressReceiptRepository
+  readonly skillActivationReceipts: SkillActivationReceiptRepository
+  readonly effectReversals: EffectReversalRepository
   readonly idempotency: IdempotencyRepository
   readonly accessGrants: AccessGrantRepository
   readonly oauthRefresh: OAuthRefreshRepository

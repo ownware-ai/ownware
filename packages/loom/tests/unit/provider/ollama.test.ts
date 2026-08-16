@@ -47,9 +47,9 @@ describe('resolveOllamaHost', () => {
     else process.env.OLLAMA_HOST = saved
   })
 
-  it('defaults to localhost:11434', () => {
+  it('defaults to the literal loopback address on port 11434', () => {
     delete process.env.OLLAMA_HOST
-    expect(resolveOllamaHost()).toBe('http://localhost:11434')
+    expect(resolveOllamaHost()).toBe('http://127.0.0.1:11434')
   })
 
   it('honors OLLAMA_HOST with a scheme', () => {

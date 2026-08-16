@@ -17,6 +17,7 @@ interface Seen {
   url: string
   auth: string | undefined
   idempotencyKey: string | undefined
+  contentType: string | undefined
   body: string
 }
 
@@ -62,6 +63,7 @@ beforeAll(async () => {
       url: req.url ?? '',
       auth: req.headers.authorization,
       idempotencyKey: req.headers['idempotency-key'] as string | undefined,
+      contentType: req.headers['content-type'],
       body: Buffer.concat(chunks).toString('utf8'),
     })
 
@@ -744,6 +746,26 @@ beforeAll(async () => {
       }))
       return
     }
+    if (/^\/api\/v1\/runs\/[^/]+\/skill-activation-receipts(?:\?|$)/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        items: [{
+          receiptId: '55555555-5555-4555-8555-555555555555',
+          sequence: 1,
+          runId: '88888888-8888-4888-8888-888888888888',
+          profileId: 'assistant',
+          profileDigest: `hmac-sha256:${'a'.repeat(64)}`,
+          skillName: '分析',
+          skillDigest: `hmac-sha256:${'b'.repeat(64)}`,
+          agentId: null,
+          toolCallId: 'call_skill_1',
+          turnIndex: 0,
+          activatedAt: 100,
+        }],
+        nextCursor: null,
+      }))
+      return
+    }
     if (/\/agents\/root\/events/.test(url) || /\/api\/v1\/runs\/[^/]+\/events/.test(url)) {
       res.writeHead(200, { 'content-type': 'text/event-stream' })
       res.write(':keepalive\n\n')
@@ -759,6 +781,26 @@ beforeAll(async () => {
         runId: '88888888-8888-4888-8888-888888888888',
         requestId: 'permission_1',
         ...body,
+      }))
+      return
+    }
+    if (/\/api\/v1\/runs\/[^/]+\/sensitive-input\/[^/]+\/deny$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        runId: '88888888-8888-4888-8888-888888888888',
+        requestId: 'sensitive_1',
+        accepted: true,
+        status: 'denied',
+      }))
+      return
+    }
+    if (/\/api\/v1\/runs\/[^/]+\/sensitive-input\/[^/]+$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        runId: '88888888-8888-4888-8888-888888888888',
+        requestId: 'sensitive_1',
+        accepted: true,
+        status: 'provided',
       }))
       return
     }
@@ -840,6 +882,7 @@ describe('request shapes', () => {
       attachments: [{ filename: 'note.txt', mimeType: 'text/plain', data: 'aGk=' }],
       egressMode: 'local-only',
       idempotencyKey: '11111111-1111-4111-8111-111111111111',
+      interactionCapabilities: ['sensitive-input.v1'],
     })
     expect(result.threadId).toBe('t_1')
     expect(result.model).toBe('ollama:llama3.2')
@@ -857,6 +900,7 @@ describe('request shapes', () => {
       prompt: 'hi', profileId: 'assistant', threadId: 't_1', model: 'x:y',
       attachments: [{ filename: 'note.txt', mimeType: 'text/plain', data: 'aGk=' }],
       egressMode: 'local-only',
+      interactionCapabilities: ['sensitive-input.v1'],
     })
   })
 
@@ -930,6 +974,32 @@ describe('request shapes', () => {
     expect(JSON.parse(last.body)).toEqual({ decision: 'approve', operationHash })
   })
 
+  it('submits and denies sensitive input without JSON serialization or value echo', async () => {
+    const runId = '88888888-8888-4888-8888-888888888888'
+    const secret = 'not-json-secret-秘密'
+    await expect(client().submitSensitiveInput(runId, 'sensitive_1', secret))
+      .resolves.toEqual({
+        runId,
+        requestId: 'sensitive_1',
+        accepted: true,
+        status: 'provided',
+      })
+    let last = seen.at(-1)!
+    expect(last.url).toBe(`/api/v1/runs/${runId}/sensitive-input/sensitive_1`)
+    expect(last.contentType).toBe('text/plain; charset=utf-8')
+    expect(last.body).toBe(secret)
+
+    await expect(client().denySensitiveInput(runId, 'sensitive_1')).resolves.toEqual({
+      runId,
+      requestId: 'sensitive_1',
+      accepted: true,
+      status: 'denied',
+    })
+    last = seen.at(-1)!
+    expect(last.url).toBe(`/api/v1/runs/${runId}/sensitive-input/sensitive_1/deny`)
+    expect(last.body).toBe('')
+  })
+
   it('requests cancellation for one exact run', async () => {
     const runId = '88888888-8888-4888-8888-888888888888'
     await expect(client().cancel(runId)).resolves.toMatchObject({
@@ -983,6 +1053,29 @@ describe('request shapes', () => {
     expect(last.method).toBe('GET')
     expect(last.url).toBe(
       `/api/v1/runs/${runId}/egress-receipts?limit=25&cursor=33333333-3333-4333-8333-333333333333`,
+    )
+    expect(last.body).toBe('')
+  })
+
+  it('pages exact content-free skill activation receipts', async () => {
+    const runId = '88888888-8888-4888-8888-888888888888'
+    await expect(client().listSkillActivationReceipts(runId, {
+      limit: 25,
+      cursor: '55555555-5555-4555-8555-555555555555',
+    })).resolves.toMatchObject({
+      items: [{
+        runId,
+        profileId: 'assistant',
+        skillName: '分析',
+        agentId: null,
+        toolCallId: 'call_skill_1',
+      }],
+      nextCursor: null,
+    })
+    const last = seen.at(-1)!
+    expect(last.method).toBe('GET')
+    expect(last.url).toBe(
+      `/api/v1/runs/${runId}/skill-activation-receipts?limit=25&cursor=55555555-5555-4555-8555-555555555555`,
     )
     expect(last.body).toBe('')
   })

@@ -29,14 +29,14 @@ import {
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
-const V90_NAME = 'add_thread_upgrade_marker'
-const V90_SQL = `
+const V91_NAME = 'add_thread_upgrade_marker'
+const V91_SQL = `
   ALTER TABLE ownware.threads
-  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v90'
+  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v91'
 `.trim()
-const V90_FINGERPRINT = `sha256:${createHash('sha256').update(V90_SQL).digest('hex')}`
+const V91_FINGERPRINT = `sha256:${createHash('sha256').update(V91_SQL).digest('hex')}`
 
-const verifyV90Schema: PostgreSqlMigration['verifyApplied'] = async (client) => {
+const verifyV91Schema: PostgreSqlMigration['verifyApplied'] = async (client) => {
   const result = await client.query<{
     readonly tables: string
     readonly columns: string
@@ -64,25 +64,25 @@ const verifyV90Schema: PostgreSqlMigration['verifyApplied'] = async (client) => 
           AND column_name = 'upgrade_marker') AS default_value
   `)
   const row = result.rows[0]
-  return row?.tables === '75' && row.columns === '811' &&
+  return row?.tables === '76' && row.columns === '822' &&
     row.data_type === 'text' && row.nullable === 'NO' &&
-    row.default_value === "'v90'::text"
+    row.default_value === "'v91'::text"
 }
 
-const V90_MIGRATION: PostgreSqlMigration = Object.freeze({
-  version: 90,
-  name: V90_NAME,
-  sql: V90_SQL,
-  verifyApplied: verifyV90Schema,
+const V91_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 91,
+  name: V91_NAME,
+  sql: V91_SQL,
+  verifyApplied: verifyV91Schema,
 })
 
-const V90_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
-  migrations: Object.freeze([...POSTGRESQL_MIGRATION_MANIFEST.migrations, V90_MIGRATION]),
+const V91_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
+  migrations: Object.freeze([...POSTGRESQL_MIGRATION_MANIFEST.migrations, V91_MIGRATION]),
   logicalMigrations: Object.freeze([
     ...STORAGE_LOGICAL_MIGRATIONS,
-    { version: 90, name: V90_NAME },
+    { version: 91, name: V91_NAME },
   ]),
-  verifyCurrentSchema: verifyV90Schema,
+  verifyCurrentSchema: verifyV91Schema,
 })
 
 const BASELINE_ONLY_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
@@ -219,7 +219,7 @@ const HISTORY_DIVERGENCES: ReadonlyArray<{
     mutate: async (client) => {
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (90, '', 'not-a-fingerprint')
+        VALUES (91, '', 'not-a-fingerprint')
       `)
     },
   },
@@ -228,8 +228,8 @@ const HISTORY_DIVERGENCES: ReadonlyArray<{
     mutate: async (client) => {
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (91, 'skipped_v90', $1)
-      `, [V90_FINGERPRINT])
+        VALUES (92, 'skipped_v91', $1)
+      `, [V91_FINGERPRINT])
     },
   },
   {
@@ -238,8 +238,8 @@ const HISTORY_DIVERGENCES: ReadonlyArray<{
     mutate: async (client) => {
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (90, 'unknown_v90', $1)
-      `, [V90_FINGERPRINT])
+        VALUES (91, 'unknown_v91', $1)
+      `, [V91_FINGERPRINT])
     },
   },
 ]
@@ -297,7 +297,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       `)).rows
 
       upgraded = await open(database.url)
-      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 89 })
+      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 90 })
       const after = (await client.query(`
         SELECT to_jsonb(message_record) - 'message_seq' AS value
         FROM ownware.messages AS message_record
@@ -324,7 +324,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       const durableHistory = await history(client)
       await upgraded.close()
       upgraded = await open(database.url)
-      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 89 })
+      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 90 })
       expect(await history(client)).toEqual(durableHistory)
       await upgraded.close()
       upgraded = undefined
@@ -357,7 +357,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       expect(await storage.health()).toMatchObject({
         kind: 'postgresql',
         state: 'ready',
-        schemaVersion: 89,
+        schemaVersion: 90,
       })
       expect(await history(client)).toEqual(POSTGRESQL_MIGRATION_MANIFEST.migrations.map(
         (migration) => ({
@@ -378,7 +378,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       })
       await expect(storage.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 89,
+        schemaVersion: 90,
       })
       expect(await history(client)).toHaveLength(POSTGRESQL_MIGRATION_MANIFEST.migrations.length)
     } finally {
@@ -388,7 +388,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
     }
   })
 
-  it('makes fresh v90 and populated v89→v90 converge, then restarts exactly', async () => {
+  it('makes fresh v91 and populated v90→v91 converge, then restarts exactly', async () => {
     const populated = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const fresh = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const populatedClient = new Client({ connectionString: populated.url, ssl: false })
@@ -398,26 +398,26 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
     try {
       populatedStorage = await open(populated.url)
       const thread = await populatedStorage.repositories.core.threads.create(
-        'migration-v90-profile',
+        'migration-v91-profile',
         'populated upgrade row',
       )
       const before = await populatedStorage.repositories.core.threads.get(thread.id)
       await populatedStorage.close()
 
-      populatedStorage = await open(populated.url, V90_MANIFEST)
+      populatedStorage = await open(populated.url, V91_MANIFEST)
       await populatedClient.connect()
-      expect(await populatedStorage.health()).toMatchObject({ state: 'ready', schemaVersion: 90 })
+      expect(await populatedStorage.health()).toMatchObject({ state: 'ready', schemaVersion: 91 })
       await expect(populatedStorage.repositories.core.threads.get(thread.id)).resolves.toEqual(before)
       expect((await populatedClient.query<{ readonly marker: string }>(`
         SELECT upgrade_marker AS marker FROM ownware.threads WHERE id = $1
-      `, [thread.id])).rows).toEqual([{ marker: 'v90' }])
+      `, [thread.id])).rows).toEqual([{ marker: 'v91' }])
 
-      freshStorage = await open(fresh.url, V90_MANIFEST)
+      freshStorage = await open(fresh.url, V91_MANIFEST)
       await freshClient.connect()
-      expect(await freshStorage.health()).toMatchObject({ state: 'ready', schemaVersion: 90 })
-      await expect(verifyV90Schema(populatedClient)).resolves.toBe(true)
-      await expect(verifyV90Schema(freshClient)).resolves.toBe(true)
-      const expectedHistory = V90_MANIFEST.migrations.map((migration) => ({
+      expect(await freshStorage.health()).toMatchObject({ state: 'ready', schemaVersion: 91 })
+      await expect(verifyV91Schema(populatedClient)).resolves.toBe(true)
+      await expect(verifyV91Schema(freshClient)).resolves.toBe(true)
+      const expectedHistory = V91_MANIFEST.migrations.map((migration) => ({
         version: String(migration.version),
         name: migration.name,
         fingerprint: `sha256:${createHash('sha256').update(migration.sql).digest('hex')}`,
@@ -431,11 +431,11 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       }
 
       await populatedStorage.close()
-      populatedStorage = await open(populated.url, V90_MANIFEST)
+      populatedStorage = await open(populated.url, V91_MANIFEST)
       await expect(populatedStorage.repositories.core.threads.get(thread.id)).resolves.toEqual(before)
       await expect(populatedStorage.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 90,
+        schemaVersion: 91,
       })
       await populatedStorage.close()
       populatedStorage = undefined
@@ -465,7 +465,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
     }
   }, 20_000)
 
-  it('refuses a coherent pre-applied v90 migration unchanged because no compiled v90 seam exists', async () => {
+  it('refuses a coherent pre-applied v91 migration unchanged because no compiled v91 seam exists', async () => {
     const database = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const client = new Client({ connectionString: database.url, ssl: false })
     let storage: PostgreSqlStorageAdapter<RootRepositories, object> | undefined
@@ -479,11 +479,11 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       storage = undefined
       await client.connect()
       await client.query('BEGIN')
-      await client.query(V90_SQL)
+      await client.query(V91_SQL)
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (90, $1, $2)
-      `, [V90_NAME, V90_FINGERPRINT])
+        VALUES (91, $1, $2)
+      `, [V91_NAME, V91_FINGERPRINT])
       await client.query('COMMIT')
       const before = await client.query<{
         readonly id: string

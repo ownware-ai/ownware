@@ -71,7 +71,8 @@ async function advanceRunConsequence(
   `, [consequence, now, runId, rank])
 }
 
-async function observeInTransaction(
+/** Adapter-internal composition seam for repositories sharing one transaction. */
+export async function observePostgreSqlEffectInTransaction(
   client: PostgreSqlQueryClient,
   input: ObserveEffectInput,
   now: number,
@@ -166,7 +167,7 @@ async function reconcilePending(
     FOR UPDATE
   `, [runId])
   for (const identity of result.rows) {
-    await observeInTransaction(client, {
+    await observePostgreSqlEffectInTransaction(client, {
       runId,
       toolCallId: identity.tool_call_id,
       toolName: identity.tool_name,
@@ -192,7 +193,7 @@ export function createPostgreSqlEffectReceiptRepository(
       }
       return repositoryCall(context, 'effect_receipts', 'observe', 'write_failed', async () =>
         withPostgreSqlTransaction(context.pool, (client) =>
-          observeInTransaction(client, input, now)))
+          observePostgreSqlEffectInTransaction(client, input, now)))
     },
     listForRun(runId, page) {
       if (

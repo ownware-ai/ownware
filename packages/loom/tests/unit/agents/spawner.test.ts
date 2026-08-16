@@ -504,6 +504,53 @@ describe('AgentSpawner', () => {
       ])
     })
 
+    it('emits exact granted-skill activations before the helper loop starts', async () => {
+      mockLoop.mockImplementation(async function* () {
+        yield {
+          type: 'session.start' as const,
+          sessionId: 'helper-session',
+          model: 'mock',
+          timestamp: Date.now(),
+        }
+        return makeLoopResult('done')
+      })
+      const captured: unknown[] = []
+      const spawner = new AgentSpawner({
+        provider: createMockProvider(),
+        tools: [],
+        config: createDefaultConfig('mock:test'),
+        onEvent: event => { captured.push(event) },
+      })
+      const handle = await spawner.spawn({
+        name: 'granted-helper',
+        grantedSkillActivations: [{
+          sourceRef: 'profile-a',
+          sourceDigest: 'profile-opaque',
+          skillName: 'unfamiliar-skill',
+          skillDigest: 'skill-opaque',
+        }],
+      }, 'isolated')
+      await spawner.waitForAgent(handle.id)
+      const events = captured as Array<Record<string, unknown>>
+      expect(events.slice(0, 3).map(event => event['type'])).toEqual([
+        'agent.spawn',
+        'skill.activation',
+        'session.start',
+      ])
+      expect(events[1]).toMatchObject({
+        type: 'skill.activation',
+        toolCallId: null,
+        sourceRef: 'profile-a',
+        sourceDigest: 'profile-opaque',
+        skillName: 'unfamiliar-skill',
+        skillDigest: 'skill-opaque',
+        agentId: handle.id,
+        turnIndex: 0,
+        timestamp: expect.any(Number),
+      })
+      expect(JSON.stringify(events[1])).not.toContain('PRIVATE_SKILL_BODY')
+    })
+
     it('hook is not called for agents that were never spawned', async () => {
       const captured: unknown[] = []
       const spawner = new AgentSpawner({
