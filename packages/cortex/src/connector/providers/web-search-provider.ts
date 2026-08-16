@@ -35,6 +35,8 @@ import {
 
 export class WebSearchToolProvider implements ConnectorToolProvider {
   readonly source = 'web_search'
+  readonly assemblyEgress = 'none' as const
+  readonly toolEgress = 'uncontained' as const
 
   constructor(private readonly service: WebSearchService) {}
 

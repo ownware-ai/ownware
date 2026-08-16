@@ -54,6 +54,9 @@ const mkAppr = (over: Record<string, unknown> = {}) =>
     toolName: 'gmail_send',
     toolInput: { to: 'dana@acme.com', subject: 'Re: renewal', body: 'Hi Dana…' },
     summary: 'Email to dana@acme.com — Re: renewal',
+    policyRevision: 'a'.repeat(64),
+    toolRevision: 'b'.repeat(64),
+    targetRevision: null,
     ...over,
   })
 
@@ -92,8 +95,11 @@ describe('SqliteApprovalStore', () => {
     expect(approvals.countPending()).toBe(1)
   })
 
-  it('decide approve stamps status + decidedAt + result; only pending transitions (idempotent)', () => {
+  it('claims once, then records success; a second claim cannot resend', () => {
     const a = mkAppr()
+    const claim = approvals.claim(a.id, 10)
+    expect(claim.status).toBe('claimed')
+    expect(approvals.claim(a.id, 11).status).toBe('already_claimed')
     const approved = approvals.decide(a.id, { status: 'approved', result: { sent: true } })!
     expect(approved.status).toBe('approved')
     expect(approved.decidedAt).not.toBeNull()
@@ -105,15 +111,33 @@ describe('SqliteApprovalStore', () => {
 
   it('decide can record an approved-but-failed execution honestly (never a fake success)', () => {
     const a = mkAppr()
+    expect(approvals.claim(a.id).status).toBe('claimed')
     const failed = approvals.decide(a.id, { status: 'failed', errorMessage: 'Slack token expired' })!
     expect(failed.status).toBe('failed')
     expect(failed.errorMessage).toBe('Slack token expired')
   })
 
-  it('a corrupt status surfaces loudly on read (Zod), never silently mis-routes', () => {
+  it('rejects a corrupt lifecycle at the database boundary', () => {
     const a = mkAppr()
-    db.rawMainHandle.prepare(`UPDATE schedule_approvals SET status = 'bogus' WHERE id = ?`).run(a.id)
-    expect(() => approvals.get(a.id)).toThrow()
+    expect(() => db.rawMainHandle
+      .prepare(`UPDATE schedule_approvals SET status = 'bogus' WHERE id = ?`)
+      .run(a.id)).toThrow()
+  })
+
+  it('marks a claimed action indeterminate after restart recovery and never makes it pending', () => {
+    const a = mkAppr()
+    expect(approvals.claim(a.id, 10).status).toBe('claimed')
+    expect(approvals.recoverInterruptedClaims(20)).toBe(1)
+    expect(approvals.get(a.id)).toMatchObject({ status: 'indeterminate', claimedAt: 10 })
+    expect(approvals.claim(a.id, 30).status).toBe('already_claimed')
+  })
+
+  it('blocks a changed stored action instead of dispatching it', () => {
+    const a = mkAppr()
+    db.rawMainHandle.prepare(`UPDATE schedule_approvals SET tool_input = ? WHERE id = ?`)
+      .run(JSON.stringify({ to: 'attacker@example.com' }), a.id)
+    expect(approvals.claim(a.id).status).toBe('intent_mismatch')
+    expect(approvals.get(a.id)?.status).toBe('indeterminate')
   })
 
   it('cascade-deletes when the parent schedule is removed (FK ON DELETE CASCADE)', () => {

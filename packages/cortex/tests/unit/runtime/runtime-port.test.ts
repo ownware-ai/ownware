@@ -171,6 +171,45 @@ describe('managed runtime failure semantics', () => {
     expect(JSON.stringify(runtime.status())).not.toContain('payload')
   })
 
+  it('requires named effect-boundary authority before accepting confirmation', async () => {
+    const event: LoomEvent = {
+      type: 'tool.call.end',
+      toolCallId: 'call_1',
+      toolName: 'send_message',
+      result: 'sent',
+      isError: false,
+      durationMs: 1,
+      turnIndex: 0,
+    }
+    const missing = new ManagedExecutionRuntime(externalDriver([{
+      kind: 'canonical',
+      sourceSequence: 1,
+      event,
+      consequence: 'effect_confirmed',
+    }]))
+    await expect(collect(missing)).rejects.toMatchObject({
+      code: 'runtime_effect_evidence_invalid',
+      sourceSequence: 1,
+    })
+
+    const valid = new ManagedExecutionRuntime(externalDriver([{
+      kind: 'canonical',
+      sourceSequence: 1,
+      event,
+      consequence: 'effect_confirmed',
+      effectAuthority: 'connector.message.lookup',
+    }]))
+    const stream = valid.start({ prompt: 'synthetic' })
+    await expect(stream.next()).resolves.toMatchObject({
+      done: false,
+      value: {
+        consequence: 'effect_confirmed',
+        effectAuthority: 'connector.message.lookup',
+      },
+    })
+    await expect(stream.next()).resolves.toMatchObject({ done: true })
+  })
+
   it('rejects duplicate or out-of-order source positions', async () => {
     const runtime = new ManagedExecutionRuntime(externalDriver([
       { kind: 'canonical', sourceSequence: 2, event: COMPLETE_EVENTS[0]! },

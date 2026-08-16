@@ -9,12 +9,14 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { Tool, ToolResult } from '@ownware/loom'
-import { applyRunSafety, envelopeSpawnerPool, holdTool, summarizeHeldCall, HELD_RESULT_MESSAGE, type HeldCall } from '../../../src/schedules/draft-hold.js'
+import { applyRunSafety, envelopeSpawnerPool, holdTool, summarizeHeldCall, toolForHeldExecution, HELD_RESULT_MESSAGE, type HeldCall } from '../../../src/schedules/draft-hold.js'
 
 let realRan = 0
 function tool(name: string, isReadOnly: boolean | undefined): Tool {
   return {
     name,
+    description: name,
+    inputSchema: { type: 'object', properties: {} },
     isReadOnly,
     execute: async (): Promise<ToolResult> => {
       realRan++
@@ -42,15 +44,36 @@ describe('holdTool', () => {
     expect(res.content).not.toContain('REAL SIDE EFFECT')
     expect(res.metadata).toMatchObject({ held: true, toolName: 'gmail_send' })
     expect(realRan).toBe(0) // the real side effect MUST NOT have run
-    expect(sink.held).toEqual([{ toolName: 'gmail_send', toolInput: { to: 'dana@acme.com', subject: 'Hi' } }])
+    expect(sink.held).toEqual([expect.objectContaining({
+      toolName: 'gmail_send',
+      toolInput: { to: 'dana@acme.com', subject: 'Hi' },
+      targetRevision: null,
+      toolRevision: expect.stringMatching(/^[0-9a-f]{64}$/),
+    })])
   })
 
-  it('a sink that throws never breaks the tool (still held, still no side effect)', async () => {
+  it('a sink failure reports that nothing was queued and never runs the effect', async () => {
     realRan = 0
     const wrapped = holdTool(tool('writeFile', false), { hold: () => { throw new Error('db down') } })
     const res = await (wrapped.execute({ path: '/x' }, {} as never) as Promise<ToolResult>)
-    expect(res.isError).toBe(false)
+    expect(res.isError).toBe(true)
+    expect(res.metadata).toMatchObject({ held: false })
     expect(realRan).toBe(0)
+  })
+
+  it('captures a declared authority target revision while parking', async () => {
+    const sink = fakeSink()
+    const conditional = {
+      ...tool('conditional_write', false),
+      conditionalEffect: {
+        contractRevision: 'etag-v1',
+        captureTargetRevision: async () => 'etag-7',
+        executeIfCurrent: async (): Promise<ToolResult> => ({ content: 'not called' }),
+      },
+    } satisfies Tool
+    const wrapped = holdTool(conditional, sink)
+    await (wrapped.execute({ value: 1 }, {} as never) as Promise<ToolResult>)
+    expect(sink.held[0]).toMatchObject({ targetRevision: 'etag-7' })
   })
 })
 
@@ -88,6 +111,41 @@ describe('applyRunSafety', () => {
     const out = applyRunSafety(t, 'draft-approval', sink)
     expect(out.length).toBe(1) // wrapped, not dropped
     expect(out[0]).not.toBe(t[0]) // it was wrapped
+  })
+})
+
+describe('toolForHeldExecution', () => {
+  it('routes a reviewed target revision only through the conditional authority API', async () => {
+    let ordinaryExecutions = 0
+    const observed: Array<{ input: Record<string, unknown>; revision: string }> = []
+    const conditional: Tool = {
+      ...tool('conditional_write', false),
+      execute: async () => {
+        ordinaryExecutions++
+        return { content: 'wrong boundary', isError: false }
+      },
+      conditionalEffect: {
+        contractRevision: 'etag-v1',
+        captureTargetRevision: async () => 'etag-7',
+        executeIfCurrent: async (input, _context, revision) => {
+          observed.push({ input, revision })
+          return { content: 'authority accepted', isError: false }
+        },
+      },
+    }
+    const executable = toolForHeldExecution(conditional, 'etag-7')
+    expect(executable).not.toBeNull()
+    const result = await executable!.execute({ value: 'exact' }, {} as never)
+    expect(result).toMatchObject({ content: 'authority accepted', isError: false })
+    expect(ordinaryExecutions).toBe(0)
+    expect(observed).toEqual([{
+      input: { value: 'exact' },
+      revision: 'etag-7',
+    }])
+  })
+
+  it('fails closed when a reviewed target revision has no conditional authority API', () => {
+    expect(toolForHeldExecution(tool('ordinary_write', false), 'etag-7')).toBeNull()
   })
 })
 

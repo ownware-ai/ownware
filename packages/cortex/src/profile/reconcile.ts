@@ -51,7 +51,7 @@
  *    threads whose profile declares the affected connector.
  */
 
-import type { Session, Tool } from '@ownware/loom'
+import type { EgressMode, Session, Tool } from '@ownware/loom'
 import type { LoadedProfile } from './loader.js'
 import type {
   ConnectorToolProvider,
@@ -75,6 +75,7 @@ export interface ReconcileOptions {
    * reconcile stays in lockstep with assembly.
    */
   readonly providers: readonly ConnectorToolProvider[]
+  readonly egressMode?: EgressMode
   /**
    * Test seam — override the logger. Production callers rely on the
    * default `console.warn`.
@@ -139,6 +140,9 @@ export async function reconcileSessionTools(
   //    softened because reconcile must never throw.
   const desired = new Map<string, Tool>()
   for (const provider of options.providers) {
+    if (options.egressMode === 'local-only' && provider.assemblyEgress !== 'none') {
+      continue
+    }
     let result: ConnectorToolProviderResult
     try {
       result = await provider.getToolsForProfile(profile, { existingTools: [] })
@@ -151,7 +155,25 @@ export async function reconcileSessionTools(
     // Stubs count as desired tools — the assembly path treats them
     // as first-class so the agent sees an honest "not connected"
     // tool rather than a silent gap. Reconcile mirrors that.
-    for (const t of [...result.tools, ...result.stubs]) {
+    const tools = result.tools.map(tool => tool.egress === undefined
+      ? {
+          ...tool,
+          egress: {
+            contractRevision: 'ownware.tool-egress.v1',
+            mediation: provider.toolEgress ?? 'uncontained' as const,
+          },
+        }
+      : tool)
+    const stubs = result.stubs.map(tool => tool.egress === undefined
+      ? {
+          ...tool,
+          egress: {
+            contractRevision: 'ownware.tool-egress.v1',
+            mediation: 'none' as const,
+          },
+        }
+      : tool)
+    for (const t of [...tools, ...stubs]) {
       if (desired.has(t.name)) {
         errors.push({
           provider: provider.source,

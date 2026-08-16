@@ -15,6 +15,10 @@
  */
 
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
+import {
+  SCHEDULE_APPROVAL_INTENT_REVISION,
+  scheduleApprovalOperationHash,
+} from '../gateway/permission-intent.js'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -24,9 +28,11 @@ import { z } from 'zod'
 /** Honest lifecycle — never a fake "fine". */
 export const ApprovalStatusSchema = z.enum([
   'pending', // awaiting the user
+  'executing', // exact action claimed; dispatch may already have happened
   'approved', // user approved AND the held action executed cleanly
   'discarded', // user dismissed it — never executed
   'failed', // user approved but executing the held action failed (8d)
+  'indeterminate', // claimed, but completion could not be established safely
 ])
 export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>
 
@@ -47,6 +53,10 @@ export interface ApprovalDto {
   readonly errorMessage: string | null
   readonly createdAt: number
   readonly decidedAt: number | null
+  /** Null only for historical terminal rows that predate exact binding. */
+  readonly intentRevision: 1 | null
+  /** Present once the one-shot dispatch fence has been acquired. */
+  readonly claimedAt: number | null
 }
 
 /** An approval enriched with its schedule's display fields — so the cross-agent
@@ -63,13 +73,32 @@ export interface CreateApprovalInput {
   readonly toolName: string
   readonly toolInput: unknown
   readonly summary: string
+  readonly policyRevision: string
+  readonly toolRevision: string
+  readonly targetRevision?: string | null
 }
 
 export interface DecideApprovalInput {
-  readonly status: ApprovalStatus
+  readonly status: 'approved' | 'discarded' | 'failed' | 'indeterminate'
   readonly result?: unknown
   readonly errorMessage?: string | null
 }
+
+export interface ClaimedApproval extends ApprovalDto {
+  readonly status: 'executing'
+  readonly operationHash: string
+  readonly policyRevision: string
+  readonly toolRevision: string
+  readonly targetRevision: string | null
+}
+
+export type ClaimApprovalResult =
+  | { readonly status: 'claimed'; readonly approval: ClaimedApproval }
+  | { readonly status: 'missing'; readonly approval: null }
+  | {
+      readonly status: 'not_pending' | 'already_claimed' | 'intent_mismatch'
+      readonly approval: ApprovalDto
+    }
 
 // ---------------------------------------------------------------------------
 // Row shape (snake_case, as stored)
@@ -88,6 +117,12 @@ interface ApprovalRow {
   readonly error_message: string | null
   readonly created_at: number
   readonly decided_at: number | null
+  readonly intent_revision: number | null
+  readonly operation_hash: string | null
+  readonly policy_revision: string | null
+  readonly tool_revision: string | null
+  readonly target_revision: string | null
+  readonly claimed_at: number | null
 }
 
 function parseJson(json: string | null): unknown {
@@ -115,6 +150,10 @@ function rowToApproval(row: ApprovalRow): ApprovalDto {
     errorMessage: row.error_message,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
+    intentRevision: row.intent_revision === SCHEDULE_APPROVAL_INTENT_REVISION
+      ? SCHEDULE_APPROVAL_INTENT_REVISION
+      : null,
+    claimedAt: row.claimed_at,
   }
 }
 
@@ -137,8 +176,20 @@ export class SqliteApprovalStore {
   create(input: CreateApprovalInput): ApprovalDto {
     const id = newApprovalId()
     const now = Date.now()
-    this.db
-      .prepare(
+    const threadId = input.threadId ?? null
+    const operationHash = scheduleApprovalOperationHash({
+      approvalId: id,
+      scheduleId: input.scheduleId,
+      runId: input.runId,
+      threadId,
+      toolName: input.toolName,
+      toolInput: input.toolInput,
+      policyRevision: input.policyRevision,
+      toolRevision: input.toolRevision,
+      targetRevision: input.targetRevision ?? null,
+    })
+    this.db.transaction(() => {
+      this.db.prepare(
         `INSERT INTO schedule_approvals (
           id, schedule_id, run_id, thread_id, tool_name, tool_input,
           summary, status, result, error_message, created_at, decided_at
@@ -148,12 +199,27 @@ export class SqliteApprovalStore {
         id,
         input.scheduleId,
         input.runId,
-        input.threadId ?? null,
+        threadId,
         input.toolName,
         JSON.stringify(input.toolInput ?? null),
         input.summary,
         now,
       )
+      this.db.prepare(`
+        INSERT INTO schedule_approval_bindings (
+          approval_id, intent_revision, operation_hash, policy_revision,
+          tool_revision, target_revision, bound_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        SCHEDULE_APPROVAL_INTENT_REVISION,
+        operationHash,
+        input.policyRevision,
+        input.toolRevision,
+        input.targetRevision ?? null,
+        now,
+      )
+    }).immediate()
     const created = this.get(id)
     if (created == null) {
       throw new Error(`schedule_approvals: insert succeeded but row ${id} not found`)
@@ -163,7 +229,17 @@ export class SqliteApprovalStore {
 
   get(id: string): ApprovalDto | null {
     const row = this.db
-      .prepare(`SELECT * FROM schedule_approvals WHERE id = ?`)
+      .prepare(`
+        SELECT approval.*, binding.intent_revision, binding.operation_hash,
+          binding.policy_revision, binding.tool_revision,
+          binding.target_revision, claim.claimed_at
+        FROM schedule_approvals AS approval
+        LEFT JOIN schedule_approval_bindings AS binding
+          ON binding.approval_id = approval.id
+        LEFT JOIN schedule_approval_claims AS claim
+          ON claim.approval_id = approval.id
+        WHERE approval.id = ?
+      `)
       .get(id) as ApprovalRow | undefined
     return row != null ? rowToApproval(row) : null
   }
@@ -171,7 +247,17 @@ export class SqliteApprovalStore {
   /** All approvals produced by one run (newest first). */
   listByRun(runId: string): ApprovalDto[] {
     const rows = this.db
-      .prepare(`SELECT * FROM schedule_approvals WHERE run_id = ? ORDER BY created_at DESC`)
+      .prepare(`
+        SELECT approval.*, binding.intent_revision, binding.operation_hash,
+          binding.policy_revision, binding.tool_revision,
+          binding.target_revision, claim.claimed_at
+        FROM schedule_approvals AS approval
+        LEFT JOIN schedule_approval_bindings AS binding
+          ON binding.approval_id = approval.id
+        LEFT JOIN schedule_approval_claims AS claim
+          ON claim.approval_id = approval.id
+        WHERE approval.run_id = ? ORDER BY approval.created_at DESC
+      `)
       .all(runId) as ApprovalRow[]
     return rows.map(rowToApproval)
   }
@@ -191,9 +277,14 @@ export class SqliteApprovalStore {
     const limit = opts.limit != null && opts.limit > 0 ? Math.min(opts.limit, 500) : 200
     const rows = this.db
       .prepare(
-        `SELECT a.*, s.name AS schedule_name, s.profile_id AS schedule_profile_id
+        `SELECT a.*, binding.intent_revision, binding.operation_hash,
+           binding.policy_revision, binding.tool_revision,
+           binding.target_revision, claim.claimed_at,
+           s.name AS schedule_name, s.profile_id AS schedule_profile_id
          FROM schedule_approvals a
          JOIN schedules s ON s.id = a.schedule_id
+         JOIN schedule_approval_bindings AS binding ON binding.approval_id = a.id
+         LEFT JOIN schedule_approval_claims AS claim ON claim.approval_id = a.id
          WHERE ${clauses.join(' AND ')}
          ORDER BY a.created_at DESC
          LIMIT ?`,
@@ -233,6 +324,105 @@ export class SqliteApprovalStore {
     return r.n
   }
 
+  /** Atomically acquire the durable one-shot dispatch fence. */
+  claim(id: string, now: number = Date.now()): ClaimApprovalResult {
+    return this.db.transaction((): ClaimApprovalResult => {
+      const publicApproval = this.get(id)
+      if (publicApproval == null) return { status: 'missing', approval: null }
+      if (publicApproval.status === 'executing' || publicApproval.claimedAt !== null) {
+        return { status: 'already_claimed', approval: publicApproval }
+      }
+      if (publicApproval.status !== 'pending') {
+        return { status: 'not_pending', approval: publicApproval }
+      }
+      const row = this.db.prepare(`
+        SELECT approval.*, binding.intent_revision, binding.operation_hash,
+          binding.policy_revision, binding.tool_revision,
+          binding.target_revision, claim.claimed_at
+        FROM schedule_approvals AS approval
+        LEFT JOIN schedule_approval_bindings AS binding
+          ON binding.approval_id = approval.id
+        LEFT JOIN schedule_approval_claims AS claim
+          ON claim.approval_id = approval.id
+        WHERE approval.id = ?
+      `).get(id) as ApprovalRow
+      let recomputed: string | null = null
+      try {
+        if (
+          row.intent_revision === SCHEDULE_APPROVAL_INTENT_REVISION
+          && row.operation_hash != null
+          && row.policy_revision != null
+          && row.tool_revision != null
+        ) {
+          recomputed = scheduleApprovalOperationHash({
+            approvalId: row.id,
+            scheduleId: row.schedule_id,
+            runId: row.run_id,
+            threadId: row.thread_id,
+            toolName: row.tool_name,
+            toolInput: parseJson(row.tool_input),
+            policyRevision: row.policy_revision,
+            toolRevision: row.tool_revision,
+            targetRevision: row.target_revision,
+          })
+        }
+      } catch {
+        recomputed = null
+      }
+      if (recomputed === null || recomputed !== row.operation_hash) {
+        this.db.prepare(`
+          UPDATE schedule_approvals
+          SET status = 'indeterminate',
+              error_message = 'The stored approval identity no longer matches the reviewed action.',
+              decided_at = ?
+          WHERE id = ? AND status = 'pending'
+        `).run(now, id)
+        return { status: 'intent_mismatch', approval: this.get(id)! }
+      }
+      this.db.prepare(`
+        INSERT INTO schedule_approval_claims (approval_id, operation_hash, claimed_at)
+        VALUES (?, ?, ?)
+      `).run(id, row.operation_hash, now)
+      const changed = this.db.prepare(`
+        UPDATE schedule_approvals SET status = 'executing'
+        WHERE id = ? AND status = 'pending'
+      `).run(id)
+      if (changed.changes !== 1) {
+        throw new Error('Schedule approval claim lost its lifecycle transition')
+      }
+      const claimed = this.get(id)!
+      return {
+        status: 'claimed',
+        approval: {
+          ...claimed,
+          status: 'executing',
+          operationHash: row.operation_hash,
+          policyRevision: row.policy_revision!,
+          toolRevision: row.tool_revision!,
+          targetRevision: row.target_revision,
+        },
+      }
+    }).immediate()
+  }
+
+  /** Crash recovery never makes a claimed effect retryable. */
+  recoverInterruptedClaims(now: number = Date.now()): number {
+    return this.db.prepare(`
+      UPDATE schedule_approvals
+      SET status = 'indeterminate',
+          error_message = COALESCE(
+            error_message,
+            'Ownware restarted after this action was claimed; its external effect is unknown.'
+          ),
+          decided_at = ?
+      WHERE status = 'executing'
+        AND EXISTS (
+          SELECT 1 FROM schedule_approval_claims AS claim
+          WHERE claim.approval_id = schedule_approvals.id
+        )
+    `).run(now).changes
+  }
+
   /**
    * Record a decision: approve / discard / fail. Stamps `decided_at` and
    * optionally the execution result or error (set by the 8d execute step).
@@ -242,13 +432,22 @@ export class SqliteApprovalStore {
   decide(id: string, input: DecideApprovalInput): ApprovalDto | null {
     const cur = this.get(id)
     if (cur == null) return null
-    if (cur.status !== 'pending') return cur // already decided — don't re-stamp
-    const status = ApprovalStatusSchema.parse(input.status)
+    const status = z.enum(['approved', 'discarded', 'failed', 'indeterminate'])
+      .parse(input.status)
+    const expected = status === 'discarded' ? 'pending' : 'executing'
+    if (cur.status !== expected) return cur // already decided / not the claimant
     this.db
       .prepare(
         `UPDATE schedule_approvals
          SET status = ?, result = ?, error_message = ?, decided_at = ?
-         WHERE id = ? AND status = 'pending'`,
+         WHERE id = ? AND status = ?
+           AND (
+             ? = 'discarded'
+             OR EXISTS (
+               SELECT 1 FROM schedule_approval_claims AS claim
+               WHERE claim.approval_id = schedule_approvals.id
+             )
+           )`,
       )
       .run(
         status,
@@ -256,6 +455,8 @@ export class SqliteApprovalStore {
         input.errorMessage ?? null,
         Date.now(),
         id,
+        expected,
+        status,
       )
     return this.get(id)
   }

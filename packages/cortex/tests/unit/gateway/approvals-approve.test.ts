@@ -29,24 +29,48 @@ function approval(over: Partial<ApprovalDto> = {}): ApprovalDto {
     id: 'appr_1', scheduleId: 'sched_1', runId: 'run_1', threadId: 'thread_1',
     toolName: 'writeFile', toolInput: { file_path: 'note.txt', content: 'hi' },
     summary: 'writeFile → note.txt', status: 'pending', result: null,
-    errorMessage: null, createdAt: 1, decidedAt: null, ...over,
+    errorMessage: null, createdAt: 1, decidedAt: null, intentRevision: 1,
+    claimedAt: null, ...over,
   }
 }
 
 function harness(opts: {
   approval: ApprovalDto | null
   schedule?: { profileId: string; workspaceId: string | null } | null
+  binding?: {
+    readonly policyRevision?: string
+    readonly toolRevision?: string
+    readonly targetRevision?: string | null
+  }
   execute: ExecuteHeldTool
 }) {
   const decided: Array<{ id: string; input: Record<string, unknown> }> = []
   const store = {
     get: (): ApprovalDto | null => opts.approval,
+    claim: (): unknown => opts.approval == null
+      ? { status: 'missing', approval: null }
+      : {
+          status: 'claimed',
+          approval: {
+            ...opts.approval,
+            status: 'executing',
+            claimedAt: 2,
+            operationHash: 'c'.repeat(64),
+            policyRevision: opts.binding?.policyRevision ?? 'a'.repeat(64),
+            toolRevision: opts.binding?.toolRevision ?? 'b'.repeat(64),
+            targetRevision: opts.binding?.targetRevision ?? null,
+          },
+        },
     decide: (id: string, input: Record<string, unknown>): ApprovalDto =>
       (decided.push({ id, input }), { ...(opts.approval as ApprovalDto), ...input, decidedAt: 2 }),
   } as unknown as Parameters<typeof createApprovalHandlers>[0]['store']
   const scheduleStore = {
     // `undefined` (omitted) → a default live schedule; explicit `null` → deleted.
-    get: (): unknown => (opts.schedule === undefined ? { profileId: 'adam', workspaceId: 'ws_1' } : opts.schedule),
+    get: (): unknown => (opts.schedule === undefined
+      ? { profileId: 'adam', workspaceId: 'ws_1', safetyLevel: 'draft-approval' }
+      : opts.schedule == null
+        ? null
+        : { ...opts.schedule, safetyLevel: 'draft-approval' }),
   } as unknown as Parameters<typeof createApprovalHandlers>[0]['scheduleStore']
   const handlers = createApprovalHandlers({ store, scheduleStore, executeHeldTool: opts.execute })
   return { handlers, decided }
@@ -66,6 +90,26 @@ describe('approveApproval (8d-4 — approve → execute the held call)', () => {
     }))
     expect(decided[0]!.input['status']).toBe('approved')
     expect(out.status).toBe(200)
+  })
+
+  it('forwards the immutable policy, tool, and target precondition binding', async () => {
+    const spy = vi.fn<ExecuteHeldTool>(async () => ({ content: 'sent once', isError: false }))
+    const { handlers } = harness({
+      approval: approval({ toolName: 'send_email' }),
+      binding: {
+        policyRevision: 'd'.repeat(64),
+        toolRevision: 'e'.repeat(64),
+        targetRevision: 'etag-42',
+      },
+      execute: spy,
+    })
+    const { res } = mockRes()
+    await handlers.approveApproval({} as never, res, { id: 'appr_1' })
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+      policyRevision: 'd'.repeat(64),
+      toolRevision: 'e'.repeat(64),
+      targetRevision: 'etag-42',
+    }))
   })
 
   it('does NOT execute a non-pending approval (idempotent, at-most-once)', async () => {

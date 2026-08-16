@@ -10,6 +10,7 @@ import type { CheckpointStore } from '../checkpoint/types.js'
 import type { SystemPrompt } from './system-prompt.js'
 import type { CacheProfile } from './cache-control.js'
 import type { STTProvider, TTSProvider } from './speech-types.js'
+import type { EgressControl } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Main config
@@ -124,6 +125,9 @@ export interface LoomConfig {
    * injected-by-consumer contract as `sttProvider`.
    */
   readonly ttsProvider?: TTSProvider
+
+  /** Host-owned outbound policy and durable observation seam. */
+  readonly egressControl?: EgressControl
 }
 
 // ---------------------------------------------------------------------------

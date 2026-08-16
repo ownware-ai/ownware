@@ -114,6 +114,48 @@ It's a contract: cortex parses it with zod, UI clients read it across
 the wire, and consumers in TUI/SDK rely on its stability. Adding a
 new optional field is fine; renaming or removing one is not.
 
+## Final Tool Authorization Boundary
+
+`checkPermission` classifies a proposed call and `requestApproval` obtains a
+human decision. Neither is final execution authority. A host that promises
+durable exact approval binding must also provide `authorizeToolExecution` and
+one opaque `permissionPolicyRevision`; Loom invokes that callback after the
+approval response and immediately before `Tool.execute`. False or throw blocks
+the call and emits `security.block`.
+
+- The callback receives the exact tool call, root-run-unique request ID,
+  helper identity, policy revision and whether a prompt was crossed. Helpers
+  inherit the parent callbacks and revision; never install a helper-only allow.
+- Omitting the callback remains supported for standalone Loom embedders, but
+  such a host must not claim durable one-use approval binding.
+- `Tool.conditionalEffect` is only for held effects whose remote authority has
+  a real conditional-write API. Its `executeIfCurrent` must enforce the captured
+  opaque target revision at that authority. A declared token or ordinary
+  preflight read is not target-freshness proof.
+- Exact authorization is not generic undo, effect success, tool correctness,
+  egress containment, skill compliance or proof that arbitrary input has no
+  secret. Those require separate authority contracts.
+
+## Outbound dispatch seam
+
+Loom exposes transport attempts through `EgressControl`; Cortex owns policy and
+receipt durability. Provider adapters using the platform fetch wrapper must
+call the controller before transport invocation and report only the final
+application origin. Providers, tools and hooks that cannot route every attempt
+through that seam must declare themselves uncontained (or remain undeclared),
+which fails closed when the host selects `local-only`.
+
+- Never infer egress from a provider/tool name, command text, URL-looking input
+  or permission zone. Use structural contracts at the effect boundary.
+- Tool declarations `none` and `brokered` are auditable adapter contracts, not
+  sandboxing. New first-party adapters need adversarial tests proving the
+  declared seam; arbitrary extension code is part of the host trust boundary.
+- A host-authority failure must propagate. Do not execute when durable
+  admission/block evidence could not be recorded.
+- Count-token and compaction provider calls are dispatches too. Thread the same
+  egress controller through them, and do not launch post-run background work
+  outside the run lifetime.
+
 ## Testing
 
 ```bash

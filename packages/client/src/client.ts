@@ -61,7 +61,11 @@ export interface RunInput {
   readonly attachments?: readonly RunAttachmentInput[]
   /** UUID reused only when retrying this exact logical run start. */
   readonly idempotencyKey?: string
+  /** Tighten this run to verified literal-loopback dispatch only. */
+  readonly egressMode?: EgressMode
 }
+
+export type EgressMode = 'unrestricted' | 'local-only'
 
 export interface RunAttachmentInput {
   readonly filename: string
@@ -95,6 +99,7 @@ export interface RunResult {
   readonly status?: string
   /** Gateway-enforced wall-clock timeout for this run, in milliseconds. */
   readonly timeoutMs?: number
+  readonly egressMode?: EgressMode
 }
 
 export type DurableRunStatus =
@@ -108,6 +113,13 @@ export type DurableRunStatus =
   | 'timed_out'
   | 'indeterminate'
 
+/** Monotonic evidence about what may already have escaped the run boundary. */
+export type RunConsequence =
+  | 'none_observed'
+  | 'output_observed'
+  | 'effect_possible'
+  | 'effect_confirmed'
+
 export interface RunSnapshot {
   readonly runId: string
   readonly threadId: string
@@ -116,7 +128,9 @@ export interface RunSnapshot {
   readonly candidateId?: string | null
   readonly model: string
   readonly timeoutMs: number
+  readonly egressMode: EgressMode
   readonly status: DurableRunStatus
+  readonly consequence: RunConsequence
   readonly terminal: boolean
   readonly outcomeKnown: boolean
   readonly acceptedAt: number
@@ -128,6 +142,91 @@ export interface RunSnapshot {
   readonly endSeq: number | null
   readonly earliestRetainedCursor: number | null
   readonly code: string | null
+}
+
+export type EffectReceiptKind =
+  | 'intent_observed'
+  | 'outcome_observed'
+  | 'authority_confirmed'
+  | 'reconciliation'
+
+export type EffectReceiptOutcome =
+  | 'pending'
+  | 'succeeded'
+  | 'failed'
+  | 'denied'
+  | 'unknown'
+
+export interface EffectReceipt {
+  readonly receiptId: string
+  /** Monotonic append order within this run. */
+  readonly sequence: number
+  /** Stable correlation for one conservatively observed tool action. */
+  readonly effectId: string
+  readonly runId: string
+  readonly toolCallId: string
+  readonly toolName: string
+  readonly kind: EffectReceiptKind
+  /** Tool lifecycle outcome; by itself this does not prove an external effect. */
+  readonly outcome: EffectReceiptOutcome
+  readonly consequence: RunConsequence
+  readonly authorityKind: 'runtime' | 'effect_observer' | 'reconciler'
+  /** Bounded structural provenance inside the configured adapter trust boundary. */
+  readonly authorityRef: string
+  readonly observedAt: number
+}
+
+export interface EffectReceiptPage {
+  readonly items: readonly EffectReceipt[]
+  readonly nextCursor: string | null
+}
+
+export interface EffectReceiptListOptions {
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+export type EgressReceiptPhase =
+  | 'dispatch_started'
+  | 'response_observed'
+  | 'dispatch_failed'
+  | 'dispatch_blocked'
+  | 'route_unavailable'
+  | 'outcome_unknown'
+
+export type EgressReasonCode =
+  | 'local_only_remote_destination'
+  | 'local_only_custom_transport'
+  | 'local_only_route_unavailable'
+  | 'local_only_redirect'
+  | 'route_unavailable'
+  | 'run_terminated_after_dispatch'
+  | 'gateway_restarted_after_dispatch'
+
+export interface EgressReceipt {
+  readonly receiptId: string
+  readonly sequence: number
+  readonly dispatchId: string
+  readonly runId: string
+  readonly mode: EgressMode
+  readonly sourceKind: 'provider' | 'tool' | 'connector' | 'browser' | 'process' | 'runtime'
+  readonly sourceRef: string
+  readonly transport: 'http' | 'https' | 'ws' | 'wss' | 'tcp' | 'tls' | 'unknown'
+  readonly mediation: 'platform_fetch' | 'custom_fetch' | 'uncontained' | 'unknown'
+  readonly destinationOrigin: string | null
+  readonly phase: EgressReceiptPhase
+  readonly reasonCode: EgressReasonCode | null
+  readonly observedAt: number
+}
+
+export interface EgressReceiptPage {
+  readonly items: readonly EgressReceipt[]
+  readonly nextCursor: string | null
+}
+
+export interface EgressReceiptListOptions {
+  readonly limit?: number
+  readonly cursor?: string
 }
 
 export interface StreamReplyOptions {
@@ -168,11 +267,13 @@ export interface PermissionDecisionInput {
 export interface PermissionDecisionResult extends PermissionDecisionInput {
   readonly runId: string
   readonly requestId: string
+  readonly intentRevision: 1
 }
 
 export interface RunCancellationResult {
   readonly runId: string
   readonly status: DurableRunStatus
+  readonly consequence: RunConsequence
   readonly terminal: boolean
   readonly outcomeKnown: boolean
   readonly cancellation: 'requested' | 'already_requested' | 'already_terminal'
@@ -1337,7 +1438,11 @@ export interface GatewayClient {
    * decidePermission so one response cannot affect sibling requests.
    */
   resume(threadId: string, input: ResumeInput): Promise<void>
-  /** Answer exactly one run-scoped `permission` event. */
+  /**
+   * Answer exactly one run-scoped `permission` event. Approval is consumed
+   * once at the supported dispatch boundary; this response is not effect
+   * success or remote target-freshness evidence.
+   */
   decidePermission(
     runId: string,
     requestId: string,
@@ -1345,6 +1450,18 @@ export interface GatewayClient {
   ): Promise<PermissionDecisionResult>
   /** Durably request cancellation for one immutable run. */
   cancel(runId: string): Promise<RunCancellationResult>
+  /** Read one immutable run's bounded durable lifecycle snapshot. */
+  runSnapshot(runId: string): Promise<RunSnapshot>
+  /** Read immutable, payload-free effect authority observations. */
+  listEffectReceipts(
+    runId: string,
+    options?: EffectReceiptListOptions,
+  ): Promise<EffectReceiptPage>
+  /** Read immutable, content-free outbound route observations. */
+  listEgressReceipts(
+    runId: string,
+    options?: EgressReceiptListOptions,
+  ): Promise<EgressReceiptPage>
 }
 
 export interface OwnwareClientOptions {
@@ -2268,6 +2385,7 @@ export class OwnwareClient implements GatewayClient {
     if (input.model) body['model'] = input.model
     if (input.workspaceId) body['workspaceId'] = input.workspaceId
     if (input.attachments) body['attachments'] = input.attachments
+    if (input.egressMode) body['egressMode'] = input.egressMode
 
     const headers = this.headers(true)
     if (input.idempotencyKey) headers['Idempotency-Key'] = input.idempotencyKey
@@ -2414,6 +2532,40 @@ export class OwnwareClient implements GatewayClient {
     )
     if (!res.ok) throw await errorFromResponse(res)
     return (await res.json()) as RunSnapshot
+  }
+
+  /** Read immutable, payload-free authority observations for one run. */
+  async listEffectReceipts(
+    runId: string,
+    options: EffectReceiptListOptions = {},
+  ): Promise<EffectReceiptPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/effect-receipts${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return (await res.json()) as EffectReceiptPage
+  }
+
+  /** Read immutable, content-free outbound route observations for one run. */
+  async listEgressReceipts(
+    runId: string,
+    options: EgressReceiptListOptions = {},
+  ): Promise<EgressReceiptPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/egress-receipts${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return (await res.json()) as EgressReceiptPage
   }
 
   /**

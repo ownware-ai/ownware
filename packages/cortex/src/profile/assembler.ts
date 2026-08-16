@@ -52,6 +52,7 @@ import type {
   HookRuntime,
   ReminderInjector,
   SkillDefinition,
+  EgressMode,
 } from '@ownware/loom'
 import type { LoadedProfile } from './loader.js'
 import { buildHookBinding, type HookBindingOptions } from './hooks.js'
@@ -176,6 +177,12 @@ export interface AssembledAgent {
  * was written before M2 still compiles and passes without change.
  */
 export interface AssembleOptions {
+  /**
+   * Assembly-time outbound envelope. Local-only never imports arbitrary
+   * custom-tool modules, starts MCP transports, or invokes connector
+   * providers whose catalogue resolution is not proven local.
+   */
+  readonly egressMode?: EgressMode
   /**
    * Centrally resolved skills contributed by enabled plugin packages.
    * Callers must resolve scope before assembly; duplicate names fail closed.
@@ -409,6 +416,7 @@ export async function assembleAgent(
   const { manager: mcpManager, stubs: mcpStubs } = await connectMCPServers(
     profile,
     options.connectorStatusBus,
+    options.egressMode ?? 'unrestricted',
   )
 
   // 2b. Memory system bootstrap.
@@ -428,6 +436,7 @@ export async function assembleAgent(
     mcpManager,
     mcpStubs,
     memoryContext,
+    options.egressMode ?? 'unrestricted',
   )
 
   // 4. Run connector tool providers — the vendor-agnostic seam every
@@ -438,7 +447,12 @@ export async function assembleAgent(
     tools: providedTools,
     configOverlays,
     connectorTools,
-  } = await runToolProviders(providers, profile, tools0)
+  } = await runToolProviders(
+    providers,
+    profile,
+    tools0,
+    options.egressMode ?? 'unrestricted',
+  )
 
   // 4b. Compile per-tool input policies into Loom ToolGuards and wrap
   //     matching tools. Tools not targeted by any guard are returned
@@ -530,6 +544,7 @@ async function assembleTools(
   mcpManager: MCPManager | null,
   mcpStubs: Tool[],
   memoryContext: MemoryContext | null,
+  egressMode: EgressMode,
 ): Promise<Tool[]> {
   const toolsConfig = profile.config.tools
   let tools: Tool[] = []
@@ -647,6 +662,12 @@ async function assembleTools(
   }
 
   // c) Load custom tools from profile directory
+  if (egressMode === 'local-only' && toolsConfig.custom.length > 0) {
+    throw new Error(
+      'Local-only execution cannot import profile custom-tool modules because ' +
+      'module initialization has no enforceable outbound containment.',
+    )
+  }
   for (const custom of toolsConfig.custom) {
     const customTools = await loadCustomTools(custom.path, custom.functions, profile.basePath)
     tools.push(...customTools)
@@ -747,10 +768,21 @@ interface ConnectResult {
 async function connectMCPServers(
   profile: LoadedProfile,
   connectorStatusBus?: ConnectorStatusBus,
+  egressMode: EgressMode = 'unrestricted',
 ): Promise<ConnectResult> {
   const mcpConfigs = profile.config.tools.mcp
   const entries = Object.entries(mcpConfigs)
   if (entries.length === 0) return { manager: null, stubs: [] }
+
+  if (egressMode === 'local-only') {
+    return {
+      manager: null,
+      stubs: entries.map(([name]) => buildMCPStub(
+        name,
+        'MCP transports are disabled because this session is local-only.',
+      )),
+    }
+  }
 
   const manager = new MCPManager(/* autoReconnect */ true)
 
@@ -866,7 +898,8 @@ function buildMCPStub(serverId: string, reason: string): Tool {
   // unambiguously.
   const safeToolName = serverId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128)
 
-  return createStubTool({
+  return {
+    ...createStubTool({
     toolName: safeToolName,
     description: feat?.description,
     connectorId: serverId,
@@ -874,7 +907,13 @@ function buildMCPStub(serverId: string, reason: string): Tool {
     source: 'mcp',
     authMode,
     reason,
-  })
+    }),
+    category: 'mcp',
+    egress: {
+      contractRevision: 'ownware.tool-egress.v1',
+      mediation: 'none',
+    },
+  }
 }
 
 /**
@@ -996,6 +1035,7 @@ async function runToolProviders(
   providers: readonly ConnectorToolProvider[],
   profile: LoadedProfile,
   initialTools: readonly Tool[],
+  egressMode: EgressMode = 'unrestricted',
 ): Promise<{
   tools: Tool[]
   configOverlays: Record<string, unknown>[]
@@ -1010,6 +1050,9 @@ async function runToolProviders(
   const connectorNames = new Set<string>()
 
   for (const provider of providers) {
+    if (egressMode === 'local-only' && provider.assemblyEgress !== 'none') {
+      continue
+    }
     let result: ConnectorToolProviderResult
     try {
       result = await provider.getToolsForProfile(profile, { existingTools: tools })
@@ -1020,12 +1063,30 @@ async function runToolProviders(
       )
       continue
     }
+    const resultTools = result.tools.map(tool => tool.egress === undefined
+      ? {
+          ...tool,
+          egress: {
+            contractRevision: 'ownware.tool-egress.v1',
+            mediation: provider.toolEgress ?? 'uncontained' as const,
+          },
+        }
+      : tool)
+    const resultStubs = result.stubs.map(tool => tool.egress === undefined
+      ? {
+          ...tool,
+          egress: {
+            contractRevision: 'ownware.tool-egress.v1',
+            mediation: 'none' as const,
+          },
+        }
+      : tool)
 
     // Handle tool replacement (web-search swaps the built-in tool).
     if (result.replaceToolNames && result.replaceToolNames.size > 0) {
       const replacements = new Map<string, Tool>()
-      for (const t of result.stubs) replacements.set(t.name, t)
-      for (const t of result.tools) replacements.set(t.name, t)
+      for (const t of resultStubs) replacements.set(t.name, t)
+      for (const t of resultTools) replacements.set(t.name, t)
       tools = tools.map(t =>
         result.replaceToolNames!.has(t.name) && replacements.has(t.name)
           ? replacements.get(t.name)!
@@ -1037,7 +1098,7 @@ async function runToolProviders(
 
     // Append real tools — reject hard collisions (non-replace).
     const existingNames = new Set(tools.map(t => t.name))
-    for (const t of result.tools) {
+    for (const t of resultTools) {
       if (result.replaceToolNames?.has(t.name)) continue // already placed above
       if (existingNames.has(t.name)) {
         throw new Error(
@@ -1052,7 +1113,7 @@ async function runToolProviders(
     }
 
     // Append stubs only for names not already present (real wins).
-    for (const s of result.stubs) {
+    for (const s of resultStubs) {
       if (result.replaceToolNames?.has(s.name)) continue
       if (!existingNames.has(s.name)) {
         tools.push(s)

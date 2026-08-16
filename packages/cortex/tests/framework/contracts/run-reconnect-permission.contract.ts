@@ -162,6 +162,7 @@ describe('Contract: reconnect through an exact permission pause', () => {
       threadId: thread.id,
       profileId: 'mini',
       model: 'test:model',
+      permissionPolicyRevision: 'a'.repeat(64),
       prompt: 'synthetic reconnect flow',
     })
 

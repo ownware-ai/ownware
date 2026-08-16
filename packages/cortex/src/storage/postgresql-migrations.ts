@@ -319,6 +319,395 @@ CREATE INDEX idx_profile_candidate_deployment_tombstones_candidate
   ON ownware.profile_candidate_deployment_tombstones(previous_candidate_id);
 `
 
+const EFFECT_EVIDENCE_SQL = `
+ALTER TABLE ownware.gateway_runs
+  ADD COLUMN consequence TEXT NOT NULL DEFAULT 'none_observed';
+ALTER TABLE ownware.gateway_runs
+  ADD CONSTRAINT ck_gateway_runs_consequence CHECK (consequence IN (
+    'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+  ));
+
+CREATE TABLE ownware.effect_identities (
+  effect_id TEXT PRIMARY KEY CHECK (length(effect_id) = 36),
+  run_id TEXT NOT NULL REFERENCES ownware.gateway_runs(id),
+  tool_call_id TEXT NOT NULL CHECK (
+    length(tool_call_id) BETWEEN 1 AND 200
+    AND tool_call_id ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  tool_name TEXT NOT NULL CHECK (
+    length(tool_name) BETWEEN 1 AND 160
+    AND tool_name ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  first_observed_at BIGINT NOT NULL CHECK (
+    first_observed_at BETWEEN 0 AND 9007199254740991
+  ),
+  UNIQUE (run_id, tool_call_id),
+  UNIQUE (effect_id, run_id)
+);
+
+CREATE TABLE ownware.effect_receipts (
+  receipt_id TEXT PRIMARY KEY CHECK (length(receipt_id) = 36),
+  receipt_seq BIGINT NOT NULL CHECK (
+    receipt_seq BETWEEN 1 AND 9007199254740991
+  ),
+  effect_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  observation_key TEXT NOT NULL CHECK (
+    length(observation_key) BETWEEN 1 AND 240
+    AND observation_key ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  kind TEXT NOT NULL CHECK (kind IN (
+    'intent_observed', 'outcome_observed', 'authority_confirmed', 'reconciliation'
+  )),
+  outcome TEXT NOT NULL CHECK (outcome IN (
+    'pending', 'succeeded', 'failed', 'denied', 'unknown'
+  )),
+  consequence TEXT NOT NULL CHECK (consequence IN (
+    'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+  )),
+  authority_kind TEXT NOT NULL CHECK (authority_kind IN (
+    'runtime', 'effect_observer', 'reconciler'
+  )),
+  authority_ref TEXT NOT NULL CHECK (
+    length(authority_ref) BETWEEN 1 AND 160
+    AND authority_ref ~ '^[A-Za-z0-9_.:/-]+$'
+  ),
+  runtime_sequence BIGINT CHECK (
+    runtime_sequence IS NULL OR runtime_sequence BETWEEN 1 AND 9007199254740991
+  ),
+  observed_at BIGINT NOT NULL CHECK (
+    observed_at BETWEEN 0 AND 9007199254740991
+  ),
+  FOREIGN KEY (effect_id, run_id)
+    REFERENCES ownware.effect_identities(effect_id, run_id),
+  UNIQUE (run_id, receipt_seq),
+  UNIQUE (effect_id, observation_key),
+  CHECK (kind <> 'intent_observed' OR (
+    outcome = 'pending'
+    AND consequence = 'none_observed'
+    AND authority_kind = 'runtime'
+  )),
+  CHECK (kind <> 'reconciliation' OR (
+    outcome = 'unknown'
+    AND consequence = 'effect_possible'
+    AND authority_kind = 'reconciler'
+    AND runtime_sequence IS NULL
+  )),
+  CHECK (kind <> 'authority_confirmed' OR (
+    authority_kind = 'effect_observer'
+    AND consequence = 'effect_confirmed'
+  )),
+  CHECK (consequence <> 'effect_confirmed' OR (
+    kind = 'authority_confirmed'
+    AND authority_kind = 'effect_observer'
+  )),
+  CHECK (authority_kind <> 'reconciler' OR kind = 'reconciliation')
+);
+
+CREATE INDEX idx_effect_receipts_run
+  ON ownware.effect_receipts(run_id, receipt_seq);
+CREATE INDEX idx_effect_receipts_effect
+  ON ownware.effect_receipts(effect_id, observed_at, receipt_id);
+CREATE UNIQUE INDEX idx_effect_receipts_runtime_sequence
+  ON ownware.effect_receipts(run_id, runtime_sequence)
+  WHERE runtime_sequence IS NOT NULL;
+
+CREATE FUNCTION ownware._reject_effect_evidence_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'effect evidence is immutable';
+END;
+$$;
+CREATE TRIGGER effect_identities_no_update
+  BEFORE UPDATE ON ownware.effect_identities
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_evidence_mutation();
+CREATE TRIGGER effect_identities_no_delete
+  BEFORE DELETE ON ownware.effect_identities
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_evidence_mutation();
+CREATE TRIGGER effect_receipts_no_update
+  BEFORE UPDATE ON ownware.effect_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_evidence_mutation();
+CREATE TRIGGER effect_receipts_no_delete
+  BEFORE DELETE ON ownware.effect_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_effect_evidence_mutation();
+`
+
+const PERMISSION_INTENT_BINDING_SQL = `
+CREATE TABLE ownware.run_permission_bindings (
+  run_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  intent_revision BIGINT NOT NULL CHECK (intent_revision = 1),
+  policy_revision TEXT NOT NULL CHECK (policy_revision ~ '^[0-9a-f]{64}$'),
+  agent_id TEXT CHECK (
+    agent_id IS NULL OR (
+      length(agent_id) BETWEEN 1 AND 200
+      AND agent_id ~ '^[A-Za-z0-9_.:-]+$'
+    )
+  ),
+  bound_at BIGINT NOT NULL CHECK (
+    bound_at BETWEEN 0 AND 9007199254740991
+  ),
+  PRIMARY KEY (run_id, request_id),
+  FOREIGN KEY (run_id, request_id)
+    REFERENCES ownware.run_permission_requests(run_id, request_id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE ownware.run_permission_consumptions (
+  run_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  operation_hash TEXT NOT NULL CHECK (operation_hash ~ '^[0-9a-f]{64}$'),
+  consumed_at BIGINT NOT NULL CHECK (
+    consumed_at BETWEEN 0 AND 9007199254740991
+  ),
+  PRIMARY KEY (run_id, request_id),
+  FOREIGN KEY (run_id, request_id)
+    REFERENCES ownware.run_permission_bindings(run_id, request_id)
+    ON DELETE CASCADE
+);
+
+CREATE INDEX idx_run_permission_consumptions_time
+  ON ownware.run_permission_consumptions(consumed_at, run_id, request_id);
+
+CREATE FUNCTION ownware._reject_permission_binding_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'permission binding evidence is immutable';
+END;
+$$;
+CREATE TRIGGER run_permission_bindings_no_update
+  BEFORE UPDATE ON ownware.run_permission_bindings
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_permission_binding_mutation();
+CREATE TRIGGER run_permission_consumptions_no_update
+  BEFORE UPDATE ON ownware.run_permission_consumptions
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_permission_binding_mutation();
+CREATE TRIGGER run_permission_consumptions_no_delete
+  BEFORE DELETE ON ownware.run_permission_consumptions
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_permission_binding_mutation();
+
+UPDATE ownware.schedule_approvals
+SET status = 'indeterminate',
+    error_message = COALESCE(
+      error_message,
+      'This draft predates exact approval binding and cannot be executed safely.'
+    ),
+    decided_at = COALESCE(decided_at, created_at)
+WHERE status = 'pending';
+
+ALTER TABLE ownware.schedule_approvals
+  ADD CONSTRAINT ck_schedule_approvals_status_v88 CHECK (
+    status IN ('pending', 'executing', 'approved', 'discarded', 'failed', 'indeterminate')
+    AND (
+      (status IN ('pending', 'executing') AND decided_at IS NULL)
+      OR (status NOT IN ('pending', 'executing') AND decided_at IS NOT NULL)
+    )
+  );
+
+CREATE TABLE ownware.schedule_approval_bindings (
+  approval_id TEXT PRIMARY KEY
+    REFERENCES ownware.schedule_approvals(id) ON DELETE CASCADE,
+  intent_revision BIGINT NOT NULL CHECK (intent_revision = 1),
+  operation_hash TEXT NOT NULL CHECK (operation_hash ~ '^[0-9a-f]{64}$'),
+  policy_revision TEXT NOT NULL CHECK (policy_revision ~ '^[0-9a-f]{64}$'),
+  tool_revision TEXT NOT NULL CHECK (tool_revision ~ '^[0-9a-f]{64}$'),
+  target_revision TEXT CHECK (
+    target_revision IS NULL OR (
+      length(target_revision) BETWEEN 1 AND 512
+      AND target_revision !~ '[[:cntrl:]]'
+    )
+  ),
+  bound_at BIGINT NOT NULL CHECK (bound_at BETWEEN 0 AND 9007199254740991)
+);
+
+CREATE TABLE ownware.schedule_approval_claims (
+  approval_id TEXT PRIMARY KEY
+    REFERENCES ownware.schedule_approval_bindings(approval_id) ON DELETE CASCADE,
+  operation_hash TEXT NOT NULL CHECK (operation_hash ~ '^[0-9a-f]{64}$'),
+  claimed_at BIGINT NOT NULL CHECK (claimed_at BETWEEN 0 AND 9007199254740991)
+);
+
+CREATE INDEX idx_schedule_approval_claims_time
+  ON ownware.schedule_approval_claims(claimed_at, approval_id);
+
+CREATE TRIGGER schedule_approval_bindings_no_update
+  BEFORE UPDATE ON ownware.schedule_approval_bindings
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_permission_binding_mutation();
+CREATE TRIGGER schedule_approval_claims_no_update
+  BEFORE UPDATE ON ownware.schedule_approval_claims
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_permission_binding_mutation();
+
+CREATE FUNCTION ownware._enforce_schedule_approval_lifecycle()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NOT (
+    OLD.status = NEW.status
+    OR (OLD.status = 'pending' AND NEW.status IN ('executing', 'discarded', 'indeterminate'))
+    OR (OLD.status = 'executing' AND NEW.status IN ('approved', 'failed', 'indeterminate'))
+  ) THEN
+    RAISE EXCEPTION 'invalid schedule approval transition';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER schedule_approvals_validate_lifecycle
+  BEFORE INSERT OR UPDATE OF status ON ownware.schedule_approvals
+  FOR EACH ROW EXECUTE FUNCTION ownware._enforce_schedule_approval_lifecycle();
+`
+
+const EGRESS_EVIDENCE_SQL = `
+ALTER TABLE ownware.gateway_runs
+  ADD COLUMN egress_mode TEXT NOT NULL DEFAULT 'unrestricted'
+    CONSTRAINT ck_gateway_runs_egress_mode
+      CHECK (egress_mode IN ('unrestricted', 'local-only'));
+
+CREATE TABLE ownware.egress_dispatches (
+  dispatch_id TEXT PRIMARY KEY CHECK (
+    dispatch_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  run_id TEXT NOT NULL REFERENCES ownware.gateway_runs(id),
+  mode TEXT NOT NULL CHECK (mode IN ('unrestricted', 'local-only')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN (
+    'provider', 'tool', 'connector', 'browser', 'process', 'runtime'
+  )),
+  source_ref TEXT NOT NULL CHECK (
+    length(source_ref) BETWEEN 1 AND 160 AND source_ref ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  transport TEXT NOT NULL CHECK (transport IN (
+    'http', 'https', 'ws', 'wss', 'tcp', 'tls', 'unknown'
+  )),
+  mediation TEXT NOT NULL CHECK (mediation IN (
+    'platform_fetch', 'custom_fetch', 'uncontained', 'unknown'
+  )),
+  first_observed_at BIGINT NOT NULL CHECK (
+    first_observed_at BETWEEN 0 AND 9007199254740991
+  ),
+  UNIQUE (dispatch_id, run_id)
+);
+
+CREATE TABLE ownware.egress_receipts (
+  receipt_id TEXT PRIMARY KEY CHECK (
+    receipt_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  receipt_seq BIGINT NOT NULL CHECK (receipt_seq BETWEEN 1 AND 9007199254740991),
+  dispatch_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  observation_key TEXT NOT NULL CHECK (
+    length(observation_key) BETWEEN 1 AND 200
+    AND observation_key ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  destination_origin TEXT CHECK (
+    destination_origin IS NULL OR (
+      length(destination_origin) BETWEEN 1 AND 512
+      AND destination_origin !~ '[[:cntrl:]?@#]'
+      AND destination_origin ~ '^(https?|wss?|tcp|tls)://[^/]+$'
+    )
+  ),
+  phase TEXT NOT NULL CHECK (phase IN (
+    'dispatch_started', 'response_observed', 'dispatch_failed',
+    'dispatch_blocked', 'route_unavailable', 'outcome_unknown'
+  )),
+  reason_code TEXT CHECK (reason_code IS NULL OR reason_code IN (
+    'local_only_remote_destination', 'local_only_custom_transport',
+    'local_only_route_unavailable', 'local_only_redirect',
+    'route_unavailable',
+    'run_terminated_after_dispatch', 'gateway_restarted_after_dispatch'
+  )),
+  observed_at BIGINT NOT NULL CHECK (observed_at BETWEEN 0 AND 9007199254740991),
+  FOREIGN KEY (dispatch_id, run_id)
+    REFERENCES ownware.egress_dispatches(dispatch_id, run_id),
+  UNIQUE (run_id, receipt_seq),
+  UNIQUE (dispatch_id, observation_key),
+  CHECK (phase NOT IN ('dispatch_started', 'response_observed', 'dispatch_failed')
+    OR destination_origin IS NOT NULL),
+  CHECK (phase NOT IN ('route_unavailable', 'outcome_unknown')
+    OR destination_origin IS NULL),
+  CHECK ((phase IN ('dispatch_blocked', 'route_unavailable', 'outcome_unknown'))
+    = (reason_code IS NOT NULL))
+);
+
+CREATE INDEX idx_egress_receipts_run
+  ON ownware.egress_receipts(run_id, receipt_seq);
+CREATE INDEX idx_egress_receipts_dispatch
+  ON ownware.egress_receipts(dispatch_id, observed_at, receipt_id);
+
+CREATE FUNCTION ownware._enforce_egress_evidence_semantics()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  identity_mode TEXT;
+  identity_transport TEXT;
+  identity_mediation TEXT;
+BEGIN
+  IF TG_TABLE_NAME = 'egress_dispatches' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM ownware.gateway_runs AS run
+      WHERE run.id = NEW.run_id AND run.egress_mode = NEW.mode
+    ) THEN
+      RAISE EXCEPTION 'egress mode does not match run';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  SELECT mode, transport, mediation
+    INTO identity_mode, identity_transport, identity_mediation
+  FROM ownware.egress_dispatches
+  WHERE dispatch_id = NEW.dispatch_id;
+
+  IF
+    (NEW.phase = 'dispatch_blocked' AND identity_mode <> 'local-only')
+    OR (NEW.phase = 'route_unavailable' AND (
+      identity_mode <> 'unrestricted'
+      OR identity_transport <> 'unknown'
+      OR identity_mediation NOT IN ('uncontained', 'unknown')
+      OR NEW.reason_code <> 'route_unavailable'
+    ))
+    OR (NEW.phase = 'outcome_unknown' AND NEW.reason_code NOT IN (
+      'run_terminated_after_dispatch', 'gateway_restarted_after_dispatch'
+    ))
+    OR (NEW.phase = 'dispatch_blocked' AND NEW.reason_code NOT IN (
+      'local_only_remote_destination', 'local_only_custom_transport',
+      'local_only_route_unavailable', 'local_only_redirect'
+    ))
+    OR (NEW.reason_code = 'local_only_route_unavailable' AND (
+      NEW.destination_origin IS NOT NULL
+      OR identity_transport <> 'unknown'
+      OR identity_mediation NOT IN ('uncontained', 'unknown')
+    ))
+    OR (NEW.phase = 'dispatch_blocked'
+      AND NEW.reason_code <> 'local_only_route_unavailable'
+      AND NEW.destination_origin IS NULL)
+  THEN
+    RAISE EXCEPTION 'invalid egress receipt semantics';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER egress_dispatches_validate_run_mode
+  BEFORE INSERT ON ownware.egress_dispatches
+  FOR EACH ROW EXECUTE FUNCTION ownware._enforce_egress_evidence_semantics();
+CREATE TRIGGER egress_receipts_validate_semantics
+  BEFORE INSERT ON ownware.egress_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._enforce_egress_evidence_semantics();
+
+CREATE FUNCTION ownware._reject_egress_evidence_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'egress evidence is immutable';
+END;
+$$;
+CREATE TRIGGER egress_dispatches_no_update
+  BEFORE UPDATE ON ownware.egress_dispatches
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_egress_evidence_mutation();
+CREATE TRIGGER egress_dispatches_no_delete
+  BEFORE DELETE ON ownware.egress_dispatches
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_egress_evidence_mutation();
+CREATE TRIGGER egress_receipts_no_update
+  BEFORE UPDATE ON ownware.egress_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_egress_evidence_mutation();
+CREATE TRIGGER egress_receipts_no_delete
+  BEFORE DELETE ON ownware.egress_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_egress_evidence_mutation();
+`
+
 const PROVIDER_USAGE_EVIDENCE_COLUMNS = [
   { table: 'provider_pricebook_snapshots', name: 'entry_id', type: 'TEXT', nullable: false, pkPosition: 1 },
   { table: 'provider_pricebook_snapshots', name: 'version', type: 'TEXT', nullable: false, pkPosition: 2 },
@@ -473,6 +862,162 @@ const PROFILE_DEPLOYMENT_TOMBSTONE_INDEX = {
   columns: [{ name: 'previous_candidate_id', descending: false }],
   predicate: null,
 } as const
+
+const RUN_CONSEQUENCE_COLUMN = {
+  table: 'gateway_runs',
+  name: 'consequence',
+  type: 'TEXT',
+  nullable: false,
+  pkPosition: 0,
+} as const
+
+const EFFECT_EVIDENCE_COLUMNS = [
+  { table: 'effect_identities', name: 'effect_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'effect_identities', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_identities', name: 'tool_call_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_identities', name: 'tool_name', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_identities', name: 'first_observed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'receipt_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'effect_receipts', name: 'receipt_seq', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'effect_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'observation_key', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'outcome', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'consequence', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'authority_kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'authority_ref', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'runtime_sequence', type: 'BIGINT', nullable: true, pkPosition: 0 },
+  { table: 'effect_receipts', name: 'observed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+] as const
+
+const EFFECT_EVIDENCE_INDEXES = [
+  {
+    table: 'effect_receipts',
+    name: 'idx_effect_receipts_effect',
+    unique: false,
+    columns: [
+      { name: 'effect_id', descending: false },
+      { name: 'observed_at', descending: false },
+      { name: 'receipt_id', descending: false },
+    ],
+    predicate: null,
+  },
+  {
+    table: 'effect_receipts',
+    name: 'idx_effect_receipts_run',
+    unique: false,
+    columns: [
+      { name: 'run_id', descending: false },
+      { name: 'receipt_seq', descending: false },
+    ],
+    predicate: null,
+  },
+  {
+    table: 'effect_receipts',
+    name: 'idx_effect_receipts_runtime_sequence',
+    unique: true,
+    columns: [
+      { name: 'run_id', descending: false },
+      { name: 'runtime_sequence', descending: false },
+    ],
+    predicate: 'runtime_sequence IS NOT NULL',
+  },
+] as const
+
+const PERMISSION_INTENT_BINDING_COLUMNS = [
+  { table: 'run_permission_bindings', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'run_permission_bindings', name: 'request_id', type: 'TEXT', nullable: false, pkPosition: 2 },
+  { table: 'run_permission_bindings', name: 'intent_revision', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_bindings', name: 'policy_revision', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_bindings', name: 'agent_id', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'run_permission_bindings', name: 'bound_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_consumptions', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'run_permission_consumptions', name: 'request_id', type: 'TEXT', nullable: false, pkPosition: 2 },
+  { table: 'run_permission_consumptions', name: 'operation_hash', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_consumptions', name: 'consumed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+] as const
+
+const PERMISSION_INTENT_BINDING_INDEX = {
+  table: 'run_permission_consumptions',
+  name: 'idx_run_permission_consumptions_time',
+  unique: false,
+  columns: [
+    { name: 'consumed_at', descending: false },
+    { name: 'run_id', descending: false },
+    { name: 'request_id', descending: false },
+  ],
+  predicate: null,
+} as const
+
+const SCHEDULE_APPROVAL_BINDING_COLUMNS = [
+  { table: 'schedule_approval_bindings', name: 'approval_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'schedule_approval_bindings', name: 'intent_revision', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'schedule_approval_bindings', name: 'operation_hash', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'schedule_approval_bindings', name: 'policy_revision', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'schedule_approval_bindings', name: 'tool_revision', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'schedule_approval_bindings', name: 'target_revision', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'schedule_approval_bindings', name: 'bound_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'schedule_approval_claims', name: 'approval_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'schedule_approval_claims', name: 'operation_hash', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'schedule_approval_claims', name: 'claimed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+] as const
+
+const SCHEDULE_APPROVAL_CLAIM_INDEX = {
+  table: 'schedule_approval_claims',
+  name: 'idx_schedule_approval_claims_time',
+  unique: false,
+  columns: [
+    { name: 'claimed_at', descending: false },
+    { name: 'approval_id', descending: false },
+  ],
+  predicate: null,
+} as const
+
+const EGRESS_EVIDENCE_COLUMNS = [
+  { table: 'gateway_runs', name: 'egress_mode', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'dispatch_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'egress_dispatches', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'mode', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'source_kind', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'source_ref', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'transport', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'mediation', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_dispatches', name: 'first_observed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'receipt_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'egress_receipts', name: 'receipt_seq', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'dispatch_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'observation_key', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'destination_origin', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'phase', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'reason_code', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'egress_receipts', name: 'observed_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+] as const
+
+const EGRESS_EVIDENCE_INDEXES = [
+  {
+    table: 'egress_receipts',
+    name: 'idx_egress_receipts_dispatch',
+    unique: false,
+    columns: [
+      { name: 'dispatch_id', descending: false },
+      { name: 'observed_at', descending: false },
+      { name: 'receipt_id', descending: false },
+    ],
+    predicate: null,
+  },
+  {
+    table: 'egress_receipts',
+    name: 'idx_egress_receipts_run',
+    unique: false,
+    columns: [
+      { name: 'run_id', descending: false },
+      { name: 'receipt_seq', descending: false },
+    ],
+    predicate: null,
+  },
+] as const
 
 export const POSTGRESQL_MESSAGE_SEQUENCE_SCHEMA_EXPECTATION: PostgreSqlSchemaExpectation =
 Object.freeze({
@@ -649,7 +1194,7 @@ PostgreSqlSchemaExpectation = Object.freeze({
   }),
 })
 
-export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+export const POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION:
 PostgreSqlSchemaExpectation = Object.freeze({
   summary: Object.freeze({
     ...POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.summary,
@@ -686,6 +1231,186 @@ PostgreSqlSchemaExpectation = Object.freeze({
     explicitIndexes: Object.freeze([
       ...POSTGRESQL_PLUGIN_CONTROL_PLANE_SCHEMA_EXPECTATION.manifest.explicitIndexes,
       PROFILE_DEPLOYMENT_TOMBSTONE_INDEX,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
+export const POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary,
+    tableCount:
+      POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary.tableCount + 2,
+    columnCount:
+      POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary.columnCount + 18,
+    foreignKeyCount:
+      POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary.foreignKeyCount + 2,
+    uniqueConstraintCount:
+      POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary.uniqueConstraintCount + 4,
+    explicitIndexCount:
+      POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary.explicitIndexCount + 3,
+    triggerCount:
+      POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.summary.triggerCount + 4,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.manifest.columns,
+      RUN_CONSEQUENCE_COLUMN,
+      ...EFFECT_EVIDENCE_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: Object.freeze([
+      ...POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+      { table: 'effect_identities', columns: ['effect_id', 'run_id'] },
+      { table: 'effect_identities', columns: ['run_id', 'tool_call_id'] },
+      { table: 'effect_receipts', columns: ['effect_id', 'observation_key'] },
+      { table: 'effect_receipts', columns: ['run_id', 'receipt_seq'] },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'effect_identities',
+        columns: ['run_id'],
+        referencedTable: 'gateway_runs',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+      {
+        table: 'effect_receipts',
+        columns: ['effect_id', 'run_id'],
+        referencedTable: 'effect_identities',
+        referencedColumns: ['effect_id', 'run_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      ...EFFECT_EVIDENCE_INDEXES,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
+const POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.summary,
+    tableCount: POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.summary.tableCount + 4,
+    columnCount: POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.summary.columnCount + 20,
+    foreignKeyCount: POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.summary.foreignKeyCount + 4,
+    explicitIndexCount: POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.summary.explicitIndexCount + 2,
+    triggerCount: POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.summary.triggerCount + 6,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.manifest.columns,
+      ...PERMISSION_INTENT_BINDING_COLUMNS,
+      ...SCHEDULE_APPROVAL_BINDING_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'run_permission_bindings',
+        columns: ['run_id', 'request_id'],
+        referencedTable: 'run_permission_requests',
+        referencedColumns: ['run_id', 'request_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'CASCADE',
+        deferred: false,
+      },
+      {
+        table: 'run_permission_consumptions',
+        columns: ['run_id', 'request_id'],
+        referencedTable: 'run_permission_bindings',
+        referencedColumns: ['run_id', 'request_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'CASCADE',
+        deferred: false,
+      },
+      {
+        table: 'schedule_approval_bindings',
+        columns: ['approval_id'],
+        referencedTable: 'schedule_approvals',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'CASCADE',
+        deferred: false,
+      },
+      {
+        table: 'schedule_approval_claims',
+        columns: ['approval_id'],
+        referencedTable: 'schedule_approval_bindings',
+        referencedColumns: ['approval_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'CASCADE',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      PERMISSION_INTENT_BINDING_INDEX,
+      SCHEDULE_APPROVAL_CLAIM_INDEX,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
+export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary,
+    tableCount: POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary.tableCount + 2,
+    columnCount: POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary.columnCount + 18,
+    foreignKeyCount: POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary.foreignKeyCount + 2,
+    uniqueConstraintCount:
+      POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary.uniqueConstraintCount + 3,
+    explicitIndexCount:
+      POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary.explicitIndexCount + 2,
+    triggerCount: POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.summary.triggerCount + 6,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.manifest.columns,
+      ...EGRESS_EVIDENCE_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: Object.freeze([
+      ...POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+      { table: 'egress_dispatches', columns: ['dispatch_id', 'run_id'] },
+      { table: 'egress_receipts', columns: ['dispatch_id', 'observation_key'] },
+      { table: 'egress_receipts', columns: ['run_id', 'receipt_seq'] },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'egress_dispatches',
+        columns: ['run_id'],
+        referencedTable: 'gateway_runs',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+      {
+        table: 'egress_receipts',
+        columns: ['dispatch_id', 'run_id'],
+        referencedTable: 'egress_dispatches',
+        referencedColumns: ['dispatch_id', 'run_id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'NO ACTION',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      ...EGRESS_EVIDENCE_INDEXES,
     ].sort((left, right) => left.name.localeCompare(right.name))),
   }),
 })
@@ -731,6 +1456,221 @@ async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<bo
 
 async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_CURRENT_SCHEMA_EXPECTATION) &&
+    await postgreSqlMessageSequenceMatches(client) &&
+    await postgreSqlProviderUsageEvidenceMatches(client) &&
+    await postgreSqlPluginControlPlaneMatches(client) &&
+    await postgreSqlProfileDeploymentTombstonesMatch(client) &&
+    await postgreSqlRunConsequenceMatches(client) &&
+    await postgreSqlEffectEvidenceMatches(client) &&
+    await postgreSqlPermissionIntentBindingMatches(client) &&
+    await postgreSqlEgressEvidenceMatches(client)
+}
+
+async function postgreSqlPermissionIntentSchemaMatches(client: QueryClient): Promise<boolean> {
+  return await postgreSqlSchemaMatches(client, POSTGRESQL_PERMISSION_INTENT_SCHEMA_EXPECTATION) &&
+    await postgreSqlMessageSequenceMatches(client) &&
+    await postgreSqlProviderUsageEvidenceMatches(client) &&
+    await postgreSqlPluginControlPlaneMatches(client) &&
+    await postgreSqlProfileDeploymentTombstonesMatch(client) &&
+    await postgreSqlRunConsequenceMatches(client) &&
+    await postgreSqlEffectEvidenceMatches(client) &&
+    await postgreSqlPermissionIntentBindingMatches(client)
+}
+
+async function postgreSqlEgressEvidenceMatches(client: QueryClient): Promise<boolean> {
+  const result = await client.query<{
+    readonly immutable_trigger_count: string
+    readonly immutable_function_count: string
+    readonly validation_trigger_count: string
+    readonly validation_function_count: string
+    readonly mode_constraint_valid: boolean
+    readonly data_valid: boolean
+  }>(`
+    SELECT
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND trigger_record.tgname IN (
+           'egress_dispatches_no_update', 'egress_dispatches_no_delete',
+           'egress_receipts_no_update', 'egress_receipts_no_delete'
+         )
+         AND trigger_record.tgenabled = 'O') AS immutable_trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname = '_reject_egress_evidence_mutation')
+        AS immutable_function_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND trigger_record.tgname IN (
+           'egress_dispatches_validate_run_mode',
+           'egress_receipts_validate_semantics'
+         )
+         AND trigger_record.tgenabled = 'O') AS validation_trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname = '_enforce_egress_evidence_semantics')
+        AS validation_function_count,
+      COALESCE((
+        SELECT constraint_record.convalidated
+        FROM pg_catalog.pg_constraint AS constraint_record
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = constraint_record.connamespace
+        WHERE namespace.nspname = 'ownware'
+          AND constraint_record.conrelid = 'ownware.gateway_runs'::regclass
+          AND constraint_record.conname = 'ck_gateway_runs_egress_mode'
+          AND constraint_record.contype = 'c'
+      ), FALSE) AS mode_constraint_valid,
+      NOT EXISTS (
+        SELECT 1 FROM ownware.gateway_runs
+        WHERE egress_mode NOT IN ('unrestricted', 'local-only')
+      ) AND NOT EXISTS (
+        SELECT 1 FROM ownware.egress_dispatches
+        WHERE first_observed_at NOT BETWEEN 0 AND 9007199254740991
+          OR NOT EXISTS (
+            SELECT 1 FROM ownware.gateway_runs AS run
+            WHERE run.id = egress_dispatches.run_id
+              AND run.egress_mode = egress_dispatches.mode
+          )
+      ) AND NOT EXISTS (
+        SELECT 1 FROM ownware.egress_receipts
+        WHERE observed_at NOT BETWEEN 0 AND 9007199254740991
+          OR receipt_seq NOT BETWEEN 1 AND 9007199254740991
+          OR destination_origin ~ '[[:cntrl:]?@#]'
+      ) AS data_valid
+  `)
+  const row = result.rows[0]
+  return row?.immutable_trigger_count === '4' &&
+    row.immutable_function_count === '1' &&
+    row.validation_trigger_count === '2' &&
+    row.validation_function_count === '1' &&
+    row.mode_constraint_valid === true &&
+    row.data_valid === true
+}
+
+async function postgreSqlEffectEvidenceSchemaMatches(client: QueryClient): Promise<boolean> {
+  return await postgreSqlSchemaMatches(
+    client,
+    POSTGRESQL_EFFECT_EVIDENCE_SCHEMA_EXPECTATION,
+  ) &&
+    await postgreSqlMessageSequenceMatches(client) &&
+    await postgreSqlProviderUsageEvidenceMatches(client) &&
+    await postgreSqlPluginControlPlaneMatches(client) &&
+    await postgreSqlProfileDeploymentTombstonesMatch(client) &&
+    await postgreSqlRunConsequenceMatches(client) &&
+    await postgreSqlEffectEvidenceMatches(client)
+}
+
+async function postgreSqlPermissionIntentBindingMatches(
+  client: QueryClient,
+): Promise<boolean> {
+  const result = await client.query<{
+    readonly immutable_trigger_count: string
+    readonly immutable_function_count: string
+    readonly lifecycle_trigger_count: string
+    readonly lifecycle_function_count: string
+    readonly lifecycle_constraint_valid: boolean
+    readonly data_valid: boolean
+  }>(`
+    SELECT
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND trigger_record.tgname IN (
+           'run_permission_bindings_no_update',
+           'run_permission_consumptions_no_update',
+           'run_permission_consumptions_no_delete',
+           'schedule_approval_bindings_no_update',
+           'schedule_approval_claims_no_update'
+         )
+         AND trigger_record.tgenabled = 'O') AS immutable_trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname = '_reject_permission_binding_mutation')
+        AS immutable_function_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND relation.relname = 'schedule_approvals'
+         AND trigger_record.tgname = 'schedule_approvals_validate_lifecycle'
+         AND trigger_record.tgenabled = 'O') AS lifecycle_trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname = '_enforce_schedule_approval_lifecycle')
+        AS lifecycle_function_count,
+      COALESCE((
+        SELECT constraint_record.convalidated
+        FROM pg_catalog.pg_constraint AS constraint_record
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = constraint_record.connamespace
+        WHERE namespace.nspname = 'ownware'
+          AND constraint_record.conrelid = 'ownware.schedule_approvals'::regclass
+          AND constraint_record.conname = 'ck_schedule_approvals_status_v88'
+          AND constraint_record.contype = 'c'
+      ), FALSE) AS lifecycle_constraint_valid,
+      NOT EXISTS (
+        SELECT 1 FROM ownware.run_permission_bindings
+        WHERE intent_revision <> 1
+          OR policy_revision !~ '^[0-9a-f]{64}$'
+          OR bound_at NOT BETWEEN 0 AND 9007199254740991
+      ) AND NOT EXISTS (
+        SELECT 1 FROM ownware.run_permission_consumptions
+        WHERE operation_hash !~ '^[0-9a-f]{64}$'
+          OR consumed_at NOT BETWEEN 0 AND 9007199254740991
+      ) AND NOT EXISTS (
+        SELECT 1 FROM ownware.schedule_approval_bindings
+        WHERE intent_revision <> 1
+          OR operation_hash !~ '^[0-9a-f]{64}$'
+          OR policy_revision !~ '^[0-9a-f]{64}$'
+          OR tool_revision !~ '^[0-9a-f]{64}$'
+          OR bound_at NOT BETWEEN 0 AND 9007199254740991
+      ) AND NOT EXISTS (
+        SELECT 1
+        FROM ownware.schedule_approval_claims AS claim
+        JOIN ownware.schedule_approval_bindings AS binding
+          ON binding.approval_id = claim.approval_id
+        WHERE claim.operation_hash <> binding.operation_hash
+          OR claim.claimed_at NOT BETWEEN 0 AND 9007199254740991
+      ) AND NOT EXISTS (
+        SELECT 1 FROM ownware.schedule_approvals AS approval
+        LEFT JOIN ownware.schedule_approval_bindings AS binding
+          ON binding.approval_id = approval.id
+        WHERE approval.status IN ('pending', 'executing')
+          AND binding.approval_id IS NULL
+      ) AS data_valid
+  `)
+  const row = result.rows[0]
+  return row?.immutable_trigger_count === '5' &&
+    row.immutable_function_count === '1' &&
+    row.lifecycle_trigger_count === '1' &&
+    row.lifecycle_function_count === '1' &&
+    row.lifecycle_constraint_valid === true &&
+    row.data_valid === true
+}
+
+async function postgreSqlProfileDeploymentTombstonesSchemaMatches(
+  client: QueryClient,
+): Promise<boolean> {
+  return await postgreSqlSchemaMatches(
+    client,
+    POSTGRESQL_PROFILE_DEPLOYMENT_TOMBSTONES_SCHEMA_EXPECTATION,
+  ) &&
     await postgreSqlMessageSequenceMatches(client) &&
     await postgreSqlProviderUsageEvidenceMatches(client) &&
     await postgreSqlPluginControlPlaneMatches(client) &&
@@ -837,6 +1777,125 @@ async function postgreSqlProfileDeploymentTombstonesMatch(
   return result.rows[0]?.data_valid === true
 }
 
+async function postgreSqlRunConsequenceMatches(client: QueryClient): Promise<boolean> {
+  const result = await client.query<{
+    readonly constraint_valid: boolean
+    readonly default_valid: boolean
+    readonly data_valid: boolean
+  }>(`
+    SELECT
+      COALESCE((
+        SELECT constraint_record.convalidated
+        FROM pg_catalog.pg_constraint AS constraint_record
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = constraint_record.connamespace
+        WHERE namespace.nspname = 'ownware'
+          AND constraint_record.conrelid = 'ownware.gateway_runs'::regclass
+          AND constraint_record.conname = 'ck_gateway_runs_consequence'
+          AND constraint_record.contype = 'c'
+      ), FALSE) AS constraint_valid,
+      COALESCE((
+        SELECT column_default = '''none_observed''::text'
+        FROM information_schema.columns
+        WHERE table_schema = 'ownware'
+          AND table_name = 'gateway_runs'
+          AND column_name = 'consequence'
+      ), FALSE) AS default_valid,
+      NOT EXISTS (
+        SELECT 1 FROM ownware.gateway_runs
+        WHERE consequence NOT IN (
+          'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+        )
+      ) AS data_valid
+  `)
+  const row = result.rows[0]
+  return row?.constraint_valid === true &&
+    row.default_valid === true &&
+    row.data_valid === true
+}
+
+async function postgreSqlEffectEvidenceMatches(client: QueryClient): Promise<boolean> {
+  const result = await client.query<{
+    readonly validated_check_count: string
+    readonly immutable_trigger_count: string
+    readonly immutable_function_count: string
+    readonly data_valid: boolean
+  }>(`
+    SELECT
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_constraint AS constraint_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = constraint_record.conrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       WHERE namespace.nspname = 'ownware'
+         AND relation.relname IN ('effect_identities', 'effect_receipts')
+         AND constraint_record.contype = 'c'
+         AND constraint_record.convalidated) AS validated_check_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_trigger AS trigger_record
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+       JOIN (VALUES
+         ('effect_identities', 'effect_identities_no_update'),
+         ('effect_identities', 'effect_identities_no_delete'),
+         ('effect_receipts', 'effect_receipts_no_update'),
+         ('effect_receipts', 'effect_receipts_no_delete')
+       ) AS expected(table_name, trigger_name)
+         ON expected.table_name = relation.relname
+        AND expected.trigger_name = trigger_record.tgname
+       JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger_record.tgfoid
+       JOIN pg_catalog.pg_namespace AS procedure_namespace
+         ON procedure_namespace.oid = procedure.pronamespace
+       WHERE namespace.nspname = 'ownware'
+         AND procedure_namespace.nspname = 'ownware'
+         AND procedure.proname = '_reject_effect_evidence_mutation'
+         AND trigger_record.tgenabled = 'O'
+         AND trigger_record.tgtype IN (11, 19)) AS immutable_trigger_count,
+      (SELECT count(*)::text
+       FROM pg_catalog.pg_proc AS procedure
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+       JOIN pg_catalog.pg_language AS language ON language.oid = procedure.prolang
+       WHERE namespace.nspname = 'ownware'
+         AND procedure.proname = '_reject_effect_evidence_mutation'
+         AND procedure.pronargs = 0
+         AND procedure.prorettype = 'pg_catalog.trigger'::regtype
+         AND language.lanname = 'plpgsql'
+         AND procedure.prosrc = E'\\nBEGIN\\n  RAISE EXCEPTION ''effect evidence is immutable'';\\nEND;\\n'
+      ) AS immutable_function_count,
+      NOT EXISTS (
+        SELECT 1
+        FROM ownware.effect_receipts AS receipt
+        JOIN ownware.effect_identities AS identity ON identity.effect_id = receipt.effect_id
+        WHERE receipt.run_id <> identity.run_id
+          OR (receipt.kind = 'intent_observed' AND (
+            receipt.outcome <> 'pending'
+            OR receipt.consequence <> 'none_observed'
+            OR receipt.authority_kind <> 'runtime'
+          ))
+          OR (receipt.kind = 'reconciliation' AND (
+            receipt.outcome <> 'unknown'
+            OR receipt.consequence <> 'effect_possible'
+            OR receipt.authority_kind <> 'reconciler'
+            OR receipt.runtime_sequence IS NOT NULL
+          ))
+          OR (receipt.kind = 'authority_confirmed' AND (
+            receipt.authority_kind <> 'effect_observer'
+            OR receipt.consequence <> 'effect_confirmed'
+          ))
+          OR (receipt.consequence = 'effect_confirmed' AND (
+            receipt.kind <> 'authority_confirmed'
+            OR receipt.authority_kind <> 'effect_observer'
+          ))
+          OR (receipt.authority_kind = 'reconciler'
+            AND receipt.kind <> 'reconciliation')
+      ) AS data_valid
+  `)
+  const row = result.rows[0]
+  return row?.validated_check_count === '19' &&
+    row.immutable_trigger_count === '4' &&
+    row.immutable_function_count === '1' &&
+    row.data_valid === true
+}
+
 const MESSAGE_SEQUENCE_MIGRATION: PostgreSqlMigration = Object.freeze({
   version: 83,
   name: '083_message_sequence',
@@ -862,6 +1921,27 @@ const PROFILE_DEPLOYMENT_TOMBSTONES_MIGRATION: PostgreSqlMigration = Object.free
   version: 86,
   name: '086_profile_deployment_tombstones',
   sql: PROFILE_DEPLOYMENT_TOMBSTONES_SQL,
+  verifyApplied: postgreSqlProfileDeploymentTombstonesSchemaMatches,
+})
+
+const EFFECT_EVIDENCE_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 87,
+  name: '087_effect_evidence',
+  sql: EFFECT_EVIDENCE_SQL,
+  verifyApplied: postgreSqlEffectEvidenceSchemaMatches,
+})
+
+const PERMISSION_INTENT_BINDING_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 88,
+  name: '088_permission_intent_binding',
+  sql: PERMISSION_INTENT_BINDING_SQL,
+  verifyApplied: postgreSqlPermissionIntentSchemaMatches,
+})
+
+const EGRESS_EVIDENCE_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 89,
+  name: '089_egress_evidence',
+  sql: EGRESS_EVIDENCE_SQL,
   verifyApplied: postgreSqlCurrentSchemaMatches,
 })
 
@@ -873,6 +1953,9 @@ export const POSTGRESQL_MIGRATION_MANIFEST: PostgreSqlMigrationManifest = Object
     PROVIDER_USAGE_EVIDENCE_MIGRATION,
     PLUGIN_CONTROL_PLANE_MIGRATION,
     PROFILE_DEPLOYMENT_TOMBSTONES_MIGRATION,
+    EFFECT_EVIDENCE_MIGRATION,
+    PERMISSION_INTENT_BINDING_MIGRATION,
+    EGRESS_EVIDENCE_MIGRATION,
   ]),
   logicalMigrations: STORAGE_LOGICAL_MIGRATIONS,
   verifyCurrentSchema: postgreSqlCurrentSchemaMatches,

@@ -276,11 +276,18 @@ describePostgreSql('PostgreSQL platform concurrency authority', () => {
         toolName: 'send_message',
         toolInput: { draft: true },
         summary: 'Hold the draft',
+        policyRevision: 'a'.repeat(64),
+        toolRevision: 'b'.repeat(64),
+        targetRevision: null,
       })
+      const claims = await Promise.all(Array.from({ length: 24 }, (_, index) =>
+        platforms[index % 2]!.approvals.claim(approval.id),
+      ))
+      expect(claims.filter((claim) => claim.status === 'claimed')).toHaveLength(1)
       const decisions = await Promise.all(Array.from({ length: 24 }, (_, index) =>
-        platforms[index % 2]!.approvals.decide(approval.id, index % 2 === 0
-          ? { status: 'approved', result: { contender: index } }
-          : { status: 'discarded' }),
+        platforms[index % 2]!.approvals.decide(approval.id, {
+          status: 'approved', result: { contender: index },
+        }),
       ))
       const durableApproval = await platforms[0]!.approvals.get(approval.id)
       expect(durableApproval?.status).not.toBe('pending')

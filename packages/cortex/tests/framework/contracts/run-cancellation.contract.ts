@@ -223,10 +223,14 @@ describe('Contract: exact run cancellation', () => {
       headers: { authorization: `Bearer ${gateway.token}` },
     })
     expect(response.status).toBe(202)
-    await expect(response.json()).resolves.toMatchObject({ status: 'cancel_requested' })
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'cancel_requested',
+      consequence: 'none_observed',
+    })
     await handle.done
     expect(await gateway.gateway.runStore.get(run.runId)).toMatchObject({
       status: 'cancelled',
+      consequence: 'none_observed',
       terminal: true,
       outcomeKnown: true,
       code: 'run_cancelled',

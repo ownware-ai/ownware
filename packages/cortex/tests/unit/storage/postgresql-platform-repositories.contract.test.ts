@@ -383,6 +383,9 @@ if (TEST_URL === undefined) {
         toolName: "send",
         toolInput: {},
         summary: "Send",
+        policyRevision: "a".repeat(64),
+        toolRevision: "b".repeat(64),
+        targetRevision: null,
       });
       expect(await platform.approvals.countPending()).toBe(1);
       expect(await platform.approvals.countPendingForRun(run.id)).toBe(1);
@@ -390,6 +393,9 @@ if (TEST_URL === undefined) {
         await platform.approvals.listPending({ profileId: "extended" }),
       ).toHaveLength(1);
       expect(await platform.approvals.listByRun(run.id)).toHaveLength(1);
+      expect(await platform.approvals.claim(approval.id)).toMatchObject({
+        status: "claimed",
+      });
       expect(
         await platform.approvals.decide(approval.id, {
           status: "approved",

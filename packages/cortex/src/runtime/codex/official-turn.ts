@@ -29,6 +29,7 @@ export class CodexTurnProtocolError extends Error {
 export interface CodexTranslatedTurnEvent {
   readonly event: LoomEvent
   readonly consequence?: RuntimeConsequence
+  readonly effectAuthority?: string
 }
 
 export interface CodexTurnObservation {
@@ -75,6 +76,12 @@ function text(value: unknown): string | null {
 
 function nonEmpty(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function effectAuthority(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:/-]{1,160}$/.test(value)
+    ? value
+    : null
 }
 
 function safeInteger(value: unknown): number | null {
@@ -513,8 +520,13 @@ export class CodexOfficialTurnBridge {
         status,
         authority: 'item/completed',
       })
+      const authority = delivery?.status === 'confirmed'
+        ? effectAuthority(delivery.effectAuthority)
+        : null
       const consequence = delivery?.status === 'confirmed'
-        ? delivery.consequence
+        ? delivery.consequence === 'effect_confirmed' && authority === null
+          ? 'effect_possible'
+          : delivery.consequence
         : 'effect_possible'
       return {
         events: [{
@@ -531,6 +543,9 @@ export class CodexOfficialTurnBridge {
             turnIndex: this.options.turnIndex,
           },
           consequence,
+          ...(authority !== null
+            ? { effectAuthority: authority }
+            : {}),
         }],
       }
     }

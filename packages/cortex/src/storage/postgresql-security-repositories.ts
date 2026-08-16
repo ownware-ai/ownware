@@ -24,6 +24,8 @@ import {
   createPostgreSqlIdempotencyRepository,
   createPostgreSqlRunRepository,
 } from './postgresql-run-repositories.js'
+import { createPostgreSqlEffectReceiptRepository } from './postgresql-effect-receipt-repository.js'
+import { createPostgreSqlEgressReceiptRepository } from './postgresql-egress-receipt-repository.js'
 import { threadPrincipalScopeDigest } from '../gateway/thread-principal-binding.js'
 
 export interface PostgreSqlSecurityRepositoryOptions {
@@ -47,6 +49,8 @@ export function createPostgreSqlSecurityRepositories(
     principals: createPostgreSqlPrincipalRepository(context),
     threadBindings: createPostgreSqlThreadBindingRepository(context),
     runs: createPostgreSqlRunRepository(context, options.permissionHashSecret),
+    effectReceipts: createPostgreSqlEffectReceiptRepository(context),
+    egressReceipts: createPostgreSqlEgressReceiptRepository(context),
     idempotency: createPostgreSqlIdempotencyRepository(context, options.idempotencyLeaseOwner),
     accessGrants: createPostgreSqlAccessGrantRepository(context, options.evidenceSearchCache),
     oauthRefresh: createPostgreSqlOAuthRefreshRepository(context, options.oauthRefreshOwner),

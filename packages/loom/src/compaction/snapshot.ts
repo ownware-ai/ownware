@@ -34,6 +34,7 @@ import type { Message, ContentBlock, ToolUseBlock, ToolResultBlock, AssistantMes
 import type { CompactionResult, CompactionStrategy } from './types.js'
 import type { CompactionRetain } from '../core/config.js'
 import type { ProviderAdapter } from '../provider/types.js'
+import type { EgressControl } from '../egress/types.js'
 import { headTailTruncate, capBytes } from '../messages/truncate.js'
 
 const SNAPSHOT_BYTE_BUDGET = 1500
@@ -50,8 +51,10 @@ export async function snapshot(
   systemPrompt: string,
   retain: CompactionRetain,
   provider: ProviderAdapter,
+  egressControl?: EgressControl,
 ): Promise<CompactionResult> {
-  const preTokenCount = await provider.countTokens(messages, systemPrompt)
+  const countOptions = egressControl === undefined ? undefined : { egressControl }
+  const preTokenCount = await provider.countTokens(messages, systemPrompt, countOptions)
 
   // Separate leading system messages from the conversation. System
   // messages are always preserved exactly — they're the contract.
@@ -92,7 +95,7 @@ export async function snapshot(
   }
 
   const newMessages: Message[] = [...systemMessages, snapshotMsg, ...retained]
-  const postTokenCount = await provider.countTokens(newMessages, systemPrompt)
+  const postTokenCount = await provider.countTokens(newMessages, systemPrompt, countOptions)
 
   return {
     strategy: 'snapshot' satisfies CompactionStrategy,

@@ -31,11 +31,15 @@ import type {
 } from '../gateway/idempotency.js'
 import type {
   DurableRunStatus,
+  RunConsequence,
   RunPermissionRequest,
   RunSnapshot,
 } from '../gateway/run-store.js'
 import type { Thread } from '../gateway/types.js'
+import type { EffectReceiptRepository } from '../gateway/effect-receipt-store.js'
+import type { EgressReceiptRepository } from '../gateway/egress-receipt-store.js'
 import type { CodexThreadReference } from '../runtime/codex/official-thread.js'
+import type { EgressMode } from '@ownware/loom'
 
 export interface CredentialAuditPage {
   readonly events: readonly CredentialAuditEvent[]
@@ -114,6 +118,7 @@ export interface RunCreateInput {
   readonly profileId: string
   readonly candidateId?: string
   readonly model: string
+  readonly egressMode?: EgressMode
   readonly timeoutMs: number
   readonly startSeq: number
 }
@@ -123,6 +128,7 @@ export interface RunRepository {
   countActiveForProfile(profileId: string): Promise<number>
   get(runId: string): Promise<RunSnapshot | null>
   markRunning(runId: string, now?: number): Promise<void>
+  advanceConsequence(runId: string, consequence: RunConsequence, now?: number): Promise<void>
   requestCancel(
     runId: string,
     now?: number,
@@ -133,7 +139,12 @@ export interface RunRepository {
       DurableRunStatus,
       'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'indeterminate'
     >,
-    input: { readonly endSeq: number; readonly code?: string; readonly now?: number },
+    input: {
+      readonly endSeq: number
+      readonly consequence: RunConsequence
+      readonly code?: string
+      readonly now?: number
+    },
   ): Promise<void>
   recoverInterrupted(now?: number): Promise<number>
   recordPermissionRequest(input: {
@@ -141,8 +152,24 @@ export interface RunRepository {
     readonly requestId: string
     readonly toolName: string
     readonly toolInput: Record<string, unknown>
+    readonly policyRevision: string
+    readonly agentId: string | null
   }, now?: number): Promise<RunPermissionRequest>
   getPermissionRequest(runId: string, requestId: string): Promise<RunPermissionRequest | null>
+  consumePermissionApproval(input: {
+    readonly runId: string
+    readonly requestId: string
+    readonly toolName: string
+    readonly toolInput: Record<string, unknown>
+    readonly policyRevision: string
+    readonly agentId: string | null
+  }, now?: number): Promise<
+    | 'consumed'
+    | 'missing'
+    | 'intent_mismatch'
+    | 'not_approved'
+    | 'already_consumed'
+  >
   decidePermission(
     runId: string,
     requestId: string,
@@ -150,6 +177,12 @@ export interface RunRepository {
     decision: 'approve' | 'deny',
     now?: number,
   ): Promise<'decided' | 'missing' | 'hash_mismatch' | 'already_decided'>
+  expirePermission(
+    runId: string,
+    requestId: string,
+    operationHash: string,
+    now?: number,
+  ): Promise<'expired' | 'missing' | 'hash_mismatch' | 'already_terminal'>
   markWaiting(runId: string, now?: number): Promise<void>
   markRunningAfterDecision(runId: string, now?: number): Promise<void>
 }
@@ -247,6 +280,8 @@ export interface SecurityRepositories {
   readonly principals: DelegatedPrincipalRepository
   readonly threadBindings: ThreadPrincipalBindingRepository
   readonly runs: RunRepository
+  readonly effectReceipts: EffectReceiptRepository
+  readonly egressReceipts: EgressReceiptRepository
   readonly idempotency: IdempotencyRepository
   readonly accessGrants: AccessGrantRepository
   readonly oauthRefresh: OAuthRefreshRepository

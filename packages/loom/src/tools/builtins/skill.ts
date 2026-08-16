@@ -46,6 +46,10 @@ export function createSkillTool(
   const { reminders } = opts
   return defineTool({
     name: 'skill',
+    egress: {
+      contractRevision: 'ownware.tool-egress.v1',
+      mediation: 'none',
+    },
     description:
       'Invoke a named skill to load its workflow instructions into the conversation. ' +
       'The skill body comes back as the tool result; follow it in your next response. ' +

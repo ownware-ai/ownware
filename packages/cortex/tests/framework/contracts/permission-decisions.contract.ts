@@ -50,12 +50,16 @@ describe('Contract: exact run permission decisions', () => {
       requestId: 'permission_1',
       toolName: 'send_email',
       toolInput: { body: 'private body' },
+      policyRevision: 'b'.repeat(64),
+      agentId: null,
     })
     const second = await gateway.gateway.runStore.recordPermissionRequest({
       runId: run.runId,
       requestId: 'permission_2',
       toolName: 'delete_file',
       toolInput: { path: '/tmp/example' },
+      policyRevision: 'b'.repeat(64),
+      agentId: null,
     })
     await gateway.state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'permission.request',
@@ -148,6 +152,8 @@ describe('Contract: exact run permission decisions', () => {
       requestId: 'permission_wrong_scope',
       toolName: 'send_email',
       toolInput: { body: 'synthetic' },
+      policyRevision: 'b'.repeat(64),
+      agentId: null,
     })
     const wrongScope = await decide(
       'permission_wrong_scope',
@@ -163,6 +169,13 @@ describe('Contract: exact run permission decisions', () => {
 
     const approved = await decide(first.requestId, first.operationHash, 'approve')
     expect(approved.status).toBe(200)
+    await expect(approved.json()).resolves.toMatchObject({
+      runId: run.runId,
+      requestId: first.requestId,
+      operationHash: first.operationHash,
+      intentRevision: 1,
+      decision: 'approve',
+    })
     await expect(firstDecision).resolves.toBe(true)
     expect(hitl.hasPending(second.requestId)).toBe(true)
     expect((await gateway.gateway.runStore.get(run.runId))?.status).toBe('waiting')
@@ -178,6 +191,13 @@ describe('Contract: exact run permission decisions', () => {
 
     const denied = await decide(second.requestId, second.operationHash, 'deny')
     expect(denied.status).toBe(200)
+    await expect(denied.json()).resolves.toMatchObject({
+      runId: run.runId,
+      requestId: second.requestId,
+      operationHash: second.operationHash,
+      intentRevision: 1,
+      decision: 'deny',
+    })
     await expect(secondDecision).resolves.toBe(false)
     expect((await gateway.gateway.runStore.get(run.runId))?.status).toBe('running')
   })

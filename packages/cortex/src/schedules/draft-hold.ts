@@ -17,11 +17,17 @@
 
 import type { Tool, ToolResult } from '@ownware/loom'
 import type { SafetyLevel } from './safety.js'
+import {
+  permissionToolRevision,
+  validateTargetRevision,
+} from '../gateway/permission-intent.js'
 
 /** A held tool call handed to the sink (production: recorded as an approval). */
 export interface HeldCall {
   readonly toolName: string
   readonly toolInput: unknown
+  readonly toolRevision: string
+  readonly targetRevision: string | null
 }
 
 /** Where a held call goes. The caller awaits persistence; the sink owns its own
@@ -40,15 +46,31 @@ export const HELD_RESULT_MESSAGE =
  * Loom tools are plain objects (defineTool), so `execute` is an own property.
  */
 export function holdTool(tool: Tool, sink: HoldSink): Tool {
+  const toolRevision = permissionToolRevision(tool)
   return {
     ...tool,
-    execute: async (input: Record<string, unknown>): Promise<ToolResult> => {
-      // Never let a sink failure surface as a tool error (which the model might
-      // retry). Record best-effort; the result is "held" regardless.
+    execute: async (input: Record<string, unknown>, context): Promise<ToolResult> => {
       try {
-        await sink.hold({ toolName: tool.name, toolInput: input })
+        const targetRevision = tool.conditionalEffect == null
+          ? null
+          : await tool.conditionalEffect.captureTargetRevision(input, context)
+        validateTargetRevision(targetRevision)
+        await sink.hold({
+          toolName: tool.name,
+          toolInput: input,
+          toolRevision,
+          targetRevision,
+        })
       } catch {
-        /* sink owns its logging; a held action is still not executed */
+        // Never claim a draft was queued when the authority precondition or
+        // durable record failed. The real effect still did not run.
+        return {
+          content:
+            'Nothing was sent or changed, but this action could not be queued for approval. ' +
+            'Do not retry it automatically.',
+          isError: true,
+          metadata: { held: false, toolName: tool.name },
+        }
       }
       return {
         content: HELD_RESULT_MESSAGE,
@@ -56,6 +78,28 @@ export function holdTool(tool: Tool, sink: HoldSink): Tool {
         metadata: { held: true, toolName: tool.name },
       }
     },
+  }
+}
+
+/**
+ * Rebind a reviewed held action to the authority revision captured when it was
+ * drafted. A non-null revision can execute only through the tool's declared
+ * conditional-effect API; ordinary `execute` is never a freshness proof.
+ */
+export function toolForHeldExecution(
+  tool: Tool,
+  targetRevision: string | null,
+): Tool | null {
+  if (targetRevision === null) return tool
+  const conditionalEffect = tool.conditionalEffect
+  if (conditionalEffect == null) return null
+  return {
+    ...tool,
+    execute: (input, context) => conditionalEffect.executeIfCurrent(
+      input,
+      context,
+      targetRevision,
+    ),
   }
 }
 

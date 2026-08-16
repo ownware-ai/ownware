@@ -41,6 +41,7 @@ import { createTeamEventBus, type TeamEventBus } from './event-bus.js'
 import { TeamScheduler } from './scheduler.js'
 import type { CreateTeamInput, Team, TeamRun, UpdateTeamInput } from './schema.js'
 import type { TeamRepository } from '../storage/platform-repositories.js'
+import { sha256PermissionRevision } from '../gateway/permission-intent.js'
 
 export interface TeamModuleDeps {
   readonly state: GatewayState
@@ -275,8 +276,13 @@ export class TeamModule {
       asHitlLike('credential', credentialHITL),
     ]
     state.setSessionCompanions(run.threadId, {
+      egressMode: 'unrestricted',
       hitl,
       zoneManager: assembled.zoneManager ?? null,
+      permissionPolicyRevision: sha256PermissionRevision({
+        revision: 'ownware.team-conductor-policy.v1',
+        profileId: profile.config.name,
+      }),
       getLastZoneDecision: () => null,
       credentialHITL,
       credentialRuntime,

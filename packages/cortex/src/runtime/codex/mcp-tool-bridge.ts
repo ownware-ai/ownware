@@ -16,6 +16,7 @@ import {
   type Tool,
   type ToolCall,
   type ToolContext,
+  type ToolExecutionAuthorizationContext,
 } from '@ownware/loom'
 import type { RuntimeConsequence } from '../port.js'
 
@@ -85,6 +86,15 @@ export interface CodexMcpRunRegistration {
     tool: ToolCall,
     reason: string,
   ) => Promise<boolean>
+  /**
+   * Final host authorization at the dispatch boundary. Permission-required
+   * tools fail closed when this callback is absent or rejects the exact call.
+   */
+  readonly authorizeToolExecution?: (
+    tool: ToolCall,
+    context: ToolExecutionAuthorizationContext,
+  ) => boolean | Promise<boolean>
+  readonly permissionPolicyRevision?: string
   readonly onEvent?: (event: LoomEvent) => void | Promise<void>
   /**
    * Optional authority at the effect boundary. A successful ToolResult is not
@@ -127,6 +137,7 @@ export type CodexMcpDeliveryResult =
       readonly status: 'confirmed'
       readonly consequence: RuntimeConsequence
       readonly receiptState: CodexMcpInvocationReceipt['state']
+      readonly effectAuthority?: string
     }
   | { readonly status: 'not_found' | 'ambiguous' }
 
@@ -166,6 +177,8 @@ interface RunScope {
   readonly context: ToolContext
   readonly checkPermission: NonNullable<CodexMcpRunRegistration['checkPermission']>
   readonly requestApproval: NonNullable<CodexMcpRunRegistration['requestApproval']>
+  readonly authorizeToolExecution: NonNullable<CodexMcpRunRegistration['authorizeToolExecution']>
+  readonly permissionPolicyRevision?: string
   readonly onEvent?: CodexMcpRunRegistration['onEvent']
   readonly confirmEffect?: CodexMcpRunRegistration['confirmEffect']
   readonly sessions: Set<string>
@@ -522,6 +535,10 @@ export class CodexMcpToolHub {
       context: registration.context,
       checkPermission: registration.checkPermission ?? (async () => 'ask'),
       requestApproval: registration.requestApproval ?? (async () => false),
+      authorizeToolExecution: registration.authorizeToolExecution ?? (async () => false),
+      ...(registration.permissionPolicyRevision === undefined
+        ? {}
+        : { permissionPolicyRevision: registration.permissionPolicyRevision }),
       ...(registration.onEvent ? { onEvent: registration.onEvent } : {}),
       ...(registration.confirmEffect
         ? { confirmEffect: registration.confirmEffect }
@@ -979,7 +996,25 @@ export class CodexMcpToolHub {
     }
     const verdict = typeof decision === 'string' ? decision : decision.decision
     const metadata = typeof decision === 'string' ? null : decision
-    if (verdict === 'allow') return true
+    const policyRevision = metadata?.policyRevision ?? scope.permissionPolicyRevision
+    if (
+      scope.permissionPolicyRevision !== undefined
+      && policyRevision !== scope.permissionPolicyRevision
+    ) return false
+
+    const authorizeFinal = async (approvalRequested: boolean): Promise<boolean> => {
+      try {
+        return await scope.authorizeToolExecution(toolCall, {
+          requestId: toolCall.id,
+          agentId: null,
+          approvalRequested,
+          ...(policyRevision === undefined ? {} : { policyRevision }),
+        })
+      } catch {
+        return false
+      }
+    }
+    if (verdict === 'allow') return authorizeFinal(false)
 
     const reason = metadata?.explanation ?? 'Tool requires explicit approval'
     const requestEvent: LoomEvent = {
@@ -1004,6 +1039,7 @@ export class CodexMcpToolHub {
       ...(metadata?.severityReason !== undefined
         ? { severityReason: metadata.severityReason }
         : {}),
+      ...(policyRevision === undefined ? {} : { policyRevision }),
     }
     if (!(await this.emit(scope, receipt, requestEvent))) return false
 
@@ -1012,6 +1048,16 @@ export class CodexMcpToolHub {
       approved = await scope.requestApproval(toolCall, reason)
     } catch {
       approved = false
+    }
+    if (approved && !await authorizeFinal(true)) {
+      approved = false
+      await this.emitBestEffort(scope, receipt, {
+        type: 'security.block',
+        toolName: toolCall.name,
+        level: 'permission-binding',
+        reason: 'permission-binding-invalid',
+        turnIndex: 0,
+      })
     }
     await this.emitBestEffort(scope, receipt, approved
       ? {
@@ -1116,6 +1162,9 @@ export class CodexMcpToolHub {
       status: 'confirmed',
       consequence: receipt.consequence,
       receiptState: receipt.state,
+      ...(receipt.effectAuthority === null
+        ? {}
+        : { effectAuthority: receipt.effectAuthority }),
     }
   }
 

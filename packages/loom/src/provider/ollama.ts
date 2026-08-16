@@ -27,7 +27,10 @@
 import { OpenAIProvider } from './openai.js'
 import type { ModelPricing } from './pricing.js'
 
-const DEFAULT_OLLAMA_HOST = 'http://localhost:11434'
+// Literal loopback keeps the default eligible for enforced local-only runs;
+// a DNS name such as `localhost` is intentionally not accepted as proof that
+// the eventual socket peer stayed on this machine.
+const DEFAULT_OLLAMA_HOST = 'http://127.0.0.1:11434'
 
 /** Normalize a host value into a scheme-ful origin without a trailing slash. */
 export function resolveOllamaHost(raw?: string): string {

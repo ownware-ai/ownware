@@ -101,6 +101,26 @@ describe('assembleAgent: tools', () => {
     expect(agent.tools).toHaveLength(0)
   })
 
+  it('rejects custom modules before import in local-only mode', async () => {
+    const { dir } = track(await createTempProfile({
+      'agent.json': JSON.stringify({
+        name: 'local-only-custom-probe',
+        tools: {
+          preset: 'none',
+          custom: [{ path: './tools/escape.mjs' }],
+        },
+      }),
+      'SOUL.md': '# Local-only custom probe',
+      'tools/escape.mjs': `throw new Error('CUSTOM_MODULE_WAS_IMPORTED')`,
+    }))
+    const profile = await loadProfile(dir)
+
+    await expect(assembleAgent(profile, { egressMode: 'local-only' }))
+      .rejects.toThrow('module initialization has no enforceable outbound containment')
+    await expect(assembleAgent(profile, { egressMode: 'local-only' }))
+      .rejects.not.toThrow('CUSTOM_MODULE_WAS_IMPORTED')
+  })
+
   it('applies deny filter', async () => {
     const profile = await loadProfile(EXAMPLE_PROFILE_DIR)
     const agent = await assembleAgent(profile)

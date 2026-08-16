@@ -283,6 +283,12 @@ function compileLog(
   return {
     type: 'fn',
     name,
+    egress: {
+      contractRevision: 1,
+      sourceKind: 'tool',
+      sourceRef: 'profile_hook.log',
+      mediation: 'none',
+    },
     fn: (ctx) => {
       const line = `[ownware:hook:${profileName}] ${summarize(ctx)}`
       if (level === 'error') console.error(line)
@@ -376,6 +382,12 @@ function compileWebhook(
   return {
     type: 'fn',
     name,
+    egress: {
+      contractRevision: 1,
+      sourceKind: 'connector',
+      sourceRef: 'profile_hook.webhook',
+      mediation: 'uncontained',
+    },
     // Above the internal fetch timeout — the fn resolves on its own.
     timeoutMs: WEBHOOK_TIMEOUT_MS + 1_000,
     fn: async (ctx) => {
@@ -438,6 +450,12 @@ function compileSaveJson(
   return {
     type: 'fn',
     name,
+    egress: {
+      contractRevision: 1,
+      sourceKind: 'tool',
+      sourceRef: 'profile_hook.save_json',
+      mediation: 'none',
+    },
     fn: async (ctx) => {
       try {
         dirReady ??= mkdir(dirname(target), { recursive: true })
@@ -479,6 +497,12 @@ function compileCommand(
     type: 'command',
     name,
     command: config.command,
+    egress: {
+      contractRevision: 1,
+      sourceKind: 'process',
+      sourceRef: 'profile_hook.command',
+      mediation: 'uncontained',
+    },
   }
 }
 
@@ -515,6 +539,12 @@ function compileApprove(
   return {
     type: 'fn',
     name,
+    egress: {
+      contractRevision: 1,
+      sourceKind: 'tool',
+      sourceRef: 'profile_hook.approve',
+      mediation: 'none',
+    },
     // The wait IS the feature — budget past the HITL window (above).
     timeoutMs: hitlTimeoutMs + APPROVE_TIMEOUT_GRACE_MS,
     fn: async (ctx) => {

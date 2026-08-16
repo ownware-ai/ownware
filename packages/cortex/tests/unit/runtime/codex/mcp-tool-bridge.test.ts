@@ -310,6 +310,83 @@ describe('CodexMcpToolHub', () => {
     })
   })
 
+  it('executes a permission-required tool only after exact final authorization', async () => {
+    const execute = vi.fn(async () => ({ content: 'changed', isError: false }))
+    const authorizeToolExecution = vi.fn(async () => true)
+    const events: LoomEvent[] = []
+    const hub = await startHub()
+    const run = hub.registerRun({
+      runId: 'run-exact-permission',
+      tools: [tool('bound_write', execute, {
+        readOnly: false,
+        requiresPermission: true,
+      })],
+      context: context(),
+      permissionPolicyRevision: 'a'.repeat(64),
+      checkPermission: async () => ({
+        decision: 'ask',
+        policyRevision: 'a'.repeat(64),
+      }),
+      requestApproval: async () => true,
+      authorizeToolExecution,
+      onEvent: (event) => { events.push(event) },
+    })
+
+    const sessionId = await initialize(run)
+    const result = await rpc(run, sessionId, 71, 'tools/call', {
+      name: 'bound_write',
+      arguments: { value: 'exact' },
+    })
+
+    expect(result.body.result.isError).toBe(false)
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(authorizeToolExecution).toHaveBeenCalledTimes(1)
+    expect(authorizeToolExecution.mock.calls[0]?.[0]).toMatchObject({
+      name: 'bound_write',
+      input: { value: 'exact' },
+    })
+    expect(authorizeToolExecution.mock.calls[0]?.[1]).toMatchObject({
+      agentId: null,
+      approvalRequested: true,
+      policyRevision: 'a'.repeat(64),
+    })
+    expect(events.map((event) => event.type)).toEqual([
+      'tool.call.start',
+      'permission.request',
+      'permission.response',
+      'tool.call.end',
+    ])
+  })
+
+  it('blocks dispatch when the final permission binding is absent or stale', async () => {
+    for (const authorizeToolExecution of [undefined, async () => false] as const) {
+      const execute = vi.fn(async () => ({ content: 'must not run', isError: false }))
+      const events: LoomEvent[] = []
+      const hub = await startHub()
+      const run = hub.registerRun({
+        runId: `run-stale-permission-${authorizeToolExecution === undefined ? 'absent' : 'false'}`,
+        tools: [tool('blocked_write', execute, {
+          readOnly: false,
+          requiresPermission: true,
+        })],
+        context: context(),
+        checkPermission: async () => ({ decision: 'ask' }),
+        requestApproval: async () => true,
+        ...(authorizeToolExecution === undefined ? {} : { authorizeToolExecution }),
+        onEvent: (event) => { events.push(event) },
+      })
+      const sessionId = await initialize(run)
+      const result = await rpc(run, sessionId, 72, 'tools/call', {
+        name: 'blocked_write',
+        arguments: {},
+      })
+      expect(result.body.result.isError).toBe(true)
+      expect(execute).not.toHaveBeenCalled()
+      expect(events.some((event) => event.type === 'security.block')).toBe(true)
+      await run.close()
+    }
+  })
+
   it('fails closed when the permission observer or approval channel fails', async () => {
     for (const failure of ['observer', 'approval'] as const) {
       const execute = vi.fn(async () => ({ content: 'must not run', isError: false }))

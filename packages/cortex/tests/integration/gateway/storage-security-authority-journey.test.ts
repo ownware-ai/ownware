@@ -278,6 +278,7 @@ describe('STO05 storage security authority journey', () => {
         threadId: thread.id,
         profileId: 'mini',
         model: 'test:model',
+        permissionPolicyRevision: 'a'.repeat(64),
         prompt: runInput.prompt,
       })
 

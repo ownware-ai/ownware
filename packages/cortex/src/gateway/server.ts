@@ -717,7 +717,12 @@ export class OwnwareGateway {
     })
     this.runIdempotency = this.state.securityRepositories.idempotency
     this.runStore = this.state.securityRepositories.runs
-    this.runner = new SessionRunner(this.state, this.runStore)
+    this.runner = new SessionRunner(
+      this.state,
+      this.runStore,
+      this.state.securityRepositories.effectReceipts,
+      this.state.securityRepositories.egressReceipts,
+    )
     this.registry = new ProfileRegistry()
     this.connectorStatusBus = createConnectorStatusBus()
     this.credentialEventBus = createCredentialEventBus()
@@ -1526,14 +1531,37 @@ export class OwnwareGateway {
       console.warn('[ownware] entity_id self-check failed (continuing):', err)
     }
 
-    // 2b. Recover orphaned threads left in 'active' status by a previous
-    //     crash or unclean shutdown. No in-memory runtime survives a
-    //     restart, so every 'active' thread is a zombie.
+    // 2b. Recover durable runs and their pending effect evidence first. A
+    //     gateway must not begin serving while a previous external action is
+    //     still presented as merely pending: if reconciliation storage is
+    //     unavailable, fail startup instead of weakening the evidence claim.
+    const recoveredRuns = await this.runStore.recoverInterrupted()
+    const recoveredEffects = await this.state.securityRepositories.effectReceipts
+      .reconcileInterrupted('gateway.restart.pending_effect')
+    const recoveredEgress = await this.state.securityRepositories.egressReceipts
+      .reconcileInterrupted('gateway_restarted_after_dispatch')
+    const recoveredApprovalClaims = this.approvalStore == null
+      ? 0
+      : await this.approvalStore.recoverInterruptedClaims()
+    if (recoveredRuns > 0) {
+      console.log(`  runs: marked ${recoveredRuns} interrupted run(s) indeterminate after restart`)
+    }
+    if (recoveredEffects > 0) {
+      console.log(`  effects: marked ${recoveredEffects} pending effect(s) unknown after restart`)
+    }
+    if (recoveredEgress > 0) {
+      console.log(`  egress: marked ${recoveredEgress} pending dispatch(es) unknown after restart`)
+    }
+    if (recoveredApprovalClaims > 0) {
+      console.log(
+        `  approvals: marked ${recoveredApprovalClaims} claimed action(s) indeterminate after restart`,
+      )
+    }
+
+    // Recover orphaned thread presentation state separately. No in-memory
+    // runtime survives a restart, so every 'active' thread is a zombie. This
+    // legacy UI repair remains best-effort; run/effect truth above does not.
     try {
-      const recoveredRuns = await this.runStore.recoverInterrupted()
-      if (recoveredRuns > 0) {
-        console.log(`  runs: marked ${recoveredRuns} interrupted run(s) indeterminate after restart`)
-      }
       const recovered = await this.state.recoverOrphanedThreads()
       if (recovered > 0) {
         console.log(
@@ -2478,6 +2506,8 @@ export class OwnwareGateway {
 
     const run = createRunHandlers(this.state, this.registry, this.runner, {
       runStore: this.runStore,
+      effectReceipts: this.state.securityRepositories.effectReceipts,
+      egressReceipts: this.state.securityRepositories.egressReceipts,
       idempotencyStore: this.runIdempotency,
       candidateResolver,
       candidateStore,
@@ -3067,6 +3097,16 @@ export class OwnwareGateway {
     this.router.post('/api/v1/run', run.run, { operation: 'runs.start' })
     // Literal route must precede /runs/:runId or "active" is parsed as an ID.
     this.router.get('/api/v1/runs/active', run.listActiveRuns)
+    this.router.get(
+      '/api/v1/runs/:runId/effect-receipts',
+      run.listEffectReceipts,
+      { operation: 'runs.effects.read' },
+    )
+    this.router.get(
+      '/api/v1/runs/:runId/egress-receipts',
+      run.listEgressReceipts,
+      { operation: 'runs.egress.read' },
+    )
     this.router.get('/api/v1/runs/:runId', run.getRun, { operation: 'runs.snapshot' })
     this.router.get('/api/v1/runs/:runId/events', agentEvents.streamRunEvents, { operation: 'runs.events' })
     this.router.post('/api/v1/threads/:threadId/resume', run.resume, { operation: 'runs.resume.legacy' })

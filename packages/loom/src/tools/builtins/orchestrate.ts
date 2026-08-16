@@ -56,7 +56,12 @@ interface SpawnedResult {
 
 /** Minimal shape of the injected AgentSpawner the tool relies on. */
 interface InjectedSpawner {
-  spawn(spec: unknown, mode: string, messages: unknown[]): Promise<{ id: string }>
+  spawn(
+    spec: unknown,
+    mode: string,
+    messages: unknown[],
+    options?: { readonly egressControl?: ToolContext['config']['egressControl'] },
+  ): Promise<{ id: string }>
   waitForAgent(id: string): Promise<SpawnedResult>
 }
 
@@ -138,10 +143,16 @@ async function runWorker(
   spec: unknown,
   userMessage: string,
   outputSchema?: Record<string, unknown>,
+  egressControl?: ToolContext['config']['egressControl'],
 ): Promise<WorkerResult> {
   if (!outputSchema) {
     try {
-      const handle = await spawner.spawn(spec, 'isolated', [{ role: 'user', content: userMessage }])
+      const handle = await spawner.spawn(
+        spec,
+        'isolated',
+        [{ role: 'user', content: userMessage }],
+        { egressControl },
+      )
       const result = await spawner.waitForAgent(handle.id)
       return { ok: true, content: result.content }
     } catch (e) {
@@ -156,7 +167,12 @@ async function runWorker(
       structuredInstruction(outputSchema) +
       (attempt === 0 ? '' : '\n\nYour previous reply was not valid JSON. Reply with ONLY the JSON object, nothing else.')
     try {
-      const handle = await spawner.spawn(spec, 'isolated', [{ role: 'user', content: message }])
+      const handle = await spawner.spawn(
+        spec,
+        'isolated',
+        [{ role: 'user', content: message }],
+        { egressControl },
+      )
       const result = await spawner.waitForAgent(handle.id)
       lastContent = result.content
       const parsed = parseStructured(result.content)
@@ -293,7 +309,13 @@ export const orchestrate: Tool = defineTool({
           const userMessage = prior
             ? `Previous step output:\n${prior}\n\n---\nYour task: ${task.prompt}`
             : task.prompt
-          const r = await runWorker(spawner, spec(task), userMessage, task.output_schema)
+          const r = await runWorker(
+            spawner,
+            spec(task),
+            userMessage,
+            task.output_schema,
+            context.config.egressControl,
+          )
           last = r.content
           prior = r.content
         }
@@ -305,7 +327,13 @@ export const orchestrate: Tool = defineTool({
       }
 
       // fan-out + map-reduce both start by running every task in parallel.
-      const mapped = await Promise.all(tasks.map(t => runWorker(spawner, spec(t), t.prompt, t.output_schema)))
+      const mapped = await Promise.all(tasks.map(t => runWorker(
+        spawner,
+        spec(t),
+        t.prompt,
+        t.output_schema,
+        context.config.egressControl,
+      )))
 
       if (shape === 'fan-out') {
         const content = mapped.map((r, i) => labeled(tasks[i]!.name, r.content)).join('\n\n')
@@ -324,7 +352,13 @@ export const orchestrate: Tool = defineTool({
       // map-reduce: combine the mapped outputs and hand them to the reducer.
       const combined = mapped.map((r, i) => labeled(tasks[i]!.name, r.content)).join('\n\n')
       const reduceMessage = `${reducer!.prompt}\n\nResults to combine:\n${combined}`
-      const reduced = await runWorker(spawner, spec(reducer!), reduceMessage, reducer!.output_schema)
+      const reduced = await runWorker(
+        spawner,
+        spec(reducer!),
+        reduceMessage,
+        reducer!.output_schema,
+        context.config.egressControl,
+      )
       return {
         content: reduced.content,
         isError: !reduced.ok,

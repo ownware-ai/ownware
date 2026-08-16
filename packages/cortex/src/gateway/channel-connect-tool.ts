@@ -241,6 +241,8 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  */
 export class ChannelConnectToolProvider implements ConnectorToolProvider {
   readonly source = 'channels'
+  readonly assemblyEgress = 'none' as const
+  readonly toolEgress = 'uncontained' as const
 
   constructor(
     private readonly deps: Omit<ChannelConnectToolDeps, 'profileId'>,

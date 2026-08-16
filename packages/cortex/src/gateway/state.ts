@@ -12,7 +12,7 @@
  *   - Event logs → debug data, 2000 cap per thread
  */
 
-import type { Session, MCPManager, RunningChrome, DeferredChromeLauncher } from '@ownware/loom'
+import type { EgressMode, Session, MCPManager, RunningChrome, DeferredChromeLauncher } from '@ownware/loom'
 import type { LoomEvent } from '@ownware/loom'
 import { HumanInTheLoop, ZoneManager } from '@ownware/loom'
 import { randomBytes } from 'node:crypto'
@@ -154,8 +154,12 @@ export interface ThreadRuntime {
  * in the runner's finally block.
  */
 export interface SessionCompanions {
+  /** Fixed for the cached session; changing the envelope requires a new thread. */
+  readonly egressMode: EgressMode
   readonly hitl: HumanInTheLoop
   readonly zoneManager: ZoneManager | null
+  /** Opaque revision of the exact policy/tool envelope assembled for this session. */
+  readonly permissionPolicyRevision: string
   /** Accessor for the last zone decision (used by SSE enricher). */
   readonly getLastZoneDecision: () => unknown
   /**
@@ -390,6 +394,8 @@ export class GatewayState {
       principals: deferredRepository(() => root().security.principals),
       threadBindings: deferredRepository(() => root().security.threadBindings),
       runs: deferredRepository(() => root().security.runs),
+      effectReceipts: deferredRepository(() => root().security.effectReceipts),
+      egressReceipts: deferredRepository(() => root().security.egressReceipts),
       idempotency: deferredRepository(() => root().security.idempotency),
       accessGrants: deferredRepository(() => root().security.accessGrants),
       oauthRefresh: deferredRepository(() => root().security.oauthRefresh),

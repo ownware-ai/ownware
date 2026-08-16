@@ -21,6 +21,8 @@ import { getModelInfo, getModelPricing } from './pricing.js'
 import type { Message, ContentBlock } from '../messages/types.js'
 import { ProviderError, classifyHttpError } from '../core/errors.js'
 import { LOOM_TRACE } from '../observability/debug-trace.js'
+import { createEgressFetch } from '../egress/fetch.js'
+import type { EgressControl } from '../egress/types.js'
 
 /**
  * Anthropic requires a minimum thinking budget of 1024 tokens. Enforced at the
@@ -30,6 +32,7 @@ const MIN_THINKING_BUDGET_TOKENS = 1024
 
 export class AnthropicProvider implements ProviderAdapter {
   readonly name = 'anthropic'
+  readonly egressMediation = 'fetch' as const
 
   /**
    * Resolved at construction when the consumer passed a static `apiKey`.
@@ -49,6 +52,10 @@ export class AnthropicProvider implements ProviderAdapter {
    */
   private readonly apiKeyProvider: (() => Promise<string>) | undefined
   private readonly dynamicBaseURL: string | undefined
+  private readonly staticOptions: {
+    readonly apiKey?: string
+    readonly baseURL?: string
+  }
   /**
    * Transport hooks forwarded to the SDK on BOTH construction paths — see the
    * matching field on `OpenAIProvider`. Held pre-built so the static and
@@ -64,6 +71,10 @@ export class AnthropicProvider implements ProviderAdapter {
     baseURL?: string
     apiKeyProvider?: () => Promise<string>
   } & ProviderTransportOptions) {
+    this.staticOptions = {
+      ...(opts?.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts?.baseURL !== undefined ? { baseURL: opts.baseURL } : {}),
+    }
     this.transport = {
       ...(opts?.fetch !== undefined ? { fetch: opts.fetch } : {}),
       ...(opts?.defaultHeaders !== undefined ? { defaultHeaders: opts.defaultHeaders } : {}),
@@ -90,16 +101,33 @@ export class AnthropicProvider implements ProviderAdapter {
    * key cannot leak across requests; the SDK client is GC'd after the
    * stream completes.
    */
-  private async getClient(): Promise<Anthropic> {
+  private async getClient(egressControl?: EgressControl): Promise<Anthropic> {
+    const requestTransport = egressControl === undefined
+      ? this.transport
+      : {
+          ...this.transport,
+          fetch: createEgressFetch({
+            fetch: this.transport.fetch ?? globalThis.fetch,
+            control: egressControl,
+            sourceRef: this.name,
+            mediation: this.transport.fetch === undefined
+              ? 'platform_fetch'
+              : 'custom_fetch',
+          }),
+        }
     if (this.apiKeyProvider !== undefined) {
       const apiKey = await this.apiKeyProvider()
       return new Anthropic({
         apiKey,
         ...(this.dynamicBaseURL !== undefined ? { baseURL: this.dynamicBaseURL } : {}),
-        ...this.transport,
+        ...requestTransport,
       })
     }
-    return this.staticClient!
+    if (egressControl === undefined) return this.staticClient!
+    return new Anthropic({
+      ...this.staticOptions,
+      ...requestTransport,
+    })
   }
 
   async *stream(request: ProviderRequest): AsyncGenerator<ProviderChunk> {
@@ -115,7 +143,7 @@ export class AnthropicProvider implements ProviderAdapter {
   }
 
   private async *streamImpl(request: ProviderRequest): AsyncGenerator<ProviderChunk> {
-    const client = await this.getClient()
+    const client = await this.getClient(request.egressControl)
     const messages = request.messages
       .filter(m => m.role !== 'system')
       .map(m => toAnthropicMessage(m))
@@ -344,8 +372,12 @@ export class AnthropicProvider implements ProviderAdapter {
     }
   }
 
-  async countTokens(messages: Message[], system?: string): Promise<number> {
-    const client = await this.getClient()
+  async countTokens(
+    messages: Message[],
+    system?: string,
+    options?: { readonly egressControl?: EgressControl },
+  ): Promise<number> {
+    const client = await this.getClient(options?.egressControl)
     const result = await client.messages.countTokens({
       model: 'claude-sonnet-4-6',
       messages: messages

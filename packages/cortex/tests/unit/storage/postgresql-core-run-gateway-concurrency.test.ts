@@ -529,6 +529,9 @@ describePostgreSql('PostgreSQL core/run/gateway concurrency invariants', () => {
     const terminalContenders = Array.from({ length: 32 }, (_, index) => ({
       status: (index % 2 === 0 ? 'succeeded' : 'failed') as 'succeeded' | 'failed',
       endSeq: 100 + index,
+      consequence: (index % 3 === 0
+        ? 'effect_possible'
+        : 'output_observed') as 'effect_possible' | 'output_observed',
       code: `sto11-terminal-${index}`,
       now: 2_100 + index,
     }))
@@ -537,7 +540,8 @@ describePostgreSql('PostgreSQL core/run/gateway concurrency invariants', () => {
     const terminal = await runs.get(terminalRun.runId)
     const matching = terminalContenders.filter((contender) =>
       contender.status === terminal?.status && contender.endSeq === terminal?.endSeq &&
-      contender.code === terminal?.code && contender.now === terminal?.terminalAt)
+      contender.code === terminal?.code && contender.now === terminal?.terminalAt &&
+      contender.consequence === terminal?.consequence)
     expect(matching).toHaveLength(1)
 
     const key = randomUUID()
@@ -747,7 +751,11 @@ describePostgreSql('PostgreSQL core/run/gateway concurrency invariants', () => {
       }, 5_030)).resolves.toMatchObject({
         status: 'active_runs', deploymentRevision: 2, activeRunCount: 1,
       })
-      await runs.markTerminal(accepted.runId, 'succeeded', { endSeq: 0, now: 5_040 })
+      await runs.markTerminal(accepted.runId, 'succeeded', {
+        endSeq: 0,
+        consequence: 'none_observed',
+        now: 5_040,
+      })
       await expect(candidates.compareAndSetUndeployed({
         profileId,
         expectedActiveCandidateId: candidateId,

@@ -91,6 +91,7 @@ export function createFallbackProvider(
 
 export class FallbackProviderAdapter implements ProviderAdapter {
   readonly name: string
+  readonly egressMediation = 'delegated' as const
   private readonly primary: ProviderAdapter
   private readonly fallbackModels: readonly string[]
   private readonly maxAttempts: number
@@ -186,8 +187,12 @@ export class FallbackProviderAdapter implements ProviderAdapter {
     )
   }
 
-  async countTokens(messages: Message[], system?: string): Promise<number> {
-    return this.primary.countTokens(messages, system)
+  async countTokens(
+    messages: Message[],
+    system?: string,
+    options?: Parameters<ProviderAdapter['countTokens']>[2],
+  ): Promise<number> {
+    return this.primary.countTokens(messages, system, options)
   }
 
   supportsFeature(feature: ProviderFeature): boolean {

@@ -201,6 +201,8 @@ export function runSecurityRepositoryContract(
         requestId: 'contract_permission',
         toolName: 'send_email',
         toolInput: { recipient: 'contract@example.test' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
       }, 1_020)
       await repositories.runs.markWaiting(run.runId, 1_020)
 
@@ -225,9 +227,48 @@ export function runSecurityRepositoryContract(
         run.runId,
         permission.requestId,
       ))?.status).toMatch(/^(approved|denied)$/)
-      await repositories.runs.markRunningAfterDecision(run.runId, 1_040)
+
+      const consumable = await repositories.runs.recordPermissionRequest({
+        runId: run.runId,
+        requestId: 'contract_permission_consumable',
+        toolName: 'send_email',
+        toolInput: { recipient: 'exact@example.test', subject: 'Bound once' },
+        policyRevision: 'c'.repeat(64),
+        agentId: 'helper-contract',
+      }, 1_032)
+      await expect(repositories.runs.decidePermission(
+        run.runId,
+        consumable.requestId,
+        consumable.operationHash,
+        'approve',
+        1_033,
+      )).resolves.toBe('decided')
+      const exactIntent = {
+        runId: run.runId,
+        requestId: consumable.requestId,
+        toolName: 'send_email',
+        toolInput: { recipient: 'exact@example.test', subject: 'Bound once' },
+        policyRevision: 'c'.repeat(64),
+        agentId: 'helper-contract',
+      } as const
+      const consumptions = await Promise.all(Array.from(
+        { length: 12 },
+        (_, index) => repositories.runs.consumePermissionApproval(
+          exactIntent,
+          1_034 + index,
+        ),
+      ))
+      expect(consumptions.filter((result) => result === 'consumed')).toHaveLength(1)
+      expect(consumptions.filter((result) => result === 'already_consumed')).toHaveLength(11)
+      await expect(repositories.runs.consumePermissionApproval({
+        ...exactIntent,
+        toolInput: { recipient: 'changed@example.test', subject: 'Bound once' },
+      }, 1_047)).resolves.toBe('intent_mismatch')
+
+      await repositories.runs.markRunningAfterDecision(run.runId, 1_048)
       await repositories.runs.markTerminal(run.runId, 'succeeded', {
         endSeq: 7,
+        consequence: 'none_observed',
         now: 1_050,
       })
 
@@ -238,6 +279,213 @@ export function runSecurityRepositoryContract(
         terminal: true,
         outcomeKnown: true,
         endSeq: 7,
+      })
+    })
+
+    it('keeps effect evidence append-only, idempotent and honest across recovery', async () => {
+      let repositories = harness.repositories
+      const thread = await harness.core.threads.create('contract-effect-profile')
+      const run = await repositories.runs.create({
+        threadId: thread.id,
+        profileId: 'contract-effect-profile',
+        model: 'contract:model',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      }, 2_000)
+      await repositories.runs.markRunning(run.runId, 2_010)
+      const intentInput = {
+        runId: run.runId,
+        toolCallId: 'contract_call_1',
+        toolName: 'contract_effect_tool',
+        observationKey: 'runtime:1',
+        kind: 'intent_observed' as const,
+        outcome: 'pending' as const,
+        consequence: 'none_observed' as const,
+        authorityKind: 'runtime' as const,
+        authorityRef: 'runtime.tool_call.start',
+        runtimeSequence: 1,
+      }
+      const intent = await repositories.effectReceipts.observe(intentInput, 2_020)
+      expect(await repositories.effectReceipts.observe(intentInput, 9_999)).toEqual(intent)
+      await expect(repositories.effectReceipts.observe({
+        ...intentInput,
+        kind: 'outcome_observed',
+        outcome: 'succeeded',
+        consequence: 'effect_possible',
+      }, 2_030)).rejects.toMatchObject({ code: 'observation_conflict' })
+
+      const confirmed = await repositories.effectReceipts.observe({
+        runId: run.runId,
+        toolCallId: 'contract_call_1',
+        toolName: 'contract_effect_tool',
+        observationKey: 'runtime:2',
+        kind: 'authority_confirmed',
+        outcome: 'succeeded',
+        consequence: 'effect_confirmed',
+        authorityKind: 'effect_observer',
+        authorityRef: 'contract.authority.lookup',
+        runtimeSequence: 2,
+      }, 2_040)
+      expect(confirmed.effectId).toBe(intent.effectId)
+      expect(await repositories.runs.get(run.runId)).toMatchObject({
+        consequence: 'effect_confirmed',
+        updatedAt: 2_040,
+      })
+      const first = await repositories.effectReceipts.listForRun(
+        run.runId,
+        { limit: 1, cursor: null },
+      )
+      expect(first.items).toEqual([intent])
+      expect(first.nextCursor).toBe(intent.receiptId)
+      expect((await repositories.effectReceipts.listForRun(
+        run.runId,
+        { limit: 1, cursor: first.nextCursor },
+      )).items).toEqual([confirmed])
+      await repositories.runs.markTerminal(run.runId, 'succeeded', {
+        endSeq: 2,
+        consequence: 'effect_confirmed',
+        now: 2_045,
+      })
+
+      const interrupted = await repositories.runs.create({
+        threadId: thread.id,
+        profileId: 'contract-effect-profile',
+        model: 'contract:model',
+        timeoutMs: 60_000,
+        startSeq: 2,
+      }, 2_050)
+      await repositories.runs.markRunning(interrupted.runId, 2_060)
+      await repositories.effectReceipts.observe({
+        runId: interrupted.runId,
+        toolCallId: 'contract_call_pending',
+        toolName: 'contract_unknown_tool',
+        observationKey: 'runtime:1',
+        kind: 'intent_observed',
+        outcome: 'pending',
+        consequence: 'none_observed',
+        authorityKind: 'runtime',
+        authorityRef: 'runtime.tool_call.start',
+        runtimeSequence: 1,
+      }, 2_070)
+      await repositories.runs.recoverInterrupted(2_080)
+      expect(await repositories.effectReceipts.reconcileInterrupted(
+        'gateway.restart.pending_effect',
+        2_090,
+      )).toBe(1)
+      expect(await repositories.effectReceipts.reconcileInterrupted(
+        'gateway.restart.pending_effect',
+        2_100,
+      )).toBe(0)
+
+      await harness.reopen()
+      repositories = harness.repositories
+      expect((await repositories.effectReceipts.listForRun(
+        interrupted.runId,
+        { limit: 10, cursor: null },
+      )).items.at(-1)).toMatchObject({
+        kind: 'reconciliation',
+        outcome: 'unknown',
+        consequence: 'effect_possible',
+        authorityKind: 'reconciler',
+      })
+      expect(await repositories.runs.get(interrupted.runId)).toMatchObject({
+        status: 'indeterminate',
+        consequence: 'effect_possible',
+      })
+    })
+
+    it('keeps egress evidence append-only, mode-bound and honest across recovery', async () => {
+      let repositories = harness.repositories
+      const thread = await harness.core.threads.create('contract-egress-profile')
+      const run = await repositories.runs.create({
+        threadId: thread.id,
+        profileId: 'contract-egress-profile',
+        model: 'contract:model',
+        egressMode: 'unrestricted',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      }, 3_000)
+      await repositories.runs.markRunning(run.runId, 3_010)
+      const dispatchId = '30000000-0000-4000-8000-000000000003'
+      const startedInput = {
+        dispatchId,
+        runId: run.runId,
+        mode: 'unrestricted' as const,
+        sourceKind: 'provider' as const,
+        sourceRef: 'contract_provider',
+        transport: 'https' as const,
+        mediation: 'platform_fetch' as const,
+        observationKey: 'dispatch:started',
+        destinationOrigin: 'https://models.example.test',
+        phase: 'dispatch_started' as const,
+        reasonCode: null,
+      }
+      const started = await repositories.egressReceipts.observe(startedInput, 3_020)
+      expect(await repositories.egressReceipts.observe(startedInput, 9_999)).toEqual(started)
+      await expect(repositories.egressReceipts.observe({
+        ...startedInput,
+        mode: 'local-only',
+        observationKey: 'dispatch:mode-conflict',
+      }, 3_021)).rejects.toMatchObject({ code: 'identity_conflict' })
+      await expect(repositories.egressReceipts.observe({
+        ...startedInput,
+        observationKey: 'dispatch:started',
+        phase: 'dispatch_failed',
+      }, 3_022)).rejects.toMatchObject({ code: 'observation_conflict' })
+      const observed = await repositories.egressReceipts.observe({
+        ...startedInput,
+        observationKey: 'dispatch:response',
+        phase: 'response_observed',
+      }, 3_030)
+      const first = await repositories.egressReceipts.listForRun(
+        run.runId,
+        { limit: 1, cursor: null },
+      )
+      expect(first.items).toEqual([started])
+      expect(first.nextCursor).toBe(started.receiptId)
+      expect((await repositories.egressReceipts.listForRun(
+        run.runId,
+        { limit: 1, cursor: first.nextCursor },
+      )).items).toEqual([observed])
+      await repositories.runs.markTerminal(run.runId, 'succeeded', {
+        endSeq: 1,
+        consequence: 'output_observed',
+        now: 3_040,
+      })
+
+      const interrupted = await repositories.runs.create({
+        threadId: thread.id,
+        profileId: 'contract-egress-profile',
+        model: 'contract:model',
+        egressMode: 'unrestricted',
+        timeoutMs: 60_000,
+        startSeq: 1,
+      }, 3_050)
+      await repositories.runs.markRunning(interrupted.runId, 3_060)
+      await repositories.egressReceipts.observe({
+        ...startedInput,
+        dispatchId: '30000000-0000-4000-8000-000000000004',
+        runId: interrupted.runId,
+      }, 3_070)
+      await repositories.runs.recoverInterrupted(3_080)
+      expect(await repositories.egressReceipts.reconcileInterrupted(
+        'gateway_restarted_after_dispatch',
+        3_090,
+      )).toBe(1)
+      expect(await repositories.egressReceipts.reconcileInterrupted(
+        'gateway_restarted_after_dispatch',
+        3_100,
+      )).toBe(0)
+
+      await harness.reopen()
+      repositories = harness.repositories
+      expect((await repositories.egressReceipts.listForRun(
+        interrupted.runId,
+        { limit: 10, cursor: null },
+      )).items.at(-1)).toMatchObject({
+        dispatchId: '30000000-0000-4000-8000-000000000004',
+        phase: 'outcome_unknown',
+        reasonCode: 'gateway_restarted_after_dispatch',
       })
     })
 

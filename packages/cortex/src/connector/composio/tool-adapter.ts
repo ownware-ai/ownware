@@ -153,6 +153,8 @@ export interface ComposioToolProviderOptions {
 
 export class ComposioToolProvider implements ConnectorToolProvider {
   readonly source = 'composio'
+  readonly assemblyEgress = 'uncontained' as const
+  readonly toolEgress = 'uncontained' as const
   private readonly client: ComposioClient
   private readonly catalogCache: ComposioCatalogCache
   private readonly connections: ConnectorConnectionsRepository

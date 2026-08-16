@@ -102,6 +102,7 @@ function projectPublicRunEvent(event: Record<string, unknown>): Record<string, u
     requestId: event['requestId'],
     toolName: event['toolName'],
     operationHash: event['operationHash'],
+    intentRevision: event['intentRevision'],
   }
 }
 

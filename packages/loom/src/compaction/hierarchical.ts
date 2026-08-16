@@ -16,6 +16,7 @@ import type { Message, ContentBlock } from '../messages/types.js'
 import type { CompactionResult, CompactionStrategy } from './types.js'
 import type { CompactionRetain } from '../core/config.js'
 import type { ProviderAdapter, ProviderRequest } from '../provider/types.js'
+import type { EgressControl } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -82,8 +83,10 @@ export async function hierarchical(
   retain: CompactionRetain,
   provider: ProviderAdapter,
   summaryModel: string | null = null,
+  egressControl?: EgressControl,
 ): Promise<CompactionResult> {
-  const preTokenCount = await provider.countTokens(messages, systemPrompt)
+  const countOptions = egressControl === undefined ? undefined : { egressControl }
+  const preTokenCount = await provider.countTokens(messages, systemPrompt, countOptions)
   const model = summaryModel ?? 'default'
 
   // Split into system, summarize, retain
@@ -112,7 +115,7 @@ export async function hierarchical(
     }
 
     const { summary, inputTokens, outputTokens } = await summarizeGroup(
-      group, model, provider,
+      group, model, provider, egressControl,
     )
     topicSummaries.push(summary)
     totalInputTokens += inputTokens
@@ -134,6 +137,7 @@ export async function hierarchical(
     tools: [],
     maxTokens: SESSION_SUMMARY_MAX_TOKENS,
     temperature: 0,
+    ...(egressControl === undefined ? {} : { egressControl }),
   }
 
   let sessionSummary = ''
@@ -174,7 +178,7 @@ export async function hierarchical(
     ...toRetain,
   ]
 
-  const postTokenCount = await provider.countTokens(compacted, systemPrompt)
+  const postTokenCount = await provider.countTokens(compacted, systemPrompt, countOptions)
 
   return {
     strategy: 'hierarchical' satisfies CompactionStrategy,
@@ -236,6 +240,7 @@ async function summarizeGroup(
   group: Message[],
   model: string,
   provider: ProviderAdapter,
+  egressControl?: EgressControl,
 ): Promise<{ summary: string; inputTokens: number; outputTokens: number }> {
   const formatted = group.map(msg => {
     const role = msg.role.toUpperCase()
@@ -255,6 +260,7 @@ async function summarizeGroup(
     tools: [],
     maxTokens: TOPIC_SUMMARY_MAX_TOKENS,
     temperature: 0,
+    ...(egressControl === undefined ? {} : { egressControl }),
   }
 
   let summary = ''

@@ -28,6 +28,7 @@ import {
 import type { CompactionResult, CompactionStrategy } from './types.js'
 import type { CompactionRetain } from '../core/config.js'
 import type { ProviderAdapter, ProviderRequest } from '../provider/types.js'
+import type { EgressControl } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -86,8 +87,10 @@ export async function summarize(
   retain: CompactionRetain,
   provider: ProviderAdapter,
   summaryModel: string | null = null,
+  egressControl?: EgressControl,
 ): Promise<CompactionResult> {
-  const preTokenCount = await provider.countTokens(messages, systemPrompt)
+  const countOptions = egressControl === undefined ? undefined : { egressControl }
+  const preTokenCount = await provider.countTokens(messages, systemPrompt, countOptions)
 
   // Separate system messages, messages to summarize, and messages to retain
   const { systemMessages, toSummarize, toRetain } = splitMessages(messages, retain)
@@ -114,6 +117,7 @@ export async function summarize(
     tools: [],
     maxTokens: SUMMARY_MAX_OUTPUT_TOKENS,
     temperature: 0,
+    ...(egressControl === undefined ? {} : { egressControl }),
   }
 
   let summaryText = ''
@@ -152,7 +156,7 @@ export async function summarize(
   // doesn't — the bug is in `splitMessages`, not here.
   assertPairing(compacted)
 
-  const postTokenCount = await provider.countTokens(compacted, systemPrompt)
+  const postTokenCount = await provider.countTokens(compacted, systemPrompt, countOptions)
 
   return {
     strategy: 'summarize' satisfies CompactionStrategy,

@@ -286,6 +286,10 @@ export interface PermissionRequestEvent {
   readonly input: Record<string, unknown>
   readonly reason: string
   readonly turnIndex: number
+  /** Spawned helper identity, or null for the root agent. */
+  readonly agentId?: string | null
+  /** Opaque host policy revision bound into the approval intent. */
+  readonly policyRevision?: string
   /** Zone level (0-6) if zone security is active. */
   readonly zoneLevel?: number
   /** Zone name (safe, workspace, build, network, external, machine, never). */

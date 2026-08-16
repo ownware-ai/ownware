@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto'
-import type { CheckPermissionResult, LoomEvent, ToolCall } from '@ownware/loom'
+import type {
+  CheckPermissionResult,
+  LoomEvent,
+  ToolCall,
+  ToolExecutionAuthorizationContext,
+} from '@ownware/loom'
 import type {
   CodexDiagnostics,
   CodexInbound,
@@ -84,6 +89,11 @@ export interface CodexOfficialRuntimeDriverOptions {
   readonly reviewNativeApproval?: (
     review: CodexNativeApprovalReview,
   ) => Promise<'allow' | 'ask' | CheckPermissionResult>
+  readonly authorizeToolExecution?: (
+    tool: ToolCall,
+    context: ToolExecutionAuthorizationContext,
+  ) => boolean | Promise<boolean>
+  readonly permissionPolicyRevision?: string
   readonly persistReference: (
     reference: CodexThreadReference,
   ) => void | Promise<void>
@@ -258,6 +268,12 @@ export class CodexOfficialRuntimeDriver implements RuntimeDriver {
       threadId: this.remoteThreadId!,
       review: this.options.reviewNativeApproval ?? (async () => 'ask'),
       requestApproval: (tool) => this.waitForApproval(tool),
+      ...(this.options.authorizeToolExecution === undefined
+        ? {}
+        : { authorizeToolExecution: this.options.authorizeToolExecution }),
+      ...(this.options.permissionPolicyRevision === undefined
+        ? {}
+        : { permissionPolicyRevision: this.options.permissionPolicyRevision }),
       onEvent: (event) => this.enqueueCanonical(event),
       resolveFileChange: async ({ threadId, turnId, itemId }) => {
         if (
@@ -469,13 +485,14 @@ export class CodexOfficialRuntimeDriver implements RuntimeDriver {
       await this.enqueueUnknown(observation.unknownSourceType)
     }
     for (const item of observation.events) {
-      await this.enqueueCanonical(item.event, item.consequence)
+      await this.enqueueCanonical(item.event, item.consequence, item.effectAuthority)
     }
   }
 
   private async enqueueCanonical(
     event: LoomEvent,
     consequence?: RuntimeConsequence,
+    effectAuthority?: string,
   ): Promise<void> {
     const effective = consequence ?? this.inferConsequence(event)
     if (effective !== 'none_observed' && this.reference?.activeTurn != null) {
@@ -490,6 +507,7 @@ export class CodexOfficialRuntimeDriver implements RuntimeDriver {
       sourceSequence: ++this.sequence,
       event,
       ...(consequence !== undefined ? { consequence } : {}),
+      ...(effectAuthority !== undefined ? { effectAuthority } : {}),
     })
   }
 

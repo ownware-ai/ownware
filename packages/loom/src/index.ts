@@ -65,6 +65,18 @@ export {
 export type { CacheControlMarker, CacheProfile, CacheTTL } from './core/cache-control.js'
 export { buildCacheMarker, DEFAULT_CACHE_PROFILE } from './core/cache-control.js'
 export { createLinkedAbortController, createTimeoutSignal, createCombinedSignal } from './core/abort.js'
+export type {
+  EgressMode,
+  EgressSourceKind,
+  EgressTransport,
+  EgressMediation,
+  EgressDispatchRequest,
+  EgressDispatchToken,
+  EgressUnknownRoute,
+  EgressControl,
+} from './egress/types.js'
+export { EgressBlockedError } from './egress/types.js'
+export { createEgressFetch } from './egress/fetch.js'
 
 // Events
 export type {
@@ -524,7 +536,7 @@ export { PermissionEvaluator } from './permissions/evaluator.js'
 export { HumanInTheLoop } from './permissions/hitl.js'
 export { SessionPermissionStore } from './permissions/session-store.js'
 export { BUILT_IN_SAFETY_RULES } from './permissions/rules.js'
-export type { PermissionMode, PolicyDecision, PermissionRule, SecurityContext, SafetyRule, DecisionReason, CheckPermissionResult } from './permissions/types.js'
+export type { PermissionMode, PolicyDecision, PermissionRule, SecurityContext, SafetyRule, DecisionReason, CheckPermissionResult, ToolExecutionAuthorizationContext } from './permissions/types.js'
 export { formatDecisionReason } from './permissions/types.js'
 
 // Agents

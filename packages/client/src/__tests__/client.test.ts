@@ -697,6 +697,50 @@ beforeAll(async () => {
           reason: 'profile_default_unavailable',
         },
         status: 'running',
+        egressMode: 'local-only',
+      }))
+      return
+    }
+    if (/^\/api\/v1\/runs\/[^/]+\/egress-receipts(?:\?|$)/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        items: [{
+          receiptId: '33333333-3333-4333-8333-333333333333',
+          sequence: 1,
+          dispatchId: '44444444-4444-4444-8444-444444444444',
+          runId: '88888888-8888-4888-8888-888888888888',
+          mode: 'local-only',
+          sourceKind: 'provider',
+          sourceRef: 'ollama',
+          transport: 'http',
+          mediation: 'platform_fetch',
+          destinationOrigin: 'http://127.0.0.1:11434',
+          phase: 'dispatch_started',
+          reasonCode: null,
+          observedAt: 100,
+        }],
+        nextCursor: null,
+      }))
+      return
+    }
+    if (/^\/api\/v1\/runs\/[^/]+\/effect-receipts(?:\?|$)/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        items: [{
+          receiptId: '11111111-1111-4111-8111-111111111111',
+          sequence: 1,
+          effectId: '22222222-2222-4222-8222-222222222222',
+          runId: '88888888-8888-4888-8888-888888888888',
+          toolCallId: 'call_1',
+          toolName: 'send_message',
+          kind: 'authority_confirmed',
+          outcome: 'succeeded',
+          consequence: 'effect_confirmed',
+          authorityKind: 'effect_observer',
+          authorityRef: 'connector.message.lookup',
+          observedAt: 100,
+        }],
+        nextCursor: null,
       }))
       return
     }
@@ -723,6 +767,7 @@ beforeAll(async () => {
       res.end(JSON.stringify({
         runId: '88888888-8888-4888-8888-888888888888',
         status: 'cancel_requested',
+        consequence: 'effect_possible',
         terminal: false,
         outcomeKnown: true,
         cancellation: 'requested',
@@ -793,6 +838,7 @@ describe('request shapes', () => {
       threadId: 't_1',
       model: 'x:y',
       attachments: [{ filename: 'note.txt', mimeType: 'text/plain', data: 'aGk=' }],
+      egressMode: 'local-only',
       idempotencyKey: '11111111-1111-4111-8111-111111111111',
     })
     expect(result.threadId).toBe('t_1')
@@ -810,6 +856,7 @@ describe('request shapes', () => {
     expect(JSON.parse(last.body)).toEqual({
       prompt: 'hi', profileId: 'assistant', threadId: 't_1', model: 'x:y',
       attachments: [{ filename: 'note.txt', mimeType: 'text/plain', data: 'aGk=' }],
+      egressMode: 'local-only',
     })
   })
 
@@ -888,12 +935,56 @@ describe('request shapes', () => {
     await expect(client().cancel(runId)).resolves.toMatchObject({
       runId,
       status: 'cancel_requested',
+      consequence: 'effect_possible',
       cancellation: 'requested',
     })
     const last = seen.at(-1)!
     expect(last.method).toBe('POST')
     expect(last.url).toBe(`/api/v1/runs/${runId}/cancel`)
     expect(JSON.parse(last.body)).toEqual({})
+  })
+
+  it('pages immutable effect receipts without putting filters in a body', async () => {
+    const runId = '88888888-8888-4888-8888-888888888888'
+    await expect(client().listEffectReceipts(runId, {
+      limit: 25,
+      cursor: '11111111-1111-4111-8111-111111111111',
+    })).resolves.toMatchObject({
+      items: [{
+        runId,
+        consequence: 'effect_confirmed',
+        authorityKind: 'effect_observer',
+      }],
+      nextCursor: null,
+    })
+    const last = seen.at(-1)!
+    expect(last.method).toBe('GET')
+    expect(last.url).toBe(
+      `/api/v1/runs/${runId}/effect-receipts?limit=25&cursor=11111111-1111-4111-8111-111111111111`,
+    )
+    expect(last.body).toBe('')
+  })
+
+  it('pages immutable egress receipts without putting filters in a body', async () => {
+    const runId = '88888888-8888-4888-8888-888888888888'
+    await expect(client().listEgressReceipts(runId, {
+      limit: 25,
+      cursor: '33333333-3333-4333-8333-333333333333',
+    })).resolves.toMatchObject({
+      items: [{
+        runId,
+        mode: 'local-only',
+        destinationOrigin: 'http://127.0.0.1:11434',
+        phase: 'dispatch_started',
+      }],
+      nextCursor: null,
+    })
+    const last = seen.at(-1)!
+    expect(last.method).toBe('GET')
+    expect(last.url).toBe(
+      `/api/v1/runs/${runId}/egress-receipts?limit=25&cursor=33333333-3333-4333-8333-333333333333`,
+    )
+    expect(last.body).toBe('')
   })
 
   it('does not expose an older malformed response body through the thrown error', async () => {

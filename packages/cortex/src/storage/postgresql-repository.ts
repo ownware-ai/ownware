@@ -39,6 +39,8 @@ const PRESERVED_DOMAIN_ERRORS = new Set([
   'ChannelJobConflictError',
   'CodexThreadReferenceStoreError',
   'ConnectionInventoryCursorNotFoundError',
+  'EgressReceiptStoreError',
+  'EffectReceiptStoreError',
   'PrincipalAuthError',
   'PluginGrantConflictError',
   'PluginMigrationConflictError',

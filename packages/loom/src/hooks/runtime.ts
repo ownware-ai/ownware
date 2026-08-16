@@ -11,16 +11,16 @@
  *   - `output: <text>`         →  `hook.success` reminder
  *   - `additionalContext: <s>` →  `hook.context` reminder (skipped if whitespace-only)
  *
- * The runtime never throws on hook failure — each executor catches
- * errors and converts them to a block. Loop integration can therefore
- * treat `run()` as total: the result is always either "allow, here's
- * what was emitted" or "blocked, here's why."
+ * Hook implementation failures are converted to a block. Host-authority
+ * failures (for example, inability to durably record an egress decision)
+ * still propagate: continuing would execute without the promised evidence.
  */
 
 import type { ReminderInjector } from '../reminders/index.js'
 import type { HookContext, HookRunResult } from './types.js'
 import type { HookRegistry } from './registry.js'
 import { executeHook } from './executor.js'
+import { EgressBlockedError, type EgressControl } from '../egress/types.js'
 
 export interface HookRuntimeOptions {
   readonly registry: HookRegistry
@@ -53,11 +53,35 @@ export class HookRuntime {
    * `{ continue: false, blockedHook, blockedReason }` on the first
    * block. Never throws.
    */
-  async run(ctx: HookContext, signal?: AbortSignal): Promise<HookRunResult> {
+  async run(
+    ctx: HookContext,
+    signal?: AbortSignal,
+    egressControl?: EgressControl,
+  ): Promise<HookRunResult> {
     const hooks = this.registry.for(ctx.event)
     if (hooks.length === 0) return { continue: true }
 
     for (const spec of hooks) {
+      if (egressControl !== undefined && spec.egress?.mediation !== 'none') {
+        try {
+          await egressControl.routeUnavailable({
+            sourceKind: spec.egress?.sourceKind ?? (spec.type === 'command' ? 'process' : 'tool'),
+            sourceRef: spec.egress?.sourceRef ?? 'profile_hook',
+            mediation: spec.egress?.mediation === 'uncontained'
+              ? 'uncontained'
+              : 'unknown',
+          })
+        } catch (error) {
+          if (!(error instanceof EgressBlockedError)) throw error
+          const reason = 'Hook has no verified outbound containment for this local-only run.'
+          this.reminders?.emit({
+            type: 'hook.blocked',
+            hookName: spec.name,
+            reason,
+          })
+          return { continue: false, blockedHook: spec.name, blockedReason: reason }
+        }
+      }
       const result = await executeHook(spec, ctx, signal)
       const allowed = result.continue !== false
 

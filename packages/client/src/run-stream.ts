@@ -26,6 +26,7 @@ export type RunStreamEvent =
       readonly toolName: string
       readonly reason: string
       readonly operationHash?: string
+      readonly intentRevision?: 1
       readonly seq: number
     }
   /**
@@ -77,6 +78,7 @@ export function interpretSseEvent(
       const operationHash = typeof data['operationHash'] === 'string'
         ? (data['operationHash'] as string)
         : undefined
+      const intentRevision = data['intentRevision'] === 1 ? 1 as const : undefined
       if (requestId === '') return { stop: false, seq }
       return {
         event: {
@@ -85,6 +87,7 @@ export function interpretSseEvent(
           toolName,
           reason,
           ...(operationHash !== undefined ? { operationHash } : {}),
+          ...(intentRevision !== undefined ? { intentRevision } : {}),
           seq,
         },
         stop: false,

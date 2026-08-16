@@ -11,11 +11,17 @@ import {
   type IdempotencySnapshot,
 } from '../gateway/idempotency.js'
 import {
+  parseRunConsequence,
   ProfileRunNotAcceptingError,
   type DurableRunStatus,
+  type RunConsequence,
   type RunPermissionRequest,
   type RunSnapshot,
 } from '../gateway/run-store.js'
+import {
+  PERMISSION_INTENT_REVISION,
+  permissionIntentMaterial,
+} from '../gateway/permission-intent.js'
 import type {
   IdempotencyRepository,
   RunRepository,
@@ -29,10 +35,26 @@ import {
   safeInteger,
   withPostgreSqlTransaction,
 } from './postgresql-repository.js'
+import type { EgressMode } from '@ownware/loom'
 
 const TERMINAL = new Set<DurableRunStatus>([
   'succeeded', 'failed', 'cancelled', 'timed_out', 'indeterminate',
 ])
+
+const RUN_CONSEQUENCE_RANK = new Map<RunConsequence, number>([
+  ['none_observed', 0],
+  ['output_observed', 1],
+  ['effect_possible', 2],
+  ['effect_confirmed', 3],
+])
+
+const RUN_CONSEQUENCE_SQL_RANK = `CASE consequence
+  WHEN 'none_observed' THEN 0
+  WHEN 'output_observed' THEN 1
+  WHEN 'effect_possible' THEN 2
+  WHEN 'effect_confirmed' THEN 3
+  ELSE -1
+END`
 
 interface RunRow {
   readonly id: string
@@ -41,8 +63,10 @@ interface RunRow {
   readonly profile_id: string
   readonly candidate_id: string | null
   readonly model: string
+  readonly egress_mode: EgressMode
   readonly timeout_ms: string
   readonly status: DurableRunStatus
+  readonly consequence: string
   readonly start_seq: string
   readonly end_seq: string | null
   readonly code: string | null
@@ -58,9 +82,13 @@ interface PermissionRow {
   readonly request_id: string
   readonly operation_hash: string
   readonly tool_name: string
+  readonly intent_revision: string
+  readonly policy_revision: string
+  readonly agent_id: string | null
   readonly status: RunPermissionRequest['status']
   readonly requested_at: string
   readonly decided_at: string | null
+  readonly consumed_at: string | null
 }
 
 function snapshot(row: RunRow): RunSnapshot {
@@ -71,8 +99,10 @@ function snapshot(row: RunRow): RunSnapshot {
     profileId: row.profile_id,
     candidateId: row.candidate_id,
     model: row.model,
+    egressMode: row.egress_mode,
     timeoutMs: safeInteger(row.timeout_ms),
     status: row.status,
+    consequence: parseRunConsequence(row.consequence),
     terminal: TERMINAL.has(row.status),
     outcomeKnown: row.status !== 'indeterminate',
     acceptedAt: safeInteger(row.accepted_at),
@@ -87,14 +117,21 @@ function snapshot(row: RunRow): RunSnapshot {
 }
 
 function permission(row: PermissionRow): RunPermissionRequest {
+  if (safeInteger(row.intent_revision) !== PERMISSION_INTENT_REVISION) {
+    throw new Error('Permission intent revision is unsupported')
+  }
   return {
     runId: row.run_id,
     requestId: row.request_id,
     operationHash: row.operation_hash,
     toolName: row.tool_name,
+    intentRevision: PERMISSION_INTENT_REVISION,
+    policyRevision: row.policy_revision,
+    agentId: row.agent_id,
     status: row.status,
     requestedAt: safeInteger(row.requested_at),
     decidedAt: nullableSafeInteger(row.decided_at),
+    consumedAt: nullableSafeInteger(row.consumed_at),
   }
 }
 
@@ -109,24 +146,20 @@ async function getPermission(
   requestId: string,
 ): Promise<RunPermissionRequest | null> {
   const result = await client.query<PermissionRow>(`
-    SELECT * FROM ownware.run_permission_requests WHERE run_id = $1 AND request_id = $2
+    SELECT request.run_id, request.request_id, request.operation_hash,
+      request.tool_name, request.status, request.requested_at,
+      request.decided_at, binding.intent_revision, binding.policy_revision,
+      binding.agent_id, consumption.consumed_at
+    FROM ownware.run_permission_requests AS request
+    JOIN ownware.run_permission_bindings AS binding
+      ON binding.run_id = request.run_id
+      AND binding.request_id = request.request_id
+    LEFT JOIN ownware.run_permission_consumptions AS consumption
+      ON consumption.run_id = request.run_id
+      AND consumption.request_id = request.request_id
+    WHERE request.run_id = $1 AND request.request_id = $2
   `, [runId, requestId])
   return result.rows[0] === undefined ? null : permission(result.rows[0])
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new Error('permission input is invalid')
-    return JSON.stringify(value)
-  }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    return `{${Object.keys(record).sort().map((key) =>
-      `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`
-  }
-  throw new Error('permission input is invalid')
 }
 
 export function createPostgreSqlRunRepository(
@@ -176,14 +209,15 @@ export function createPostgreSqlRunRepository(
           const runId = randomUUID()
           await client.query(`
             INSERT INTO ownware.gateway_runs (
-              id, thread_id, workspace_id, profile_id, candidate_id, model, timeout_ms,
+              id, thread_id, workspace_id, profile_id, candidate_id, model, egress_mode, timeout_ms,
               status, start_seq, end_seq, code, accepted_at, started_at, updated_at,
               terminal_at, cancel_requested_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted', $8, NULL, NULL,
-              $9, NULL, $9, NULL, NULL)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'accepted', $9, NULL, NULL,
+              $10, NULL, $10, NULL, NULL)
           `, [
             runId, input.threadId, input.workspaceId ?? null, input.profileId,
-            input.candidateId ?? null, input.model, input.timeoutMs, input.startSeq, now,
+            input.candidateId ?? null, input.model, input.egressMode ?? 'unrestricted', input.timeoutMs,
+            input.startSeq, now,
           ])
           const created = await getRun(client, runId)
           if (created === null) throw new Error('run was not created')
@@ -212,44 +246,106 @@ export function createPostgreSqlRunRepository(
         `, [now, runId])
       })
     },
-    requestCancel(runId, now = Date.now()) {
-      return repositoryCall(context, 'runs', 'request_cancel', 'write_failed', async (client) => {
-        const result = await client.query<RunRow>(`
-          UPDATE ownware.gateway_runs SET status = 'cancel_requested',
-            cancel_requested_at = COALESCE(cancel_requested_at, $1), updated_at = $1
-          WHERE id = $2 AND status IN ('accepted', 'running', 'waiting') RETURNING *
-        `, [now, runId])
-        if (result.rowCount === 1) return 'requested'
-        const current = await getRun(client, runId)
-        if (current === null) return 'missing'
-        if (current.terminal) return 'terminal'
-        return current.status === 'cancel_requested' ? 'already_requested' : 'missing'
+    advanceConsequence(runId, consequence, now = Date.now()) {
+      const rank = RUN_CONSEQUENCE_RANK.get(consequence)
+      if (rank === undefined) return Promise.reject(new Error('Run consequence is invalid'))
+      if (rank === 0) return Promise.resolve()
+      return repositoryCall(context, 'runs', 'advance_consequence', 'write_failed', async (client) => {
+        await client.query(`
+          UPDATE ownware.gateway_runs SET consequence = $1, updated_at = $2
+          WHERE id = $3 AND ${RUN_CONSEQUENCE_SQL_RANK} < $4
+        `, [consequence, now, runId, rank])
       })
+    },
+    requestCancel(runId, now = Date.now()) {
+      return repositoryCall(context, 'runs', 'request_cancel', 'write_failed', async () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
+          const result = await client.query<RunRow>(`
+            UPDATE ownware.gateway_runs SET status = 'cancel_requested',
+              cancel_requested_at = COALESCE(cancel_requested_at, $1), updated_at = $1
+            WHERE id = $2 AND status IN ('accepted', 'running', 'waiting') RETURNING *
+          `, [now, runId])
+          if (result.rowCount === 1) {
+            await client.query(`
+              UPDATE ownware.run_permission_requests AS request
+              SET status = 'expired', decided_at = COALESCE(request.decided_at, $1)
+              WHERE request.run_id = $2 AND request.status IN ('pending', 'approved')
+                AND NOT EXISTS (
+                  SELECT 1 FROM ownware.run_permission_consumptions AS consumption
+                  WHERE consumption.run_id = request.run_id
+                    AND consumption.request_id = request.request_id
+                )
+            `, [now, runId])
+            return 'requested'
+          }
+          const current = await getRun(client, runId)
+          if (current === null) return 'missing'
+          if (current.terminal) return 'terminal'
+          return current.status === 'cancel_requested' ? 'already_requested' : 'missing'
+        }),
+      )
     },
     markTerminal(runId, status, input) {
       const now = input.now ?? Date.now()
-      return repositoryCall(context, 'runs', 'mark_terminal', 'write_failed', async (client) => {
-        await client.query(`
-          UPDATE ownware.gateway_runs SET status = $1, end_seq = $2, code = $3,
-            updated_at = $4, terminal_at = $4 WHERE id = $5
-            AND status NOT IN ('succeeded', 'failed', 'cancelled', 'timed_out', 'indeterminate')
-        `, [status, input.endSeq, input.code ?? null, now, runId])
-      })
+      const rank = RUN_CONSEQUENCE_RANK.get(input.consequence)
+      if (rank === undefined) return Promise.reject(new Error('Run consequence is invalid'))
+      return repositoryCall(context, 'runs', 'mark_terminal', 'write_failed', async () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
+          await client.query(`
+            UPDATE ownware.gateway_runs SET status = $1, end_seq = $2, code = $3,
+              updated_at = $4, terminal_at = $4,
+              consequence = CASE
+                WHEN ${RUN_CONSEQUENCE_SQL_RANK} < $5 THEN $6
+                ELSE consequence
+              END
+              WHERE id = $7
+              AND status NOT IN ('succeeded', 'failed', 'cancelled', 'timed_out', 'indeterminate')
+          `, [status, input.endSeq, input.code ?? null, now, rank, input.consequence, runId])
+          await client.query(`
+            UPDATE ownware.run_permission_requests AS request
+            SET status = 'expired', decided_at = COALESCE(request.decided_at, $1)
+            WHERE request.run_id = $2 AND request.status IN ('pending', 'approved')
+              AND NOT EXISTS (
+                SELECT 1 FROM ownware.run_permission_consumptions AS consumption
+                WHERE consumption.run_id = request.run_id
+                  AND consumption.request_id = request.request_id
+              )
+          `, [now, runId])
+        }),
+      )
     },
     recoverInterrupted(now = Date.now()) {
-      return repositoryCall(context, 'runs', 'recover_interrupted', 'write_failed', async (client) => {
-        const result = await client.query(`
-          UPDATE ownware.gateway_runs SET status = 'indeterminate', code = 'gateway_restarted',
-            updated_at = $1, terminal_at = $1, end_seq = NULL
-          WHERE status IN ('accepted', 'running', 'waiting', 'cancel_requested')
-        `, [now])
-        return result.rowCount ?? 0
-      })
+      return repositoryCall(context, 'runs', 'recover_interrupted', 'write_failed', async () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
+          await client.query(`
+            UPDATE ownware.run_permission_requests AS request
+            SET status = 'expired', decided_at = COALESCE(request.decided_at, $1)
+            WHERE request.status IN ('pending', 'approved')
+              AND NOT EXISTS (
+                SELECT 1 FROM ownware.run_permission_consumptions AS consumption
+                WHERE consumption.run_id = request.run_id
+                  AND consumption.request_id = request.request_id
+              )
+              AND EXISTS (
+                SELECT 1 FROM ownware.gateway_runs AS run
+                WHERE run.id = request.run_id
+                  AND run.status IN ('accepted', 'running', 'waiting', 'cancel_requested')
+              )
+          `, [now])
+          const result = await client.query(`
+            UPDATE ownware.gateway_runs SET status = 'indeterminate', code = 'gateway_restarted',
+              updated_at = $1, terminal_at = $1, end_seq = NULL
+            WHERE status IN ('accepted', 'running', 'waiting', 'cancel_requested')
+          `, [now])
+          return result.rowCount ?? 0
+        }),
+      )
     },
     recordPermissionRequest(input, now = Date.now()) {
-      return repositoryCall(context, 'runs', 'record_permission', 'write_failed', async (client) => {
+      return repositoryCall(context, 'runs', 'record_permission', 'write_failed', async () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
         const operationHash = createHmac('sha256', permissionHashKey)
-          .update(canonicalJson({ toolName: input.toolName, input: input.toolInput }))
+          .update(permissionIntentMaterial(input))
           .digest('hex')
         await client.query(`
           INSERT INTO ownware.run_permission_requests (
@@ -257,16 +353,62 @@ export function createPostgreSqlRunRepository(
           ) VALUES ($1, $2, $3, $4, 'pending', $5, NULL)
           ON CONFLICT (run_id, request_id) DO NOTHING
         `, [input.runId, input.requestId, operationHash, input.toolName, now])
+        await client.query(`
+          INSERT INTO ownware.run_permission_bindings (
+            run_id, request_id, intent_revision, policy_revision, agent_id, bound_at
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (run_id, request_id) DO NOTHING
+        `, [
+          input.runId,
+          input.requestId,
+          PERMISSION_INTENT_REVISION,
+          input.policyRevision,
+          input.agentId,
+          now,
+        ])
         const row = await getPermission(client, input.runId, input.requestId)
-        if (row === null || row.operationHash !== operationHash) {
+        if (
+          row === null
+          || row.operationHash !== operationHash
+          || row.intentRevision !== PERMISSION_INTENT_REVISION
+          || row.policyRevision !== input.policyRevision
+          || row.agentId !== input.agentId
+        ) {
           throw new Error('permission request identity conflict')
         }
         return row
-      })
+      }))
     },
     getPermissionRequest(runId, requestId) {
       return repositoryCall(context, 'runs', 'get_permission', 'read_failed', (client) =>
         getPermission(client, runId, requestId))
+    },
+    consumePermissionApproval(input, now = Date.now()) {
+      return repositoryCall(context, 'runs', 'consume_permission', 'write_failed', async () =>
+        withPostgreSqlTransaction(context.pool, async (client) => {
+          const operationHash = createHmac('sha256', permissionHashKey)
+            .update(permissionIntentMaterial(input))
+            .digest('hex')
+          const current = await getPermission(client, input.runId, input.requestId)
+          if (current === null) return 'missing' as const
+          if (
+            current.operationHash !== operationHash
+            || current.policyRevision !== input.policyRevision
+            || current.agentId !== input.agentId
+            || current.toolName !== input.toolName
+          ) return 'intent_mismatch' as const
+          if (current.consumedAt !== null) return 'already_consumed' as const
+          if (current.status !== 'approved') return 'not_approved' as const
+          const result = await client.query(`
+            INSERT INTO ownware.run_permission_consumptions (
+              run_id, request_id, operation_hash, consumed_at
+            ) VALUES ($1, $2, $3, $4)
+            ON CONFLICT (run_id, request_id) DO NOTHING
+          `, [input.runId, input.requestId, operationHash, now])
+          return result.rowCount === 1
+            ? 'consumed' as const
+            : 'already_consumed' as const
+        }))
     },
     decidePermission(runId, requestId, operationHash, decision, now = Date.now()) {
       return repositoryCall(context, 'runs', 'decide_permission', 'write_failed', async (client) => {
@@ -279,6 +421,31 @@ export function createPostgreSqlRunRepository(
         if (current === null) return 'missing'
         if (current.operationHash !== operationHash) return 'hash_mismatch'
         return 'already_decided'
+      })
+    },
+    expirePermission(runId, requestId, operationHash, now = Date.now()) {
+      return repositoryCall(context, 'runs', 'expire_permission', 'write_failed', async (client) => {
+        const current = await getPermission(client, runId, requestId)
+        if (current === null) return 'missing'
+        if (current.operationHash !== operationHash) return 'hash_mismatch'
+        if (
+          current.status === 'denied'
+          || current.status === 'expired'
+          || current.consumedAt !== null
+        ) return 'already_terminal'
+        const result = await client.query(`
+          UPDATE ownware.run_permission_requests AS request
+          SET status = 'expired', decided_at = COALESCE(request.decided_at, $1)
+          WHERE request.run_id = $2 AND request.request_id = $3
+            AND request.operation_hash = $4
+            AND request.status IN ('pending', 'approved')
+            AND NOT EXISTS (
+              SELECT 1 FROM ownware.run_permission_consumptions AS consumption
+              WHERE consumption.run_id = request.run_id
+                AND consumption.request_id = request.request_id
+            )
+        `, [now, runId, requestId, operationHash])
+        return result.rowCount === 1 ? 'expired' : 'already_terminal'
       })
     },
     markWaiting(runId, now = Date.now()) {

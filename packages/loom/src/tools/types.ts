@@ -259,6 +259,17 @@ export interface Tool<TInput extends Record<string, unknown> = Record<string, un
   /** Unique tool name */
   readonly name: string
 
+  /**
+   * Audited outbound behavior for local-only enforcement. Missing is unknown
+   * and fails closed under local-only. `brokered` means every outbound attempt
+   * crosses `ToolContext.config.egressControl`; `uncontained` cannot make that
+   * guarantee; `none` performs no outbound dispatch.
+   */
+  readonly egress?: {
+    readonly contractRevision: string
+    readonly mediation: 'none' | 'brokered' | 'uncontained'
+  }
+
   /** Human-readable description (sent to model) */
   readonly description: string
 
@@ -276,6 +287,31 @@ export interface Tool<TInput extends Record<string, unknown> = Record<string, un
     input: TInput,
     context: ToolContext,
   ): Promise<ToolResult> | AsyncGenerator<ToolProgress, ToolResult>
+
+  /**
+   * Optional authority-backed optimistic-concurrency contract for effects that
+   * may be parked and executed later. Merely declaring a revision is not proof
+   * of freshness: `executeIfCurrent` must pass `expectedTargetRevision` to the
+   * external authority's conditional write API, which must reject a stale
+   * value before applying the effect.
+   *
+   * `targetRevision` is an opaque, bounded concurrency token (for example an
+   * ETag), never a credential. Tools without this contract remain executable
+   * after exact approval binding, but Ownware makes no stale-target claim for
+   * them.
+   */
+  readonly conditionalEffect?: {
+    /** Stable adapter contract revision; changing its semantics changes the tool revision. */
+    readonly contractRevision: string
+    /** Read the authority-owned target revision while the action is parked. */
+    captureTargetRevision(input: TInput, context: ToolContext): Promise<string>
+    /** Apply the effect only if the authority still reports the captured revision. */
+    executeIfCurrent(
+      input: TInput,
+      context: ToolContext,
+      expectedTargetRevision: string,
+    ): Promise<ToolResult> | AsyncGenerator<ToolProgress, ToolResult>
+  }
 
   /**
    * Optional pre-execute validation phase.

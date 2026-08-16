@@ -401,6 +401,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       threadId: thread.id,
       profileId: 'test',
       model: 'test:test',
+      permissionPolicyRevision: 'a'.repeat(64),
       prompt: 'go',
     })
     await handle.done
@@ -410,7 +411,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       runId: run.runId,
       requestId: 'req_exact',
       toolName: 'send_email',
-      status: 'approved',
+      status: 'expired',
     })
     expect(permission!.operationHash).toMatch(/^[0-9a-f]{64}$/)
 
@@ -475,6 +476,7 @@ describe('reducer parity — messages snapshot carries everything UI needs', () 
       threadId: thread.id,
       profileId: 'test',
       model: 'test:test',
+      permissionPolicyRevision: 'a'.repeat(64),
       prompt: 'go',
     })
     await handle.done

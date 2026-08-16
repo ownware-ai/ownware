@@ -29,6 +29,8 @@ import { buildToolName } from './tool-adapter.js'
 
 export class ComposioToolProviderProxy implements ConnectorToolProvider {
   readonly source = 'composio'
+  readonly assemblyEgress = 'uncontained' as const
+  readonly toolEgress = 'uncontained' as const
   private inner: ConnectorToolProvider | null = null
 
   /** Swap the inner provider. Pass `null` to disable. */

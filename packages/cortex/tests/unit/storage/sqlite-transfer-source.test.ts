@@ -8,15 +8,17 @@ import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 import { runMigrationsSafely } from '../../../src/gateway/db/migration-safety.js'
 import {
   assertSqliteTransferSnapshot,
-  SQLITE_V86_SCHEMA_OBJECT_COUNT,
-  SQLITE_V86_SCHEMA_OBJECT_HASH,
+  SQLITE_V89_SCHEMA_OBJECT_COUNT,
+  SQLITE_V89_SCHEMA_OBJECT_HASH,
   SqliteTransferPreflightError,
   SqliteTransferFindingsError,
   assertSqliteTransferSourceUnchanged,
   preflightSqliteTransferSource,
+  sqliteSchemaObjectReceipt,
 } from '../../../src/storage/sqlite-transfer-preflight.js'
 import {
   classifyLogicalColumns,
+  SQLITE_V89_COLUMN_COUNT,
   type LogicalColumnDescriptor,
   type PhysicalColumnDescriptor,
 } from '../../../src/storage/logical-schema.js'
@@ -97,6 +99,10 @@ describe('SQLite transfer source preflight', () => {
       1n,
       2n,
     )
+    expect(sqliteSchemaObjectReceipt(db)).toEqual({
+      count: SQLITE_V89_SCHEMA_OBJECT_COUNT,
+      digest: SQLITE_V89_SCHEMA_OBJECT_HASH,
+    })
     db.close()
     const before = fileDigest(dbPath)
 
@@ -106,13 +112,13 @@ describe('SQLite transfer source preflight', () => {
       snapshotAuthority: 'sqlite-read-transaction',
       writerExclusion: 'not-proven',
       authorizesTargetWrites: false,
-      schemaVersion: 86,
-      schemaObjectCount: SQLITE_V86_SCHEMA_OBJECT_COUNT,
-      schemaObjectDigest: SQLITE_V86_SCHEMA_OBJECT_HASH,
-      logicalColumnCount: 754,
-      tableCount: 66,
+      schemaVersion: 89,
+      schemaObjectCount: SQLITE_V89_SCHEMA_OBJECT_COUNT,
+      schemaObjectDigest: SQLITE_V89_SCHEMA_OBJECT_HASH,
+      logicalColumnCount: SQLITE_V89_COLUMN_COUNT,
+      tableCount: 74,
     })
-    expect(receipt.tables).toHaveLength(66)
+    expect(receipt.tables).toHaveLength(74)
     expect(receipt.tables.map((table) => table.table)).toEqual(
       [...receipt.tables.map((table) => table.table)].sort(),
     )
@@ -169,7 +175,7 @@ describe('SQLite transfer source preflight', () => {
       })
       observedColumns += columns.length
     }
-    expect(observedColumns).toBe(754)
+    expect(observedColumns).toBe(SQLITE_V89_COLUMN_COUNT)
   })
 
   it('blocks unknown schema objects and divergent history without reflecting them', () => {

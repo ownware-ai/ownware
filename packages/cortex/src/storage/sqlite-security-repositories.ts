@@ -21,6 +21,14 @@ import {
   GatewayRunStore,
   ProfileRunNotAcceptingError,
 } from '../gateway/run-store.js'
+import {
+  EffectReceiptStore,
+  EffectReceiptStoreError,
+} from '../gateway/effect-receipt-store.js'
+import {
+  EgressReceiptStore,
+  EgressReceiptStoreError,
+} from '../gateway/egress-receipt-store.js'
 import { ThreadPrincipalBindingStore } from '../gateway/thread-principal-binding.js'
 import type { Thread } from '../gateway/types.js'
 import {
@@ -56,6 +64,8 @@ function isPreservedDomainError(error: unknown): boolean {
     error instanceof AccessGrantStoreError ||
     error instanceof PrincipalAuthError ||
     error instanceof ProfileRunNotAcceptingError ||
+    error instanceof EffectReceiptStoreError ||
+    error instanceof EgressReceiptStoreError ||
     error instanceof CodexThreadReferenceStoreError
 }
 
@@ -121,6 +131,8 @@ export function createSqliteSecurityRepositories(
   const principals = new DelegatedPrincipalStore(database)
   const bindings = new ThreadPrincipalBindingStore(database)
   const runs = new GatewayRunStore(database, options.permissionHashSecret)
+  const effectReceipts = new EffectReceiptStore(database)
+  const egressReceipts = new EgressReceiptStore(database)
   const idempotency = new RunIdempotencyStore(database, options.idempotencyLeaseOwner)
   const grants = new AccessGrantStore(
     database,
@@ -248,6 +260,10 @@ export function createSqliteSecurityRepositories(
         repositoryCall(assertActive, 'runs', 'mark_running', 'write_failed', () =>
           runs.markRunning(runId, now))
       },
+      async advanceConsequence(runId, consequence, now) {
+        repositoryCall(assertActive, 'runs', 'advance_consequence', 'write_failed', () =>
+          runs.advanceConsequence(runId, consequence, now))
+      },
       async requestCancel(runId, now) {
         return repositoryCall(assertActive, 'runs', 'request_cancel', 'write_failed', () =>
           runs.requestCancel(runId, now))
@@ -268,9 +284,17 @@ export function createSqliteSecurityRepositories(
         return repositoryCall(assertActive, 'runs', 'get_permission', 'read_failed', () =>
           runs.getPermissionRequest(runId, requestId))
       },
+      async consumePermissionApproval(input, now) {
+        return repositoryCall(assertActive, 'runs', 'consume_permission', 'write_failed', () =>
+          runs.consumePermissionApproval(input, now))
+      },
       async decidePermission(runId, requestId, operationHash, decision, now) {
         return repositoryCall(assertActive, 'runs', 'decide_permission', 'write_failed', () =>
           runs.decidePermission(runId, requestId, operationHash, decision, now))
+      },
+      async expirePermission(runId, requestId, operationHash, now) {
+        return repositoryCall(assertActive, 'runs', 'expire_permission', 'write_failed', () =>
+          runs.expirePermission(runId, requestId, operationHash, now))
       },
       async markWaiting(runId, now) {
         repositoryCall(assertActive, 'runs', 'mark_waiting', 'write_failed', () =>
@@ -279,6 +303,47 @@ export function createSqliteSecurityRepositories(
       async markRunningAfterDecision(runId, now) {
         repositoryCall(assertActive, 'runs', 'mark_running_after_decision', 'write_failed', () =>
           runs.markRunningAfterDecision(runId, now))
+      },
+    },
+    effectReceipts: {
+      async observe(input, now) {
+        return repositoryCall(assertActive, 'effect_receipts', 'observe', 'write_failed', () =>
+          effectReceipts.observe(input, now))
+      },
+      async listForRun(runId, page) {
+        return repositoryCall(assertActive, 'effect_receipts', 'list', 'read_failed', () =>
+          effectReceipts.listForRun(runId, page))
+      },
+      async markPendingUnknownForRun(runId, authorityRef, now) {
+        return repositoryCall(assertActive, 'effect_receipts', 'reconcile_run', 'write_failed', () =>
+          effectReceipts.markPendingUnknownForRun(runId, authorityRef, now))
+      },
+      async reconcileInterrupted(authorityRef, now) {
+        return repositoryCall(
+          assertActive,
+          'effect_receipts',
+          'reconcile_interrupted',
+          'write_failed',
+          () => effectReceipts.reconcileInterrupted(authorityRef, now),
+        )
+      },
+    },
+    egressReceipts: {
+      async observe(input, now) {
+        return repositoryCall(assertActive, 'egress_receipts', 'observe', 'write_failed', () =>
+          egressReceipts.observe(input, now))
+      },
+      async listForRun(runId, page) {
+        return repositoryCall(assertActive, 'egress_receipts', 'list', 'read_failed', () =>
+          egressReceipts.listForRun(runId, page))
+      },
+      async markPendingUnknownForRun(runId, reasonCode, now) {
+        return repositoryCall(assertActive, 'egress_receipts', 'reconcile_run', 'write_failed', () =>
+          egressReceipts.markPendingUnknownForRun(runId, reasonCode, now))
+      },
+      async reconcileInterrupted(reasonCode, now) {
+        return repositoryCall(assertActive, 'egress_receipts', 'reconcile_interrupted', 'write_failed', () =>
+          egressReceipts.reconcileInterrupted(reasonCode, now))
       },
     },
     idempotency: {

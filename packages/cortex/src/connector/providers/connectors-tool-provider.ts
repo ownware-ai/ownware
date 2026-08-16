@@ -33,6 +33,8 @@ export interface ConnectorsToolProviderOptions {
 
 export class ConnectorsToolProvider implements ConnectorToolProvider {
   readonly source = 'connectors'
+  readonly assemblyEgress = 'none' as const
+  readonly toolEgress = 'none' as const
 
   constructor(private readonly options: ConnectorsToolProviderOptions) {}
 

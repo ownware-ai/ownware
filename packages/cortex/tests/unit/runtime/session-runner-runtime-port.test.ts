@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { HumanInTheLoop, type LoomEvent, type Session } from '@ownware/loom'
 import { GatewayState } from '../../../src/gateway/state.js'
+import { GatewayRunStore } from '../../../src/gateway/run-store.js'
 import { SessionRunner } from '../../../src/gateway/session-runner.js'
 import {
   ManagedExecutionRuntime,
@@ -282,5 +283,104 @@ describe('SessionRunner execution-runtime port', () => {
     }))
     expect((await state.listAgentEvents({ threadId: thread.id, agentId: 'root' }))
       .filter(event => event.type === 'turn.end')).toHaveLength(2)
+  })
+
+  it('persists monotonic consequence evidence before publishing its runtime event', async () => {
+    const thread = await state.createThread('test')
+    const runStore = new GatewayRunStore(state.rawDbHandle, 'synthetic-test-secret')
+    const effectReceipts = state.securityRepositories.effectReceipts
+    runner = new SessionRunner(state, runStore, effectReceipts)
+    const run = runStore.create({
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'synthetic',
+      timeoutMs: 60_000,
+      startSeq: 0,
+    }, 1_000)
+    state.rawDbHandle.exec(`
+      CREATE TRIGGER require_run_consequence_before_effect_event
+      BEFORE INSERT ON agent_events
+      WHEN NEW.type = 'tool.call.end' AND NOT EXISTS (
+        SELECT 1
+        FROM gateway_runs AS run
+        JOIN effect_receipts AS receipt ON receipt.run_id = run.id
+        WHERE run.id = '${run.runId}'
+          AND run.consequence = 'effect_confirmed'
+          AND receipt.runtime_sequence = 2
+          AND receipt.consequence = 'effect_confirmed'
+          AND receipt.authority_ref = 'synthetic.effect.lookup'
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'run consequence was not durable');
+      END;
+    `)
+    const runtime = externalRuntime([
+      {
+        kind: 'canonical',
+        sourceSequence: 1,
+        event: { type: 'turn.start', turnIndex: 0, timestamp: 1_000 },
+      },
+      {
+        kind: 'canonical',
+        sourceSequence: 2,
+        consequence: 'effect_confirmed',
+        effectAuthority: 'synthetic.effect.lookup',
+        event: {
+          type: 'tool.call.end',
+          turnIndex: 0,
+          toolCallId: 'effect-1',
+          toolName: 'synthetic_effect',
+          result: 'confirmed',
+          isError: false,
+          durationMs: 1,
+        },
+      },
+      {
+        kind: 'canonical',
+        sourceSequence: 3,
+        consequence: 'output_observed',
+        event: {
+          type: 'turn.end',
+          turnIndex: 0,
+          stopReason: 'end_turn',
+          usage: {
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            model: 'synthetic',
+            costUsd: 0,
+          },
+          timestamp: 1_002,
+        },
+      },
+    ])
+    state.setRuntime(thread.id, { zoneManager: null, execution: runtime })
+
+    await expect(runner.start({
+      runId: run.runId,
+      threadId: thread.id,
+      profileId: 'test',
+      model: 'synthetic',
+      prompt: 'perform the synthetic effect',
+    }).done).resolves.toMatchObject({ status: 'completed' })
+
+    expect(runStore.get(run.runId)).toMatchObject({
+      status: 'succeeded',
+      terminal: true,
+      consequence: 'effect_confirmed',
+    })
+    await expect(effectReceipts.listForRun(
+      run.runId,
+      { limit: 10, cursor: null },
+    )).resolves.toMatchObject({
+      items: [{
+        toolCallId: 'effect-1',
+        kind: 'authority_confirmed',
+        consequence: 'effect_confirmed',
+        authorityKind: 'effect_observer',
+        authorityRef: 'synthetic.effect.lookup',
+      }],
+    })
   })
 })

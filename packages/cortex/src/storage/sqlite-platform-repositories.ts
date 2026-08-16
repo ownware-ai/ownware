@@ -141,6 +141,7 @@ const scheduleOperations = {
 const approvalOperations = {
   create: 'write_failed', get: 'read_failed', listByRun: 'read_failed', listPending: 'read_failed',
   countPending: 'read_failed', countPendingForRun: 'read_failed', decide: 'write_failed',
+  claim: 'write_failed', recoverInterruptedClaims: 'write_failed',
 } as const satisfies Record<keyof ApprovalRepository, StorageRepositoryErrorCode>
 
 const taskOperations = {

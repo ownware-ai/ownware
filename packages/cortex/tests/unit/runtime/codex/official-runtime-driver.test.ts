@@ -223,6 +223,8 @@ function options(client: ScriptedClient, overrides: Record<string, unknown> = {}
     modelProvider: 'openai',
     plan: plan(),
     persistReference: vi.fn(async (_reference: CodexThreadReference) => {}),
+    authorizeToolExecution: vi.fn(async () => true),
+    permissionPolicyRevision: 'a'.repeat(64),
     now: () => Date.parse('2026-07-26T19:40:00.000Z'),
     pollTimeoutMs: 1,
     ...overrides,
@@ -291,7 +293,8 @@ describe('Codex official runtime driver', () => {
 
   it('rejects a prompt not represented by the accepted run plan before any RPC', async () => {
     const client = new ScriptedClient()
-    const driver = new CodexOfficialRuntimeDriver(options(client))
+    const configured = options(client)
+    const driver = new CodexOfficialRuntimeDriver(configured)
     const stream = driver.start({ prompt: 'Different prompt' })
 
     await expect(stream.next()).rejects.toMatchObject({
@@ -337,7 +340,8 @@ describe('Codex official runtime driver', () => {
       threadId: 'remote-thread-1',
       turn: turnValue('inProgress'),
     })
-    const driver = new CodexOfficialRuntimeDriver(options(client))
+    const configured = options(client)
+    const driver = new CodexOfficialRuntimeDriver(configured)
     const stream = driver.start({ prompt: PROMPT })
 
     await expect(stream.next()).resolves.toMatchObject({
@@ -439,7 +443,8 @@ describe('Codex official runtime driver', () => {
         },
       },
     })
-    const driver = new CodexOfficialRuntimeDriver(options(client))
+    const configured = options(client)
+    const driver = new CodexOfficialRuntimeDriver(configured)
     const stream = driver.start({ prompt: PROMPT })
 
     await stream.next()
@@ -487,6 +492,20 @@ describe('Codex official runtime driver', () => {
         result: { decision: 'accept' },
       })
     })
+    expect(configured.authorizeToolExecution).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(configured.authorizeToolExecution).mock.calls[0]?.[0])
+      .toMatchObject({
+        id: requestId,
+        name: 'codex_native_command',
+        input: { command: 'touch result', cwd: '/tmp/workspace' },
+      })
+    expect(vi.mocked(configured.authorizeToolExecution).mock.calls[0]?.[1])
+      .toMatchObject({
+        requestId,
+        agentId: null,
+        approvalRequested: true,
+        policyRevision: 'a'.repeat(64),
+      })
 
     pushNotification(client, 'item/completed', {
       threadId: 'remote-thread-1',

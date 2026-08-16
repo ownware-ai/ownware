@@ -181,6 +181,7 @@ async function startScriptedRun(session: Session, hitl: HumanInTheLoop, label: s
     profileId: 'test-agent',
     model: 'test:model',
     prompt: label,
+    permissionPolicyRevision: 'a'.repeat(64),
   })
   return { threadId: thread.id, runId: run.runId, handle }
 }

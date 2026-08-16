@@ -27,9 +27,17 @@ export class LogicalSchemaError extends Error {
   }
 }
 
-export const SQLITE_V86_COLUMN_COUNT = 754
-export const SQLITE_V86_COLUMN_SET_HASH =
-  'sha256:abf67b0f4e6ed2663e03d5c10df00ab3466cb093290da9b3ad461a38bc49f894'
+export const SQLITE_V89_COLUMN_COUNT = 810
+export const SQLITE_V89_COLUMN_SET_HASH =
+  'sha256:b07a002f239813283457e538901aeb909a557eb2fedfe052dcbe6a294c43b18e'
+/** @deprecated Internal compatibility alias; current schema is v89. */
+export const SQLITE_V88_COLUMN_COUNT = SQLITE_V89_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v89. */
+export const SQLITE_V88_COLUMN_SET_HASH = SQLITE_V89_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v89. */
+export const SQLITE_V87_COLUMN_COUNT = SQLITE_V89_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v89. */
+export const SQLITE_V87_COLUMN_SET_HASH = SQLITE_V89_COLUMN_SET_HASH
 
 function keys(value: string): ReadonlySet<string> {
   return new Set(value.trim().split(/\s+/).filter(Boolean))
@@ -72,6 +80,10 @@ const EPOCH_MILLISECOND_COLUMNS = keys(`
   delegated_principals.issued_at
   delegated_principals.expires_at
   delegated_principals.revoked_at
+  effect_identities.first_observed_at
+  effect_receipts.observed_at
+  egress_dispatches.first_observed_at
+  egress_receipts.observed_at
   gateway_runs.accepted_at
   gateway_runs.started_at
   gateway_runs.updated_at
@@ -94,6 +106,10 @@ const EPOCH_MILLISECOND_COLUMNS = keys(`
   run_idempotency.expires_at
   run_permission_requests.requested_at
   run_permission_requests.decided_at
+  run_permission_bindings.bound_at
+  run_permission_consumptions.consumed_at
+  schedule_approval_bindings.bound_at
+  schedule_approval_claims.claimed_at
   runtime_sources.created_at
   runtime_sources.updated_at
   schedule_approvals.created_at
@@ -327,8 +343,8 @@ export function postgresqlProjectionForColumn(key: string): LogicalValueProjecti
 export function classifyLogicalColumns(
   columns: readonly PhysicalColumnDescriptor[],
 ): readonly LogicalColumnDescriptor[] {
-  if (columns.length !== SQLITE_V86_COLUMN_COUNT) return fail('column_count_mismatch')
-  if (physicalColumnSetHash(columns) !== SQLITE_V86_COLUMN_SET_HASH) {
+  if (columns.length !== SQLITE_V89_COLUMN_COUNT) return fail('column_count_mismatch')
+  if (physicalColumnSetHash(columns) !== SQLITE_V89_COLUMN_SET_HASH) {
     return fail('column_set_mismatch')
   }
 

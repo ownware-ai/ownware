@@ -44,6 +44,10 @@ older capability rather than inventing a value.
 | `0.36.0` | Provider calls with authoritative runtime/provider usage now produce immutable usage facts, append-only classification-separated cost observations and exact pricebook snapshots, exposed through bounded reads, summary, lossless export and reconciliation APIs. |
 | `0.37.0` | Owner-controlled task packs add immutable local package identity, revisioned global/workspace/top-level-agent selection, lazy root-agent skills and typed catalog/scope APIs without granting tools or leaking the root registry into spawned helpers. |
 | `0.38.0` | Revision-fenced profile undeploy adds durable tombstones, pause-and-drain enforcement, idempotent replay, explicit undeployed reads and revision-aware redeployment without deleting staged candidate bytes. |
+| `0.39.0` | Durable run snapshots and cancellation responses add monotonic consequence evidence so callers can distinguish observed output, possible effects and authority-confirmed effects before retrying. |
+| `0.40.0` | Runs expose paginated immutable effect receipts with monotonic per-run append order, stable effect/tool correlation, payload-free named authority, idempotent observations and honest restart reconciliation. Structural identifiers are not a general secret-classification proof. |
+| `0.41.0` | Exact permission decisions bind one run/request/agent/tool/input/policy/tool revision, expose intent revision 1, and are consumed once at the final supported dispatch boundary. Schedule approvals use an atomic claim and become indeterminate after an interrupted claim; target freshness is guaranteed only by tools declaring an authority-backed conditional-effect contract. |
+| `0.42.0` | Run-scoped egress mode and immutable, content-free egress receipts expose mediated destinations and honest route gaps. `local-only` admits only platform-mediated literal-loopback dispatch; custom, remote and uncontained routes fail closed. |
 
 Compatibility rules:
 
@@ -56,12 +60,14 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.38.0`,
-  `gateway.capabilities` is version 19, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.42.0`,
+  `gateway.capabilities` is version 23, `connections.list` is version 1,
   `models.list` and `provider_hub.read` are version 2,
   `principals.issue` is version 3,
-  `runs.start` is version 6,
-  `runs.snapshot`, `runs.events`, `runs.resume` and `runs.abort` are version 3,
+  `runs.start` is version 7,
+  `runs.snapshot` is version 5, `runs.abort` is version 4, while `runs.events` and
+  `runs.resume` are version 3, `runs.effects.read` and `runs.egress.read` are version 1, and
+  `runs.permissions.decide` is version 1,
   and `candidates.validate` and `candidates.stage` are version 1, while
   `candidates.activate` and `candidates.rollback` are version 2.
   `profiles.pause` and `profiles.resume` are also version 1 and require a UUID
@@ -69,7 +75,37 @@ Compatibility rules:
   `profiles.list`, `profiles.deployment.read`, `candidates.read`,
   `candidates.list` and `candidates.delete` are version 1.
   `profiles.undeploy` and `profiles.deployment.state.read` are version 1.
-- `profiles()` follows the revision `0.38.0` OpenAPI response exactly: a successful
+- `runs.permissions.decide` version 1 is one-action authority, not a generic
+  policy grant. The published HMAC binds run, request, root/helper agent,
+  canonical tool input and immutable run policy/tool surface; the approved
+  binding is consumed once immediately before supported dispatch. Changed,
+  stale, cancelled, terminal, restarted or replayed actions fail closed.
+  Persistent tool/folder grants are a separate compatibility mutation. The
+  hash proves equality only: it does not prove safety, effect success, remote
+  target freshness, skill compliance, egress containment or secret absence.
+  Held remote-target freshness exists only when the tool declares and uses an
+  authority-backed conditional-effect API; interrupted schedule claims are
+  reported `indeterminate` and are not retried.
+- `local-only` is an enforced run envelope, not a privacy label. The effective
+  mode is the stricter of profile and request policy and cannot change on an
+  already assembled thread. In the current support envelope, only the
+  platform-owned fetch seam may dispatch, and only to literal loopback IPs
+  (`127.0.0.0/8` or `::1`). DNS names including `localhost`, remote origins,
+  route-changing redirects, custom fetch functions, uncontained providers,
+  external runtimes, browser/process/shell tools, MCP transports, connector
+  providers and custom profile modules fail closed before their known dispatch
+  or import boundary. Delayed approved actions with no run-scoped controller
+  likewise do not dispatch. Unrestricted runs remain compatible but record
+  `route_unavailable` wherever Ownware cannot observe the transport.
+- Egress enforcement covers the unmodified Ownware core and adapters whose
+  structural egress contracts are exercised by the contract tests. An
+  arbitrary in-process extension can lie about a `none`/`brokered` declaration
+  or bypass the platform seam; installing such code expands the trusted
+  computing base and is outside the local-only guarantee. Receipts establish
+  durable admission/block/observation at named boundaries. They do not prove
+  packet delivery, remote effects, whole-machine network isolation, or that an
+  arbitrary payload contains no secret.
+- `profiles()` follows the revision `0.42.0` OpenAPI response exactly: a successful
   catalog is a top-level array. The Client rejects malformed top-level values,
   malformed public summary fields, overlong identities and duplicate or
   case-colliding identities with the safe `profile_catalog_invalid` code; it never
@@ -120,7 +156,7 @@ Compatibility rules:
   `models.list` version 2 is deprecated and preserves its old response shape by
   projecting the same assembled Provider Hub state; it is not an independent
   catalog or price source.
-  `runs.start` version 6 resolves request → durable thread → async install
+  `runs.start` version 7 resolves request → durable thread → async install
   `defaults.defaultModel` → profile. Request/thread/install winners are never
   silently substituted; unavailable choices fail before dispatch, and a model
   owned by another runtime cannot migrate the thread or enter fallback. A

@@ -31,6 +31,7 @@
  */
 
 import type { ContentBlock } from '../messages/types.js'
+import type { EgressSourceKind } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Event lifecycle
@@ -192,13 +193,22 @@ export type HookSpec =
       readonly name: string
       readonly fn: HookFn
       readonly timeoutMs?: number
+      readonly egress?: HookEgressContract
     }
   | {
       readonly type: 'command'
       readonly name: string
       readonly command: string
       readonly timeoutMs?: number
+      readonly egress?: HookEgressContract
     }
+
+export interface HookEgressContract {
+  readonly contractRevision: 1
+  readonly sourceKind: Extract<EgressSourceKind, 'tool' | 'connector' | 'process'>
+  readonly sourceRef: string
+  readonly mediation: 'none' | 'uncontained'
+}
 
 // ---------------------------------------------------------------------------
 // Aggregate run result

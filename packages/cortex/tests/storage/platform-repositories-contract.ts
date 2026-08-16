@@ -157,6 +157,9 @@ export function runPlatformRepositoryContract(
         toolName: 'gmail_send',
         toolInput: { to: 'customer@example.test', body: 'Draft only' },
         summary: 'Draft email to customer',
+        policyRevision: 'a'.repeat(64),
+        toolRevision: 'b'.repeat(64),
+        targetRevision: null,
       })
       const decided = await harness.repositories.approvals.decide(approval.id, {
         status: 'discarded',

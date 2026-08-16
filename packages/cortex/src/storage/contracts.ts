@@ -117,6 +117,8 @@ export type StorageRepositoryDomain =
   | 'principals'
   | 'thread_bindings'
   | 'runs'
+  | 'effect_receipts'
+  | 'egress_receipts'
   | 'idempotency'
   | 'access_grants'
   | 'oauth_refresh'

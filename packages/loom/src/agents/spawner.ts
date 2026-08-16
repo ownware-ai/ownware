@@ -18,6 +18,11 @@ import type { Message } from '../messages/types.js'
 import { extractText } from '../messages/types.js'
 import type { ProviderAdapter } from '../provider/types.js'
 import type { Tool } from '../tools/types.js'
+import type { ToolCall } from '../tools/types.js'
+import type {
+  CheckPermissionResult,
+  ToolExecutionAuthorizationContext,
+} from '../permissions/types.js'
 import type {
   AgentHandle,
   AgentResult,
@@ -26,6 +31,7 @@ import type {
   SpawnMode,
 } from './types.js'
 import { isolateTools, isolateMessages, isolateConfig } from './isolator.js'
+import type { EgressControl } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Spawn options
@@ -34,6 +40,8 @@ import { isolateTools, isolateMessages, isolateConfig } from './isolator.js'
 export interface SpawnOptions {
   /** Timeout in ms. Agent is auto-aborted after this. Default: none. */
   timeoutMs?: number
+  /** Current root run's outbound boundary; inherited without widening. */
+  egressControl?: EgressControl
 }
 
 /**
@@ -70,6 +78,15 @@ export class AgentSpawner {
   private parentTools: Tool[]
   private parentConfig: LoomConfig
   private onEvent: SpawnerEventHook | undefined
+  private readonly checkPermission: (
+    tool: ToolCall,
+  ) => Promise<'allow' | 'ask' | CheckPermissionResult>
+  private readonly requestApproval: (tool: ToolCall) => Promise<boolean>
+  private readonly authorizeToolExecution: ((
+    tool: ToolCall,
+    context: ToolExecutionAuthorizationContext,
+  ) => Promise<boolean>) | undefined
+  private readonly permissionPolicyRevision: string | undefined
 
   constructor(opts: {
     provider: ProviderAdapter
@@ -83,11 +100,28 @@ export class AgentSpawner {
      * hook (the consumer already owns the event stream in that mode).
      */
     onEvent?: SpawnerEventHook
+    /** Parent permission policy; helpers must not silently widen it. */
+    checkPermission?: (
+      tool: ToolCall,
+    ) => Promise<'allow' | 'ask' | CheckPermissionResult>
+    /** Parent approval channel shared by helper calls. */
+    requestApproval?: (tool: ToolCall) => Promise<boolean>
+    /** Parent final execution authorization boundary. */
+    authorizeToolExecution?: (
+      tool: ToolCall,
+      context: ToolExecutionAuthorizationContext,
+    ) => Promise<boolean>
+    /** Opaque parent policy revision inherited by helpers. */
+    permissionPolicyRevision?: string
   }) {
     this.provider = opts.provider
     this.parentTools = opts.tools
     this.parentConfig = opts.config
     this.onEvent = opts.onEvent
+    this.checkPermission = opts.checkPermission ?? (async () => 'allow')
+    this.requestApproval = opts.requestApproval ?? (async () => true)
+    this.authorizeToolExecution = opts.authorizeToolExecution
+    this.permissionPolicyRevision = opts.permissionPolicyRevision
   }
 
   /**
@@ -120,7 +154,14 @@ export class AgentSpawner {
     const abortController = createLinkedAbortController(this.parentConfig.abortSignal)
 
     // Build agent config with the agent's own abort signal
-    const agentConfig = buildAgentConfig(spec, this.parentConfig, id, abortController.signal)
+    const agentConfig = buildAgentConfig(
+      spec,
+      options?.egressControl === undefined
+        ? this.parentConfig
+        : { ...this.parentConfig, egressControl: options.egressControl },
+      id,
+      abortController.signal,
+    )
 
     // Resolve tools
     const tools = isolateTools(this.parentTools, spec.tools)
@@ -394,8 +435,14 @@ export class AgentSpawner {
       config,
       compaction: null,
       checkpoint: null,
-      checkPermission: async () => 'allow',
-      requestApproval: async () => true,
+      checkPermission: this.checkPermission,
+      requestApproval: this.requestApproval,
+      ...(this.authorizeToolExecution === undefined
+        ? {}
+        : { authorizeToolExecution: this.authorizeToolExecution }),
+      ...(this.permissionPolicyRevision === undefined
+        ? {}
+        : { permissionPolicyRevision: this.permissionPolicyRevision }),
       ...(spec.persistentReminder && spec.persistentReminder.trim().length > 0
         ? { persistentReminder: spec.persistentReminder }
         : {}),

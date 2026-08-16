@@ -6,6 +6,7 @@ import { mapBudgetToEffort, translateOpenAIError } from './openai.js'
 import type { ModelPricing } from './pricing.js'
 import { getModelPricing } from './pricing.js'
 import { withStallGuard } from './stall-guard.js'
+import { createEgressFetch } from '../egress/fetch.js'
 import type {
   ProviderAdapter,
   ProviderChunk,
@@ -202,11 +203,16 @@ function responseServingFacts(value: unknown): Partial<ProviderUsage> {
  */
 export class OpenAIResponsesProvider implements ProviderAdapter {
   readonly name = 'openai'
+  readonly egressMediation = 'fetch' as const
   private readonly staticClient: OpenAI | null
   private readonly apiKeyProvider: (() => Promise<string>) | undefined
   private readonly dynamicBaseURL: string | undefined
   private readonly costBasis: ProviderCostBasis | undefined
   private readonly maxRetries: number | undefined
+  private readonly staticOptions: {
+    readonly apiKey?: string
+    readonly baseURL?: string
+  }
   private readonly transport: {
     fetch?: ProviderFetch
     defaultHeaders?: Readonly<Record<string, string>>
@@ -219,6 +225,10 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
     costBasis?: ProviderCostBasis
     maxRetries?: number
   } & ProviderTransportOptions) {
+    this.staticOptions = {
+      ...(opts?.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts?.baseURL !== undefined ? { baseURL: opts.baseURL } : {}),
+    }
     this.costBasis = opts?.costBasis
     this.maxRetries = opts?.maxRetries
     this.transport = {
@@ -249,7 +259,21 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
     return this.transport as Partial<ConstructorParameters<typeof OpenAI>[0]>
   }
 
-  private async client(): Promise<OpenAI> {
+  private async client(request?: ProviderRequest): Promise<OpenAI> {
+    const requestTransport = request?.egressControl === undefined
+      ? this.transport
+      : {
+          ...this.transport,
+          fetch: createEgressFetch({
+            fetch: this.transport.fetch ?? globalThis.fetch,
+            control: request.egressControl,
+            sourceRef: this.name,
+            mediation: this.transport.fetch === undefined
+              ? 'platform_fetch'
+              : 'custom_fetch',
+          }),
+        }
+    const sdkTransport = requestTransport as Partial<ConstructorParameters<typeof OpenAI>[0]>
     if (this.apiKeyProvider === undefined) {
       if (this.staticClient === null) {
         throw new ProviderError(
@@ -257,7 +281,12 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
           'openai',
         )
       }
-      return this.staticClient
+      if (request?.egressControl === undefined) return this.staticClient
+      return new OpenAI({
+        ...this.staticOptions,
+        ...(this.maxRetries !== undefined ? { maxRetries: this.maxRetries } : {}),
+        ...sdkTransport,
+      })
     }
     return new OpenAI({
       apiKey: await this.apiKeyProvider(),
@@ -267,7 +296,7 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
       ...(this.maxRetries !== undefined
         ? { maxRetries: this.maxRetries }
         : {}),
-      ...this.sdkTransport,
+      ...sdkTransport,
     })
   }
 
@@ -299,7 +328,7 @@ export class OpenAIResponsesProvider implements ProviderAdapter {
       )
     }
     const instructions = toResponsesInstructions(request.system)
-    const client = await this.client()
+    const client = await this.client(request)
     const params: OpenAI.Responses.ResponseCreateParamsStreaming = {
       model: request.model,
       instructions,

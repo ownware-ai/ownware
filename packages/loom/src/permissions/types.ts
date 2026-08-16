@@ -114,6 +114,12 @@ export type SafetyRule = (
  */
 export interface CheckPermissionResult {
   readonly decision: PolicyDecision
+  /**
+   * Opaque, content-free revision of the host policy/envelope that produced
+   * this decision. Loom relays it to the approval request and the final
+   * pre-execution authorization callback; it never interprets the value.
+   */
+  readonly policyRevision?: string
   /** Zone level (0-6) for the call, if zone security is active. */
   readonly zoneLevel?: number
   /** Zone name (safe | workspace | build | network | external | machine | never). */
@@ -124,6 +130,18 @@ export interface CheckPermissionResult {
   readonly severityTag?: 'info' | 'warn' | 'critical'
   /** Human-readable detail for the severity tag. */
   readonly severityReason?: string
+}
+
+/** Context supplied to the host immediately before a tool can execute. */
+export interface ToolExecutionAuthorizationContext {
+  /** Permission request identity (helper calls are root-run unique). */
+  readonly requestId: string
+  /** Spawned helper identity, or null for the root agent. */
+  readonly agentId: string | null
+  /** Whether this call crossed an explicit human-approval prompt. */
+  readonly approvalRequested: boolean
+  /** Exact host policy revision observed during the permission decision. */
+  readonly policyRevision?: string
 }
 
 // ---------------------------------------------------------------------------

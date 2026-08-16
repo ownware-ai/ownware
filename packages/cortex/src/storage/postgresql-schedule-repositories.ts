@@ -3,9 +3,15 @@ import type { TaskEventBus, TaskDto } from "../tasks/event-bus.js";
 import { TaskStatusSchema } from "../tasks/event-bus.js";
 import type {
   ApprovalDto,
+  ClaimApprovalResult,
+  ClaimedApproval,
   PendingApprovalDto,
 } from "../schedules/approvals.js";
 import { ApprovalStatusSchema } from "../schedules/approvals.js";
+import {
+  SCHEDULE_APPROVAL_INTENT_REVISION,
+  scheduleApprovalOperationHash,
+} from "../gateway/permission-intent.js";
 import {
   DEFAULT_SAFETY_LEVEL,
   SafetyLevelSchema,
@@ -96,6 +102,12 @@ interface ApprovalRow {
   readonly error_message: string | null;
   readonly created_at: unknown;
   readonly decided_at: unknown | null;
+  readonly intent_revision?: unknown | null;
+  readonly operation_hash?: string | null;
+  readonly policy_revision?: string | null;
+  readonly tool_revision?: string | null;
+  readonly target_revision?: string | null;
+  readonly claimed_at?: unknown | null;
 }
 interface TaskRow {
   readonly id: string;
@@ -194,6 +206,12 @@ function approval(row: ApprovalRow): ApprovalDto {
     errorMessage: row.error_message,
     createdAt: safeInteger(row.created_at),
     decidedAt: ni(row.decided_at),
+    intentRevision: row.intent_revision == null
+      ? null
+      : safeInteger(row.intent_revision) === SCHEDULE_APPROVAL_INTENT_REVISION
+        ? SCHEDULE_APPROVAL_INTENT_REVISION
+        : null,
+    claimedAt: row.claimed_at == null ? null : safeInteger(row.claimed_at),
   };
 }
 function task(row: TaskRow): TaskDto {
@@ -603,7 +621,15 @@ export function createPostgreSqlApprovalRepository(
   ) => {
     const row = (
       await client.query<ApprovalRow>(
-        "SELECT * FROM ownware.schedule_approvals WHERE id=$1",
+        `SELECT approval.*,binding.intent_revision,binding.operation_hash,
+          binding.policy_revision,binding.tool_revision,binding.target_revision,
+          claim.claimed_at
+        FROM ownware.schedule_approvals AS approval
+        LEFT JOIN ownware.schedule_approval_bindings AS binding
+          ON binding.approval_id=approval.id
+        LEFT JOIN ownware.schedule_approval_claims AS claim
+          ON claim.approval_id=approval.id
+        WHERE approval.id=$1`,
         [value],
       )
     ).rows[0];
@@ -611,10 +637,22 @@ export function createPostgreSqlApprovalRepository(
   };
   return {
     create(input) {
-      return call("create", true, async (client) => {
-        const value = id("appr"),
-          now = Date.now();
-        await client.query(
+      return call("create", true, async () => {
+        const value = id("appr"), now = Date.now();
+        const threadId = input.threadId ?? null;
+        const operationHash = scheduleApprovalOperationHash({
+          approvalId: value,
+          scheduleId: input.scheduleId,
+          runId: input.runId,
+          threadId,
+          toolName: input.toolName,
+          toolInput: input.toolInput,
+          policyRevision: input.policyRevision,
+          toolRevision: input.toolRevision,
+          targetRevision: input.targetRevision ?? null,
+        });
+        return withPostgreSqlTransaction(context.pool, async (client) => {
+          await client.query(
           `INSERT INTO ownware.schedule_approvals
       (id,schedule_id,run_id,thread_id,tool_name,tool_input,summary,status,result,error_message,created_at,decided_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NULL,NULL,$8,NULL)`,
@@ -622,14 +660,30 @@ export function createPostgreSqlApprovalRepository(
             value,
             input.scheduleId,
             input.runId,
-            input.threadId ?? null,
+            threadId,
             input.toolName,
             JSON.stringify(input.toolInput ?? null),
             input.summary,
             now,
           ],
         );
-        return (await getOn(client, value))!;
+          await client.query(
+            `INSERT INTO ownware.schedule_approval_bindings
+              (approval_id,intent_revision,operation_hash,policy_revision,
+               tool_revision,target_revision,bound_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [
+              value,
+              SCHEDULE_APPROVAL_INTENT_REVISION,
+              operationHash,
+              input.policyRevision,
+              input.toolRevision,
+              input.targetRevision ?? null,
+              now,
+            ],
+          );
+          return (await getOn(client, value))!;
+        });
       });
     },
     get(value) {
@@ -639,7 +693,15 @@ export function createPostgreSqlApprovalRepository(
       return call("listByRun", false, async (client) =>
         (
           await client.query<ApprovalRow>(
-            "SELECT * FROM ownware.schedule_approvals WHERE run_id=$1 ORDER BY created_at DESC",
+            `SELECT approval.*,binding.intent_revision,binding.operation_hash,
+              binding.policy_revision,binding.tool_revision,binding.target_revision,
+              claim.claimed_at
+             FROM ownware.schedule_approvals AS approval
+             LEFT JOIN ownware.schedule_approval_bindings AS binding
+               ON binding.approval_id=approval.id
+             LEFT JOIN ownware.schedule_approval_claims AS claim
+               ON claim.approval_id=approval.id
+             WHERE approval.run_id=$1 ORDER BY approval.created_at DESC`,
             [runId],
           )
         ).rows.map(approval),
@@ -662,7 +724,15 @@ export function createPostgreSqlApprovalRepository(
           await client.query<
             ApprovalRow & { schedule_name: string; schedule_profile_id: string }
           >(
-            `SELECT a.*,s.name AS schedule_name,s.profile_id AS schedule_profile_id FROM ownware.schedule_approvals a JOIN ownware.schedules s ON s.id=a.schedule_id WHERE a.status='pending'${filter} ORDER BY a.created_at DESC LIMIT $${values.length}`,
+            `SELECT a.*,binding.intent_revision,binding.operation_hash,
+              binding.policy_revision,binding.tool_revision,binding.target_revision,
+              claim.claimed_at,s.name AS schedule_name,s.profile_id AS schedule_profile_id
+             FROM ownware.schedule_approvals a
+             JOIN ownware.schedules s ON s.id=a.schedule_id
+             JOIN ownware.schedule_approval_bindings binding ON binding.approval_id=a.id
+             LEFT JOIN ownware.schedule_approval_claims claim ON claim.approval_id=a.id
+             WHERE a.status='pending'${filter}
+             ORDER BY a.created_at DESC LIMIT $${values.length}`,
             values,
           )
         ).rows.map(
@@ -701,17 +771,141 @@ export function createPostgreSqlApprovalRepository(
         ),
       );
     },
+    claim(value) {
+      return call("claim", true, async () =>
+        withPostgreSqlTransaction(context.pool, async (client): Promise<ClaimApprovalResult> => {
+          const row = (
+            await client.query<ApprovalRow>(
+              `SELECT approval.*,binding.intent_revision,binding.operation_hash,
+                binding.policy_revision,binding.tool_revision,binding.target_revision,
+                claim.claimed_at
+               FROM ownware.schedule_approvals AS approval
+               LEFT JOIN ownware.schedule_approval_bindings AS binding
+                 ON binding.approval_id=approval.id
+               LEFT JOIN ownware.schedule_approval_claims AS claim
+                 ON claim.approval_id=approval.id
+               WHERE approval.id=$1
+               FOR UPDATE OF approval`,
+              [value],
+            )
+          ).rows[0];
+          if (row === undefined) return { status: "missing", approval: null };
+          const current = approval(row);
+          if (current.status === "executing" || current.claimedAt !== null) {
+            return { status: "already_claimed", approval: current };
+          }
+          if (current.status !== "pending") {
+            return { status: "not_pending", approval: current };
+          }
+          let recomputed: string | null = null;
+          try {
+            if (
+              row.intent_revision != null
+              && safeInteger(row.intent_revision) === SCHEDULE_APPROVAL_INTENT_REVISION
+              && row.operation_hash != null
+              && row.policy_revision != null
+              && row.tool_revision != null
+            ) {
+              recomputed = scheduleApprovalOperationHash({
+                approvalId: row.id,
+                scheduleId: row.schedule_id,
+                runId: row.run_id,
+                threadId: row.thread_id,
+                toolName: row.tool_name,
+                toolInput: json(row.tool_input),
+                policyRevision: row.policy_revision,
+                toolRevision: row.tool_revision,
+                targetRevision: row.target_revision ?? null,
+              });
+            }
+          } catch {
+            recomputed = null;
+          }
+          const now = Date.now();
+          if (recomputed === null || recomputed !== row.operation_hash) {
+            await client.query(
+              `UPDATE ownware.schedule_approvals
+               SET status='indeterminate',
+                 error_message='The stored approval identity no longer matches the reviewed action.',
+                 decided_at=$1
+               WHERE id=$2 AND status='pending'`,
+              [now, value],
+            );
+            return { status: "intent_mismatch", approval: (await getOn(client, value))! };
+          }
+          await client.query(
+            `INSERT INTO ownware.schedule_approval_claims
+              (approval_id,operation_hash,claimed_at) VALUES ($1,$2,$3)`,
+            [value, row.operation_hash, now],
+          );
+          const changed = await client.query(
+            `UPDATE ownware.schedule_approvals SET status='executing'
+             WHERE id=$1 AND status='pending' RETURNING id`,
+            [value],
+          );
+          if (changed.rowCount !== 1) {
+            throw new Error("Schedule approval claim lost its lifecycle transition");
+          }
+          const claimed = (await getOn(client, value))!;
+          return {
+            status: "claimed",
+            approval: {
+              ...claimed,
+              status: "executing",
+              operationHash: row.operation_hash,
+              policyRevision: row.policy_revision!,
+              toolRevision: row.tool_revision!,
+              targetRevision: row.target_revision ?? null,
+            } satisfies ClaimedApproval,
+          };
+        }),
+      );
+    },
+    recoverInterruptedClaims() {
+      return call("recoverInterruptedClaims", true, async (client) => {
+        const result = await client.query(
+          `UPDATE ownware.schedule_approvals AS approval
+           SET status='indeterminate',
+             error_message=COALESCE(
+               approval.error_message,
+               'Ownware restarted after this action was claimed; its external effect is unknown.'
+             ),
+             decided_at=$1
+           WHERE approval.status='executing'
+             AND EXISTS (
+               SELECT 1 FROM ownware.schedule_approval_claims AS claim
+               WHERE claim.approval_id=approval.id
+             )`,
+          [Date.now()],
+        );
+        return result.rowCount ?? 0;
+      });
+    },
     decide(value, input) {
       return call("decide", true, async (client) => {
         const status = ApprovalStatusSchema.parse(input.status);
+        if (status === "pending" || status === "executing") {
+          throw new TypeError("Schedule approval terminal status is invalid");
+        }
+        const expected = status === "discarded" ? "pending" : "executing";
         await client.query(
-          `UPDATE ownware.schedule_approvals SET status=$1,result=$2,error_message=$3,decided_at=$4 WHERE id=$5 AND status='pending'`,
+          `UPDATE ownware.schedule_approvals AS approval
+           SET status=$1,result=$2,error_message=$3,decided_at=$4
+           WHERE approval.id=$5 AND approval.status=$6
+             AND (
+               $1='discarded'
+               OR EXISTS (
+                 SELECT 1 FROM ownware.schedule_approval_claims AS claim
+                 WHERE claim.approval_id=approval.id
+               )
+             )`,
           [
             status,
             input.result !== undefined ? JSON.stringify(input.result) : null,
             input.errorMessage ?? null,
             Date.now(),
             value,
+            expected,
           ],
         );
         return getOn(client, value);

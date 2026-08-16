@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const cortex = join(root, 'packages/cortex')
 const client = join(root, 'packages/client')
-const contractRevision = '0.38.0'
+const contractRevision = '0.42.0'
 
 const cortexProofs = [
   'tests/framework/contracts/source-registration.contract.ts',

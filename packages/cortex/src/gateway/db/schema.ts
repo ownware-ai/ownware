@@ -4693,4 +4693,387 @@ export const MIGRATIONS: Migration[] = [
         ON profile_candidate_deployment_tombstones(previous_candidate_id);
     `,
   },
+  {
+    version: 87,
+    name: '087_effect_evidence',
+    sql: `
+      -- Durable, monotonic evidence about what a run may have caused. This is
+      -- deliberately narrower than success: effect_possible means callers
+      -- must reconcile before retrying, while effect_confirmed requires an
+      -- observer at the actual effect boundary.
+      ALTER TABLE gateway_runs ADD COLUMN consequence TEXT NOT NULL
+        DEFAULT 'none_observed' CHECK (consequence IN (
+          'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+        ));
+
+      -- Stable identity for one runtime-observed tool action. The identity and
+      -- every later observation are immutable and exclude action payloads by
+      -- schema: arguments, results, credentials and provider payloads never
+      -- belong here. Structural identifiers are not secret-classification proof.
+      CREATE TABLE effect_identities (
+        effect_id         TEXT    PRIMARY KEY CHECK (length(effect_id) = 36),
+        run_id            TEXT    NOT NULL REFERENCES gateway_runs(id),
+        tool_call_id      TEXT    NOT NULL CHECK (
+          length(tool_call_id) BETWEEN 1 AND 200
+          AND tool_call_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        tool_name         TEXT    NOT NULL CHECK (
+          length(tool_name) BETWEEN 1 AND 160
+          AND tool_name NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        first_observed_at INTEGER NOT NULL CHECK (first_observed_at >= 0),
+        UNIQUE (run_id, tool_call_id),
+        UNIQUE (effect_id, run_id)
+      );
+
+      CREATE TABLE effect_receipts (
+        receipt_id      TEXT    PRIMARY KEY CHECK (length(receipt_id) = 36),
+        receipt_seq     INTEGER NOT NULL CHECK (receipt_seq > 0),
+        effect_id       TEXT    NOT NULL,
+        run_id          TEXT    NOT NULL,
+        observation_key TEXT    NOT NULL CHECK (
+          length(observation_key) BETWEEN 1 AND 240
+          AND observation_key NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        kind            TEXT    NOT NULL CHECK (kind IN (
+          'intent_observed', 'outcome_observed', 'authority_confirmed', 'reconciliation'
+        )),
+        outcome         TEXT    NOT NULL CHECK (outcome IN (
+          'pending', 'succeeded', 'failed', 'denied', 'unknown'
+        )),
+        consequence     TEXT    NOT NULL CHECK (consequence IN (
+          'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+        )),
+        authority_kind  TEXT    NOT NULL CHECK (authority_kind IN (
+          'runtime', 'effect_observer', 'reconciler'
+        )),
+        authority_ref   TEXT    NOT NULL CHECK (
+          length(authority_ref) BETWEEN 1 AND 160
+          AND authority_ref NOT GLOB '*[^A-Za-z0-9_.:/-]*'
+        ),
+        runtime_sequence INTEGER CHECK (runtime_sequence IS NULL OR runtime_sequence > 0),
+        observed_at      INTEGER NOT NULL CHECK (observed_at >= 0),
+        FOREIGN KEY (effect_id, run_id)
+          REFERENCES effect_identities(effect_id, run_id),
+        UNIQUE (run_id, receipt_seq),
+        UNIQUE (effect_id, observation_key),
+        CHECK (kind != 'intent_observed' OR (
+          outcome = 'pending'
+          AND consequence = 'none_observed'
+          AND authority_kind = 'runtime'
+        )),
+        CHECK (kind != 'reconciliation' OR (
+          outcome = 'unknown'
+          AND consequence = 'effect_possible'
+          AND authority_kind = 'reconciler'
+          AND runtime_sequence IS NULL
+        )),
+        CHECK (kind != 'authority_confirmed' OR (
+          authority_kind = 'effect_observer'
+          AND consequence = 'effect_confirmed'
+        )),
+        CHECK (consequence != 'effect_confirmed' OR (
+          kind = 'authority_confirmed'
+          AND authority_kind = 'effect_observer'
+        )),
+        CHECK (authority_kind != 'reconciler' OR kind = 'reconciliation')
+      );
+
+      CREATE INDEX idx_effect_receipts_run
+        ON effect_receipts(run_id, receipt_seq);
+      CREATE INDEX idx_effect_receipts_effect
+        ON effect_receipts(effect_id, observed_at, receipt_id);
+      CREATE UNIQUE INDEX idx_effect_receipts_runtime_sequence
+        ON effect_receipts(run_id, runtime_sequence)
+        WHERE runtime_sequence IS NOT NULL;
+
+      CREATE TRIGGER effect_identities_no_update
+        BEFORE UPDATE ON effect_identities
+        BEGIN SELECT RAISE(ABORT, 'effect identities are immutable'); END;
+      CREATE TRIGGER effect_identities_no_delete
+        BEFORE DELETE ON effect_identities
+        BEGIN SELECT RAISE(ABORT, 'effect identities are immutable'); END;
+      CREATE TRIGGER effect_receipts_no_update
+        BEFORE UPDATE ON effect_receipts
+        BEGIN SELECT RAISE(ABORT, 'effect receipts are immutable'); END;
+      CREATE TRIGGER effect_receipts_no_delete
+        BEFORE DELETE ON effect_receipts
+        BEGIN SELECT RAISE(ABORT, 'effect receipts are immutable'); END;
+    `,
+  },
+  {
+    version: 88,
+    name: '088_permission_intent_binding',
+    sql: `
+      -- Immutable semantic material for one permission request. Payload bytes
+      -- remain absent: operation_hash is an HMAC over the exact run/request,
+      -- policy revision, agent identity, tool name and input.
+      CREATE TABLE run_permission_bindings (
+        run_id            TEXT    NOT NULL,
+        request_id        TEXT    NOT NULL,
+        intent_revision   INTEGER NOT NULL CHECK (intent_revision = 1),
+        policy_revision   TEXT    NOT NULL CHECK (
+          length(policy_revision) = 64
+          AND policy_revision NOT GLOB '*[^0-9a-f]*'
+        ),
+        agent_id          TEXT CHECK (
+          agent_id IS NULL OR (
+            length(agent_id) BETWEEN 1 AND 200
+            AND agent_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+          )
+        ),
+        bound_at          INTEGER NOT NULL CHECK (bound_at >= 0),
+        PRIMARY KEY (run_id, request_id),
+        FOREIGN KEY (run_id, request_id)
+          REFERENCES run_permission_requests(run_id, request_id) ON DELETE CASCADE
+      );
+
+      -- The dispatch boundary inserts this row atomically before Tool.execute.
+      -- Its primary key is the durable one-shot fence: two contenders cannot
+      -- both acquire execution authority, including across processes.
+      CREATE TABLE run_permission_consumptions (
+        run_id          TEXT    NOT NULL,
+        request_id      TEXT    NOT NULL,
+        operation_hash  TEXT    NOT NULL CHECK (
+          length(operation_hash) = 64
+          AND operation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        consumed_at     INTEGER NOT NULL CHECK (consumed_at >= 0),
+        PRIMARY KEY (run_id, request_id),
+        FOREIGN KEY (run_id, request_id)
+          REFERENCES run_permission_bindings(run_id, request_id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX idx_run_permission_consumptions_time
+        ON run_permission_consumptions(consumed_at, run_id, request_id);
+
+      CREATE TRIGGER run_permission_bindings_no_update
+        BEFORE UPDATE ON run_permission_bindings
+        BEGIN SELECT RAISE(ABORT, 'permission bindings are immutable'); END;
+      CREATE TRIGGER run_permission_consumptions_no_update
+        BEFORE UPDATE ON run_permission_consumptions
+        BEGIN SELECT RAISE(ABORT, 'permission consumptions are immutable'); END;
+      CREATE TRIGGER run_permission_consumptions_no_delete
+        BEFORE DELETE ON run_permission_consumptions
+        BEGIN SELECT RAISE(ABORT, 'permission consumptions are immutable'); END;
+
+      -- Draft approvals created by an older binary have no exact binding and
+      -- therefore cannot safely remain executable after this migration.
+      UPDATE schedule_approvals
+      SET status = 'indeterminate',
+          error_message = COALESCE(
+            error_message,
+            'This draft predates exact approval binding and cannot be executed safely.'
+          ),
+          decided_at = COALESCE(decided_at, created_at)
+      WHERE status = 'pending';
+
+      CREATE TABLE schedule_approval_bindings (
+        approval_id       TEXT    PRIMARY KEY
+          REFERENCES schedule_approvals(id) ON DELETE CASCADE,
+        intent_revision   INTEGER NOT NULL CHECK (intent_revision = 1),
+        operation_hash    TEXT    NOT NULL CHECK (
+          length(operation_hash) = 64
+          AND operation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        policy_revision   TEXT    NOT NULL CHECK (
+          length(policy_revision) = 64
+          AND policy_revision NOT GLOB '*[^0-9a-f]*'
+        ),
+        tool_revision     TEXT    NOT NULL CHECK (
+          length(tool_revision) = 64
+          AND tool_revision NOT GLOB '*[^0-9a-f]*'
+        ),
+        target_revision   TEXT CHECK (
+          target_revision IS NULL OR (
+            length(target_revision) BETWEEN 1 AND 512
+            AND target_revision NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+          )
+        ),
+        bound_at          INTEGER NOT NULL CHECK (bound_at >= 0)
+      );
+
+      -- Immutable at-most-once dispatch fence. A row means the exact held
+      -- action crossed the claim boundary; after a crash it is indeterminate,
+      -- never pending again.
+      CREATE TABLE schedule_approval_claims (
+        approval_id       TEXT    PRIMARY KEY
+          REFERENCES schedule_approval_bindings(approval_id) ON DELETE CASCADE,
+        operation_hash    TEXT    NOT NULL CHECK (
+          length(operation_hash) = 64
+          AND operation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        claimed_at        INTEGER NOT NULL CHECK (claimed_at >= 0)
+      );
+
+      CREATE INDEX idx_schedule_approval_claims_time
+        ON schedule_approval_claims(claimed_at, approval_id);
+
+      CREATE TRIGGER schedule_approval_bindings_no_update
+        BEFORE UPDATE ON schedule_approval_bindings
+        BEGIN SELECT RAISE(ABORT, 'schedule approval bindings are immutable'); END;
+      CREATE TRIGGER schedule_approval_claims_no_update
+        BEFORE UPDATE ON schedule_approval_claims
+        BEGIN SELECT RAISE(ABORT, 'schedule approval claims are immutable'); END;
+
+      CREATE TRIGGER schedule_approvals_validate_insert
+        BEFORE INSERT ON schedule_approvals
+        WHEN NEW.status NOT IN ('pending', 'executing', 'approved', 'discarded', 'failed', 'indeterminate')
+          OR (NEW.status IN ('pending', 'executing') AND NEW.decided_at IS NOT NULL)
+          OR (NEW.status NOT IN ('pending', 'executing') AND NEW.decided_at IS NULL)
+        BEGIN SELECT RAISE(ABORT, 'invalid schedule approval lifecycle'); END;
+
+      CREATE TRIGGER schedule_approvals_validate_transition
+        BEFORE UPDATE OF status ON schedule_approvals
+        WHEN NOT (
+          OLD.status = NEW.status
+          OR (OLD.status = 'pending' AND NEW.status IN ('executing', 'discarded', 'indeterminate'))
+          OR (OLD.status = 'executing' AND NEW.status IN ('approved', 'failed', 'indeterminate'))
+        )
+        OR (NEW.status IN ('pending', 'executing') AND NEW.decided_at IS NOT NULL)
+        OR (NEW.status NOT IN ('pending', 'executing') AND NEW.decided_at IS NULL)
+        BEGIN SELECT RAISE(ABORT, 'invalid schedule approval transition'); END;
+    `,
+  },
+  {
+    version: 89,
+    name: '089_egress_evidence',
+    sql: `
+      ALTER TABLE gateway_runs
+        ADD COLUMN egress_mode TEXT NOT NULL DEFAULT 'unrestricted'
+          CHECK (egress_mode IN ('unrestricted', 'local-only'));
+
+      CREATE TABLE egress_dispatches (
+        dispatch_id       TEXT    PRIMARY KEY CHECK (length(dispatch_id) = 36),
+        run_id            TEXT    NOT NULL REFERENCES gateway_runs(id),
+        mode              TEXT    NOT NULL CHECK (mode IN ('unrestricted', 'local-only')),
+        source_kind       TEXT    NOT NULL CHECK (source_kind IN (
+          'provider', 'tool', 'connector', 'browser', 'process', 'runtime'
+        )),
+        source_ref        TEXT    NOT NULL CHECK (
+          length(source_ref) BETWEEN 1 AND 160
+          AND source_ref NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        transport         TEXT    NOT NULL CHECK (transport IN (
+          'http', 'https', 'ws', 'wss', 'tcp', 'tls', 'unknown'
+        )),
+        mediation         TEXT    NOT NULL CHECK (mediation IN (
+          'platform_fetch', 'custom_fetch', 'uncontained', 'unknown'
+        )),
+        first_observed_at INTEGER NOT NULL CHECK (first_observed_at >= 0),
+        UNIQUE (dispatch_id, run_id)
+      );
+
+      CREATE TABLE egress_receipts (
+        receipt_id        TEXT    PRIMARY KEY CHECK (length(receipt_id) = 36),
+        receipt_seq       INTEGER NOT NULL CHECK (receipt_seq > 0),
+        dispatch_id       TEXT    NOT NULL,
+        run_id            TEXT    NOT NULL,
+        observation_key   TEXT    NOT NULL CHECK (
+          length(observation_key) BETWEEN 1 AND 200
+          AND observation_key NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        destination_origin TEXT CHECK (
+          destination_origin IS NULL OR (
+            length(destination_origin) BETWEEN 1 AND 512
+            AND destination_origin NOT GLOB '*[' || char(0) || '-' || char(31) || char(127) || ']*'
+            AND instr(destination_origin, '?') = 0
+            AND instr(destination_origin, '#') = 0
+            AND instr(destination_origin, '@') = 0
+            AND (
+              destination_origin GLOB 'http://?*'
+              OR destination_origin GLOB 'https://?*'
+              OR destination_origin GLOB 'ws://?*'
+              OR destination_origin GLOB 'wss://?*'
+              OR destination_origin GLOB 'tcp://?*'
+              OR destination_origin GLOB 'tls://?*'
+            )
+            AND instr(
+              substr(destination_origin, instr(destination_origin, '://') + 3),
+              '/'
+            ) = 0
+          )
+        ),
+        phase             TEXT    NOT NULL CHECK (phase IN (
+          'dispatch_started', 'response_observed', 'dispatch_failed',
+          'dispatch_blocked', 'route_unavailable', 'outcome_unknown'
+        )),
+        reason_code       TEXT CHECK (reason_code IS NULL OR reason_code IN (
+          'local_only_remote_destination', 'local_only_custom_transport',
+          'local_only_route_unavailable', 'local_only_redirect',
+          'route_unavailable',
+          'run_terminated_after_dispatch', 'gateway_restarted_after_dispatch'
+        )),
+        observed_at       INTEGER NOT NULL CHECK (observed_at >= 0),
+        FOREIGN KEY (dispatch_id, run_id)
+          REFERENCES egress_dispatches(dispatch_id, run_id),
+        UNIQUE (run_id, receipt_seq),
+        UNIQUE (dispatch_id, observation_key),
+        CHECK (phase NOT IN ('dispatch_started', 'response_observed', 'dispatch_failed')
+          OR destination_origin IS NOT NULL),
+        CHECK (phase NOT IN ('route_unavailable', 'outcome_unknown')
+          OR destination_origin IS NULL),
+        CHECK ((phase IN ('dispatch_blocked', 'route_unavailable', 'outcome_unknown'))
+          = (reason_code IS NOT NULL))
+      );
+
+      CREATE INDEX idx_egress_receipts_run
+        ON egress_receipts(run_id, receipt_seq);
+      CREATE INDEX idx_egress_receipts_dispatch
+        ON egress_receipts(dispatch_id, observed_at, receipt_id);
+
+      CREATE TRIGGER egress_dispatches_validate_run_mode
+        BEFORE INSERT ON egress_dispatches
+        WHEN NOT EXISTS (
+          SELECT 1 FROM gateway_runs AS run
+          WHERE run.id = NEW.run_id AND run.egress_mode = NEW.mode
+        )
+        BEGIN SELECT RAISE(ABORT, 'egress mode does not match run'); END;
+
+      CREATE TRIGGER egress_receipts_validate_semantics
+        BEFORE INSERT ON egress_receipts
+        WHEN EXISTS (
+          SELECT 1 FROM egress_dispatches AS identity
+          WHERE identity.dispatch_id = NEW.dispatch_id
+            AND (
+              (NEW.phase = 'dispatch_blocked' AND identity.mode <> 'local-only')
+              OR (NEW.phase = 'route_unavailable' AND (
+                identity.mode <> 'unrestricted'
+                OR identity.transport <> 'unknown'
+                OR identity.mediation NOT IN ('uncontained', 'unknown')
+                OR NEW.reason_code <> 'route_unavailable'
+              ))
+              OR (NEW.phase = 'outcome_unknown' AND NEW.reason_code NOT IN (
+                'run_terminated_after_dispatch', 'gateway_restarted_after_dispatch'
+              ))
+              OR (NEW.phase = 'dispatch_blocked' AND NEW.reason_code NOT IN (
+                'local_only_remote_destination', 'local_only_custom_transport',
+                'local_only_route_unavailable', 'local_only_redirect'
+              ))
+              OR (NEW.reason_code = 'local_only_route_unavailable' AND (
+                NEW.destination_origin IS NOT NULL
+                OR identity.transport <> 'unknown'
+                OR identity.mediation NOT IN ('uncontained', 'unknown')
+              ))
+              OR (NEW.phase = 'dispatch_blocked'
+                AND NEW.reason_code <> 'local_only_route_unavailable'
+                AND NEW.destination_origin IS NULL)
+            )
+        )
+        BEGIN SELECT RAISE(ABORT, 'invalid egress receipt semantics'); END;
+
+      CREATE TRIGGER egress_dispatches_no_update
+        BEFORE UPDATE ON egress_dispatches
+        BEGIN SELECT RAISE(ABORT, 'egress dispatch identities are immutable'); END;
+      CREATE TRIGGER egress_dispatches_no_delete
+        BEFORE DELETE ON egress_dispatches
+        BEGIN SELECT RAISE(ABORT, 'egress dispatch identities are immutable'); END;
+      CREATE TRIGGER egress_receipts_no_update
+        BEFORE UPDATE ON egress_receipts
+        BEGIN SELECT RAISE(ABORT, 'egress receipts are immutable'); END;
+      CREATE TRIGGER egress_receipts_no_delete
+        BEFORE DELETE ON egress_receipts
+        BEGIN SELECT RAISE(ABORT, 'egress receipts are immutable'); END;
+    `,
+  },
 ]

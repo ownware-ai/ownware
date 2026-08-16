@@ -96,6 +96,7 @@ export function projectPermissionEvidenceEvent(event: LoomEvent): LoomEvent {
       ...(typeof source['operationHash'] === 'string'
         ? { operationHash: source['operationHash'] }
         : {}),
+      ...(source['intentRevision'] === 1 ? { intentRevision: 1 } : {}),
       ...(typeof event.zoneLevel === 'number' ? { zoneLevel: event.zoneLevel } : {}),
       ...(typeof event.zoneName === 'string' ? { zoneName: event.zoneName } : {}),
       explanation: SAFE_PERMISSION_EXPLANATION,

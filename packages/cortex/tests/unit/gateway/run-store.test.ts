@@ -88,15 +88,28 @@ describe('exact run permission records', () => {
         requestId: 'permission_1',
         toolName: 'send_email',
         toolInput: { body: 'raw-secret-canary' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
       })
       const second = store.recordPermissionRequest({
         runId: run.runId,
         requestId: 'permission_2',
         toolName: 'send_email',
         toolInput: { body: 'different' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
+      })
+      const sameActionNewRequest = store.recordPermissionRequest({
+        runId: run.runId,
+        requestId: 'permission_3',
+        toolName: 'send_email',
+        toolInput: { body: 'raw-secret-canary' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
       })
       expect(first.operationHash).toMatch(/^[0-9a-f]{64}$/)
       expect(second.operationHash).not.toBe(first.operationHash)
+      expect(sameActionNewRequest.operationHash).not.toBe(first.operationHash)
       expect(JSON.stringify(state.rawDbHandle
         .prepare('SELECT * FROM run_permission_requests')
         .all())).not.toContain('raw-secret-canary')
@@ -110,6 +123,52 @@ describe('exact run permission records', () => {
       expect(store.decidePermission(
         run.runId, second.requestId, first.operationHash, 'deny',
       )).toBe('hash_mismatch')
+      expect(store.consumePermissionApproval({
+        runId: run.runId,
+        requestId: first.requestId,
+        toolName: 'send_email',
+        toolInput: { body: 'changed-after-review' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
+      })).toBe('intent_mismatch')
+      expect(store.consumePermissionApproval({
+        runId: run.runId,
+        requestId: first.requestId,
+        toolName: 'send_email',
+        toolInput: { body: 'raw-secret-canary' },
+        policyRevision: 'c'.repeat(64),
+        agentId: null,
+      })).toBe('intent_mismatch')
+      expect(store.consumePermissionApproval({
+        runId: run.runId,
+        requestId: first.requestId,
+        toolName: 'send_email',
+        toolInput: { body: 'raw-secret-canary' },
+        policyRevision: 'b'.repeat(64),
+        agentId: 'agent_other',
+      })).toBe('intent_mismatch')
+      const exactIntent = {
+        runId: run.runId,
+        requestId: first.requestId,
+        toolName: 'send_email',
+        toolInput: { body: 'raw-secret-canary' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
+      } as const
+      expect(store.consumePermissionApproval(exactIntent, 200)).toBe('consumed')
+      expect(store.consumePermissionApproval(exactIntent, 201)).toBe('already_consumed')
+      expect(store.getPermissionRequest(run.runId, first.requestId)).toMatchObject({
+        intentRevision: 1,
+        consumedAt: 200,
+      })
+      expect(() => state.rawDbHandle.prepare(`
+        UPDATE run_permission_bindings SET policy_revision = ?
+        WHERE run_id = ? AND request_id = ?
+      `).run('d'.repeat(64), run.runId, first.requestId)).toThrow()
+      expect(() => state.rawDbHandle.prepare(`
+        DELETE FROM run_permission_consumptions
+        WHERE run_id = ? AND request_id = ?
+      `).run(run.runId, first.requestId)).toThrow()
     } finally {
       state.close()
     }
@@ -130,6 +189,31 @@ describe('durable run cancellation requests', () => {
         startSeq: 0,
       }, 100)
       store.markRunning(run.runId, 110)
+      expect(store.get(run.runId)?.consequence).toBe('none_observed')
+
+      store.advanceConsequence(run.runId, 'output_observed', 111)
+      store.advanceConsequence(run.runId, 'effect_possible', 112)
+      store.advanceConsequence(run.runId, 'output_observed', 113)
+      expect(store.get(run.runId)).toMatchObject({
+        consequence: 'effect_possible',
+        updatedAt: 112,
+      })
+
+      const approval = store.recordPermissionRequest({
+        runId: run.runId,
+        requestId: 'cancel_race',
+        toolName: 'write_file',
+        toolInput: { path: 'a' },
+        policyRevision: 'e'.repeat(64),
+        agentId: null,
+      }, 114)
+      expect(store.decidePermission(
+        run.runId,
+        approval.requestId,
+        approval.operationHash,
+        'approve',
+        115,
+      )).toBe('decided')
 
       expect(store.requestCancel(run.runId, 120)).toBe('requested')
       expect(store.get(run.runId)).toMatchObject({
@@ -137,13 +221,47 @@ describe('durable run cancellation requests', () => {
         cancelRequestedAt: 120,
         terminal: false,
       })
+      expect(store.getPermissionRequest(run.runId, approval.requestId)?.status).toBe('expired')
+      expect(store.consumePermissionApproval({
+        runId: run.runId,
+        requestId: approval.requestId,
+        toolName: 'write_file',
+        toolInput: { path: 'a' },
+        policyRevision: 'e'.repeat(64),
+        agentId: null,
+      })).toBe('not_approved')
       expect(store.requestCancel(run.runId, 130)).toBe('already_requested')
       expect(store.get(run.runId)?.cancelRequestedAt).toBe(120)
 
-      store.markTerminal(run.runId, 'cancelled', { endSeq: 4, now: 140 })
+      store.markTerminal(run.runId, 'cancelled', {
+        endSeq: 4,
+        consequence: 'effect_confirmed',
+        now: 140,
+      })
       expect(store.requestCancel(run.runId, 150)).toBe('terminal')
-      expect(store.get(run.runId)).toMatchObject({ status: 'cancelled', terminalAt: 140 })
+      expect(store.get(run.runId)).toMatchObject({
+        status: 'cancelled',
+        consequence: 'effect_confirmed',
+        terminalAt: 140,
+      })
       expect(store.requestCancel('00000000-0000-4000-8000-000000000000')).toBe('missing')
+
+      const interrupted = store.create({
+        threadId: thread.id,
+        profileId: 'test',
+        model: 'test:model',
+        timeoutMs: 60_000,
+        startSeq: 4,
+      }, 160)
+      store.markRunning(interrupted.runId, 161)
+      store.advanceConsequence(interrupted.runId, 'effect_possible', 162)
+      expect(store.recoverInterrupted(170)).toBe(1)
+      expect(store.get(interrupted.runId)).toMatchObject({
+        status: 'indeterminate',
+        consequence: 'effect_possible',
+        outcomeKnown: false,
+        code: 'gateway_restarted',
+      })
     } finally {
       state.close()
     }
@@ -192,7 +310,10 @@ describe('profile deployment acceptance fence', () => {
       })).toThrow(ProfileRunNotAcceptingError)
       expect(runs.countActiveForProfile('test')).toBe(1)
 
-      runs.markTerminal(first.runId, 'succeeded', { endSeq: 0 })
+      runs.markTerminal(first.runId, 'succeeded', {
+        endSeq: 0,
+        consequence: 'none_observed',
+      })
       expect(runs.countActiveForProfile('test')).toBe(0)
       expect(candidates.compareAndSetUndeployed({
         profileId: 'test',

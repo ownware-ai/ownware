@@ -1,7 +1,8 @@
 import OpenAI, { type ClientOptions } from 'openai'
 import type { ModelPricing } from './pricing.js'
 import { OpenAIProvider } from './openai.js'
-import type { ProviderFeature } from './types.js'
+import type { ProviderFeature, ProviderFetch, ProviderRequest } from './types.js'
+import { createEgressFetch } from '../egress/fetch.js'
 
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 const BLOCKED_HEADERS = new Set([
@@ -85,7 +86,7 @@ export class OpenAICompatibleProvider extends OpenAIProvider {
     this.verifiedFeatures = options.verifiedFeatures ?? new Set(['streaming'])
   }
 
-  protected override async getClient(): Promise<OpenAI> {
+  protected override async getClient(request?: ProviderRequest): Promise<OpenAI> {
     const credential = this.compatibleAuth.kind === 'none'
       ? null
       : await this.compatibleAuth.credentialProvider()
@@ -106,10 +107,18 @@ export class OpenAICompatibleProvider extends OpenAIProvider {
         headers,
       })
     }) as unknown as NonNullable<ClientOptions['fetch']>
+    const observedFetch = request?.egressControl === undefined
+      ? compatibleFetch
+      : createEgressFetch({
+          fetch: compatibleFetch as unknown as ProviderFetch,
+          control: request.egressControl,
+          sourceRef: this.name,
+          mediation: 'platform_fetch',
+        }) as unknown as NonNullable<ClientOptions['fetch']>
     return new OpenAI({
       apiKey: 'ownware-openai-compatible-placeholder',
       baseURL: this.compatibleBaseURL,
-      fetch: compatibleFetch,
+      fetch: observedFetch,
     })
   }
 

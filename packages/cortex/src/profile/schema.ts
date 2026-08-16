@@ -229,6 +229,8 @@ export type ZonesConfig = z.infer<typeof ZonesConfigSchema>
 export const SecurityConfigSchema = z.object({
   level: z.enum(['permissive', 'standard', 'strict', 'paranoid']).default('standard'),
   permissionMode: z.enum(['auto', 'ask', 'deny', 'allowlist']).default('ask'),
+  /** Default outbound envelope. A request may tighten but never widen it. */
+  egressMode: z.enum(['unrestricted', 'local-only']).default('unrestricted'),
   sandbox: SandboxConfigSchema.default({}),
   zones: ZonesConfigSchema.default({}),
   /**

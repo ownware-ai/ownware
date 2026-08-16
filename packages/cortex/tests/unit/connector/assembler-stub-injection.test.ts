@@ -60,6 +60,42 @@ function fakeContext(): ToolContext {
 }
 
 describe('assembler — stub tool injection for not-ready MCP connector', () => {
+  it('does not construct an MCP transport in local-only mode', async () => {
+    const { dir, cleanup } = await createTempProfile({
+      'agent.json': JSON.stringify({
+        name: 'local-only-mcp-probe',
+        tools: {
+          preset: 'none',
+          mcp: {
+            'must-not-spawn': {
+              transport: 'stdio',
+              command: 'this-command-must-never-run',
+              args: [],
+            },
+          },
+        },
+      }),
+    })
+
+    try {
+      const profile = await loadProfile(dir)
+      const agent = await assembleAgent(profile, { egressMode: 'local-only' })
+
+      expect(agent.mcpManager).toBeNull()
+      const stub = agent.tools.find(tool => tool.name === 'must-not-spawn')
+      expect(stub).toBeDefined()
+      expect(stub!.egress).toEqual({
+        contractRevision: 'ownware.tool-egress.v1',
+        mediation: 'none',
+      })
+      const result = await (stub!.execute({}, fakeContext()) as Promise<ToolResult>)
+      expect(result).toMatchObject({ isError: true })
+      expect(result.content).toContain('local-only')
+    } finally {
+      await cleanup()
+    }
+  })
+
   it('injects a stub when an MCP server has an unresolved required env var', async () => {
     // Make sure the referenced env var is NOT set.
     const prev = process.env['CREDS_MISSING_TEST_TOKEN']

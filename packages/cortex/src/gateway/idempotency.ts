@@ -16,6 +16,7 @@ export interface RunStartSnapshot {
   readonly profileId: string
   readonly candidateId: string | null
   readonly model: string
+  readonly egressMode?: 'unrestricted' | 'local-only'
   readonly modelSubstitution?: ModelSubstitution
   readonly status: 'running'
   readonly timeoutMs?: number
@@ -421,6 +422,9 @@ export function validateIdempotencySnapshot(value: unknown): IdempotencySnapshot
         (typeof row['candidateId'] !== 'string' ||
           !/^sha256:[0-9a-f]{64}$/.test(row['candidateId']))) ||
       row['model'].length > 256 || row['status'] !== 'running' ||
+      (row['egressMode'] !== undefined
+        && row['egressMode'] !== 'unrestricted'
+        && row['egressMode'] !== 'local-only') ||
       (row['timeoutMs'] !== undefined &&
         (!Number.isSafeInteger(row['timeoutMs']) || (row['timeoutMs'] as number) <= 0))) {
     throw new Error('Invalid run snapshot')
@@ -435,6 +439,9 @@ export function validateIdempotencySnapshot(value: unknown): IdempotencySnapshot
     profileId: row['profileId'],
     candidateId: typeof row['candidateId'] === 'string' ? row['candidateId'] : null,
     model: row['model'],
+    ...(row['egressMode'] === 'unrestricted' || row['egressMode'] === 'local-only'
+      ? { egressMode: row['egressMode'] }
+      : {}),
     ...(modelSubstitution === undefined ? {} : { modelSubstitution }),
     status: 'running',
     ...(typeof row['timeoutMs'] === 'number' ? { timeoutMs: row['timeoutMs'] } : {}),

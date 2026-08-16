@@ -13,6 +13,7 @@ import type { Message, ContentBlock } from '../messages/types.js'
 import type { ModelPricing } from './pricing.js'
 import type { LoomThinkingConfig } from '../core/config.js'
 import type { CacheControlMarker } from '../core/cache-control.js'
+import type { EgressControl } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Provider request
@@ -46,6 +47,8 @@ export interface ProviderRequest {
   readonly stallTimeoutMs?: number
   /** Extended thinking configuration. Providers that don't support thinking ignore this. */
   readonly thinking?: LoomThinkingConfig
+  /** Host-owned outbound authorization/receipt boundary for this run. */
+  readonly egressControl?: EgressControl
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +297,13 @@ export interface ProviderAdapter {
   readonly name: string
 
   /**
+   * How this adapter accounts for outbound traffic. Missing means unknown and
+   * therefore cannot run under local-only. `delegated` is reserved for
+   * wrappers whose concrete child adapter mediates every attempt.
+   */
+  readonly egressMediation?: 'fetch' | 'delegated' | 'uncontained'
+
+  /**
    * Stream a model response.
    * Yields normalized ProviderChunk events.
    * The last chunk is always StreamMessageComplete.
@@ -304,7 +314,11 @@ export interface ProviderAdapter {
    * Estimate token count for messages.
    * Used by compaction to decide when to compact.
    */
-  countTokens(messages: Message[], system?: string): Promise<number>
+  countTokens(
+    messages: Message[],
+    system?: string,
+    options?: { readonly egressControl?: EgressControl },
+  ): Promise<number>
 
   /**
    * Check if this provider supports a feature.

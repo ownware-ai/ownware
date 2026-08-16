@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.38.0
+  version: 0.42.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -1706,6 +1706,8 @@ paths:
                     reusable source or grant future access.
                   items:
                     $ref: '#/components/schemas/RunAttachmentInput'
+                egressMode:
+                  $ref: '#/components/schemas/EgressMode'
       responses:
         '200':
           description: Run started in the background.
@@ -1713,7 +1715,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [runId, threadId]
+                required: [runId, threadId, egressMode]
                 properties:
                   runId: { type: string, format: uuid }
                   threadId: { type: string }
@@ -1733,6 +1735,7 @@ paths:
                     type: integer
                     minimum: 1
                     description: Enforced wall-clock run timeout selected from the resolved profile.
+                  egressMode: { $ref: '#/components/schemas/EgressMode' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
@@ -1762,6 +1765,87 @@ paths:
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/effect-receipts:
+    get:
+      operationId: listEffectReceipts
+      summary: Page immutable, payload-free effect authority observations for one run.
+      description: >
+        Receipts correlate a stable effect and tool call with observed lifecycle,
+        consequence and named authority. They never contain tool arguments,
+        results, credentials or provider payloads. Bounded tool-call, tool and
+        authority identifiers are structural metadata, not a general secret
+        classification. A runtime result alone can report effect_possible but
+        cannot report effect_confirmed; confirmation is authoritative only inside
+        the configured adapter observer's declared trust boundary.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Oldest-first immutable observations with an exclusive opaque cursor.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EffectReceiptPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/egress-receipts:
+    get:
+      operationId: listEgressReceipts
+      summary: Page immutable, content-free outbound route observations for one run.
+      description: >
+        Receipts contain structural source identity, mediation, transport and a
+        canonical application origin only. They never contain paths, queries,
+        fragments, credentials, headers, bodies or provider payloads. A
+        dispatch_started receipt proves durable authorization preceded the
+        platform dispatch call, not that bytes reached a peer. response_observed
+        proves an application response was observed, not remote effect success.
+        route_unavailable is an explicit support gap and can never satisfy
+        local-only.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Oldest-first immutable observations with an exclusive opaque cursor.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EgressReceiptPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/runs/{runId}/events:
     get:
@@ -1862,6 +1946,12 @@ paths:
     post:
       operationId: decidePermission
       summary: Decide one exact permission request for one immutable run.
+      description: >
+        The echoed HMAC identifies the bound run, request, root/helper agent,
+        canonical tool input and immutable run policy/tool surface. Approval is
+        consumed at most once immediately before a supported dispatch boundary.
+        A successful decision response is not evidence that the effect ran,
+        succeeded, or met an undeclared remote target precondition.
       parameters:
         - name: runId
           in: path
@@ -1889,12 +1979,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [runId, requestId, decision, operationHash]
+                required: [runId, requestId, decision, operationHash, intentRevision]
                 properties:
                   runId: { type: string, format: uuid }
                   requestId: { type: string }
                   decision: { type: string, enum: [approve, deny] }
                   operationHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+                  intentRevision: { type: integer, const: 1 }
         '400': { $ref: '#/components/responses/ErrorResponse' }
         '401': { $ref: '#/components/responses/ErrorResponse' }
         '403': { $ref: '#/components/responses/ErrorResponse' }
@@ -2739,7 +2830,7 @@ components:
 
     RunSnapshot:
       type: object
-      required: [runId, threadId, workspaceId, profileId, candidateId, model, timeoutMs, status, terminal, outcomeKnown, acceptedAt, startedAt, updatedAt, terminalAt, cancelRequestedAt, startSeq, endSeq, earliestRetainedCursor, code]
+      required: [runId, threadId, workspaceId, profileId, candidateId, model, timeoutMs, egressMode, status, consequence, terminal, outcomeKnown, acceptedAt, startedAt, updatedAt, terminalAt, cancelRequestedAt, startSeq, endSeq, earliestRetainedCursor, code]
       properties:
         runId: { type: string, format: uuid }
         threadId: { type: string }
@@ -2748,9 +2839,12 @@ components:
         candidateId: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
         model: { type: string }
         timeoutMs: { type: integer, minimum: 1 }
+        egressMode: { $ref: '#/components/schemas/EgressMode' }
         status:
           type: string
           enum: [accepted, running, waiting, cancel_requested, succeeded, failed, cancelled, timed_out, indeterminate]
+        consequence:
+          $ref: '#/components/schemas/RunConsequence'
         terminal: { type: boolean }
         outcomeKnown: { type: boolean }
         acceptedAt: { type: integer }
@@ -2767,17 +2861,136 @@ components:
         code: { type: [string, 'null'] }
     RunCancellationResult:
       type: object
-      required: [runId, status, terminal, outcomeKnown, cancellation]
+      required: [runId, status, consequence, terminal, outcomeKnown, cancellation]
       properties:
         runId: { type: string, format: uuid }
         status:
           type: string
           enum: [accepted, running, waiting, cancel_requested, succeeded, failed, cancelled, timed_out, indeterminate]
+        consequence:
+          $ref: '#/components/schemas/RunConsequence'
         terminal: { type: boolean }
         outcomeKnown: { type: boolean }
         cancellation:
           type: string
           enum: [requested, already_requested, already_terminal]
+    RunConsequence:
+      type: string
+      enum: [none_observed, output_observed, effect_possible, effect_confirmed]
+      description: >
+        Monotonic evidence about what may already have escaped the run boundary.
+        effect_possible requires reconciliation before retry; effect_confirmed
+        requires an observer at the authoritative effect boundary.
+    EffectReceipt:
+      type: object
+      required:
+        - receiptId
+        - sequence
+        - effectId
+        - runId
+        - toolCallId
+        - toolName
+        - kind
+        - outcome
+        - consequence
+        - authorityKind
+        - authorityRef
+        - observedAt
+      properties:
+        receiptId: { type: string, format: uuid }
+        sequence:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+          description: Monotonic append order within this run.
+        effectId:
+          type: string
+          format: uuid
+          description: Stable correlation for one conservatively observed tool action.
+        runId: { type: string, format: uuid }
+        toolCallId:
+          type: string
+          pattern: '^[A-Za-z0-9_.:-]{1,200}$'
+        toolName:
+          type: string
+          pattern: '^[A-Za-z0-9_.:-]{1,160}$'
+        kind:
+          type: string
+          enum: [intent_observed, outcome_observed, authority_confirmed, reconciliation]
+        outcome:
+          type: string
+          enum: [pending, succeeded, failed, denied, unknown]
+          description: Tool lifecycle outcome; by itself this does not prove an external effect.
+        consequence: { $ref: '#/components/schemas/RunConsequence' }
+        authorityKind:
+          type: string
+          enum: [runtime, effect_observer, reconciler]
+        authorityRef:
+          type: string
+          pattern: '^[A-Za-z0-9_.:/-]{1,160}$'
+          description: Bounded structural provenance inside the configured adapter trust boundary.
+        observedAt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+      additionalProperties: false
+    EffectReceiptPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/EffectReceipt' }
+        nextCursor: { type: [string, 'null'], format: uuid }
+      additionalProperties: false
+    EgressMode:
+      type: string
+      enum: [unrestricted, local-only]
+      description: >
+        unrestricted records mediated routes and honest uncontained gaps.
+        local-only admits only platform-mediated dispatch to a literal loopback
+        IP and rejects unknown, custom or uncontained routes before invocation.
+    EgressReceipt:
+      type: object
+      required: [receiptId, sequence, dispatchId, runId, mode, sourceKind, sourceRef, transport, mediation, destinationOrigin, phase, reasonCode, observedAt]
+      additionalProperties: false
+      properties:
+        receiptId: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        dispatchId: { type: string, format: uuid }
+        runId: { type: string, format: uuid }
+        mode: { $ref: '#/components/schemas/EgressMode' }
+        sourceKind:
+          type: string
+          enum: [provider, tool, connector, browser, process, runtime]
+        sourceRef:
+          type: string
+          pattern: '^[A-Za-z0-9_.:-]{1,160}$'
+        transport:
+          type: string
+          enum: [http, https, ws, wss, tcp, tls, unknown]
+        mediation:
+          type: string
+          enum: [platform_fetch, custom_fetch, uncontained, unknown]
+        destinationOrigin:
+          type: [string, 'null']
+          maxLength: 512
+          description: Canonical application origin only; never a path, query or credential.
+        phase:
+          type: string
+          enum: [dispatch_started, response_observed, dispatch_failed, dispatch_blocked, route_unavailable, outcome_unknown]
+        reasonCode:
+          type: [string, 'null']
+          enum: [local_only_remote_destination, local_only_custom_transport, local_only_route_unavailable, local_only_redirect, route_unavailable, run_terminated_after_dispatch, gateway_restarted_after_dispatch, null]
+        observedAt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+    EgressReceiptPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/EgressReceipt' }
+        nextCursor: { type: [string, 'null'], format: uuid }
     RunAttachmentInput:
       type: object
       required: [filename, data, mimeType]

@@ -155,6 +155,9 @@ describe('remaining platform storage through a real gateway restart', () => {
       toolName: 'gmail_send',
       toolInput: { to: 'customer@example.test', body: 'Draft, not sent' },
       summary: 'Draft email awaiting approval',
+      policyRevision: 'a'.repeat(64),
+      toolRevision: 'b'.repeat(64),
+      targetRevision: null,
     })
     const threadTasks = await repositories.tasks.replaceAllForThread(threadId, [
       { content: 'Verify durable state', status: 'in_progress' },

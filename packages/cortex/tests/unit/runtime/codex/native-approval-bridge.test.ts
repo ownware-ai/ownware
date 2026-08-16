@@ -71,6 +71,7 @@ function permissionRequest(overrides: Record<string, unknown> = {}) {
 function bridge(options: {
   readonly review?: (review: CodexNativeApprovalReview) => Promise<'allow' | 'ask'>
   readonly requestApproval?: (tool: ToolCall, reason: string) => Promise<boolean>
+  readonly authorizeToolExecution?: () => boolean | Promise<boolean>
   readonly onEvent?: (event: LoomEvent) => void | Promise<void>
   readonly resolveFileChange?: () => Promise<{
     readonly input: Record<string, unknown>
@@ -81,6 +82,7 @@ function bridge(options: {
     threadId: 'thread-1',
     review: options.review ?? (async () => 'ask'),
     requestApproval: options.requestApproval ?? (async () => false),
+    authorizeToolExecution: options.authorizeToolExecution ?? (async () => true),
     ...(options.onEvent ? { onEvent: options.onEvent } : {}),
     ...(options.resolveFileChange
       ? { resolveFileChange: options.resolveFileChange }
@@ -92,8 +94,10 @@ describe('CodexNativeApprovalBridge', () => {
   it('maps an allowed command to one-turn accept without applying amendments', async () => {
     const events: LoomEvent[] = []
     const review = vi.fn(async () => 'allow' as const)
+    const authorizeToolExecution = vi.fn(async () => true)
     const result = await bridge({
       review,
+      authorizeToolExecution,
       onEvent: (event) => { events.push(event) },
     }).handle(commandRequest())
 
@@ -104,13 +108,9 @@ describe('CodexNativeApprovalBridge', () => {
     })
     expect(JSON.stringify(result)).not.toContain('acceptForSession')
     expect(JSON.stringify(result)).not.toContain('printf safe')
-    expect(events.map((event) => event.type)).toEqual([
-      'permission.request',
-      'permission.response',
-    ])
-    expect(events[0]).toMatchObject({
-      type: 'permission.request',
-      toolName: 'codex_native_command',
+    expect(events).toEqual([])
+    expect(authorizeToolExecution.mock.calls[0]?.[0]).toMatchObject({
+      name: 'codex_native_command',
       input: {
         command: 'printf safe',
         cwd: '/tmp/workspace',
@@ -187,8 +187,10 @@ describe('CodexNativeApprovalBridge', () => {
     })
 
     const events: LoomEvent[] = []
+    const authorizeToolExecution = vi.fn(async () => true)
     const resolved = await bridge({
       review: async () => 'allow',
+      authorizeToolExecution,
       resolveFileChange: async () => ({
         input: {
           paths: ['/tmp/workspace/report.txt'],
@@ -203,9 +205,9 @@ describe('CodexNativeApprovalBridge', () => {
       response: { decision: 'accept' },
       granted: true,
     })
-    expect(events[0]).toMatchObject({
-      type: 'permission.request',
-      toolName: 'codex_native_file_change',
+    expect(events).toEqual([])
+    expect(authorizeToolExecution.mock.calls[0]?.[0]).toMatchObject({
+      name: 'codex_native_file_change',
       input: { paths: ['/tmp/workspace/report.txt'] },
     })
   })

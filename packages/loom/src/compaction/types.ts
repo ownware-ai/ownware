@@ -3,6 +3,7 @@
  */
 
 import type { Message } from '../messages/types.js'
+import type { EgressControl } from '../egress/types.js'
 
 export type CompactionStrategy = 'summarize' | 'truncate' | 'sliding_window' | 'hierarchical' | 'snapshot'
 
@@ -28,6 +29,11 @@ export interface CompactionManager {
      * `provider.countTokens` round-trip on Anthropic/Google.
      */
     currentTokens?: number,
+    egressControl?: EgressControl,
   ): Promise<CompactionResult | null>
-  forceCompact(messages: Message[], systemPrompt: string): Promise<CompactionResult | null>
+  forceCompact(
+    messages: Message[],
+    systemPrompt: string,
+    egressControl?: EgressControl,
+  ): Promise<CompactionResult | null>
 }

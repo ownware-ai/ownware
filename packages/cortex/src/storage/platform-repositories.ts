@@ -82,7 +82,9 @@ type ApprovalPort = Pick<SqliteApprovalStore,
   | 'listPending'
   | 'countPending'
   | 'countPendingForRun'
+  | 'claim'
   | 'decide'
+  | 'recoverInterruptedClaims'
 >
 
 type TaskPort = Pick<SqliteTaskStore,

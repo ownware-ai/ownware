@@ -15,19 +15,19 @@ import {
 } from '../../../src/storage/postgresql-migrations.js'
 import { POSTGRESQL_BASELINE_DDL_HASH } from '../../../src/storage/postgresql-baseline.js'
 
-const V87: PostgreSqlMigration = {
-  version: 87,
-  name: '087_fixture',
+const V90: PostgreSqlMigration = {
+  version: 90,
+  name: '090_fixture',
   sql: 'ALTER TABLE ownware.threads ADD COLUMN fixture TEXT',
   verifyApplied: async () => true,
 }
 
 function fixtureManifest(
-  migration: PostgreSqlMigration = V87,
+  migration: PostgreSqlMigration = V90,
 ): PostgreSqlMigrationManifest {
   return {
     migrations: [...POSTGRESQL_MIGRATION_MANIFEST.migrations, migration],
-    logicalMigrations: [...STORAGE_LOGICAL_MIGRATIONS, { version: 87, name: '087_fixture' }],
+    logicalMigrations: [...STORAGE_LOGICAL_MIGRATIONS, { version: 90, name: '090_fixture' }],
     verifyCurrentSchema: async () => true,
   }
 }
@@ -52,9 +52,9 @@ describe('logical storage migration manifests', () => {
 
   it('accepts one aligned future identity while keeping dialect SQL separate', () => {
     expect(() => assertStorageMigrationAlignment(
-      [...STORAGE_LOGICAL_MIGRATIONS, { version: 87, name: '087_fixture' }],
-      [...STORAGE_LOGICAL_MIGRATIONS, { version: 87, name: '087_fixture' }],
-      [...STORAGE_LOGICAL_MIGRATIONS, { version: 87, name: '087_fixture' }],
+      [...STORAGE_LOGICAL_MIGRATIONS, { version: 90, name: '090_fixture' }],
+      [...STORAGE_LOGICAL_MIGRATIONS, { version: 90, name: '090_fixture' }],
+      [...STORAGE_LOGICAL_MIGRATIONS, { version: 90, name: '090_fixture' }],
     )).not.toThrow()
     expect(() => validatePostgreSqlMigrationManifest(fixtureManifest())).not.toThrow()
   })
@@ -101,19 +101,19 @@ describe('logical storage migration manifests', () => {
     }))
     expect(() => validatePostgreSqlMigrationHistory([
       ...rows,
-      { version: '87', name: '087_newer', fingerprint: `sha256:${'a'.repeat(64)}` },
+      { version: '90', name: '090_newer', fingerprint: `sha256:${'a'.repeat(64)}` },
     ], POSTGRESQL_MIGRATION_MANIFEST)).toThrow(expect.objectContaining({
       code: 'schema_version_newer',
     }))
     expect(() => validatePostgreSqlMigrationHistory([
       ...rows,
-      { version: '87', name: '', fingerprint: 'invalid' },
+      { version: '90', name: '', fingerprint: 'invalid' },
     ], POSTGRESQL_MIGRATION_MANIFEST)).toThrow(expect.objectContaining({
       code: 'schema_history_diverged',
     }))
     expect(() => validatePostgreSqlMigrationHistory([
       ...rows,
-      { version: '88', name: '088_gap', fingerprint: `sha256:${'b'.repeat(64)}` },
+      { version: '91', name: '091_gap', fingerprint: `sha256:${'b'.repeat(64)}` },
     ], POSTGRESQL_MIGRATION_MANIFEST)).toThrow(expect.objectContaining({
       code: 'schema_history_diverged',
     }))

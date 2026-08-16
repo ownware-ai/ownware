@@ -3,6 +3,7 @@ import type {
   CheckPermissionResult,
   LoomEvent,
   ToolCall,
+  ToolExecutionAuthorizationContext,
 } from '@ownware/loom'
 import type { CodexServerRequest } from './app-server-client.js'
 
@@ -36,6 +37,12 @@ export interface CodexNativeApprovalBridgeOptions {
     tool: ToolCall,
     reason: string,
   ) => Promise<boolean>
+  /** Final host authorization before the native approval response is sent. */
+  readonly authorizeToolExecution?: (
+    tool: ToolCall,
+    context: ToolExecutionAuthorizationContext,
+  ) => boolean | Promise<boolean>
+  readonly permissionPolicyRevision?: string
   readonly onEvent?: (event: LoomEvent) => void | Promise<void>
   /**
    * File approval payloads do not carry the change. Context must come from
@@ -397,6 +404,37 @@ export class CodexNativeApprovalBridge {
     const verdict = typeof decision === 'string' ? decision : decision.decision
     const metadata = typeof decision === 'string' ? null : decision
     const visibleReason = metadata?.explanation ?? reason
+    const policyRevision = metadata?.policyRevision
+      ?? this.options.permissionPolicyRevision
+    if (
+      this.options.permissionPolicyRevision !== undefined
+      && policyRevision !== this.options.permissionPolicyRevision
+    ) {
+      return { granted: false, code: 'approval_channel_failed' }
+    }
+
+    // A provider-native approval callback is itself the last Ownware boundary
+    // before the app-server may perform the effect. No callback means this
+    // adapter cannot honestly claim an exact permission binding, so it denies.
+    const authorizeFinal = async (approvalRequested: boolean): Promise<boolean> => {
+      try {
+        return await this.options.authorizeToolExecution?.(review.tool, {
+          requestId: review.requestId,
+          agentId: null,
+          approvalRequested,
+          ...(policyRevision === undefined ? {} : { policyRevision }),
+        }) === true
+      } catch {
+        return false
+      }
+    }
+
+    if (verdict === 'allow') {
+      return await authorizeFinal(false)
+        ? { granted: true }
+        : { granted: false, code: 'approval_channel_failed' }
+    }
+
     if (!(await this.emit({
       type: 'permission.request',
       requestId: review.requestId,
@@ -419,17 +457,26 @@ export class CodexNativeApprovalBridge {
       ...(metadata?.severityReason !== undefined
         ? { severityReason: metadata.severityReason }
         : {}),
+      ...(policyRevision === undefined ? {} : { policyRevision }),
     }))) {
       return { granted: false, code: 'approval_channel_failed' }
     }
 
-    let granted = verdict === 'allow'
-    if (!granted) {
-      try {
-        granted = await this.options.requestApproval(review.tool, visibleReason)
-      } catch {
-        return { granted: false, code: 'approval_channel_failed' }
-      }
+    let granted = false
+    try {
+      granted = await this.options.requestApproval(review.tool, visibleReason)
+    } catch {
+      return { granted: false, code: 'approval_channel_failed' }
+    }
+    if (granted && !await authorizeFinal(true)) {
+      granted = false
+      await this.emit({
+        type: 'security.block',
+        toolName: review.tool.name,
+        level: 'permission-binding',
+        reason: 'permission-binding-invalid',
+        turnIndex: 0,
+      })
     }
     const responseObserved = await this.emit(granted
       ? {

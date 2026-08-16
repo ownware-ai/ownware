@@ -6,6 +6,7 @@ import {
   AccessGrantStoreError,
 } from '../../../src/gateway/access-grant-store.js'
 import { csvDataViewOrdinalId } from '../../../src/gateway/csv-data-view.js'
+import { EffectReceiptStoreError } from '../../../src/gateway/effect-receipt-store.js'
 import type { PreparedCsvDataViewArtifact } from '../../../src/gateway/source-byte-store.js'
 import type { SourceQuotaLimits } from '../../../src/gateway/source-quota-policy.js'
 import {
@@ -502,6 +503,8 @@ describePostgreSql('PostgreSQL security authority concurrency', () => {
         requestId: 'security_concurrency_permission',
         toolName: 'send_email',
         toolInput: { recipient: 'bounded@example.test' },
+        policyRevision: 'b'.repeat(64),
+        agentId: null,
       }, 1_020)
       await primary.runs.markWaiting(run.runId, 1_020)
       const decisions = await startTogether(security.map((repositories, index) => () =>
@@ -518,13 +521,45 @@ describePostgreSql('PostgreSQL security authority concurrency', () => {
       expect((await primary.runs.getPermissionRequest(run.runId, permission.requestId))?.status)
         .toMatch(/^(approved|denied)$/)
 
+      const consumable = await primary.runs.recordPermissionRequest({
+        runId: run.runId,
+        requestId: 'security_concurrency_consumable',
+        toolName: 'send_email',
+        toolInput: { recipient: 'exact@example.test' },
+        policyRevision: 'c'.repeat(64),
+        agentId: 'helper-security',
+      }, 1_080)
+      await expect(primary.runs.decidePermission(
+        run.runId,
+        consumable.requestId,
+        consumable.operationHash,
+        'approve',
+        1_081,
+      )).resolves.toBe('decided')
+      const consumptions = await startTogether(security.map((repositories, index) => () =>
+        repositories.runs.consumePermissionApproval({
+          runId: run.runId,
+          requestId: consumable.requestId,
+          toolName: 'send_email',
+          toolInput: { recipient: 'exact@example.test' },
+          policyRevision: 'c'.repeat(64),
+          agentId: 'helper-security',
+        }, 1_082 + index)))
+      expect(consumptions.filter((result) => result === 'consumed')).toHaveLength(1)
+      expect(consumptions.filter((result) => result === 'already_consumed'))
+        .toHaveLength(CONTENDERS - 1)
+
       await primary.runs.markRunningAfterDecision(run.runId, 1_100)
       const cancellations = await startTogether(Array.from({ length: CONTENDERS }, (_, index) =>
         () => security[index]!.runs.requestCancel(run.runId, 1_110 + index)))
       expect(cancellations.filter((result) => result === 'requested')).toHaveLength(1)
       expect(cancellations.filter((result) => result === 'already_requested'))
         .toHaveLength(CONTENDERS - 1)
-      await primary.runs.markTerminal(run.runId, 'cancelled', { endSeq: 9, now: 1_200 })
+      await primary.runs.markTerminal(run.runId, 'cancelled', {
+        endSeq: 9,
+        consequence: 'none_observed',
+        now: 1_200,
+      })
       await expect(primary.runs.requestCancel(run.runId, 1_201)).resolves.toBe('terminal')
 
       const principal = {
@@ -696,6 +731,135 @@ describePostgreSql('PostgreSQL security authority concurrency', () => {
         waiting: 0,
       })
       expect(harness.pool.idleCount).toBe(harness.pool.totalCount)
+    } finally {
+      await harness.close()
+    }
+  }, 30_000)
+
+  it('converges concurrent effect observations on one immutable identity and receipt', async () => {
+    const harness = await createHarness()
+    try {
+      const { core, security } = harness.storage.repositories
+      const thread = await core.threads.create('effect-concurrency-profile')
+      const run = await security[0]!.runs.create({
+        threadId: thread.id,
+        profileId: 'effect-concurrency-profile',
+        model: 'security:test',
+        timeoutMs: 60_000,
+        startSeq: 0,
+      }, 7_000)
+      await security[0]!.runs.markRunning(run.runId, 7_010)
+
+      const intentInput = {
+        runId: run.runId,
+        toolCallId: 'effect_concurrency_call',
+        toolName: 'send_message',
+        observationKey: 'runtime:1',
+        kind: 'intent_observed' as const,
+        outcome: 'pending' as const,
+        consequence: 'none_observed' as const,
+        authorityKind: 'runtime' as const,
+        authorityRef: 'runtime.tool_call.start',
+        runtimeSequence: 1,
+      }
+      const intents = await startTogether(security.map((repositories, index) => () =>
+        repositories.effectReceipts.observe(intentInput, 7_020 + index)))
+      expect(new Set(intents.map((receipt) => receipt.effectId))).toHaveLength(1)
+      expect(new Set(intents.map((receipt) => receipt.receiptId))).toHaveLength(1)
+      expect(new Set(intents.map((receipt) => receipt.observedAt))).toEqual(new Set([7_020]))
+
+      const conflicts = await settleTogether(security.map((repositories) => () =>
+        repositories.effectReceipts.observe({
+          ...intentInput,
+          kind: 'outcome_observed',
+          outcome: 'succeeded',
+          consequence: 'effect_possible',
+          authorityRef: 'runtime.tool_call.end',
+        }, 7_100)))
+      expect(conflicts.filter((result) =>
+        result.status === 'rejected'
+        && result.reason instanceof EffectReceiptStoreError
+        && result.reason.code === 'observation_conflict'))
+        .toHaveLength(CONTENDERS)
+
+      const confirmations = await startTogether(security.map((repositories, index) => () =>
+        repositories.effectReceipts.observe({
+          ...intentInput,
+          observationKey: 'runtime:2',
+          kind: 'authority_confirmed',
+          outcome: 'succeeded',
+          consequence: 'effect_confirmed',
+          authorityKind: 'effect_observer',
+          authorityRef: 'connector.message.lookup',
+          runtimeSequence: 2,
+        }, 7_200 + index)))
+      expect(new Set(confirmations.map((receipt) => receipt.receiptId))).toHaveLength(1)
+      await expect(security[0]!.runs.get(run.runId)).resolves.toMatchObject({
+        consequence: 'effect_confirmed',
+      })
+
+      await security[0]!.effectReceipts.observe({
+        runId: run.runId,
+        toolCallId: 'effect_pending_call',
+        toolName: 'unknown_adapter_tool',
+        observationKey: 'runtime:3',
+        kind: 'intent_observed',
+        outcome: 'pending',
+        consequence: 'none_observed',
+        authorityKind: 'runtime',
+        authorityRef: 'runtime.tool_call.start',
+        runtimeSequence: 3,
+      }, 7_300)
+      await startTogether(security.map((repositories, index) => () =>
+        repositories.effectReceipts.markPendingUnknownForRun(
+          run.runId,
+          'runtime.terminal_without_outcome',
+          7_400 + index,
+        )))
+      const evidence = await security[0]!.effectReceipts.listForRun(
+        run.runId,
+        { limit: 100, cursor: null },
+      )
+      expect(evidence.items.filter((receipt) =>
+        receipt.toolCallId === 'effect_pending_call'
+        && receipt.kind === 'reconciliation'
+        && receipt.outcome === 'unknown'))
+        .toHaveLength(1)
+      expect(evidence.items).toHaveLength(4)
+
+      await expect(harness.pool.query(`
+        UPDATE ownware.effect_receipts SET outcome = 'unknown' WHERE receipt_id = $1
+      `, [intents[0]!.receiptId])).rejects.toMatchObject({
+        message: 'effect evidence is immutable',
+      })
+      await expect(harness.pool.query(`
+        DELETE FROM ownware.effect_identities WHERE effect_id = $1
+      `, [intents[0]!.effectId])).rejects.toMatchObject({
+        message: 'effect evidence is immutable',
+      })
+      await expect(harness.pool.query(`
+        INSERT INTO ownware.effect_receipts (
+          receipt_id, receipt_seq, effect_id, run_id, observation_key, kind, outcome,
+          consequence, authority_kind, authority_ref, runtime_sequence, observed_at
+        ) VALUES (
+          '90000000-0000-4000-8000-000000000009', 5, $1, $2, 'raw:invalid',
+          'authority_confirmed', 'succeeded', 'effect_confirmed', 'runtime',
+          'runtime.tool_call.end', 4, 7500
+        )
+      `, [intents[0]!.effectId, run.runId])).rejects.toMatchObject({ code: '23514' })
+      await expect(harness.pool.query(`
+        INSERT INTO ownware.effect_receipts (
+          receipt_id, receipt_seq, effect_id, run_id, observation_key, kind, outcome,
+          consequence, authority_kind, authority_ref, runtime_sequence, observed_at
+        ) VALUES (
+          '90000000-0000-4000-8000-000000000010', 5, $1, $2, 'raw:invalid2',
+          'reconciliation', 'succeeded', 'effect_possible', 'reconciler',
+          'gateway.restart.pending_effect', NULL, 7501
+        )
+      `, [intents[0]!.effectId, run.runId])).rejects.toMatchObject({ code: '23514' })
+
+      await waitForPoolReturn(harness.pool)
+      expect(poolCheckoutState(harness.pool)).toMatchObject({ checkedOut: 0, waiting: 0 })
     } finally {
       await harness.close()
     }

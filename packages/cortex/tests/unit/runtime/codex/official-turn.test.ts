@@ -266,6 +266,7 @@ describe('Codex official turn event authority', () => {
       status: 'confirmed' as const,
       consequence: 'effect_confirmed' as const,
       receiptState: 'completed' as const,
+      effectAuthority: 'connector.message.lookup',
     }))
     const subject = bridge({
       mcpRun: {
@@ -318,6 +319,7 @@ describe('Codex official turn event authority', () => {
     })
     expect(completed.events[0]).toMatchObject({
       consequence: 'effect_confirmed',
+      effectAuthority: 'connector.message.lookup',
       event: {
         type: 'tool.call.end',
         result: 'saved',

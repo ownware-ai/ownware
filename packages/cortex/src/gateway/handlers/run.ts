@@ -45,7 +45,13 @@ import type { GatewayState } from '../state.js'
 import type { ProfileRegistry } from '../../profile/registry.js'
 import { assembleAgent, buildSubagentSystemPrompt } from '../../profile/assembler.js'
 import { hookBindingOptionsFromEnv } from '../../profile/hooks.js'
-import { applyRunSafety, envelopeSpawnerPool, summarizeHeldCall, type HoldSink } from '../../schedules/draft-hold.js'
+import {
+  applyRunSafety,
+  envelopeSpawnerPool,
+  summarizeHeldCall,
+  toolForHeldExecution,
+  type HoldSink,
+} from '../../schedules/draft-hold.js'
 import { resolveSubagentDef } from '../../profile/subagent-resolver.js'
 import {
   resolveLocalHelperDir,
@@ -77,6 +83,11 @@ import type { PendingReconciles } from '../pending-reconcile.js'
 import { initialManagedTools } from '../../profile/reconcile.js'
 import type { ConnectorStatusBus } from '../../connector/status-bus.js'
 import { createWorkspaceAgentShellRunner } from '../../terminal/scoped-shell-runner.js'
+import {
+  permissionPolicyRevision,
+  permissionToolRevision,
+} from '../permission-intent.js'
+import { projectPermissionEvidenceEvent } from '../event-ingestor.js'
 
 const FileAttachmentInputSchema = z.object({
   filename: z.string().min(1).max(ATTACHMENT_MAX_FILENAME_CHARS),
@@ -118,6 +129,7 @@ const RunRequestSchema = z.object({
   threadId: z.string().min(1).optional(),
   workspaceId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
+  egressMode: z.enum(['unrestricted', 'local-only']).optional(),
   attachments: z.array(FileAttachmentInputSchema).max(ATTACHMENT_MAX_COUNT).optional(),
   activeContext: ActiveContextInputSchema.optional(),
   /**
@@ -147,6 +159,7 @@ interface RunStartResult {
   readonly profileId: string
   readonly candidateId: string | null
   readonly model: string
+  readonly egressMode: 'unrestricted' | 'local-only'
   readonly modelSubstitution?: ModelSubstitution
   readonly status: 'running'
   /** Enforced wall-clock limit selected from the resolved profile. */
@@ -191,6 +204,15 @@ import {
   type RunStartSnapshot,
 } from '../idempotency.js'
 import { ProfileRunNotAcceptingError } from '../run-store.js'
+import {
+  EffectReceiptStoreError,
+  type EffectReceiptRepository,
+} from '../effect-receipt-store.js'
+import {
+  EgressReceiptStoreError,
+  type EgressReceiptRepository,
+} from '../egress-receipt-store.js'
+import { RunEgressControl } from '../egress-control.js'
 import type { CandidateProfileResolver } from '../../profile/candidate-activation.js'
 import type {
   IdempotencyRepository,
@@ -216,6 +238,10 @@ export interface RunHandlerDeps {
   readonly processAttachmentsFn?: typeof processAttachments
   /** Durable execution snapshots and lifecycle transitions. */
   readonly runStore?: RunRepository
+  /** Append-only authority observations for external action attempts. */
+  readonly effectReceipts?: EffectReceiptRepository
+  /** Append-only outbound observations and local-only enforcement authority. */
+  readonly egressReceipts?: EgressReceiptRepository
   /** Durable public retry fence. Scheduler calls do not pass through it. */
   readonly idempotencyStore?: IdempotencyRepository
   /** Resolve and verify the currently active immutable candidate, when one exists. */
@@ -538,6 +564,7 @@ export function createRunHandlers(
         profileId: result.profileId,
         candidateId: result.candidateId,
         model: result.model,
+        egressMode: result.egressMode,
         ...(result.modelSubstitution !== undefined
           ? { modelSubstitution: result.modelSubstitution }
           : {}),
@@ -562,6 +589,7 @@ export function createRunHandlers(
         profileId: result.profileId,
         candidateId: result.candidateId,
         model: result.model,
+        egressMode: result.egressMode,
         ...(result.modelSubstitution !== undefined
           ? { modelSubstitution: result.modelSubstitution }
           : {}),
@@ -687,6 +715,42 @@ export function createRunHandlers(
         }
       }
       const profile = resolvedCandidate?.profile ?? await registry.get(profileId)
+      const effectiveEgressMode = (
+        profile.config.security.egressMode === 'local-only'
+        || body.egressMode === 'local-only'
+      ) ? 'local-only' as const : 'unrestricted' as const
+      if (effectiveEgressMode === 'local-only' && deps.egressReceipts === undefined) {
+        throw new RunStartError(
+          503,
+          'Local-only execution is unavailable because durable egress enforcement is not configured.',
+          'egress_authority_unavailable',
+        )
+      }
+      if (effectiveEgressMode === 'local-only' && profile.config.tools.custom.length > 0) {
+        throw new RunStartError(
+          422,
+          'Local-only execution cannot import custom-tool modules because module initialization has no enforceable outbound containment.',
+          'local_only_custom_tools_unsupported',
+        )
+      }
+      const cachedCompanions = threadId === undefined
+        ? undefined
+        : state.getSessionCompanions(threadId)
+      if (
+        session !== undefined
+        && cachedCompanions !== undefined
+        && cachedCompanions.egressMode !== effectiveEgressMode
+      ) {
+        throw new RunStartError(
+          409,
+          'A thread cannot change its outbound envelope after session assembly. Start a new thread.',
+          'egress_mode_session_mismatch',
+          {
+            sessionEgressMode: cachedCompanions.egressMode,
+            requestedEgressMode: effectiveEgressMode,
+          },
+        )
+      }
       const requestModel = body.model
       // Four-level configured preference: request → thread → install → profile.
       //
@@ -771,7 +835,7 @@ export function createRunHandlers(
       // the raw curl in serve.mjs sends no model, the profile names a
       // cloud model, and without this the run dies on "not configured"
       // even though a local Ollama is sitting right there.
-      if (preferredModel.source === 'profile') {
+      if (preferredModel.source === 'profile' && effectiveEgressMode !== 'local-only') {
         const adapterId = execution?.adapterId ?? configuredProviderId
         if (getProvider(adapterId) == null) {
           const fallback = await deps.pickRunnableDefaultModel()
@@ -886,9 +950,11 @@ export function createRunHandlers(
         // underway, long after the assignment below; the null branch is
         // pure defense (fail-closed deny, never allow).
         let hookApprovalHitl: HumanInTheLoop | null = null
+        let hookApprovalPolicyRevision: string | null = null
         const hookApprovalThreadId = threadId!
 
         const assembled = await assembleAgent(profileToAssemble, {
+          egressMode: effectiveEgressMode,
           ...(deps.resolvePluginSkills === undefined
             ? {}
             : {
@@ -944,6 +1010,8 @@ export function createRunHandlers(
                   requestId,
                   toolName: req.toolName,
                   toolInput: req.toolInput,
+                  policyRevision: hookApprovalPolicyRevision ?? '',
+                  agentId: null,
                 })
                 operationHash = permission.operationHash
                 await deps.runStore.markWaiting(activeRun.runId)
@@ -951,6 +1019,9 @@ export function createRunHandlers(
                   type: 'permission.request',
                   requestId,
                   operationHash,
+                  intentRevision: permission.intentRevision,
+                  policyRevision: permission.policyRevision,
+                  agentId: null,
                   toolName: req.toolName,
                   input: req.toolInput,
                   reason: req.reason,
@@ -991,11 +1062,25 @@ export function createRunHandlers(
               } catch {
                 // Non-fatal — the decision already resolved the run.
               }
+              const executionAuthorized = !approved
+                ? false
+                : await deps.runStore.consumePermissionApproval({
+                    runId: activeRun.runId,
+                    requestId,
+                    toolName: req.toolName,
+                    toolInput: req.toolInput,
+                    policyRevision: hookApprovalPolicyRevision ?? '',
+                    agentId: null,
+                  }) === 'consumed'
               return {
-                approved,
-                ...(approved
+                approved: executionAuthorized,
+                ...(executionAuthorized
                   ? {}
-                  : { reason: `The operator denied "${req.toolName}" (approval prompt).` }),
+                  : {
+                      reason: approved
+                        ? `The approval binding for "${req.toolName}" became stale; the action was blocked.`
+                        : `The operator denied "${req.toolName}" (approval prompt).`,
+                    }),
               }
             },
           },
@@ -1171,6 +1256,92 @@ export function createRunHandlers(
           additionalWorkspaceRoots: sessionAdditionalRoots,
         })
 
+        const effectivePermissionMode = body.safetyLevel != null
+          ? 'auto' as const
+          : profile.config.security.permissionMode
+        const sessionPermissionPolicyRevision = permissionPolicyRevision({
+          profileId,
+          candidateId,
+          workspaceId: workspaceId ?? null,
+          workspacePath: workspacePath ?? null,
+          safetyLevel: body.safetyLevel ?? null,
+          permissionMode: effectivePermissionMode,
+          egressMode: effectiveEgressMode,
+          zoneConfig: profileToAssemble.config.security,
+          tools: assembled.tools,
+        })
+        hookApprovalPolicyRevision = sessionPermissionPolicyRevision
+
+        // One policy/approval/dispatch chain is shared by the root and every
+        // helper. The request id is helper-namespaced by Loom, and the final
+        // callback consumes the exact durable approval immediately before
+        // Tool.execute. An approval boolean alone is never execution authority.
+        const permissionReasons = new Map<string, string>()
+        const checkPermission = async (tool: ToolCall) => {
+          if (zoneManager) {
+            const decision = zoneManager.evaluate({
+              toolName: tool.name,
+              input: tool.input,
+              sessionId: assembled.config.sessionId,
+              workspacePath,
+            })
+            lastZoneDecision = decision
+            permissionReasons.set(tool.id, decision.explanation)
+            return {
+              decision: decision.decision,
+              policyRevision: sessionPermissionPolicyRevision,
+              zoneLevel: decision.classification.level,
+              zoneName: decision.classification.zoneName,
+              explanation: decision.explanation,
+              ...(decision.classification.severityTag !== undefined
+                ? { severityTag: decision.classification.severityTag }
+                : {}),
+              ...(decision.classification.severityReason !== undefined
+                ? { severityReason: decision.classification.severityReason }
+                : {}),
+            }
+          }
+          const decision: 'allow' | 'ask' = effectivePermissionMode === 'auto'
+            ? 'allow'
+            : 'ask'
+          if (decision === 'ask') {
+            permissionReasons.set(tool.id, 'Tool requires explicit approval')
+          }
+          return { decision, policyRevision: sessionPermissionPolicyRevision }
+        }
+        const requestApproval = async (tool: ToolCall): Promise<boolean> => {
+          const reason = permissionReasons.get(tool.id)
+            ?? lastZoneDecision?.explanation
+            ?? 'Tool requires explicit approval'
+          try {
+            return await hitl.requestApproval(tool, reason)
+          } finally {
+            permissionReasons.delete(tool.id)
+          }
+        }
+        const authorizeToolExecution = async (
+          tool: ToolCall,
+          context: {
+            readonly requestId: string
+            readonly agentId: string | null
+            readonly approvalRequested: boolean
+            readonly policyRevision?: string
+          },
+        ): Promise<boolean> => {
+          if (context.policyRevision !== sessionPermissionPolicyRevision) return false
+          if (!context.approvalRequested) return true
+          const activeRun = runner.get(threadId!)
+          if (!activeRun || deps.runStore == null) return false
+          return await deps.runStore.consumePermissionApproval({
+            runId: activeRun.runId,
+            requestId: context.requestId,
+            toolName: tool.name,
+            toolInput: tool.input,
+            policyRevision: sessionPermissionPolicyRevision,
+            agentId: context.agentId,
+          }) === 'consumed'
+        }
+
         // Spawn tool pool. Starts as the parent's assembled tools except the
         // root-scoped lazy skill dispatcher (skills cross this boundary only
         // through explicit grant.skills/profile rules). A
@@ -1192,13 +1363,63 @@ export function createRunHandlers(
           provider: assembled.provider,
           tools: spawnerToolPool,
           config: baseSessionConfig,
+          checkPermission,
+          requestApproval,
+          authorizeToolExecution,
+          permissionPolicyRevision: sessionPermissionPolicyRevision,
           onEvent: async (event, subagentId) => {
             trace('spawner-recv', capturedThreadId, subagentId, event.type)
             try {
+              let durableEvent = event
+              const activeRun = runner.get(capturedThreadId)
+              if (event.type === 'permission.request') {
+                if (
+                  event.agentId !== subagentId
+                  || event.policyRevision !== sessionPermissionPolicyRevision
+                  || activeRun == null
+                  || deps.runStore == null
+                ) {
+                  throw new Error('Subagent permission identity is unavailable')
+                }
+                const permission = await deps.runStore.recordPermissionRequest({
+                  runId: activeRun.runId,
+                  requestId: event.requestId,
+                  toolName: event.toolName,
+                  toolInput: event.input,
+                  policyRevision: sessionPermissionPolicyRevision,
+                  agentId: subagentId,
+                })
+                durableEvent = {
+                  ...event,
+                  operationHash: permission.operationHash,
+                  intentRevision: permission.intentRevision,
+                } as unknown as LoomEvent
+                await deps.runStore.markWaiting(activeRun.runId)
+              } else if (
+                event.type === 'permission.response'
+                && activeRun != null
+                && deps.runStore != null
+              ) {
+                const permission = await deps.runStore.getPermissionRequest(
+                  activeRun.runId,
+                  event.requestId,
+                )
+                if (permission?.status === 'pending') {
+                  await deps.runStore.decidePermission(
+                    activeRun.runId,
+                    event.requestId,
+                    permission.operationHash,
+                    event.granted ? 'approve' : 'deny',
+                  )
+                }
+                if (hitl.pendingCount === 0) {
+                  await deps.runStore.markRunningAfterDecision(activeRun.runId)
+                }
+              }
               await state.eventIngestor.ingestSubagentEvent(
                 capturedThreadId,
                 subagentId,
-                event,
+                projectPermissionEvidenceEvent(durableEvent),
               )
             } catch (err) {
               trace('spawner-ingest-fail', capturedThreadId, subagentId, event.type, {
@@ -1301,7 +1522,15 @@ export function createRunHandlers(
           // existing inherit-from-parent resolution byte-for-byte.
           let helperOwnTools: Tool[] | null = null
           if (refProfile && refProfile.config.tools.custom.length > 0) {
+            if (effectiveEgressMode === 'local-only') {
+              throw new RunStartError(
+                422,
+                `Local-only execution cannot import custom tools for helper "${lookupName}" because module initialization has no enforceable outbound containment.`,
+                'local_only_custom_tools_unsupported',
+              )
+            }
             const helperAsm = await assembleAgent(refProfile, {
+              egressMode: effectiveEgressMode,
               webSearchService: deps.webSearchService,
               ...(deps.toolProviders !== undefined ? { toolProviders: deps.toolProviders } : {}),
               credentialContext: {
@@ -1448,7 +1677,12 @@ export function createRunHandlers(
           body.approvalScheduleId != null &&
           body.approvalRunId != null
             ? {
-                hold: async ({ toolName, toolInput }): Promise<void> => {
+                hold: async ({
+                  toolName,
+                  toolInput,
+                  toolRevision,
+                  targetRevision,
+                }): Promise<void> => {
                   // The HoldSink contract says the sink owns its own error
                   // routing and must never throw back into the agent loop. Honor
                   // it: if persisting the draft fails (e.g. a SQLite error), the
@@ -1465,6 +1699,9 @@ export function createRunHandlers(
                       toolName,
                       toolInput,
                       summary: summarizeHeldCall(toolName, toolInput),
+                      policyRevision: sessionPermissionPolicyRevision,
+                      toolRevision,
+                      targetRevision,
                     })
                   } catch (err) {
                     console.error(
@@ -1472,6 +1709,7 @@ export function createRunHandlers(
                         `${body.approvalRunId} (schedule ${body.approvalScheduleId}):`,
                       err,
                     )
+                    throw new Error('Schedule approval persistence failed')
                   }
                 },
               }
@@ -1517,42 +1755,12 @@ export function createRunHandlers(
           // no human approves, the run fails closed through the bounded HITL
           // path. Interactive runs keep the profile's configured fallback.
           permissionMode:
-            body.safetyLevel != null ? 'auto' : profile.config.security.permissionMode,
+            effectivePermissionMode,
 
-          checkPermission: zoneManager
-            ? async (tool) => {
-                const decision = zoneManager.evaluate({
-                  toolName: tool.name,
-                  input: tool.input,
-                  sessionId: assembled.config.sessionId,
-                  workspacePath,
-                })
-                lastZoneDecision = decision
-                // Return the rich CheckPermissionResult so the loop's
-                // `permission.request` event carries the classification
-                // metadata (zone level, severity tag, severity reason).
-                // The client's permission card uses these to render an
-                // appropriate severity badge + warning copy.
-                return {
-                  decision: decision.decision,
-                  zoneLevel: decision.classification.level,
-                  zoneName: decision.classification.zoneName,
-                  explanation: decision.explanation,
-                  ...(decision.classification.severityTag !== undefined
-                    ? { severityTag: decision.classification.severityTag }
-                    : {}),
-                  ...(decision.classification.severityReason !== undefined
-                    ? { severityReason: decision.classification.severityReason }
-                    : {}),
-                }
-              }
-            : undefined,
-
-          requestApproval: async (tool) => {
-            const reason = lastZoneDecision?.explanation
-              ?? 'Tool requires explicit approval'
-            return hitl.requestApproval(tool, reason)
-          },
+          checkPermission,
+          requestApproval,
+          authorizeToolExecution,
+          permissionPolicyRevision: sessionPermissionPolicyRevision,
 
           // Credential isolation wiring — see packages/cortex/CLAUDE.md.
           // All four callbacks read from the per-thread credentialRuntime
@@ -1605,8 +1813,10 @@ export function createRunHandlers(
           asHitlLike('credential', credentialHITL),
         ]
         state.setSessionCompanions(threadId, {
+          egressMode: effectiveEgressMode,
           hitl,
           zoneManager,
+          permissionPolicyRevision: sessionPermissionPolicyRevision,
           getLastZoneDecision: () => lastZoneDecision,
           credentialHITL,
           credentialRuntime,
@@ -1685,6 +1895,7 @@ export function createRunHandlers(
           profileId,
           ...(candidateId !== null ? { candidateId } : {}),
           model: modelString,
+          egressMode: effectiveEgressMode,
           timeoutMs,
           startSeq,
         }))?.runId ?? randomUUID()
@@ -1749,11 +1960,16 @@ export function createRunHandlers(
       // later the runner's own finally block flips status to 'error'.
       await state.updateThread(threadId!, { status: 'active' })
 
+      const egressControl = deps.egressReceipts === undefined
+        ? undefined
+        : new RunEgressControl(effectiveEgressMode, runId, deps.egressReceipts)
       const handle = runner.start({
         runId,
         threadId: threadId!,
         profileId,
         model: modelString,
+        permissionPolicyRevision: companions.permissionPolicyRevision,
+        ...(egressControl === undefined ? {} : { egressControl }),
         prompt: promptContent,
         attachments: attachmentMeta,
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -1767,6 +1983,7 @@ export function createRunHandlers(
         profileId,
         candidateId,
         model: modelString,
+        egressMode: effectiveEgressMode,
         ...(modelSubstitution !== undefined ? { modelSubstitution } : {}),
         status: 'running',
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -1880,55 +2097,146 @@ export function createRunHandlers(
       return
     }
 
-    // Session-scope folder grant. Append the canonicalized grant path
-    // to the session's additionalWorkspaceRoots BEFORE resolving the
-    // pending HITL request — the loop's next ToolContext (built when
-    // the awaited tool resumes) reads from the same array reference,
-    // so the boundary check sees the grant on this very call.
+    if (approved && body.requestId === undefined && deps.runStore != null) {
+      sendError(
+        res,
+        409,
+        'Approving a tool requires its exact permission request id',
+        'exact_permission_request_required',
+        'invalid_request',
+      )
+      return
+    }
+
+    let folderGrant: {
+      readonly roots: string[]
+      readonly literal: string
+      readonly canonical: string
+    } | null = null
     if (body.action === 'allow_folder_session') {
       if (!body.grantPath || typeof body.grantPath !== 'string') {
         sendError(res, 400, 'allow_folder_session requires "grantPath"')
         return
       }
       const companions = state.getSessionCompanions(threadId)
-      if (companions) {
-        const { realpath } = await import('node:fs/promises')
-        let canonical = body.grantPath
-        try {
-          canonical = await realpath(body.grantPath)
-        } catch {
-          // realpath fails for non-existent paths — keep literal so a
-          // grant for a yet-to-be-created folder still works.
-        }
-        // Reject root '/' outright — it would defeat the whole boundary.
-        if (canonical === '/' || canonical === '') {
-          sendError(res, 400, 'Cannot grant root "/" as a workspace folder')
+      if (companions == null) {
+        sendError(res, 409, 'Session permission context is unavailable')
+        return
+      }
+      const { realpath } = await import('node:fs/promises')
+      let canonical = body.grantPath
+      try {
+        canonical = await realpath(body.grantPath)
+      } catch {
+        // A future directory may not exist yet. The boundary checks both the
+        // literal and any later realpath; root is still rejected explicitly.
+      }
+      if (canonical === '/' || canonical === '') {
+        sendError(res, 400, 'Cannot grant root "/" as a workspace folder')
+        return
+      }
+      folderGrant = {
+        roots: companions.sessionAdditionalRoots,
+        literal: body.grantPath,
+        canonical,
+      }
+    }
+
+    let durableDecision: {
+      readonly runId: string
+      readonly requestId: string
+      readonly operationHash: string
+    } | null = null
+    if (body.requestId !== undefined && deps.runStore != null) {
+      const active = runner.get(threadId)
+      // A real Gateway run is always present while its HITL is live. Tests
+      // and compatibility embedders may inject a standalone HITL with no run;
+      // that path has no Cortex-managed dispatch callback and therefore is
+      // outside the exact-binding support envelope.
+      if (active != null) {
+        const permission = await deps.runStore.getPermissionRequest(
+          active.runId,
+          body.requestId,
+        )
+        if (permission == null || permission.status !== 'pending') {
+          sendError(res, 409, 'Permission request was already decided or became stale')
           return
         }
-        // Dedupe against existing grants. The boundary check accepts
-        // both literal and realpath forms, so duplicate-by-realpath is
-        // sufficient.
-        const already = companions.sessionAdditionalRoots.some(
-          (r) => r === canonical || r === body.grantPath,
+        const decided = await deps.runStore.decidePermission(
+          active.runId,
+          body.requestId,
+          permission.operationHash,
+          approved ? 'approve' : 'deny',
         )
-        if (!already) {
-          companions.sessionAdditionalRoots.push(canonical)
+        if (decided !== 'decided') {
+          sendError(res, 409, 'Permission decision conflicted with current state')
+          return
+        }
+        durableDecision = {
+          runId: active.runId,
+          requestId: body.requestId,
+          operationHash: permission.operationHash,
         }
       }
     }
 
+    // The same mutable roots array is read when the suspended tool resumes.
+    // Add only after the exact decision is durable, immediately before
+    // delivery, and roll it back if the delivery lost its race.
+    const folderGrantAdded = folderGrant != null && !folderGrant.roots.some(
+      (root) => root === folderGrant!.canonical || root === folderGrant!.literal,
+    )
+    if (folderGrantAdded) folderGrant!.roots.push(folderGrant!.canonical)
+    const rollbackFolderGrant = (): void => {
+      if (!folderGrantAdded || folderGrant == null) return
+      const index = folderGrant.roots.lastIndexOf(folderGrant.canonical)
+      if (index >= 0) folderGrant.roots.splice(index, 1)
+    }
+
     if (body.requestId) {
       if (execution) {
-        const delivered = await execution.answerPermission({
-          requestId: body.requestId,
-          decision: approved ? 'approve' : 'deny',
-        })
+        let delivered
+        try {
+          delivered = await execution.answerPermission({
+            requestId: body.requestId,
+            decision: approved ? 'approve' : 'deny',
+          })
+        } catch (error) {
+          rollbackFolderGrant()
+          if (durableDecision != null) {
+            await deps.runStore!.expirePermission(
+              durableDecision.runId,
+              durableDecision.requestId,
+              durableDecision.operationHash,
+            )
+          }
+          throw error
+        }
         if (delivered.status !== 'delivered') {
+          rollbackFolderGrant()
+          if (durableDecision != null) {
+            await deps.runStore!.expirePermission(
+              durableDecision.runId,
+              durableDecision.requestId,
+              durableDecision.operationHash,
+            )
+          }
           sendError(res, 409, 'Permission request became stale')
           return
         }
       } else {
-        hitl!.respond(body.requestId, approved)
+        if (!hitl!.respond(body.requestId, approved)) {
+          rollbackFolderGrant()
+          if (durableDecision != null) {
+            await deps.runStore!.expirePermission(
+              durableDecision.runId,
+              durableDecision.requestId,
+              durableDecision.operationHash,
+            )
+          }
+          sendError(res, 409, 'Permission request became stale')
+          return
+        }
       }
     } else {
       // This compatibility endpoint historically allowed a bulk response for
@@ -2088,6 +2396,11 @@ export function createRunHandlers(
             : 'stale',
         } as const
     if (permissionResult.status !== 'delivered') {
+      await deps.runStore!.expirePermission(
+        runId,
+        requestId,
+        parsed.data.operationHash,
+      )
       sendError(res, 409, 'Permission request became stale', 'permission_request_stale', 'invalid_request')
       return
     }
@@ -2102,6 +2415,7 @@ export function createRunHandlers(
       runId,
       requestId,
       operationHash: parsed.data.operationHash,
+      intentRevision: permission.intentRevision,
       decision: parsed.data.decision,
     })
   }
@@ -2187,6 +2501,7 @@ export function createRunHandlers(
       sendJSON(res, 200, {
         runId,
         status: snapshot.status,
+        consequence: snapshot.consequence,
         terminal: true,
         outcomeKnown: snapshot.outcomeKnown,
         cancellation: 'already_terminal',
@@ -2218,6 +2533,7 @@ export function createRunHandlers(
       sendJSON(res, 200, {
         runId,
         status: terminal.status,
+        consequence: terminal.consequence,
         terminal: true,
         outcomeKnown: terminal.outcomeKnown,
         cancellation: 'already_terminal',
@@ -2229,6 +2545,7 @@ export function createRunHandlers(
     sendJSON(res, 202, {
       runId,
       status: persisted.status,
+      consequence: persisted.consequence,
       terminal: false,
       outcomeKnown: persisted.outcomeKnown,
       cancellation: outcome,
@@ -2308,6 +2625,137 @@ export function createRunHandlers(
       ? (currentEnd === snapshot.startSeq ? snapshot.startSeq : null)
       : firstRetained - 1
     sendJSON(res, 200, { ...snapshot, earliestRetainedCursor })
+  }
+
+  // GET /api/v1/runs/:runId/effect-receipts — immutable evidence page.
+  async function listEffectReceipts(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const snapshot = await deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    }) || !await delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+
+    if (deps.effectReceipts === undefined) {
+      sendError(
+        res,
+        503,
+        'Effect evidence is unavailable',
+        'effect_evidence_unavailable',
+        'overload',
+      )
+      return
+    }
+    res.setHeader('Cache-Control', 'no-store')
+
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (
+      [...url.searchParams.keys()].some((key) => key !== 'limit' && key !== 'cursor')
+      || url.searchParams.getAll('limit').length > 1
+      || url.searchParams.getAll('cursor').length > 1
+    ) {
+      sendError(res, 400, 'Effect receipt page is invalid', 'effect_receipt_page_invalid', 'invalid_request')
+      return
+    }
+    const rawLimit = url.searchParams.get('limit')
+    const limit = rawLimit === null ? 50 : Number(rawLimit)
+    const cursor = url.searchParams.get('cursor')
+    if (
+      !Number.isSafeInteger(limit)
+      || limit < 1
+      || limit > 100
+      || (rawLimit !== null && !/^[1-9][0-9]{0,2}$/.test(rawLimit))
+    ) {
+      sendError(res, 400, 'Effect receipt page is invalid', 'effect_receipt_page_invalid', 'invalid_request')
+      return
+    }
+    try {
+      const page = await deps.effectReceipts.listForRun(runId, { limit, cursor })
+      sendJSON(res, 200, page)
+    } catch (error) {
+      if (error instanceof EffectReceiptStoreError && error.code === 'cursor_invalid') {
+        sendError(res, 400, 'Effect receipt cursor is invalid', 'effect_receipt_cursor_invalid', 'invalid_request')
+        return
+      }
+      throw error
+    }
+  }
+
+  // GET /api/v1/runs/:runId/egress-receipts — payload-free outbound evidence.
+  async function listEgressReceipts(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const snapshot = await deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    }) || !await delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+    if (deps.egressReceipts === undefined) {
+      sendError(res, 503, 'Egress evidence is unavailable', 'egress_evidence_unavailable', 'overload')
+      return
+    }
+    res.setHeader('Cache-Control', 'no-store')
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    if (
+      [...url.searchParams.keys()].some((key) => key !== 'limit' && key !== 'cursor')
+      || url.searchParams.getAll('limit').length > 1
+      || url.searchParams.getAll('cursor').length > 1
+    ) {
+      sendError(res, 400, 'Egress receipt page is invalid', 'egress_receipt_page_invalid', 'invalid_request')
+      return
+    }
+    const rawLimit = url.searchParams.get('limit')
+    const limit = rawLimit === null ? 50 : Number(rawLimit)
+    const cursor = url.searchParams.get('cursor')
+    if (
+      !Number.isSafeInteger(limit)
+      || limit < 1
+      || limit > 100
+      || (rawLimit !== null && !/^[1-9][0-9]{0,2}$/.test(rawLimit))
+    ) {
+      sendError(res, 400, 'Egress receipt page is invalid', 'egress_receipt_page_invalid', 'invalid_request')
+      return
+    }
+    try {
+      sendJSON(res, 200, await deps.egressReceipts.listForRun(runId, { limit, cursor }))
+    } catch (error) {
+      if (error instanceof EgressReceiptStoreError && error.code === 'cursor_invalid') {
+        sendError(res, 400, 'Egress receipt cursor is invalid', 'egress_receipt_cursor_invalid', 'invalid_request')
+        return
+      }
+      throw error
+    }
   }
 
   // GET /api/v1/runs/active
@@ -2422,7 +2870,8 @@ export function createRunHandlers(
    * body), so a caller can't approve-execute an arbitrary tool/input.
    *
    * One-shot ToolContext (no model loop, no streaming HITL):
-   *   - requestPermission → true: the user already approved THIS exact action.
+   *   - requestPermission → false: nested/unmodeled actions were not part of
+   *     the reviewed intent and must be drafted separately.
    *   - requestCredential → deny: an unattended approve has no human to prompt;
    *     the tool resolves its already-stored connector token via the credential
    *     layer (connector identity is baked into the tool at assembly time).
@@ -2432,17 +2881,22 @@ export function createRunHandlers(
     readonly profileId: string
     readonly threadId: string | null
     readonly workspaceId?: string
+    readonly safetyLevel: 'read-only' | 'draft-approval' | 'full-access'
     readonly toolName: string
     readonly toolInput: unknown
+    readonly policyRevision: string
+    readonly toolRevision: string
+    readonly targetRevision: string | null
   }): Promise<ToolResult> {
     // The held tool belongs to THIS agent — resolve the profile.
-    if (!registry.has(params.profileId)) {
+    const resolvedCandidate = await deps.candidateResolver?.resolve(params.profileId) ?? null
+    if (!resolvedCandidate && !registry.has(params.profileId)) {
       await registry.refreshUser()
       if (!registry.has(params.profileId)) {
         return { content: `The agent for this draft ("${params.profileId}") no longer exists.`, isError: true }
       }
     }
-    const profile = await registry.get(params.profileId)
+    const profile = resolvedCandidate?.profile ?? await registry.get(params.profileId)
 
     // Filesystem tools need a real cwd boundary — resolve the workspace path.
     // Connector sends (gmail/slack) don't need a workspace; they resolve a token.
@@ -2461,6 +2915,7 @@ export function createRunHandlers(
       await buildThreadCredentialRuntime(credentialThreadId, workspacePath)
 
     const assembled = await assembleAgent(profile, {
+      egressMode: profile.config.security.egressMode,
       ...(deps.resolvePluginSkills === undefined
         ? {}
         : {
@@ -2488,6 +2943,40 @@ export function createRunHandlers(
     if (tool == null) {
       return { content: `The "${params.toolName}" tool is no longer available for this agent.`, isError: true }
     }
+    if (
+      profile.config.security.egressMode === 'local-only'
+      && tool.egress?.mediation !== 'none'
+    ) {
+      return {
+        content:
+          'This delayed action cannot execute because it has no run-scoped outbound controller. ' +
+          'Start a new local-only run so the action can be evaluated at its dispatch boundary.',
+        isError: true,
+      }
+    }
+    if (permissionToolRevision(tool) !== params.toolRevision) {
+      return {
+        content: 'This tool changed after the draft was reviewed. Nothing was sent or changed.',
+        isError: true,
+      }
+    }
+    const currentPolicyRevision = permissionPolicyRevision({
+      profileId: params.profileId,
+      candidateId: resolvedCandidate?.candidateId ?? null,
+      workspaceId: params.workspaceId ?? null,
+      workspacePath: workspacePath ?? null,
+      safetyLevel: params.safetyLevel,
+      permissionMode: 'auto',
+      egressMode: profile.config.security.egressMode,
+      zoneConfig: profile.config.security,
+      tools: assembled.tools,
+    })
+    if (currentPolicyRevision !== params.policyRevision) {
+      return {
+        content: 'This agent, workspace, or permission policy changed after review. Nothing was sent or changed.',
+        isError: true,
+      }
+    }
 
     // Faithful one-shot ToolContext — mirrors loop.ts's per-call construction
     // (loop.ts:~1586), minus the streaming-only paths.
@@ -2501,7 +2990,7 @@ export function createRunHandlers(
       workspacePath: effectiveCwd,
       additionalWorkspaceRoots: [],
       config: assembled.config,
-      requestPermission: async () => true,
+      requestPermission: async () => false,
       requestCredential: async () => null,
       resolveCredential: (id) => credentialRuntime.resolveValue(id),
       listEnvCredentials: () => credentialRuntime.listEnvCredentials(),
@@ -2513,8 +3002,15 @@ export function createRunHandlers(
       name: params.toolName,
       input: (params.toolInput ?? {}) as Record<string, unknown>,
     }
+    const executableTool = toolForHeldExecution(tool, params.targetRevision)
+    if (executableTool == null) {
+      return {
+        content: 'This tool no longer supports the reviewed target precondition. Nothing was sent or changed.',
+        isError: true,
+      }
+    }
     const exec = await executeTool({
-      tool,
+      tool: executableTool,
       toolCall,
       context,
       config: assembled.config.toolExecution,
@@ -2523,7 +3019,8 @@ export function createRunHandlers(
   }
 
   return {
-    run, startProfileRun, resume, decidePermission, cancelRun, abort, getRun, listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
+    run, startProfileRun, resume, decidePermission, cancelRun, abort, getRun,
+    listEffectReceipts, listEgressReceipts, listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
     executeHeldTool,
   }
 }

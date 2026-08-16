@@ -12,6 +12,7 @@ import type { Message } from '../messages/types.js'
 import type { CompactionResult, CompactionStrategy } from './types.js'
 import type { CompactionRetain } from '../core/config.js'
 import type { ProviderAdapter } from '../provider/types.js'
+import type { EgressControl } from '../egress/types.js'
 
 /** Default overlap: keep 2 messages from before the window for context continuity */
 const DEFAULT_OVERLAP = 2
@@ -38,9 +39,11 @@ export async function slidingWindow(
   retain: CompactionRetain,
   provider: ProviderAdapter,
   options: SlidingWindowOptions = {},
+  egressControl?: EgressControl,
 ): Promise<CompactionResult> {
   const overlap = options.overlap ?? DEFAULT_OVERLAP
-  const preTokenCount = await provider.countTokens(messages, systemPrompt)
+  const countOptions = egressControl === undefined ? undefined : { egressControl }
+  const preTokenCount = await provider.countTokens(messages, systemPrompt, countOptions)
 
   // Separate leading system messages
   const systemMessages: Message[] = []
@@ -88,7 +91,7 @@ export async function slidingWindow(
 
   result.push(...windowMessages)
 
-  const postTokenCount = await provider.countTokens(result, systemPrompt)
+  const postTokenCount = await provider.countTokens(result, systemPrompt, countOptions)
 
   return {
     strategy: 'sliding_window' satisfies CompactionStrategy,

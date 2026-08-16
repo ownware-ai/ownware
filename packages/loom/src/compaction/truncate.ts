@@ -27,6 +27,7 @@ import {
 import type { CompactionResult, CompactionStrategy } from './types.js'
 import type { CompactionRetain } from '../core/config.js'
 import type { ProviderAdapter } from '../provider/types.js'
+import type { EgressControl } from '../egress/types.js'
 
 /**
  * Truncate older messages, keeping only the most recent rounds.
@@ -42,8 +43,10 @@ export async function truncate(
   systemPrompt: string,
   retain: CompactionRetain,
   provider: ProviderAdapter,
+  egressControl?: EgressControl,
 ): Promise<CompactionResult> {
-  const preTokenCount = await provider.countTokens(messages, systemPrompt)
+  const countOptions = egressControl === undefined ? undefined : { egressControl }
+  const preTokenCount = await provider.countTokens(messages, systemPrompt, countOptions)
 
   // Round-aware retention: slice on group boundaries so a tool_use ↔
   // tool_result pair can never end up split. `assertPairing` is an
@@ -52,7 +55,7 @@ export async function truncate(
   const retained = selectRetainedByRound(messages, retain)
   assertPairing(retained)
 
-  const postTokenCount = await provider.countTokens(retained, systemPrompt)
+  const postTokenCount = await provider.countTokens(retained, systemPrompt, countOptions)
 
   return {
     strategy: 'truncate' satisfies CompactionStrategy,

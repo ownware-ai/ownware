@@ -13,6 +13,7 @@ import type { SystemPrompt } from './system-prompt.js'
 import type { LoomEvent, TurnUsage } from './events.js'
 import type { CredentialCallbacks, LoopResult } from './loop.js'
 import type { CredentialResolver } from '../credentials/resolver.js'
+import type { EgressControl } from '../egress/types.js'
 import type { Message, ContentBlock } from '../messages/types.js'
 import type { ReminderInjector } from '../reminders/index.js'
 import type { HookRuntime } from '../hooks/index.js'
@@ -33,6 +34,7 @@ import type { CompactionManager } from '../compaction/manager.js'
 import { createCompactionManager } from '../compaction/manager.js'
 import type { CheckpointStore } from '../checkpoint/types.js'
 import type { CheckPermissionResult, PolicyDecision } from '../permissions/types.js'
+import type { ToolExecutionAuthorizationContext } from '../permissions/types.js'
 import { SessionPermissionStore } from '../permissions/session-store.js'
 import { loop } from './loop.js'
 import { systemPromptToText } from './system-prompt.js'
@@ -73,6 +75,12 @@ export type CheckPermissionFn = (tool: ToolCall) => Promise<PolicyDecision | Che
  * This is where consumers wire HumanInTheLoop, zone UI prompts, etc.
  */
 export type RequestApprovalFn = (tool: ToolCall) => Promise<boolean>
+
+/** Final host authorization immediately before tool dispatch. */
+export type AuthorizeToolExecutionFn = (
+  tool: ToolCall,
+  context: ToolExecutionAuthorizationContext,
+) => Promise<boolean>
 
 // ---------------------------------------------------------------------------
 // Side-call (one-shot meta-task helper)
@@ -123,6 +131,8 @@ export interface QuerySideOptions {
    * in flight.
    */
   readonly signal?: AbortSignal
+  /** Per-run outbound authority when this side call belongs to a run. */
+  readonly egressControl?: EgressControl
 }
 
 /** Result of a `Session.querySide` call. */
@@ -179,6 +189,8 @@ export class Session {
   private permissionStore?: SessionPermissionStore
   private customCheckPermission?: CheckPermissionFn
   private customRequestApproval?: RequestApprovalFn
+  private customAuthorizeToolExecution?: AuthorizeToolExecutionFn
+  private permissionPolicyRevision?: string
   private credentialCallbacks?: CredentialCallbacks
   /**
    * Unified credential resolver (board: credentials-unification — C20).
@@ -312,6 +324,10 @@ export class Session {
      * Use this to wire HumanInTheLoop or zone-aware approval UI.
      */
     requestApproval?: RequestApprovalFn
+    /** Final host authorization immediately before Tool.execute. */
+    authorizeToolExecution?: AuthorizeToolExecutionFn
+    /** Opaque revision bound to bare permission verdicts. */
+    permissionPolicyRevision?: string
     /**
      * Credential callbacks — passed through to the loop on every
      * submitMessage. Consumers (Cortex) wire these to their vault + HITL
@@ -405,6 +421,8 @@ export class Session {
     this.permissionStore = opts.permissionStore
     this.customCheckPermission = opts.checkPermission
     this.customRequestApproval = opts.requestApproval
+    this.customAuthorizeToolExecution = opts.authorizeToolExecution
+    this.permissionPolicyRevision = opts.permissionPolicyRevision
     this.credentialCallbacks = opts.credentials
     this.credentialResolver = opts.credentialResolver
     this.reminders = opts.reminders
@@ -509,6 +527,12 @@ export class Session {
         }
         return false
       },
+      ...(this.customAuthorizeToolExecution
+        ? { authorizeToolExecution: this.customAuthorizeToolExecution }
+        : {}),
+      ...(this.permissionPolicyRevision !== undefined
+        ? { permissionPolicyRevision: this.permissionPolicyRevision }
+        : {}),
       ...(this.credentialCallbacks ? { credentials: this.credentialCallbacks } : {}),
       ...(this.credentialResolver ? { credentialResolver: this.credentialResolver } : {}),
       ...(this.toolResultCacheOverride ? { toolResultCache: this.toolResultCacheOverride } : {}),
@@ -543,7 +567,10 @@ export class Session {
     // Proactive (async) compaction — schedule if pressure is approaching the
     // trigger fraction. Fires in the background while the user reads the
     // response. Next `submitMessage` awaits it (see top of method).
-    this.scheduleProactiveCompaction()
+    // A controlled run must not start untracked provider work after its
+    // generator returns and the host terminalizes its receipt ledger. It will
+    // compact synchronously under the next run's authority instead.
+    if (turnConfig.egressControl === undefined) this.scheduleProactiveCompaction()
 
     return result
   }
@@ -788,6 +815,23 @@ export class Session {
       maxTokens: opts.maxTokens ?? 256,
       temperature: opts.temperature ?? null,
       ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(opts.egressControl ?? this.config.egressControl
+        ? { egressControl: opts.egressControl ?? this.config.egressControl }
+        : {}),
+    }
+
+    if (
+      request.egressControl !== undefined
+      && provider.egressMediation !== 'fetch'
+      && provider.egressMediation !== 'delegated'
+    ) {
+      await request.egressControl.routeUnavailable({
+        sourceKind: 'provider',
+        sourceRef: provider.name,
+        mediation: provider.egressMediation === 'uncontained'
+          ? 'uncontained'
+          : 'unknown',
+      })
     }
 
     let text = ''

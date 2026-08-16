@@ -28,6 +28,7 @@ import { ConfigError } from '../core/errors.js'
 import type { Message, ContentBlock } from '../messages/types.js'
 import { withStallGuard } from './stall-guard.js'
 import { LOOM_TRACE } from '../observability/debug-trace.js'
+import type { EgressControl } from '../egress/types.js'
 
 // ---------------------------------------------------------------------------
 // Stall detection defaults (match Anthropic provider)
@@ -42,6 +43,7 @@ const STALL_TIMEOUT_MS = 90_000
 
 export class GoogleProvider implements ProviderAdapter {
   readonly name = 'google'
+  readonly egressMediation = 'uncontained' as const
 
   /** Static SDK client; reused for every stream when constructed with a
    *  static apiKey. `null` when the dynamic apiKeyProvider path is in use. */
@@ -308,7 +310,18 @@ export class GoogleProvider implements ProviderAdapter {
   /**
    * Count tokens using Google's native countTokens API.
    */
-  async countTokens(messages: Message[], system?: string): Promise<number> {
+  async countTokens(
+    messages: Message[],
+    system?: string,
+    options?: { readonly egressControl?: EgressControl },
+  ): Promise<number> {
+    if (options?.egressControl !== undefined) {
+      await options.egressControl.routeUnavailable({
+        sourceKind: 'provider',
+        sourceRef: this.name,
+        mediation: 'uncontained',
+      })
+    }
     const client = await this.getClient()
     const model = client.getGenerativeModel({ model: this.defaultModel })
     const contents = toGeminiContents(messages)

@@ -206,7 +206,9 @@ export const agentSpawn: Tool = defineTool({
       // The previous 300_000ms internal timeouts silently killed
       // legitimate long sub-agents — the parent got a timeout error with
       // no pointer to the (still-running) helper.
-      const spawned = await spawner.spawn(spec, 'isolated', initialMessages) as { id: string }
+      const spawned = await spawner.spawn(spec, 'isolated', initialMessages, {
+        egressControl: context.config.egressControl,
+      }) as { id: string }
       handle = spawned
 
       if (background) {

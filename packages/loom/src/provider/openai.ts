@@ -25,6 +25,7 @@ import { ProviderError, classifyHttpError } from '../core/errors.js'
 import { LOOM_TRACE } from '../observability/debug-trace.js'
 import { isKimiModel } from './quirks/kimi.js'
 import { toCanonicalKimiId } from './quirks/kimi-id-mapper.js'
+import { createEgressFetch } from '../egress/fetch.js'
 
 // ---------------------------------------------------------------------------
 // Stall detection defaults (match Anthropic provider)
@@ -39,6 +40,7 @@ const STALL_TIMEOUT_MS = 90_000
 
 export class OpenAIProvider implements ProviderAdapter {
   readonly name: string = 'openai'
+  readonly egressMediation = 'fetch' as const
 
   /** Static SDK client; reused for every stream when constructed
    *  with a static apiKey. `null` when the dynamic apiKeyProvider
@@ -52,6 +54,11 @@ export class OpenAIProvider implements ProviderAdapter {
   private readonly apiKeyProvider: (() => Promise<string>) | undefined
   private readonly dynamicBaseURL: string | undefined
   private readonly dynamicOrganization: string | undefined
+  private readonly staticOptions: {
+    readonly apiKey?: string
+    readonly baseURL?: string
+    readonly organization?: string
+  }
   /**
    * Transport hooks forwarded to the SDK on BOTH construction paths. Held as
    * a pre-built spread so the static and dynamic paths cannot drift apart —
@@ -85,6 +92,11 @@ export class OpenAIProvider implements ProviderAdapter {
     organization?: string
     apiKeyProvider?: () => Promise<string>
   } & ProviderTransportOptions) {
+    this.staticOptions = {
+      ...(opts?.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts?.baseURL !== undefined ? { baseURL: opts.baseURL } : {}),
+      ...(opts?.organization !== undefined ? { organization: opts.organization } : {}),
+    }
     this.transport = {
       ...(opts?.fetch !== undefined ? { fetch: opts.fetch } : {}),
       ...(opts?.defaultHeaders !== undefined ? { defaultHeaders: opts.defaultHeaders } : {}),
@@ -113,17 +125,35 @@ export class OpenAIProvider implements ProviderAdapter {
    * constructs a fresh `OpenAI` instance per call so the resolved key
    * cannot leak across requests.
    */
-  protected async getClient(): Promise<OpenAI> {
+  protected async getClient(request?: ProviderRequest): Promise<OpenAI> {
+    const requestTransport = request?.egressControl === undefined
+      ? this.transport
+      : {
+          ...this.transport,
+          fetch: createEgressFetch({
+            fetch: this.transport.fetch ?? globalThis.fetch,
+            control: request.egressControl,
+            sourceRef: this.name,
+            mediation: this.transport.fetch === undefined
+              ? 'platform_fetch'
+              : 'custom_fetch',
+          }),
+        }
+    const sdkTransport = requestTransport as Partial<ConstructorParameters<typeof OpenAI>[0]>
     if (this.apiKeyProvider !== undefined) {
       const apiKey = await this.apiKeyProvider()
       return new OpenAI({
         apiKey,
         ...(this.dynamicBaseURL !== undefined ? { baseURL: this.dynamicBaseURL } : {}),
         ...(this.dynamicOrganization !== undefined ? { organization: this.dynamicOrganization } : {}),
-        ...this.sdkTransport,
+        ...sdkTransport,
       })
     }
-    return this.staticClient!
+    if (request?.egressControl === undefined) return this.staticClient!
+    return new OpenAI({
+      ...this.staticOptions,
+      ...sdkTransport,
+    })
   }
 
   /**
@@ -191,7 +221,7 @@ export class OpenAIProvider implements ProviderAdapter {
     // offending tool_use_id(s) in a clear loom-side error instead.
     assertPairing(request.messages)
 
-    const client = await this.getClient()
+    const client = await this.getClient(request)
     // Reasoning-model handling — catalog-driven (models.dev marks o-series,
     // gpt-5 non-chat, and future reasoners with `reasoning: true`). The
     // reasoning endpoint rejects a handful of params the standard Chat

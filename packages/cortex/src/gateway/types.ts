@@ -386,6 +386,8 @@ export interface PermissionRecord {
   readonly inputSummary?: string
   /** HMAC identity of the exact tool name + input for run-scoped decisions. */
   readonly operationHash?: string
+  /** Canonical permission-intent schema revision. */
+  readonly intentRevision?: 1
   readonly reason: string
   readonly decision: 'approved' | 'denied' | 'pending'
   /** Zone level (0-6) if zone system is active */
@@ -646,6 +648,8 @@ export interface RunRequest {
   readonly threadId?: string
   readonly workspaceId?: string
   readonly model?: string
+  /** Per-run outbound envelope; can tighten but never widen the profile default. */
+  readonly egressMode?: 'unrestricted' | 'local-only'
   /** File attachments from the client (images, PDFs, notebooks, text files). */
   readonly attachments?: readonly FileAttachmentInput[]
   /**

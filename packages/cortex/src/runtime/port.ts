@@ -1,4 +1,4 @@
-import type { ContentBlock, LoomEvent, Session } from '@ownware/loom'
+import type { ContentBlock, EgressControl, LoomEvent, Session } from '@ownware/loom'
 import type { RuntimeSelection } from './selection.js'
 
 export type RuntimePhase =
@@ -40,6 +40,7 @@ export interface RuntimeStatus {
 
 export interface RuntimeStartRequest {
   readonly prompt: string | ContentBlock[]
+  readonly egressControl?: EgressControl
 }
 
 export interface RuntimePermissionDecision {
@@ -90,6 +91,8 @@ export type RuntimeDriverEvent =
       readonly sourceSequence: number
       readonly event: LoomEvent
       readonly consequence?: RuntimeConsequence
+      /** Content-free authority at the actual effect boundary. */
+      readonly effectAuthority?: string
     }
   | {
       readonly kind: 'unknown'
@@ -103,6 +106,7 @@ export interface RuntimeEventEnvelope {
   readonly sequence: number
   readonly event: LoomEvent
   readonly consequence: RuntimeConsequence
+  readonly effectAuthority?: string
 }
 
 /**
@@ -135,6 +139,7 @@ export class RuntimeContractError extends Error {
       | 'runtime_late_event'
       | 'runtime_outcome_indeterminate'
       | 'runtime_permission_unresolved'
+      | 'runtime_effect_evidence_invalid'
       | 'runtime_driver_completion_missing',
     message: string,
     readonly sourceSequence?: number,
@@ -192,7 +197,9 @@ function inferConsequence(event: LoomEvent): RuntimeConsequence {
   ) {
     return 'output_observed'
   }
-  if (event.type === 'tool.call.end') return 'effect_possible'
+  if (event.type === 'tool.call.end') {
+    return event.cacheHit === true ? 'output_observed' : 'effect_possible'
+  }
   return 'none_observed'
 }
 
@@ -220,6 +227,10 @@ function safeRuntimeLabel(value: string): string {
   return /^[A-Za-z0-9_.:/-]{1,128}$/.test(value)
     ? value
     : 'unrecognized'
+}
+
+function safeEffectAuthority(value: string): boolean {
+  return /^[A-Za-z0-9_.:/-]{1,160}$/.test(value)
 }
 
 /**
@@ -297,6 +308,25 @@ export class ManagedExecutionRuntime implements ExecutionRuntime {
         }
 
         const consequence = observed.consequence ?? inferConsequence(observed.event)
+        if (
+          (
+            observed.effectAuthority !== undefined
+            && (
+              observed.event.type !== 'tool.call.end'
+              || !safeEffectAuthority(observed.effectAuthority)
+            )
+          )
+          || (
+            consequence === 'effect_confirmed'
+            && observed.effectAuthority === undefined
+          )
+        ) {
+          throw this.contractFailure(
+            'runtime_effect_evidence_invalid',
+            'Runtime effect evidence did not name a valid effect-boundary authority.',
+            observed.sourceSequence,
+          )
+        }
         if (observed.event.type === 'permission.request') {
           this.pendingPermissions.add(observed.event.requestId)
         } else if (observed.event.type === 'permission.response') {
@@ -317,6 +347,9 @@ export class ManagedExecutionRuntime implements ExecutionRuntime {
           sequence: observed.sourceSequence,
           event: observed.event,
           consequence,
+          ...(observed.effectAuthority !== undefined
+            ? { effectAuthority: observed.effectAuthority }
+            : {}),
         }
         result = await source.next()
       }
@@ -518,7 +551,12 @@ export function createOwnwareRuntimeDriver(
   return {
     selection: options.selection,
     async *start(request) {
-      const source = options.session.submitMessage(request.prompt)
+      const source = options.session.submitMessage(
+        request.prompt,
+        request.egressControl === undefined
+          ? undefined
+          : { egressControl: request.egressControl },
+      )
       let sequence = 0
       let result = await source.next()
       while (!result.done) {

@@ -68,9 +68,10 @@ src/
 | `provider-hub/schema.ts` + `service.ts` | Secret-free central provider/model/connection contract, catalog views and honest verification/pricing projections | Changing Provider Hub semantics or public catalog behavior |
 | `gateway/state.ts` | Composes adapter repositories with process-local sessions/runtimes | Adding persistence backends or changing state ownership |
 | `gateway/db/schema.ts` + `migration-safety.ts` | Immutable SQLite migration manifest, exact applied-history validation, snapshots and recovery | Adding a migration or changing database startup safety |
+| `gateway/run-store.ts` + `effect-receipt-store.ts` + `permission-intent.ts` | Durable run lifecycle/consequence authority, immutable payload-free per-tool-action evidence, and canonical exact permission identities/one-use consumption | Changing retry safety, permission/effect authority semantics or public run evidence |
 | `storage/contracts.ts` + `sqlite-adapter.ts` | Async adapter lifecycle, guarded repository/transaction scopes, savepoints and typed operational failures | Changing storage startup, shutdown or transaction ownership |
 | `storage/core-repositories.ts` + `sqlite-core-repositories.ts` | Backend-neutral async domain ports for threads, messages, usage and agent events, with the SQLite implementation | Changing durable core reads/writes or adding a storage backend |
-| `storage/security-repositories.ts` + `sqlite-security-repositories.ts` | Backend-neutral async ports for credentials, grants, principals, runs, permissions, idempotency, refresh leases and runtime thread references | Changing security/run authority persistence or adding a storage backend |
+| `storage/security-repositories.ts` + `sqlite-security-repositories.ts` | Backend-neutral async ports for credentials, grants, principals, runs/effect/egress receipts, permissions, idempotency, refresh leases and runtime thread references | Changing security/run/effect/egress authority persistence or adding a storage backend |
 | `storage/source-repositories.ts` + `sqlite-source-repositories.ts` | Backend-neutral async ports for source registration, uploads, quotas, source jobs, Data Views and deletion, with the SQLite implementation | Changing durable source authority or adding a storage backend |
 | `storage/platform-repositories.ts` + `sqlite-platform-repositories.ts` | Backend-neutral async ports for connectors, channels, schedules, approvals, tasks, memory, candidates and teams, with the SQLite implementation | Changing remaining platform persistence or adding a storage backend |
 | `storage/logical-schema.ts` + `value-codec.ts` | Exact live-schema classification and driver-neutral durable value normalization | Adding/changing a stored column or adapter value mapping |
@@ -229,9 +230,12 @@ src/
   not receive `rawDbHandle` for these domains.
 - Credential encrypted-value revision plus status is the rotation CAS. Refresh
   ownership uses owner plus generation; idempotency mutations use the current
-  lease owner; permission decisions conditionally match run, request, operation
-  hash and pending status. A stale writer must visibly lose—it never becomes an
-  idempotent-looking success.
+  lease owner. Explicit permission decisions bind one run, request, agent,
+  canonical tool input, policy revision and tool surface through an HMAC
+  operation identity, then atomically consume one approved request immediately
+  before supported dispatch. Cancellation, terminalization and restart expire
+  approved-but-unconsumed requests. A stale or losing writer must visibly lose;
+  it never becomes an idempotent-looking success.
 - Delegated thread creation and its principal binding are one adapter-owned
   write transaction. Failure rolls back the thread and workspace/profile count;
   a delegated caller must never observe an unbound thread.
@@ -280,8 +284,12 @@ src/
   both memory and proposal events only after their shared transaction commits.
 - Channel claim tokens/checkpoints, candidate expected-active/revision checks,
   schedule cursor/run coupling, team task ordinals/resource leases and approval
-  pending decisions are authority predicates. A stale/conflicting writer must
-  return a visible non-success and cannot be treated as idempotent completion.
+  pending decisions are authority predicates. Held schedule approvals bind the
+  exact schedule/run/thread/policy/tool/input/declared-target identity and move
+  through one atomic `pending -> executing` claim before dispatch. Startup turns
+  an interrupted claim into `indeterminate`; it never retries an uncertain
+  external effect. A stale/conflicting writer must return a visible non-success
+  and cannot be treated as idempotent completion.
 - Shared platform repository contracts run unchanged for every adapter and
   cover independent-connection contention plus reopen continuity. The real
   gateway lifecycle journey supplements those contracts with public HTTP reads;
@@ -422,6 +430,11 @@ client.
   completion. Clean process exit alone is not success.
 - Native events carry monotonic source positions. Duplicate, late, unknown, or
   unresolved-permission completion fails visibly and cannot imply success.
+- Every runtime route that can request permission must supply the same final
+  `authorizeToolExecution` callback and immutable run policy revision. Missing,
+  stale or replayed binding fails closed at the last Ownware-controlled dispatch
+  boundary; an earlier approval event or provider-native accepted boolean is not
+  execution authority.
 - Consequence evidence is monotonic. A model tool result proves only
   `effect_possible`; `effect_confirmed` requires observation at the effect
   boundary.
@@ -579,7 +592,9 @@ The official tool/sandbox boundary is split across
   canonical permission request/response events. File changes require matching
   item-lifecycle context. Decisions are only one-turn `accept` or `decline`;
   provider-proposed persistent amendments are ignored and direct permission
-  expansion is denied.
+  expansion is denied. The native approval bridge and loopback MCP bridge both
+  require final exact authorization before returning accept or entering a tool
+  handler; an unwired adapter denies.
 
 ## Tool UI Descriptor relay
 

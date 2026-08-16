@@ -20,8 +20,12 @@ export type ExecuteHeldTool = (params: {
   readonly profileId: string
   readonly threadId: string | null
   readonly workspaceId?: string
+  readonly safetyLevel: 'read-only' | 'draft-approval' | 'full-access'
   readonly toolName: string
   readonly toolInput: unknown
+  readonly policyRevision: string
+  readonly toolRevision: string
+  readonly targetRevision: string | null
 }) => Promise<ToolResult>
 
 export interface ApprovalHandlerDeps {
@@ -96,22 +100,32 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
       sendError(res, 404, `Approval "${id}" not found`)
       return
     }
-    // Idempotent + at-most-once: only a still-pending row executes. A non-pending
-    // approval is returned as-is — re-approving never re-sends.
+    // Idempotent + at-most-once: only a still-pending row may acquire the
+    // durable claim. A non-pending approval is returned as-is.
     if (approval.status !== 'pending') {
       sendJSON(res, 200, { approval })
       return
     }
-    // SECURITY (Principle 23): the action (toolName) + args (toolInput) come ONLY
-    // from the STORED approval row — never the request body — so a caller cannot
-    // approve-execute an arbitrary tool/input. We resolve the schedule only for
-    // the profile + workspace to run under.
-    const schedule = await scheduleStore.get(approval.scheduleId)
+    const claimed = await store.claim(id)
+    if (claimed.status !== 'claimed') {
+      sendJSON(res, claimed.status === 'intent_mismatch' ? 409 : 200, {
+        approval: claimed.approval,
+        ...(claimed.status === 'intent_mismatch'
+          ? { code: 'approval_intent_mismatch' }
+          : {}),
+      })
+      return
+    }
+
+    // SECURITY: the action, args and binding come ONLY from the atomically
+    // claimed durable row — never the request body.
+    const bound = claimed.approval
+    const schedule = await scheduleStore.get(bound.scheduleId)
     if (schedule == null) {
       sendJSON(res, 200, {
         approval: await store.decide(id, {
           status: 'failed',
-          errorMessage: 'The schedule for this draft no longer exists, so it cannot be sent.',
+          errorMessage: 'The schedule disappeared after this draft was claimed; nothing was dispatched by Ownware.',
         }),
       })
       return
@@ -121,10 +135,14 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     try {
       result = await executeHeldTool({
         profileId: schedule.profileId,
-        threadId: approval.threadId,
+        threadId: bound.threadId,
         ...(schedule.workspaceId != null ? { workspaceId: schedule.workspaceId } : {}),
-        toolName: approval.toolName,
-        toolInput: approval.toolInput,
+        safetyLevel: schedule.safetyLevel,
+        toolName: bound.toolName,
+        toolInput: bound.toolInput,
+        policyRevision: bound.policyRevision,
+        toolRevision: bound.toolRevision,
+        targetRevision: bound.targetRevision,
       })
     } catch (err) {
       // executeHeldTool returns isError results rather than throwing, but a

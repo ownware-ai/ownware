@@ -23,6 +23,7 @@ import { truncate } from './truncate.js'
 import { slidingWindow } from './sliding-window.js'
 import { hierarchical } from './hierarchical.js'
 import { snapshot } from './snapshot.js'
+import type { EgressControl } from '../egress/types.js'
 
 // Re-export the interface so the loop can import from this module
 export type { CompactionManager } from './types.js'
@@ -95,6 +96,7 @@ export function createCompactionManager(
     messages: Message[],
     systemPrompt: string,
     currentTokens?: number,
+    egressControl?: EgressControl,
   ): Promise<CompactionResult | null> {
     // Disabled trigger — never compact
     if (config.trigger.type === 'disabled') {
@@ -119,13 +121,14 @@ export function createCompactionManager(
       provider,
       contextWindowTokens,
       currentTokens,
+      egressControl,
     )
 
     if (!shouldCompact) {
       return null
     }
 
-    return executeCompaction(messages, systemPrompt)
+    return executeCompaction(messages, systemPrompt, egressControl)
   }
 
   /**
@@ -135,6 +138,7 @@ export function createCompactionManager(
   async function forceCompact(
     messages: Message[],
     systemPrompt: string,
+    egressControl?: EgressControl,
   ): Promise<CompactionResult | null> {
     // Circuit breaker still applies — if we've failed 3 times,
     // forcing won't help
@@ -147,7 +151,7 @@ export function createCompactionManager(
       return null
     }
 
-    return executeCompaction(messages, systemPrompt)
+    return executeCompaction(messages, systemPrompt, egressControl)
   }
 
   /**
@@ -157,6 +161,7 @@ export function createCompactionManager(
   async function executeCompaction(
     messages: Message[],
     systemPrompt: string,
+    egressControl?: EgressControl,
   ): Promise<CompactionResult | null> {
     const timeoutMs = config.safetyTimeoutMs ?? COMPACTION_SAFETY_TIMEOUT_MS
     try {
@@ -168,6 +173,7 @@ export function createCompactionManager(
           config.retain,
           provider,
           config.summaryModel,
+          egressControl,
         ),
         timeoutMs,
         config.strategy,
@@ -190,6 +196,7 @@ export function createCompactionManager(
             config.retain,
             provider,
             null,
+            egressControl,
           )
 
           // Fallback succeeded — don't reset circuit breaker fully
@@ -233,6 +240,7 @@ async function checkTrigger(
   provider: ProviderAdapter,
   contextWindowTokens: number,
   currentTokens?: number,
+  egressControl?: EgressControl,
 ): Promise<boolean> {
   switch (trigger.type) {
     case 'disabled':
@@ -247,13 +255,21 @@ async function checkTrigger(
       // back to `provider.countTokens` only when no precomputed value
       // is available (legacy callers).
       const tokenCount =
-        currentTokens ?? (await provider.countTokens(messages, systemPrompt))
+        currentTokens ?? (await provider.countTokens(
+          messages,
+          systemPrompt,
+          egressControl === undefined ? undefined : { egressControl },
+        ))
       return tokenCount >= trigger.threshold
     }
 
     case 'fraction': {
       const tokenCount =
-        currentTokens ?? (await provider.countTokens(messages, systemPrompt))
+        currentTokens ?? (await provider.countTokens(
+          messages,
+          systemPrompt,
+          egressControl === undefined ? undefined : { egressControl },
+        ))
       return tokenCount >= contextWindowTokens * trigger.threshold
     }
   }
@@ -273,22 +289,36 @@ async function runStrategy(
   retain: CompactionRetain,
   provider: ProviderAdapter,
   summaryModel: string | null,
+  egressControl?: EgressControl,
 ): Promise<CompactionResult> {
+  if (
+    egressControl !== undefined
+    && provider.egressMediation !== 'fetch'
+    && provider.egressMediation !== 'delegated'
+  ) {
+    await egressControl.routeUnavailable({
+      sourceKind: 'provider',
+      sourceRef: provider.name,
+      mediation: provider.egressMediation === 'uncontained'
+        ? 'uncontained'
+        : 'unknown',
+    })
+  }
   switch (strategy) {
     case 'summarize':
-      return summarize(messages, systemPrompt, retain, provider, summaryModel)
+      return summarize(messages, systemPrompt, retain, provider, summaryModel, egressControl)
 
     case 'truncate':
-      return truncate(messages, systemPrompt, retain, provider)
+      return truncate(messages, systemPrompt, retain, provider, egressControl)
 
     case 'sliding_window':
-      return slidingWindow(messages, systemPrompt, retain, provider)
+      return slidingWindow(messages, systemPrompt, retain, provider, {}, egressControl)
 
     case 'hierarchical':
-      return hierarchical(messages, systemPrompt, retain, provider, summaryModel)
+      return hierarchical(messages, systemPrompt, retain, provider, summaryModel, egressControl)
 
     case 'snapshot':
-      return snapshot(messages, systemPrompt, retain, provider)
+      return snapshot(messages, systemPrompt, retain, provider, egressControl)
   }
 }
 

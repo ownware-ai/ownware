@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import {
-  postgreSqlCatalogMatchesCurrentV86,
+  postgreSqlCatalogMatchesCurrentV89,
 } from './postgresql-catalog-certification.js'
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
 import {
@@ -14,8 +14,13 @@ type SessionClient = Pick<PostgreSqlClient | PostgreSqlPoolClient, 'query'>
 
 const TARGET_RECEIPT_FORMAT = 'ownware-postgresql-transfer-target-v1'
 const EXPECTED_FUNCTIONS = Object.freeze([
+  '_enforce_egress_evidence_semantics',
+  '_enforce_schedule_approval_lifecycle',
   '_is_iso_instant',
+  '_reject_effect_evidence_mutation',
+  '_reject_egress_evidence_mutation',
   '_reject_immutable_mutation',
+  '_reject_permission_binding_mutation',
   '_reject_plugin_evidence_mutation',
   '_reject_provider_usage_evidence_mutation',
   '_validate_access_grant_head',
@@ -419,7 +424,7 @@ export async function preflightPostgreSqlTransferTarget(
     if (!await exactNamespaceAndOwnership(migration)) {
       return fail('schema_unrecognized')
     }
-    if (!await postgreSqlCatalogMatchesCurrentV86(migration)) {
+    if (!await postgreSqlCatalogMatchesCurrentV89(migration)) {
       return fail('schema_manifest_mismatch')
     }
     await assertBusinessTablesEmpty(migration)
@@ -497,7 +502,7 @@ export async function lockAndValidateEmptyPostgreSqlTransferTarget(
       applied !== POSTGRESQL_MIGRATION_MANIFEST.migrations.length ||
       !await POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(client) ||
       !await exactNamespaceAndOwnership(client) ||
-      !await postgreSqlCatalogMatchesCurrentV86(client)
+      !await postgreSqlCatalogMatchesCurrentV89(client)
     ) {
       return fail('schema_manifest_mismatch')
     }

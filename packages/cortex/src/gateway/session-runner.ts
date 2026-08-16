@@ -35,6 +35,7 @@ import type {
   StopReason,
   TurnUsage,
   ZoneDecision,
+  EgressControl,
 } from '@ownware/loom'
 import { ZONE_LEVEL_NAMES } from '@ownware/loom'
 import type { GatewayState } from './state.js'
@@ -48,6 +49,8 @@ import type { ProfileRegistry } from '../profile/registry.js'
 import type { ConnectorToolProvider } from '../connector/providers/types.js'
 import { reconcileSessionTools } from '../profile/reconcile.js'
 import type { RunRepository } from '../storage/security-repositories.js'
+import type { EffectReceiptRepository } from './effect-receipt-store.js'
+import type { EgressReceiptRepository } from './egress-receipt-store.js'
 import {
   ManagedExecutionRuntime,
   RuntimeContractError,
@@ -90,6 +93,10 @@ export interface RunParams {
   readonly profileId: string
   /** Model string (e.g. "anthropic:claude-sonnet-4-20250514"). */
   readonly model: string
+  /** Opaque revision of the policy/tool envelope assembled for this session. */
+  readonly permissionPolicyRevision?: string
+  /** Per-run authoritative outbound policy and durable observation seam. */
+  readonly egressControl?: EgressControl
   /** Prompt content — string or multimodal blocks. */
   readonly prompt: string | ContentBlock[]
   /** Attachment metadata (for the session.end event). */
@@ -207,6 +214,8 @@ export class SessionRunner {
   constructor(
     private readonly state: GatewayState,
     private readonly runStore?: RunRepository,
+    private readonly effectReceipts?: EffectReceiptRepository,
+    private readonly egressReceipts?: EgressReceiptRepository,
   ) {}
 
   /** Install the reconcile dependencies. Called once during boot. */
@@ -456,6 +465,7 @@ export class SessionRunner {
             threadId,
             () => reconcileSessionTools(session, prior, profile, {
               providers: deps.toolProviders,
+              egressMode: params.egressControl?.mode ?? 'unrestricted',
             }),
           )
           deps.pending.setManaged(threadId, reconciled.managed)
@@ -495,13 +505,61 @@ export class SessionRunner {
         }
       }
 
-      const events = execution.start({ prompt: params.prompt })
+      if (params.egressControl !== undefined && runtime.execution !== undefined) {
+        await params.egressControl.routeUnavailable({
+          sourceKind: 'runtime',
+          sourceRef: execution.selection.runtime,
+          mediation: 'uncontained',
+        })
+      }
+      const events = execution.start({
+        prompt: params.prompt,
+        ...(params.egressControl === undefined
+          ? {}
+          : { egressControl: params.egressControl }),
+      })
       let result = await events.next()
 
       while (!result.done) {
-        const event = result.value.event
+        const envelope = result.value
+        const event = envelope.event
 
         trace('runner-recv', threadId, 'root', event.type)
+
+        // Consequence evidence must be durable before the corresponding
+        // public event can be ingested or fanned out. The repository applies
+        // a monotonic maximum, so late/lower observations cannot weaken it.
+        if (
+          this.effectReceipts
+          && (event.type === 'tool.call.start' || event.type === 'tool.call.end')
+        ) {
+          const observerAuthority = envelope.effectAuthority
+          await this.effectReceipts.observe({
+            runId: run.runId,
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            observationKey: `runtime:${envelope.sequence}`,
+            kind: event.type === 'tool.call.start'
+              ? 'intent_observed'
+              : envelope.consequence === 'effect_confirmed'
+                ? 'authority_confirmed'
+                : 'outcome_observed',
+            outcome: event.type === 'tool.call.start'
+              ? 'pending'
+              : event.isError ? 'failed' : 'succeeded',
+            consequence: envelope.consequence,
+            authorityKind: observerAuthority === undefined
+              ? 'runtime'
+              : 'effect_observer',
+            authorityRef: observerAuthority
+              ?? (event.type === 'tool.call.start'
+                ? 'runtime.tool_call.start'
+                : 'runtime.tool_call.end'),
+            runtimeSequence: envelope.sequence,
+          })
+        } else if (this.runStore) {
+          await this.runStore.advanceConsequence(run.runId, envelope.consequence)
+        }
 
         if (event.type === 'turn.start') {
           turnStartedAt.set(event.turnIndex, event.timestamp)
@@ -532,15 +590,28 @@ export class SessionRunner {
         // ── Enrich permission events with zone metadata ──────────
         let enriched = enrichEvent(event, getLastZoneDecision)
         if (event.type === 'permission.request' && this.runStore) {
+          const policyRevision = event.policyRevision ?? params.permissionPolicyRevision
+          if (
+            policyRevision === undefined
+            || (
+              params.permissionPolicyRevision !== undefined
+              && policyRevision !== params.permissionPolicyRevision
+            )
+          ) {
+            throw new Error('Permission policy revision changed before binding')
+          }
           const permission = await this.runStore.recordPermissionRequest({
             runId: run.runId,
             requestId: event.requestId,
             toolName: event.toolName,
             toolInput: event.input,
+            policyRevision,
+            agentId: event.agentId ?? null,
           })
           enriched = {
             ...enriched,
             operationHash: permission.operationHash,
+            intentRevision: permission.intentRevision,
           } as unknown as LoomEvent
           await this.runStore.markWaiting(run.runId)
         } else if (event.type === 'permission.response' && this.runStore) {
@@ -682,6 +753,12 @@ export class SessionRunner {
       if (closeResult.status !== 'closed') {
         run.status = 'error'
         interruptReason = 'error'
+        if (this.runStore) {
+          await this.runStore.advanceConsequence(
+            run.runId,
+            execution.status().consequence,
+          )
+        }
         try {
           await this.state.eventIngestor.ingestParentEvent(threadId, {
             type: 'error',
@@ -769,6 +846,9 @@ export class SessionRunner {
                     '3 to 7 words, no quotes, no trailing punctuation. Do not explain.',
                   prompt: `Generate a thread title for this user message:\n\n${firstUser.content.slice(0, 800)}`,
                   maxTokens: 32,
+                  ...(params.egressControl === undefined
+                    ? {}
+                    : { egressControl: params.egressControl }),
                 })
                 const cleaned = text.trim().replace(/^["'`]|["'`.]$/g, '').trim()
                 if (cleaned.length > 0 && cleaned.length <= 120) {
@@ -836,15 +916,36 @@ export class SessionRunner {
       }
 
       if (this.runStore) {
+        await this.effectReceipts?.markPendingUnknownForRun(
+          run.runId,
+          'runtime.terminal_without_outcome',
+        )
+        await this.egressReceipts?.markPendingUnknownForRun(
+          run.runId,
+          'run_terminated_after_dispatch',
+        )
         const endSeq = await this.state.getAgentEventMaxSeq(threadId, 'root')
+        const consequence = execution.status().consequence
         if (run.status === 'completed' && run.errorEventMessage == null) {
-          await this.runStore.markTerminal(run.runId, 'succeeded', { endSeq })
+          await this.runStore.markTerminal(run.runId, 'succeeded', { endSeq, consequence })
         } else if (run.status === 'aborted' && interruptReason === 'timeout') {
-          await this.runStore.markTerminal(run.runId, 'timed_out', { endSeq, code: 'run_timeout' })
+          await this.runStore.markTerminal(run.runId, 'timed_out', {
+            endSeq,
+            consequence,
+            code: 'run_timeout',
+          })
         } else if (run.status === 'aborted') {
-          await this.runStore.markTerminal(run.runId, 'cancelled', { endSeq, code: 'run_cancelled' })
+          await this.runStore.markTerminal(run.runId, 'cancelled', {
+            endSeq,
+            consequence,
+            code: 'run_cancelled',
+          })
         } else {
-          await this.runStore.markTerminal(run.runId, 'failed', { endSeq, code: 'run_failed' })
+          await this.runStore.markTerminal(run.runId, 'failed', {
+            endSeq,
+            consequence,
+            code: 'run_failed',
+          })
         }
       }
 
@@ -1066,6 +1167,7 @@ export class SessionRunner {
           input?: Record<string, unknown>
           inputSummary?: string
           operationHash?: string
+          intentRevision?: 1
           reason: string
           zoneLevel?: number
           zoneName?: string
@@ -1079,6 +1181,7 @@ export class SessionRunner {
           input: permReq.input,
           inputSummary: permReq.inputSummary,
           operationHash: permReq.operationHash,
+          intentRevision: permReq.intentRevision,
           reason: permReq.reason,
           decision: 'pending',
           zoneLevel: permReq.zoneLevel,

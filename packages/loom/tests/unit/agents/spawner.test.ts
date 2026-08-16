@@ -93,6 +93,42 @@ describe('AgentSpawner', () => {
       const result = await spawner.waitForAgent(handle.id)
       expect(result.content).toBe('Done')
     })
+
+    it('inherits the parent permission boundary and only intersects requested tools', async () => {
+      mockLoop.mockImplementation(async function* () {
+        return makeLoopResult('Done')
+      })
+      const checkPermission = vi.fn(async () => 'ask' as const)
+      const requestApproval = vi.fn(async () => true)
+      const authorizeToolExecution = vi.fn(async () => true)
+      const parentTools = ['read_parent', 'write_parent'].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: 'object', properties: {} },
+        execute: async () => ({ content: 'ok' }),
+      })) as never
+      const spawner = new AgentSpawner({
+        provider: createMockProvider(),
+        tools: parentTools,
+        config: createDefaultConfig('mock:test'),
+        checkPermission,
+        requestApproval,
+        authorizeToolExecution,
+        permissionPolicyRevision: 'a'.repeat(64),
+      })
+      const handle = await spawner.spawn({
+        name: 'bounded',
+        tools: ['read_parent', 'not_in_parent'],
+      }, 'isolated')
+      await spawner.waitForAgent(handle.id)
+      expect(mockLoop).toHaveBeenCalledOnce()
+      const params = mockLoop.mock.calls[0]![0]
+      expect(params.tools.map((tool) => tool.name)).toEqual(['read_parent'])
+      expect(params.checkPermission).toBe(checkPermission)
+      expect(params.requestApproval).toBe(requestApproval)
+      expect(params.authorizeToolExecution).toBe(authorizeToolExecution)
+      expect(params.permissionPolicyRevision).toBe('a'.repeat(64))
+    })
   })
 
   // -----------------------------------------------------------------------

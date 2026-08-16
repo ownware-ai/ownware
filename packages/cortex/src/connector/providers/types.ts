@@ -67,6 +67,14 @@ export interface ConnectorToolProviderResult {
 
 export interface ConnectorToolProvider {
   readonly source: string
+  /**
+   * Whether resolving this provider's tool catalogue can itself leave the
+   * process. Missing is unknown and therefore not invoked during local-only
+   * assembly.
+   */
+  readonly assemblyEgress?: 'none' | 'uncontained'
+  /** Default execution mediation for real tools this provider contributes. */
+  readonly toolEgress?: 'none' | 'uncontained'
   getToolsForProfile(
     profile: LoadedProfile,
     ctx: ConnectorToolProviderContext,

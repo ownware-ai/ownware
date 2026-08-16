@@ -267,6 +267,7 @@ async function runJourney(kind: JourneyBackend['kind']): Promise<JourneyEvidence
       threadId,
       profileId: PROFILE_ID,
       status: 'succeeded',
+      consequence: 'output_observed',
       terminal: true,
       outcomeKnown: true,
     })

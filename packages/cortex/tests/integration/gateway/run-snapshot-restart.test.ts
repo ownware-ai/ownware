@@ -32,8 +32,15 @@ describe('durable run snapshot restart recovery', () => {
       requestId: 'permission_before_restart',
       toolName: 'send_email',
       toolInput: { recipient: 'synthetic@example.test' },
+      policyRevision: 'b'.repeat(64),
+      agentId: null,
     }, 1_750_000_000_200)
     await first.gateway.runStore.markWaiting(record.runId, 1_750_000_000_200)
+    await first.gateway.runStore.advanceConsequence(
+      record.runId,
+      'effect_possible',
+      1_750_000_000_250,
+    )
     await expect(first.gateway.runStore.requestCancel(record.runId, 1_750_000_000_300))
       .resolves.toBe('requested')
     await first.stop({ cleanup: false })
@@ -57,6 +64,7 @@ describe('durable run snapshot restart recovery', () => {
       runId: record.runId,
       threadId: thread.id,
       status: 'indeterminate',
+      consequence: 'effect_possible',
       terminal: true,
       outcomeKnown: false,
       code: 'gateway_restarted',
@@ -78,6 +86,6 @@ describe('durable run snapshot restart recovery', () => {
       },
     )
     expect(staleDecision.status).toBe(409)
-    await expect(staleDecision.json()).resolves.toMatchObject({ error: 'permission_request_stale' })
+    await expect(staleDecision.json()).resolves.toMatchObject({ error: 'permission_already_decided' })
   })
 })

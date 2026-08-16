@@ -152,6 +152,51 @@ Invariants:
   lives on the trailing `turn.interrupted` event in the raw log; the
   thread's `status` carries the run-level verdict.
 
+## Exact permission decisions
+
+`POST /api/v1/runs/:runId/permissions/:requestId/decision` is the exact public
+decision route. The client must echo the HMAC `operationHash` published with
+that request; the durable binding also includes the run, request, root/helper
+agent, canonical tool input and immutable run policy revision. A decision only
+moves `pending` to `approved` or `denied`. Approval is consumed atomically once
+by `authorizeToolExecution` immediately before the supported dispatch boundary.
+
+- Never execute from the HTTP success, `permission.response`, HITL boolean or
+  operation-hash equality alone. The one-use durable consume is the authority.
+- Changed input, helper identity or policy revision, replay, stale delivery,
+  cancellation, terminalization and restart block/expire the unconsumed action.
+- Durable permission/event evidence contains bounded identity metadata, not raw
+  tool input. The HMAC proves equality to the bound bytes, not action safety,
+  remote target freshness, effect success or absence of secrets.
+- Persistent tool/folder grants remain a compatibility policy mutation, not
+  the `runs.permissions.decide` one-action guarantee. Do not describe one as the
+  other.
+- A held schedule action must win its separate atomic claim before dispatch.
+  If it carries a target revision, dispatch only through the tool's declared
+  authority-backed conditional-effect API. An interrupted claim is
+  `indeterminate`, never automatically retried.
+
+## Run-scoped outbound enforcement
+
+`RunEgressControl` is the Cortex policy/durability boundary for Loom's egress
+seam. A pre-dispatch receipt must commit before a platform-owned transport is
+invoked. Terminal or restart reconciliation converts every still-open attempt
+to explicit `outcome_unknown`; it never manufactures a success or failure.
+
+- `local-only` admits only `platform_fetch` to a literal `127.0.0.0/8` or `::1`
+  origin. DNS names, custom fetch, remote/redirected origins and unknown or
+  uncontained routes fail closed.
+- Session assembly is part of the boundary: do not import custom-tool modules,
+  start MCP transports, resolve uncontained connector providers, probe remote
+  fallbacks or enter an external runtime for a local-only run.
+- The effective mode is the stricter profile/request mode and is immutable for
+  a cached session. A mode change requires a new thread.
+- Receipts are content-free structural observations. Never add paths, queries,
+  headers, bodies, credentials, prompts, results or arbitrary diagnostics.
+- Declarations are trusted only for the unmodified core/adapters under contract
+  test. Arbitrary in-process extensions enlarge the trusted computing base; a
+  declaration alone does not prove containment.
+
 ## Never do
 
 - Do not write to `agent_events` from anything other than `EventIngestor`.
@@ -194,6 +239,8 @@ repository ports so SQLite and PostgreSQL retain the same behavior.
 - `handlers/agent-events.ts` — SSE live-tail + mid-run resume.
 - `session-runner.ts` — event consumption + messages reducer + partial-
   turn finalizer.
+- `egress-control.ts` + `egress-receipt-store.ts` — run policy, durable
+  pre-dispatch authority, content-free observations and terminal reconciliation.
 - `event-ingestor.ts` — single write path for `agent_events`.
 - `event-bus.ts` — in-process fan-out for live SSE subscribers.
 - `events.ts` — gateway event contract (Loom events + gateway-owned

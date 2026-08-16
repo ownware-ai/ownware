@@ -27,7 +27,11 @@ import { LOOM_TRACE } from '../observability/debug-trace.js'
 import type { HookRuntime } from '../hooks/index.js'
 import type { Tool, ToolCall, ToolContext, ToolResult } from '../tools/types.js'
 import type { CredentialResolver } from '../credentials/resolver.js'
-import type { CheckPermissionResult, DecisionReason } from '../permissions/types.js'
+import type {
+  CheckPermissionResult,
+  DecisionReason,
+  ToolExecutionAuthorizationContext,
+} from '../permissions/types.js'
 import { formatDecisionReason } from '../permissions/types.js'
 import type {
   CredentialHandle,
@@ -38,6 +42,7 @@ import type {
 import type { CompactionManager } from '../compaction/manager.js'
 import type { CheckpointStore } from '../checkpoint/types.js'
 import { ProviderError, ToolError, ContextWindowExceededError } from './errors.js'
+import { EgressBlockedError } from '../egress/types.js'
 import { resolveProvider } from '../provider/registry.js'
 import { computeCostWithFallback } from '../provider/pricing.js'
 import {
@@ -143,6 +148,18 @@ export interface LoopParams {
   checkPermission: (tool: ToolCall) => Promise<'allow' | 'ask' | CheckPermissionResult>
   /** HITL approval handler (called when checkPermission returns 'ask') */
   requestApproval: (tool: ToolCall) => Promise<boolean>
+  /**
+   * Host-owned final authorization boundary. Called after any approval event
+   * has been durably observed and immediately before Tool.execute. Returning
+   * false (or throwing) blocks dispatch. Omit only in standalone hosts that do
+   * not provide durable authorization binding.
+   */
+  authorizeToolExecution?: (
+    tool: ToolCall,
+    context: ToolExecutionAuthorizationContext,
+  ) => Promise<boolean>
+  /** Opaque revision used when checkPermission returns a bare verdict. */
+  permissionPolicyRevision?: string
   /**
    * Credential callbacks. When omitted, the loop installs no-op defaults:
    * `requestCredential` denies, `resolveCredential` returns null, and the
@@ -436,7 +453,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       turnIndex: state.turnIndex,
       sessionId: config.sessionId,
       model: state.activeModel,
-    }, config.abortSignal ?? undefined)
+    }, config.abortSignal ?? undefined, config.egressControl)
   }
 
   // -------------------------------------------------------------------------
@@ -458,6 +475,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       return yield* endSession(
         finalize(state, 'aborted', state.activeModel, config.sessionId),
         params.hooks,
+        config.egressControl,
       )
     }
 
@@ -483,6 +501,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       return yield* endSession(
         finalize(state, 'max_turns', state.activeModel, config.sessionId),
         params.hooks,
+        config.egressControl,
       )
     }
 
@@ -508,6 +527,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       return yield* endSession(
         finalize(state, 'budget_exceeded', state.activeModel, config.sessionId),
         params.hooks,
+        config.egressControl,
       )
     }
 
@@ -612,6 +632,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
           state.messages,
           systemPromptToText(params.systemPrompt),
           preCompactUsage.tokens,
+          config.egressControl,
         )
       } catch (err) {
         yield {
@@ -792,7 +813,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
         turnIndex: state.turnIndex,
         model: state.activeModel,
         messageCount: state.messages.length,
-      }, config.abortSignal ?? undefined)
+      }, config.abortSignal ?? undefined, config.egressControl)
     }
 
     // Drain any queued reminders BEFORE cache marking so the volatile
@@ -841,6 +862,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       temperature: config.temperature,
       signal: config.abortSignal ?? undefined,
       ...(config.thinking ? { thinking: config.thinking } : {}),
+      ...(config.egressControl ? { egressControl: config.egressControl } : {}),
     }
 
     let assistantContent: ContentBlock[] = []
@@ -996,7 +1018,11 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
           // turn.end + session.end.
           let result: Awaited<ReturnType<typeof compaction.forceCompact>> = null
           try {
-            result = await compaction.forceCompact(state.messages, systemPromptToText(params.systemPrompt))
+            result = await compaction.forceCompact(
+              state.messages,
+              systemPromptToText(params.systemPrompt),
+              config.egressControl,
+            )
           } catch {
             result = null
           }
@@ -1080,11 +1106,12 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
           turnIndex: state.turnIndex,
           code: error instanceof ProviderError ? error.code : 'UNKNOWN',
           message: error instanceof Error ? error.message : String(error),
-        })
+        }, undefined, config.egressControl)
       }
       return yield* endSession(
         finalize(state, 'error', state.activeModel, config.sessionId),
         params.hooks,
+        config.egressControl,
       )
     }
 
@@ -1128,7 +1155,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
         outputTokens: turnUsage.outputTokens,
         costUsd: turnUsage.costUsd,
         toolCallCount: toolCalls.length,
-      }, config.abortSignal ?? undefined)
+      }, config.abortSignal ?? undefined, config.egressControl)
     }
 
     if (toolCalls.length === 0) {
@@ -1192,6 +1219,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       return yield* endSession(
         finalize(state, finalReason, state.activeModel, config.sessionId),
         params.hooks,
+        config.egressControl,
       )
     }
 
@@ -1205,6 +1233,8 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       state.turnIndex,
       checkPermission,
       requestApproval,
+      params.authorizeToolExecution,
+      params.permissionPolicyRevision,
       resolvedCredentials,
       params.credentialResolver,
       state.toolResultCache,
@@ -1322,6 +1352,19 @@ async function* streamModelResponse(
   // (e.g. long internal reasoning between tool calls on slow routes)
   // while still catching real hangs. Tunable per-provider later.
   const STREAM_IDLE_MS = 30_000
+  if (
+    request.egressControl !== undefined
+    && provider.egressMediation !== 'fetch'
+    && provider.egressMediation !== 'delegated'
+  ) {
+    await request.egressControl.routeUnavailable({
+      sourceKind: 'provider',
+      sourceRef: provider.name,
+      mediation: provider.egressMediation === 'uncontained'
+        ? 'uncontained'
+        : 'unknown',
+    })
+  }
   const iterator = provider.stream(request)[Symbol.asyncIterator]()
 
   try {
@@ -1519,6 +1562,8 @@ async function* executeTools(
   turnIndex: number,
   checkPermission: (tool: ToolCall) => Promise<'allow' | 'ask' | CheckPermissionResult>,
   requestApproval: (tool: ToolCall) => Promise<boolean>,
+  authorizeToolExecution: LoopParams['authorizeToolExecution'],
+  permissionPolicyRevision: string | undefined,
   credentials: ResolvedCredentialCallbacks,
   credentialResolver: CredentialResolver | undefined,
   cache: ToolResultCache,
@@ -1574,7 +1619,7 @@ async function* executeTools(
   // Execute read-only tools in parallel
   if (readOnlyCalls.length > 0) {
     const parallel = readOnlyCalls.map(({ call, tool }) =>
-      executeSingleTool(call, tool, config, turnIndex, checkPermission, requestApproval, credentials, credentialResolver, cache, hooks, reminders),
+      executeSingleTool(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, credentialResolver, cache, hooks, reminders),
     )
 
     for await (const { events, result } of parallelExecute(parallel)) {
@@ -1588,7 +1633,7 @@ async function* executeTools(
   // Execute write tools serially — use generator directly so
   // permission.request events stream to SSE BEFORE blocking on approval
   for (const { call, tool } of writeCalls) {
-    const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, credentials, credentialResolver, cache, hooks, reminders)
+    const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, credentialResolver, cache, hooks, reminders)
     let iterResult = await gen.next()
     while (!iterResult.done) {
       yield iterResult.value
@@ -1611,6 +1656,8 @@ async function* executeSingleToolGen(
   turnIndex: number,
   checkPermission: (tool: ToolCall) => Promise<'allow' | 'ask' | CheckPermissionResult>,
   requestApproval: (tool: ToolCall) => Promise<boolean>,
+  authorizeToolExecution: LoopParams['authorizeToolExecution'],
+  permissionPolicyRevision: string | undefined,
   credentials: ResolvedCredentialCallbacks,
   credentialResolver: CredentialResolver | undefined,
   cache: ToolResultCache,
@@ -1618,7 +1665,75 @@ async function* executeSingleToolGen(
   reminders: ReminderInjector | undefined,
 ): AsyncGenerator<LoomEvent, { toolCall: ToolCall; result: ToolResult }> {
   const toolCall: ToolCall = { id: call.id, name: call.name, input: call.input }
+  const permissionRequestId = config.agentId == null
+    ? call.id
+    : `${config.agentId}:${call.id}`
+  const permissionToolCall: ToolCall = {
+    id: permissionRequestId,
+    name: call.name,
+    input: call.input,
+  }
   const startTime = Date.now()
+  let approvalRequested = false
+  let observedPolicyRevision = permissionPolicyRevision
+
+  // Outbound support is a transport property, not something permission zones
+  // or tool names can infer. Unknown/uncontained tools remain available in an
+  // unrestricted run but produce an honest route-unavailable receipt. Under
+  // local-only the same boundary throws before Tool.execute, so shell/PTY,
+  // browser subresources, stdio MCP and arbitrary custom code cannot silently
+  // escape merely because a permission was granted.
+  if (
+    config.egressControl !== undefined
+    && tool.egress?.mediation !== 'none'
+    && tool.egress?.mediation !== 'brokered'
+  ) {
+    const sourceKind = tool.category === 'browser'
+      ? 'browser' as const
+      : tool.category === 'shell'
+        ? 'process' as const
+        : tool.category === 'mcp'
+          ? 'connector' as const
+          : 'tool' as const
+    const unavailableRoute = {
+        sourceKind,
+        sourceRef: /^[A-Za-z0-9_.:-]{1,160}$/.test(tool.name)
+          ? tool.name
+          : 'unrecognized',
+        mediation: tool.egress?.mediation === 'uncontained'
+          ? 'uncontained' as const
+          : 'unknown' as const,
+      }
+    if (config.egressControl.mode !== 'local-only') {
+      await config.egressControl.routeUnavailable(unavailableRoute)
+    } else {
+      try {
+        await config.egressControl.routeUnavailable(unavailableRoute)
+      } catch (error) {
+        if (!(error instanceof EgressBlockedError)) throw error
+        const blockedResult =
+          `Execution blocked: "${tool.name}" has no verified outbound containment ` +
+          'for this local-only run.'
+        yield {
+          type: 'security.block',
+          toolName: call.name,
+          level: 'local-only',
+          reason: 'egress-route-unavailable',
+          turnIndex,
+        }
+        yield {
+          type: 'tool.call.end',
+          toolCallId: call.id,
+          toolName: call.name,
+          result: blockedResult,
+          isError: true,
+          durationMs: Date.now() - startTime,
+          turnIndex,
+        }
+        return { toolCall, result: { content: blockedResult, isError: true } }
+      }
+    }
+  }
 
   // tool.pre hooks run BEFORE the permission check. If a hook blocks,
   // we synthesize a denied tool_result mirroring the policy-deny path
@@ -1633,6 +1748,7 @@ async function* executeSingleToolGen(
         toolInput: call.input,
       },
       config.abortSignal ?? undefined,
+      config.egressControl,
     )
     if (!hookResult.continue) {
       // Build a typed deny reason so the model can extract structured
@@ -1672,7 +1788,11 @@ async function* executeSingleToolGen(
     // auto-allowing OR silently killing the run.
     let rawResult: 'allow' | 'ask' | CheckPermissionResult
     try {
-      rawResult = await checkPermission(toolCall)
+      // Helpers namespace the durable approval request id with their agent id.
+      // The policy decision and the later approval request must use that same
+      // identity; otherwise concurrent helper calls can fall back to another
+      // call's decision reason.
+      rawResult = await checkPermission(permissionToolCall)
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err)
       rawResult = {
@@ -1693,6 +1813,7 @@ async function* executeSingleToolGen(
     const meta: CheckPermissionResult | null = typeof rawResult === 'string'
       ? null
       : rawResult
+    observedPolicyRevision = meta?.policyRevision ?? permissionPolicyRevision
 
     // Post-redesign (2026-05-14): there is no policy-level 'deny'.
     // The only outcomes are 'allow' (proceed) or 'ask' (HITL prompt).
@@ -1700,17 +1821,22 @@ async function* executeSingleToolGen(
     // returns a structured DecisionReason to the model.
 
     if (verdict === 'ask') {
+      approvalRequested = true
       // Yield permission.request IMMEDIATELY so the SSE stream sends it
       // to the UI BEFORE we block on requestApproval(). Attach any
       // classification metadata the host supplied so the UI can render
       // a severity badge + reason copy.
       yield {
         type: 'permission.request',
-        requestId: call.id,
+        requestId: permissionRequestId,
         toolName: call.name,
         input: call.input,
         reason: meta?.explanation ?? 'Tool requires explicit approval',
         turnIndex,
+        agentId: config.agentId ?? null,
+        ...(observedPolicyRevision !== undefined
+          ? { policyRevision: observedPolicyRevision }
+          : {}),
         ...(meta?.zoneLevel !== undefined ? { zoneLevel: meta.zoneLevel } : {}),
         ...(meta?.zoneName !== undefined ? { zoneName: meta.zoneName } : {}),
         ...(meta?.explanation !== undefined ? { explanation: meta.explanation } : {}),
@@ -1731,7 +1857,7 @@ async function* executeSingleToolGen(
       // channel.
       let approved: boolean
       try {
-        approved = await requestApproval(toolCall)
+        approved = await requestApproval(permissionToolCall)
       } catch {
         approved = false
       }
@@ -1753,7 +1879,7 @@ async function* executeSingleToolGen(
 
         yield {
           type: 'permission.response',
-          requestId: call.id,
+          requestId: permissionRequestId,
           granted: false,
           turnIndex,
           reason: decisionReason,
@@ -1780,9 +1906,47 @@ async function* executeSingleToolGen(
 
       yield {
         type: 'permission.response',
-        requestId: call.id,
+        requestId: permissionRequestId,
         granted: true,
         turnIndex,
+      }
+    }
+
+    if (authorizeToolExecution !== undefined) {
+      let authorized = false
+      try {
+        authorized = await authorizeToolExecution(toolCall, {
+          requestId: permissionRequestId,
+          agentId: config.agentId ?? null,
+          approvalRequested,
+          ...(observedPolicyRevision === undefined
+            ? {}
+            : { policyRevision: observedPolicyRevision }),
+        })
+      } catch {
+        authorized = false
+      }
+      if (!authorized) {
+        const blockedResult =
+          `Execution blocked: the permission binding for "${call.name}" is stale, ` +
+          'already used, revoked, or unavailable. Request a new approval.'
+        yield {
+          type: 'security.block',
+          toolName: call.name,
+          level: 'permission-binding',
+          reason: 'permission-binding-invalid',
+          turnIndex,
+        }
+        yield {
+          type: 'tool.call.end',
+          toolCallId: call.id,
+          toolName: call.name,
+          result: blockedResult,
+          isError: true,
+          durationMs: Date.now() - startTime,
+          turnIndex,
+        }
+        return { toolCall, result: { content: blockedResult, isError: true } }
       }
     }
   }
@@ -1995,6 +2159,7 @@ async function* executeSingleToolGen(
           isError: result.isError === true,
         },
         config.abortSignal ?? undefined,
+        config.egressControl,
       )
     }
 
@@ -2029,6 +2194,8 @@ async function executeSingleTool(
   turnIndex: number,
   checkPermission: (tool: ToolCall) => Promise<'allow' | 'ask' | CheckPermissionResult>,
   requestApproval: (tool: ToolCall) => Promise<boolean>,
+  authorizeToolExecution: LoopParams['authorizeToolExecution'],
+  permissionPolicyRevision: string | undefined,
   credentials: ResolvedCredentialCallbacks,
   credentialResolver: CredentialResolver | undefined,
   cache: ToolResultCache,
@@ -2040,7 +2207,7 @@ async function executeSingleTool(
   // to stream immediately (HITL), use executeSingleToolGen directly —
   // which is why `request_credential` is declared `isReadOnly: false`.
   const events: LoomEvent[] = []
-  const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, credentials, credentialResolver, cache, hooks, reminders)
+  const gen = executeSingleToolGen(call, tool, config, turnIndex, checkPermission, requestApproval, authorizeToolExecution, permissionPolicyRevision, credentials, credentialResolver, cache, hooks, reminders)
   let iterResult = await gen.next()
   while (!iterResult.done) {
     events.push(iterResult.value)
@@ -2129,6 +2296,7 @@ function mergeCostBasis(
 async function* endSession(
   end: { result: LoopResult; endEvent: SessionEndEvent },
   hooks: HookRuntime | undefined,
+  egressControl?: LoomConfig['egressControl'],
 ): AsyncGenerator<LoomEvent, LoopResult> {
   if (hooks?.has('session.end')) {
     await hooks.run({
@@ -2136,7 +2304,7 @@ async function* endSession(
       turnIndex: Math.max(0, end.result.turnCount - 1),
       sessionId: end.endEvent.sessionId,
       reason: end.endEvent.reason,
-    })
+    }, undefined, egressControl)
   }
   yield end.endEvent
   return end.result

@@ -32,21 +32,34 @@ import { imageGenerateTools } from './image-generate.js'
 import { speechTools } from './speech.js'
 import { credentialTools } from './credential.js'
 
+function declareEgress(
+  tools: readonly Tool[],
+  mediation: NonNullable<Tool['egress']>['mediation'],
+): Tool[] {
+  return tools.map(tool => ({
+    ...tool,
+    egress: {
+      contractRevision: 'ownware.tool-egress.v1',
+      mediation,
+    },
+  }))
+}
+
 /** All built-in tools */
 export const builtinTools: Tool[] = [
-  ...filesystemTools,
-  ...shellTools,
-  ...askUserTools,
-  ...agentTools,
-  ...orchestrateTools,
-  ...webFetchTools,
-  ...webSearchTools,
-  ...browserTools,
-  ...memoryTools,
-  ...taskTools,
-  ...imageGenerateTools,
-  ...speechTools,
-  ...credentialTools,
+  ...declareEgress(filesystemTools, 'none'),
+  ...declareEgress(shellTools, 'uncontained'),
+  ...declareEgress(askUserTools, 'none'),
+  ...declareEgress(agentTools, 'none'),
+  ...declareEgress(orchestrateTools, 'none'),
+  ...declareEgress(webFetchTools, 'uncontained'),
+  ...declareEgress(webSearchTools, 'uncontained'),
+  ...declareEgress(browserTools, 'uncontained'),
+  ...declareEgress(memoryTools, 'none'),
+  ...declareEgress(taskTools, 'none'),
+  ...declareEgress(imageGenerateTools, 'uncontained'),
+  ...declareEgress(speechTools, 'uncontained'),
+  ...declareEgress(credentialTools, 'none'),
 ]
 
 /**

@@ -499,6 +499,83 @@ describe('event lifecycle invariants', () => {
     expect(response.granted).toBe(false)
   })
 
+  it('blocks at the final boundary when an approval binding is stale or already consumed', async () => {
+    let executions = 0
+    const tool: Tool = {
+      name: 'danger',
+      description: 'requires permission',
+      inputSchema: { type: 'object', properties: {} } as unknown as Tool['inputSchema'],
+      isReadOnly: false,
+      requiresPermission: true,
+      async execute() {
+        executions += 1
+        return { content: 'effect', isError: false }
+      },
+    }
+    const provider = createScriptedProvider([
+      { kind: 'tool', toolCallId: 'perm-stale', toolName: 'danger', input: {} },
+      { kind: 'text', text: 'final' },
+    ])
+    const events = await collectLoop(baseParams({
+      provider,
+      tools: [tool],
+      checkPermission: async () => 'ask',
+      requestApproval: async () => true,
+      permissionPolicyRevision: 'a'.repeat(64),
+      authorizeToolExecution: async () => false,
+    }))
+    assertEventStreamWellFormed(events)
+    expect(executions).toBe(0)
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'security.block',
+      level: 'permission-binding',
+      reason: 'permission-binding-invalid',
+    }))
+  })
+
+  it('passes the exact request, agent and policy identity immediately before execution', async () => {
+    const observations: unknown[] = []
+    let executions = 0
+    const tool: Tool = {
+      name: 'danger',
+      description: 'requires permission',
+      inputSchema: { type: 'object', properties: {} } as unknown as Tool['inputSchema'],
+      isReadOnly: false,
+      requiresPermission: true,
+      async execute() {
+        executions += 1
+        return { content: 'effect', isError: false }
+      },
+    }
+    const provider = createScriptedProvider([
+      { kind: 'tool', toolCallId: 'perm-bound', toolName: 'danger', input: {} },
+      { kind: 'text', text: 'final' },
+    ])
+    await collectLoop(baseParams({
+      provider,
+      tools: [tool],
+      config: { ...createDefaultConfig('mock:invariant-test'), agentId: 'agent_helper' },
+      checkPermission: async () => 'ask',
+      requestApproval: async () => true,
+      permissionPolicyRevision: 'b'.repeat(64),
+      authorizeToolExecution: async (call, context) => {
+        observations.push({ call, context, executions })
+        return true
+      },
+    }))
+    expect(observations).toEqual([{
+      call: { id: 'perm-bound', name: 'danger', input: {} },
+      context: {
+        requestId: 'agent_helper:perm-bound',
+        agentId: 'agent_helper',
+        approvalRequested: true,
+        policyRevision: 'b'.repeat(64),
+      },
+      executions: 0,
+    }])
+    expect(executions).toBe(1)
+  })
+
   it('emits permission.response without a matching request when the policy denies upfront', async () => {
     // Current contract: when checkPermission returns 'deny', the loop still
     // yields a `permission.response` event (granted:false) but no request.
