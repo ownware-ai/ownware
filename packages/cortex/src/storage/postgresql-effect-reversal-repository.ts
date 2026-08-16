@@ -7,7 +7,10 @@ import {
   type ReversalOfferStorageRow,
   type ReversalReceiptStorageRow,
 } from '../gateway/effect-reversal-store.js'
-import type { EffectIdentityStorageRow } from '../gateway/effect-receipt-store.js'
+import {
+  isEffectReceiptUuid,
+  type EffectIdentityStorageRow,
+} from '../gateway/effect-receipt-store.js'
 import { observePostgreSqlEffectInTransaction } from './postgresql-effect-receipt-repository.js'
 import type { PostgreSqlRootRepositoryContext } from './postgresql-adapter.js'
 import type { PostgreSqlQueryClient } from './postgresql-repository.js'
@@ -184,7 +187,7 @@ export function createPostgreSqlEffectReversalRepository(
     },
 
     getOffer(runId, offerId) {
-      if (!isValidId(runId) || !isValidId(offerId)) {
+      if (!isEffectReceiptUuid(runId) || !isEffectReceiptUuid(offerId)) {
         return Promise.reject(new EffectReversalStoreError('invalid_input'))
       }
       return repositoryCall(context, 'effect_reversals', 'get_offer', 'read_failed', async (client) => {
@@ -352,9 +355,4 @@ export function createPostgreSqlEffectReversalRepository(
       })
     },
   }
-}
-
-function isValidId(value: string): boolean {
-  if (value.length !== 36) return false
-  return value[8] === '-' && value[13] === '-' && value[18] === '-' && value[23] === '-'
 }

@@ -79,7 +79,7 @@ describe('delegated thread authority across restart', () => {
         subjectId,
         purpose: 'customer-support',
         channel: 'web',
-        operations: ['runs.start'],
+        operations: ['runs.start', 'threads.hydrate'],
       })
       expect(response.status).toBe(201)
       return (response.body as { token: string }).token
@@ -102,6 +102,23 @@ describe('delegated thread authority across restart', () => {
     }
     expect(gateway.runner.isRunning(threadId)).toBe(false)
 
+    const firstHydration = await fetch(
+      `${gateway.baseUrl}/api/v1/threads/${threadId}/hydrate`,
+      { headers: { Authorization: `Bearer ${subjectAToken}` } },
+    )
+    expect(firstHydration.status).toBe(200)
+    await expect(firstHydration.json()).resolves.toMatchObject({
+      runningAgentId: null,
+      runningRunId: null,
+    })
+
+    const ownerThread = await gateway.state.createThread(PROFILE_ID, 'owner-unbound', workspaceId)
+    const ownerHydration = await fetch(
+      `${gateway.baseUrl}/api/v1/threads/${ownerThread.id}/hydrate`,
+      { headers: { Authorization: `Bearer ${gateway.token}` } },
+    )
+    expect(ownerHydration.status).toBe(200)
+
     await gateway.stop({ cleanup: false })
     gateway = await createTestGateway({
       disableAuth: false,
@@ -114,6 +131,11 @@ describe('delegated thread authority across restart', () => {
     })
     cleanup.push(firstTmp)
     const refreshedSubjectAToken = await issue('subject-a')
+    const hydratedAfterRestart = await fetch(
+      `${gateway.baseUrl}/api/v1/threads/${threadId}/hydrate`,
+      { headers: { Authorization: `Bearer ${refreshedSubjectAToken}` } },
+    )
+    expect(hydratedAfterRestart.status).toBe(200)
     const continued = await fetch(`${gateway.baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: {
@@ -133,6 +155,14 @@ describe('delegated thread authority across restart', () => {
     expect(gateway.runner.isRunning(threadId)).toBe(false)
     const beforeMessages = (await gateway.state.getMessages(threadId)).length
     const subjectBToken = await issue('subject-b')
+    const deniedHydration = await fetch(
+      `${gateway.baseUrl}/api/v1/threads/${threadId}/hydrate`,
+      { headers: { Authorization: `Bearer ${subjectBToken}` } },
+    )
+    expect(deniedHydration.status).toBe(403)
+    await expect(deniedHydration.json()).resolves.toMatchObject({
+      error: 'principal_scope_denied',
+    })
     const denied = await fetch(`${gateway.baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: {

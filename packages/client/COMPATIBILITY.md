@@ -50,6 +50,8 @@ older capability rather than inventing a value.
 | `0.42.0` | Run-scoped egress mode and immutable, content-free egress receipts expose mediated destinations and honest route gaps. `local-only` admits only platform-mediated literal-loopback dispatch; custom, remote and uncontained routes fail closed. |
 | `0.43.0` | Capability-negotiated, one-use sensitive-input submission adds metadata-only SSE events and a dedicated non-JSON value channel. The first supported adapter binds and revalidates a live managed-browser field, blocks ordinary typing into structurally sensitive fields, and closes Ownware's page-capture path before injection. |
 | `0.44.0` | Exact, immutable skill-activation receipts identify the frozen profile/skill content placed into a root conversation or explicitly granted helper conversation. They are content-free dispatcher evidence, not proof of provider processing or behavioral compliance; external runtime skill mechanisms remain unsupported. |
+| `0.45.0` | Exact registered effect adapters expose content-free reversal offers plus immutable execution receipts. The first envelope conditionally rejects only a newly created, still-pending memory proposal from the exact root tool call; this is not generic undo. |
+| `0.46.0` | Public thread hydration exposes complete consolidated history, retained live-tail cursors and an optional durable active-run correlation, with exact delegated thread binding and no guessed historical run mapping. |
 
 The `0.44.0` skill-activation support envelope is intentionally narrow. Native
 root dispatch covers profile-local and centrally selected skills after final
@@ -59,6 +61,18 @@ grantable to helpers. Same-name custom tools, prompt prose, reminders, metadata
 and external-runtime reports cannot create a receipt. Absence of a receipt means
 Ownware did not observe a supported placement boundary; it does not establish
 that instructions were absent, ignored or violated.
+
+The `0.45.0` reversal envelope is also intentionally narrow. Only the native
+root session's exact post-policy `remember` tool can mint an offer, and only
+when that invocation inserted a new pending proposal. A deduplicated proposal,
+a helper call, a same-name custom tool, result metadata, prose, files, browser
+actions, connector actions and external runtimes cannot mint one. Execution
+uses the proposal store's captured revision and conditional pending-to-rejected
+transition. The transition and immutable receipt commit atomically; a proposal
+accepted, edited or rejected first produces `stale`, and an expired offer makes
+no change. Historical audit rows remain. An offer proves supported inverse
+availability at observation time, not that every effect is reversible or that
+execution will later succeed.
 
 Compatibility rules:
 
@@ -71,16 +85,18 @@ Compatibility rules:
   talk to older v1 owner deployments.
 - `runId` is optional on `RunResult` for older v1 Gateways; callers requiring
   snapshots negotiate `runs.snapshot` before starting the run.
-- A capability's integer version is the minimum-behavior check. In `0.44.0`,
-  `gateway.capabilities` is version 25, `connections.list` is version 1,
+- A capability's integer version is the minimum-behavior check. In `0.46.0`,
+  `gateway.capabilities` is version 27, `connections.list` is version 1,
   `models.list` and `provider_hub.read` are version 2,
   `principals.issue` is version 3,
   `runs.start` is version 8,
   `runs.snapshot` is version 5, `runs.abort` is version 4, while `runs.events` and
   `runs.resume` are version 3, `runs.effects.read`, `runs.egress.read` and
   `runs.skill-activations.read` are version 1, and
+  `runs.reversals.read` and `runs.reversals.execute` are version 1, and
   `runs.permissions.decide` is version 1,
   `runs.sensitive-input.submit` and `runs.sensitive-input.deny` are version 1,
+  `threads.hydrate` is version 1,
   and `candidates.validate` and `candidates.stage` are version 1, while
   `candidates.activate` and `candidates.rollback` are version 2.
   `profiles.pause` and `profiles.resume` are also version 1 and require a UUID

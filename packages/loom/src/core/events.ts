@@ -136,6 +136,8 @@ export interface ToolCallStartEvent {
   readonly toolCallId: string
   readonly toolName: string
   readonly input: Record<string, unknown>
+  /** Cosmetic descriptor from the exact registered tool object, when valid. */
+  readonly uiDescriptor?: import('../tools/types.js').ToolUIDescriptor
   readonly turnIndex: number
 }
 
@@ -160,6 +162,8 @@ export interface ToolCallEndEvent {
   readonly result: string
   readonly isError: boolean
   readonly durationMs: number
+  /** Cosmetic descriptor from the exact tool that reached execution. */
+  readonly uiDescriptor?: import('../tools/types.js').ToolUIDescriptor
   readonly turnIndex: number
   /** Tool metadata — not sent to the model but available to consumers (UI, logging).
    *  Contains rich content like images (base64), audio paths, search results, etc. */

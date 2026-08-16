@@ -17,11 +17,11 @@ const POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS: Readonly<Record<number, string>> 
     17: 'sha256:e1eb2410738e8cc813fab7c56f6f839b1200e9fa792d1af0be7b4185b38bd72b',
     18: 'sha256:c4ec4e9ae3914cb6a430042ab027d014043d52e8e80c53cc6e97508df5aeb5fd',
   })
-const POSTGRESQL_CURRENT_V90_CATALOG_DIGESTS: Readonly<Record<number, string>> =
+const POSTGRESQL_CURRENT_V91_CATALOG_DIGESTS: Readonly<Record<number, string>> =
   Object.freeze({
-    16: 'sha256:3ce7e244e0a4cccf320100b38434901c69176fccc49852a1ad8b867c582eef12',
-    17: 'sha256:3ce7e244e0a4cccf320100b38434901c69176fccc49852a1ad8b867c582eef12',
-    18: 'sha256:7b724b5409f4a70aba2e2c8d6a8574cf0add8f5b2e874bb6fe4a0e95d27b99d7',
+    16: 'sha256:9d9f194bb66367dcea50c777f8e4290040c83db93d200ea2a4e5ff48d616d40e',
+    17: 'sha256:9d9f194bb66367dcea50c777f8e4290040c83db93d200ea2a4e5ff48d616d40e',
+    18: 'sha256:d0ba0317b2d928d14a92bab81d107b1f349aa3459d6bbfb09f7fbf9f133e5d87',
   })
 
 interface RelationRow {
@@ -296,13 +296,15 @@ export async function postgreSqlCatalogMatchesBaselineV82(
   return matchesGeneration(client, POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS)
 }
 
-export async function postgreSqlCatalogMatchesCurrentV90(
+export async function postgreSqlCatalogMatchesCurrentV91(
   client: QueryClient,
 ): Promise<boolean> {
-  return matchesGeneration(client, POSTGRESQL_CURRENT_V90_CATALOG_DIGESTS)
+  return matchesGeneration(client, POSTGRESQL_CURRENT_V91_CATALOG_DIGESTS)
 }
 
-/** @deprecated Internal compatibility alias; current schema is v90. */
-export const postgreSqlCatalogMatchesCurrentV89 = postgreSqlCatalogMatchesCurrentV90
-/** @deprecated Internal compatibility alias; current schema is v90. */
-export const postgreSqlCatalogMatchesCurrentV88 = postgreSqlCatalogMatchesCurrentV90
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const postgreSqlCatalogMatchesCurrentV90 = postgreSqlCatalogMatchesCurrentV91
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const postgreSqlCatalogMatchesCurrentV89 = postgreSqlCatalogMatchesCurrentV91
+/** @deprecated Internal compatibility alias; current schema is v91. */
+export const postgreSqlCatalogMatchesCurrentV88 = postgreSqlCatalogMatchesCurrentV91

@@ -1844,13 +1844,22 @@ async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<bo
 
 async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_CURRENT_SCHEMA_EXPECTATION) &&
-    await postgreSqlV90SchemaMatches(client) &&
+    await postgreSqlV90SemanticsMatch(client) &&
     await postgreSqlEffectReversalsMatch(client)
 }
 
 async function postgreSqlV90SchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_V90_SCHEMA_EXPECTATION) &&
-    await postgreSqlMessageSequenceMatches(client) &&
+    await postgreSqlV90SemanticsMatch(client)
+}
+
+/**
+ * Semantic postconditions retained by additive schemas after v90. Structural
+ * equality remains version-specific above; reusing that exact v90 catalogue
+ * check for v91 would reject every legitimate additive v91 object.
+ */
+async function postgreSqlV90SemanticsMatch(client: QueryClient): Promise<boolean> {
+  return await postgreSqlMessageSequenceMatches(client) &&
     await postgreSqlProviderUsageEvidenceMatches(client) &&
     await postgreSqlPluginControlPlaneMatches(client) &&
     await postgreSqlProfileDeploymentTombstonesMatch(client) &&

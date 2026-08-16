@@ -8,6 +8,13 @@ import type { GatewayState } from '../state.js'
 import type { SessionRunner } from '../session-runner.js'
 import { ROOT_AGENT_ID } from '../event-bus.js'
 import { UpdateThreadSchema } from '../validation/schemas.js'
+import {
+  authorizePrincipalScope,
+  getRequestPrincipal,
+} from '../auth/scoped-principal.js'
+import { principalContinuityKey } from '../idempotency.js'
+import type { RunRepository } from '../../storage/security-repositories.js'
+import type { ThreadHydration } from '../types.js'
 
 export interface ThreadHandlerDeps {
   /**
@@ -16,6 +23,8 @@ export interface ThreadHandlerDeps {
    * terminal, use the snapshot".
    */
   readonly runner?: SessionRunner
+  /** Durable authority used to confirm that a live runner ID is public. */
+  readonly runStore?: RunRepository
 }
 
 export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDeps = {}) {
@@ -186,6 +195,9 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
   //   - runningAgentId        : the currently streaming agent ('root'
   //                             when a live run is in flight, null when
   //                             terminal)
+  //   - runningRunId          : the public durable run correlated to that
+  //                             live stream, or null for terminal and
+  //                             internal/legacy live work
   //   - maxSeq                : highest seq on the root agent's stream —
   //                             observability marker, NOT the cursor
   //                             the client should use for SSE reconnect
@@ -206,13 +218,16 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
   // is non-null, the client then opens an SSE stream on that agent with
   // `?since=lastClosedTurnEndSeq`. If runningAgentId is null, the
   // snapshot is complete and no SSE connection is needed.
+  // When runningRunId is non-null, public clients may instead open the
+  // run-bounded stream. This route deliberately does not guess a historical
+  // run ID for archived messages.
   //
   // Authoritative-source note: once agent_events retention is enabled,
   // old threads' raw events are pruned. `messages` remains intact and
   // is sufficient to reconstruct the UI — hence the one-shot contract
   // that deliberately does not require event replay.
   async function hydrateThread(
-    _req: IncomingMessage,
+    req: IncomingMessage,
     res: ServerResponse,
     params: Record<string, string>,
   ): Promise<void> {
@@ -223,29 +238,76 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
       return
     }
 
-    const messages = await state.getMessages(threadId)
-    const agents = await state.listAgentsForThread(threadId)
-    const runningAgentId = deps.runner?.isRunning(threadId) ? ROOT_AGENT_ID : null
-    const [maxSeq, firstRetainedSeq] = await Promise.all([
+    const principal = getRequestPrincipal(req)
+    if (!authorizePrincipalScope(req, {
+      workspaceId: thread.workspaceId ?? undefined,
+      profileId: thread.profileId,
+    }) || (principal?.kind === 'delegated' &&
+      !await state.securityRepositories.threadBindings.allows(
+        threadId,
+        principalContinuityKey(principal),
+      ))) {
+      sendError(
+        res,
+        403,
+        'Delegated principal does not allow this thread hydration',
+        'principal_scope_denied',
+        'auth',
+      )
+      return
+    }
+
+    // If a run ends or another starts while storage is being read, repeat the
+    // projection once. SessionRunner removes a run only after its final
+    // messages and events have been persisted, so the second read closes the
+    // active -> terminal race without inventing a cross-store transaction.
+    let observedRun = deps.runner?.get(threadId)
+    let [messages, agents, maxSeq, firstRetainedSeq, lastTurnEndSeq] = await Promise.all([
+      state.getMessages(threadId),
+      state.listAgentsForThread(threadId),
       state.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID),
       state.getAgentEventMinSeq(threadId, ROOT_AGENT_ID, -1),
+      state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID),
     ])
+    let currentRun = deps.runner?.get(threadId)
+    if (observedRun?.runId !== currentRun?.runId) {
+      observedRun = currentRun
+      ;[messages, agents, maxSeq, firstRetainedSeq, lastTurnEndSeq] = await Promise.all([
+        state.getMessages(threadId),
+        state.listAgentsForThread(threadId),
+        state.getAgentEventMaxSeq(threadId, ROOT_AGENT_ID),
+        state.getAgentEventMinSeq(threadId, ROOT_AGENT_ID, -1),
+        state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID),
+      ])
+      currentRun = deps.runner?.get(threadId)
+    }
+
+    const runningAgentId = currentRun === undefined ? null : ROOT_AGENT_ID
+    const durableRun = currentRun === undefined
+      ? null
+      : await deps.runStore?.get(currentRun.runId) ?? null
+    const runningRunId = durableRun !== null && !durableRun.terminal &&
+      durableRun.threadId === threadId
+      ? durableRun.runId
+      : null
     const retainedCursorFloor = firstRetainedSeq === null
       ? maxSeq
       : Math.max(0, firstRetainedSeq - 1)
     const lastClosedTurnEndSeq = Math.max(
-      await state.getLastTurnEndSeq(threadId, ROOT_AGENT_ID),
+      lastTurnEndSeq,
       retainedCursorFloor,
     )
 
-    sendJSON(res, 200, {
+    const hydration = {
       thread,
       messages,
       agents,
       runningAgentId,
+      runningRunId,
       maxSeq,
       lastClosedTurnEndSeq,
-    })
+    } satisfies ThreadHydration
+    sendJSON(res, 200, hydration, { 'Cache-Control': 'no-store' })
   }
 
   return {

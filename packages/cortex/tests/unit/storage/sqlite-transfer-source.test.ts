@@ -8,8 +8,8 @@ import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 import { runMigrationsSafely } from '../../../src/gateway/db/migration-safety.js'
 import {
   assertSqliteTransferSnapshot,
-  SQLITE_V90_SCHEMA_OBJECT_COUNT,
-  SQLITE_V90_SCHEMA_OBJECT_HASH,
+  SQLITE_V91_SCHEMA_OBJECT_COUNT,
+  SQLITE_V91_SCHEMA_OBJECT_HASH,
   SqliteTransferPreflightError,
   SqliteTransferFindingsError,
   assertSqliteTransferSourceUnchanged,
@@ -18,7 +18,7 @@ import {
 } from '../../../src/storage/sqlite-transfer-preflight.js'
 import {
   classifyLogicalColumns,
-  SQLITE_V90_COLUMN_COUNT,
+  SQLITE_V91_COLUMN_COUNT,
   type LogicalColumnDescriptor,
   type PhysicalColumnDescriptor,
 } from '../../../src/storage/logical-schema.js'
@@ -100,8 +100,8 @@ describe('SQLite transfer source preflight', () => {
       2n,
     )
     expect(sqliteSchemaObjectReceipt(db)).toEqual({
-      count: SQLITE_V90_SCHEMA_OBJECT_COUNT,
-      digest: SQLITE_V90_SCHEMA_OBJECT_HASH,
+      count: SQLITE_V91_SCHEMA_OBJECT_COUNT,
+      digest: SQLITE_V91_SCHEMA_OBJECT_HASH,
     })
     db.close()
     const before = fileDigest(dbPath)
@@ -112,13 +112,13 @@ describe('SQLite transfer source preflight', () => {
       snapshotAuthority: 'sqlite-read-transaction',
       writerExclusion: 'not-proven',
       authorizesTargetWrites: false,
-      schemaVersion: 90,
-      schemaObjectCount: SQLITE_V90_SCHEMA_OBJECT_COUNT,
-      schemaObjectDigest: SQLITE_V90_SCHEMA_OBJECT_HASH,
-      logicalColumnCount: SQLITE_V90_COLUMN_COUNT,
-      tableCount: 75,
+      schemaVersion: 91,
+      schemaObjectCount: SQLITE_V91_SCHEMA_OBJECT_COUNT,
+      schemaObjectDigest: SQLITE_V91_SCHEMA_OBJECT_HASH,
+      logicalColumnCount: SQLITE_V91_COLUMN_COUNT,
+      tableCount: 77,
     })
-    expect(receipt.tables).toHaveLength(75)
+    expect(receipt.tables).toHaveLength(77)
     expect(receipt.tables.map((table) => table.table)).toEqual(
       [...receipt.tables.map((table) => table.table)].sort(),
     )
@@ -175,7 +175,7 @@ describe('SQLite transfer source preflight', () => {
       })
       observedColumns += columns.length
     }
-    expect(observedColumns).toBe(SQLITE_V90_COLUMN_COUNT)
+    expect(observedColumns).toBe(SQLITE_V91_COLUMN_COUNT)
   })
 
   it('blocks unknown schema objects and divergent history without reflecting them', () => {

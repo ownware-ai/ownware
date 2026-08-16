@@ -2348,7 +2348,10 @@ export class OwnwareGateway {
       candidateStore,
     )
     const skills = createSkillHandlers(this.registry, userProfilesDir)
-    const threads = createThreadHandlers(this.state, { runner: this.runner })
+    const threads = createThreadHandlers(this.state, {
+      runner: this.runner,
+      runStore: this.runStore,
+    })
 
     // Build connector handlers EARLY so its `registry` is available
     // when we wire the connectors() agent-tool provider into the
@@ -3025,7 +3028,11 @@ export class OwnwareGateway {
     this.router.patch('/api/v1/threads/:threadId', threads.patchThread)
     this.router.delete('/api/v1/threads/:threadId', threads.deleteThread)
     this.router.get('/api/v1/threads/:threadId/messages', threads.getMessages)
-    this.router.get('/api/v1/threads/:threadId/hydrate', threads.hydrateThread)
+    this.router.get(
+      '/api/v1/threads/:threadId/hydrate',
+      threads.hydrateThread,
+      { operation: 'threads.hydrate' },
+    )
     this.router.get('/api/v1/threads/:threadId/export', threads.exportThread)
 
     // Ownware Design — per-design metadata (migration 033, slice 7b).

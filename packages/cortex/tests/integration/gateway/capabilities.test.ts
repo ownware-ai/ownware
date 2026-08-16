@@ -49,7 +49,7 @@ describe('GET /api/v1/capabilities', () => {
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.44.0',
+        revision: '0.46.0',
       },
       capabilities: [
         { id: 'access_grants.create', version: 3 },
@@ -64,7 +64,7 @@ describe('GET /api/v1/capabilities', () => {
         { id: 'candidates.stage', version: 1 },
         { id: 'candidates.validate', version: 1 },
         { id: 'connections.list', version: 1 },
-        { id: 'gateway.capabilities', version: 25 },
+        { id: 'gateway.capabilities', version: 27 },
         { id: 'gateway.health', version: 1 },
         { id: 'models.list', version: 2 },
         { id: 'principals.issue', version: 3 },
@@ -86,6 +86,8 @@ describe('GET /api/v1/capabilities', () => {
         { id: 'runs.effects.read', version: 1 },
         { id: 'runs.egress.read', version: 1 },
         { id: 'runs.skill-activations.read', version: 1 },
+        { id: 'runs.reversals.execute', version: 1 },
+        { id: 'runs.reversals.read', version: 1 },
         { id: 'runs.permissions.decide', version: 1 },
         { id: 'runs.resume', version: 3 },
         { id: 'runs.snapshot', version: 5 },
@@ -118,6 +120,7 @@ describe('GET /api/v1/capabilities', () => {
         { id: 'sources.register', version: 2 },
         { id: 'task_catalog.manage', version: 1 },
         { id: 'task_catalog.read', version: 1 },
+        { id: 'threads.hydrate', version: 1 },
       ],
       limits: {
         jsonBodyBytes: 10 * 1024 * 1024,

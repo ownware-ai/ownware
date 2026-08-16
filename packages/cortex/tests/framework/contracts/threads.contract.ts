@@ -8,15 +8,48 @@
  * DELETE /api/v1/threads/:threadId
  * GET    /api/v1/threads/:threadId/messages
  * GET    /api/v1/threads/:threadId/export
+ * GET    /api/v1/threads/:threadId/hydrate
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { HumanInTheLoop, type LoomEvent, type Session } from '@ownware/loom'
 import { createTestGateway, type TestGateway } from '../harness/index.js'
 import {
   ThreadSchema,
   PaginatedThreadsSchema,
   ApiErrorSchema,
+  ThreadHydrationSchema,
 } from '../harness/schema-validator.js'
+
+class HydrationSession {
+  readonly sessionId = 'hydration-contract'
+  private releaseRun!: () => void
+  private readonly released = new Promise<void>((resolve) => {
+    this.releaseRun = resolve
+  })
+
+  async *submitMessage(): AsyncGenerator<LoomEvent, unknown> {
+    yield { type: 'turn.start', turnIndex: 0, timestamp: Date.now() }
+    await this.released
+    yield {
+      type: 'turn.end',
+      turnIndex: 0,
+      stopReason: 'end_turn',
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        model: 'test:model',
+        costUsd: 0,
+      },
+      timestamp: Date.now(),
+    }
+  }
+
+  abort(): void { this.releaseRun() }
+  release(): void { this.releaseRun() }
+}
 
 describe('Contract: Threads', () => {
   let gw: TestGateway
@@ -99,6 +132,51 @@ describe('Contract: Threads', () => {
     expect(r.status).toBe(200)
     expect(r.body.thread).toBeDefined()
     expect(Array.isArray(r.body.messages)).toBe(true)
+  })
+
+  it('GET /threads/:id/hydrate correlates only the active durable public run', async () => {
+    const thread = await gw.state.createThread('mini', 'Hydration contract')
+    const session = new HydrationSession()
+    gw.state.setSession(thread.id, session as unknown as Session)
+    gw.state.setRuntime(thread.id, {
+      session: session as unknown as Session,
+      hitl: new HumanInTheLoop({ timeoutMs: 10_000 }),
+      zoneManager: null,
+    })
+    const run = await gw.gateway.runStore.create({
+      threadId: thread.id,
+      profileId: 'mini',
+      model: 'test:model',
+      timeoutMs: 60_000,
+      startSeq: 0,
+    })
+    const handle = gw.runner.start({
+      runId: run.runId,
+      threadId: thread.id,
+      profileId: 'mini',
+      model: 'test:model',
+      prompt: 'hydrate while active',
+    })
+
+    const active = await gw.client.get(
+      `/api/v1/threads/${thread.id}/hydrate`,
+      ThreadHydrationSchema,
+    )
+    expect(active.status).toBe(200)
+    expect(active.headers['cache-control']).toBe('no-store')
+    expect(active.body).toMatchObject({
+      runningAgentId: 'root',
+      runningRunId: run.runId,
+    })
+
+    session.release()
+    await handle.done
+    const terminal = await gw.client.get(
+      `/api/v1/threads/${thread.id}/hydrate`,
+      ThreadHydrationSchema,
+    )
+    expect(terminal.body.runningAgentId).toBeNull()
+    expect(terminal.body.runningRunId).toBeNull()
   })
 
   it('GET /threads?profileId=X filters by profile', async () => {

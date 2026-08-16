@@ -68,11 +68,12 @@ src/
 | `provider-hub/schema.ts` + `service.ts` | Secret-free central provider/model/connection contract, catalog views and honest verification/pricing projections | Changing Provider Hub semantics or public catalog behavior |
 | `gateway/state.ts` | Composes adapter repositories with process-local sessions/runtimes | Adding persistence backends or changing state ownership |
 | `gateway/db/schema.ts` + `migration-safety.ts` | Immutable SQLite migration manifest, exact applied-history validation, snapshots and recovery | Adding a migration or changing database startup safety |
-| `gateway/run-store.ts` + `effect-receipt-store.ts` + `skill-activation-receipt-store.ts` + `permission-intent.ts` | Durable run lifecycle/consequence authority, immutable payload-free effect and exact skill-placement evidence, and canonical exact permission identities/one-use consumption | Changing retry safety, permission/effect/skill authority semantics or public run evidence |
+| `gateway/run-store.ts` + `effect-receipt-store.ts` + `effect-reversal-store.ts` + `skill-activation-receipt-store.ts` + `permission-intent.ts` | Durable run lifecycle/consequence authority, immutable payload-free effect/reversal and exact skill-placement evidence, and canonical exact permission identities/one-use consumption | Changing retry safety, permission/effect/reversal/skill authority semantics or public run evidence |
+| `gateway/effect-reversal-adapters.ts` | Exact-object observation plus restart-safe trusted adapter registry for narrowly supported inverses | Adding a reversible authority, changing offer eligibility or changing execution proof |
 | `gateway/skill-activation-evidence.ts` | Derives install-local keyed identities for the exact assembled profile and frozen skills without exposing their content | Changing what a skill receipt identifies or how identities are bound |
 | `storage/contracts.ts` + `sqlite-adapter.ts` | Async adapter lifecycle, guarded repository/transaction scopes, savepoints and typed operational failures | Changing storage startup, shutdown or transaction ownership |
 | `storage/core-repositories.ts` + `sqlite-core-repositories.ts` | Backend-neutral async domain ports for threads, messages, usage and agent events, with the SQLite implementation | Changing durable core reads/writes or adding a storage backend |
-| `storage/security-repositories.ts` + `sqlite-security-repositories.ts` | Backend-neutral async ports for credentials, grants, principals, runs/effect/egress receipts, permissions, idempotency, refresh leases and runtime thread references | Changing security/run/effect/egress authority persistence or adding a storage backend |
+| `storage/security-repositories.ts` + `sqlite-security-repositories.ts` | Backend-neutral async ports for credentials, grants, principals, runs/effect/egress/reversal receipts, permissions, idempotency, refresh leases and runtime thread references | Changing security/run/effect/egress/reversal authority persistence or adding a storage backend |
 | `storage/source-repositories.ts` + `sqlite-source-repositories.ts` | Backend-neutral async ports for source registration, uploads, quotas, source jobs, Data Views and deletion, with the SQLite implementation | Changing durable source authority or adding a storage backend |
 | `storage/platform-repositories.ts` + `sqlite-platform-repositories.ts` | Backend-neutral async ports for connectors, channels, schedules, approvals, tasks, memory, candidates and teams, with the SQLite implementation | Changing remaining platform persistence or adding a storage backend |
 | `storage/logical-schema.ts` + `value-codec.ts` | Exact live-schema classification and driver-neutral durable value normalization | Adding/changing a stored column or adapter value mapping |
@@ -224,8 +225,9 @@ src/
 ### Security storage repositories and authority
 
 - Gateway production paths access credentials/audit/spend/import, delegated
-  principals, thread bindings, grants, runs, effect/egress/skill-activation
-  receipts, permission requests, idempotency, OAuth refresh leases and runtime thread references through
+  principals, thread bindings, grants, runs, effect/egress/reversal/
+  skill-activation receipts, permission requests, idempotency, OAuth refresh
+  leases and runtime thread references through
   `storage/security-repositories.ts`. Construct their SQLite stores only in the
   SQLite repository factory; handlers, runners, resolvers and CLI commands do
   not receive `rawDbHandle` for these domains.
@@ -247,6 +249,12 @@ src/
   must cover thrown errors, logs and durable rows; never attach a raw error as a
   cause. Shared security repository contracts must run unchanged for every
   adapter and cover independent-owner contention plus reopen continuity.
+- A reversal offer is private-target durable state joined to one exact effect
+  identity and trusted adapter revision. Public projections omit target IDs,
+  revisions, profile/thread scope and content. Execution must conditionally
+  change the owned target and append its immutable receipt in the same database
+  transaction. Unknown adapters, changed targets and duplicate callers fail
+  closed or return an explicit terminal outcome; they never enter generic undo.
 
 ### Source storage repositories and effects
 

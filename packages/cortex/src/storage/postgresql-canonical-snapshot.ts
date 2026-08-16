@@ -5,7 +5,7 @@ import {
 } from './canonical-storage-digest.js'
 import type { PostgreSqlClient, PostgreSqlPoolClient } from './postgresql-driver.js'
 import {
-  postgreSqlCatalogMatchesCurrentV90,
+  postgreSqlCatalogMatchesCurrentV91,
 } from './postgresql-catalog-certification.js'
 import {
   POSTGRESQL_CURRENT_SCHEMA_EXPECTATION,
@@ -218,7 +218,7 @@ export async function canonicalPostgreSqlTransferSnapshotWithinTransaction(
     if (!await POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(client)) {
       return fail('schema_invalid')
     }
-    if (!await postgreSqlCatalogMatchesCurrentV90(client)) {
+    if (!await postgreSqlCatalogMatchesCurrentV91(client)) {
       return fail('schema_invalid')
     }
 

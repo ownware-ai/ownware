@@ -58,6 +58,7 @@ timestamp/ID ordering.
   messages: ThreadMessage[]
   agents: Array<{ agentId, parentAgentId, eventCount }>
   runningAgentId: string | null    // 'root' when a run is live, else null
+  runningRunId: string | null      // public durable active run, when one exists
   maxSeq: number                   // highest seq on the root agent
   lastClosedTurnEndSeq: number     // highest seq of `turn.end` on root
 }
@@ -65,7 +66,8 @@ timestamp/ID ordering.
 
 Client flow:
 1. Call `/hydrate`. Render immediately from `messages`.
-2. If `runningAgentId != null`, open SSE on that agent with
+2. If `runningRunId != null`, prefer its bounded run-event stream. Otherwise,
+   if `runningAgentId != null`, open SSE on that agent with
    `?since={lastClosedTurnEndSeq}`. Replaying from the last closed turn
    boundary lets the reducer rebuild any in-flight turn (turn.start +
    deltas + open tool calls) that hasn't yet hit turn.end. Using
@@ -77,6 +79,14 @@ Client flow:
 
 Clients MUST NOT open SSE for archived threads. `runningAgentId = null`
 is the authoritative signal that the thread is terminal.
+
+`runningRunId` is deliberately narrower than liveness. It is present only when
+the process-local active runner identity is confirmed by the durable public run
+repository. Internal/legacy live work may therefore have `runningAgentId =
+'root'` and `runningRunId = null`. Archived hydration does not guess a latest or
+per-message run ID. Delegated hydration additionally requires
+`threads.hydrate`, exact workspace/profile scope and the thread's durable
+principal binding; owner access to unbound owner threads is unchanged.
 
 ## Ordered turn timeline (`messages.parts`)
 
@@ -218,6 +228,32 @@ corresponding `skill.activation` event.
 - The receipt proves exact conversation placement, not provider processing,
   behavioral compliance, model correctness, tool success or external effects.
 
+## Exact effect reversal offers
+
+`effect-reversal-adapters.ts` wraps only the exact final root `remember` tool
+object assembled by Cortex. Its private one-use result mark may create an offer
+only when the call inserted a new pending memory proposal and the durable
+`tool.call.start` effect identity already exists. Tool names, metadata, prose,
+helpers and external-runtime events are not authority.
+
+- The first supported inverse is deliberately narrow: reject that exact new
+  pending proposal while its profile, thread and captured `created_at` revision
+  still match. Accepted, edited, rejected, missing or otherwise changed targets
+  resolve the offer as stale without overwriting user state.
+- The persisted adapter ref/revision selects a trusted host registry after
+  restart. Unknown identities fail closed; there is no generic fallback and no
+  tool-name catalogue. Compensation remains a distinct future adapter effect.
+- Target transition, terminal offer status and immutable execution receipt are
+  one SQLite/PostgreSQL transaction. A UUID idempotency key replays the one
+  receipt; a different key cannot execute a terminal offer again.
+- Public offer/receipt routes are authenticated, principal-scoped and
+  `no-store`. They expose effect/tool correlation, adapter identity, operation,
+  status and time only—never target IDs/revisions, profile/thread scope, memory
+  content, tool arguments or results.
+- A confirmed receipt proves the pending proposal is now rejected at Ownware's
+  memory authority. It does not erase history, undo arbitrary effects, prove
+  compensation, or claim that a remote system accepted an inverse.
+
 ## Never do
 
 - Do not write to `agent_events` from anything other than `EventIngestor`.
@@ -264,6 +300,8 @@ repository ports so SQLite and PostgreSQL retain the same behavior.
   pre-dispatch authority, content-free observations and terminal reconciliation.
 - `skill-activation-evidence.ts` + `skill-activation-receipt-store.ts` — exact
   install-local skill identity and immutable content-free placement evidence.
+- `effect-reversal-store.ts` + `effect-reversal-adapters.ts` — private exact
+  target binding, content-free offers and atomic restart-safe inverse receipts.
 - `event-ingestor.ts` — single write path for `agent_events`.
 - `event-bus.ts` — in-process fan-out for live SSE subscribers.
 - `events.ts` — gateway event contract (Loom events + gateway-owned

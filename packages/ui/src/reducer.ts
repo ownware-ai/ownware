@@ -21,13 +21,37 @@
  *   turn.interrupted/error → close the reply, status 'error'
  */
 
-import type { AgentEvent, ChatState, Message, ToolCall } from './types.js'
+import type {
+  AgentEvent,
+  ChatState,
+  Message,
+  PendingApproval,
+  PendingSensitiveInput,
+  SkillActivationEvidence,
+  ToolCall,
+} from './types.js'
+import type { ToolUIDescriptor } from './descriptors.js'
 
 /** Stop reasons on a `turn.end` that mean the loop CONTINUES (not the reply's end). */
 const CONTINUE_STOP_REASONS = new Set<string>(['tool_use', 'pause_turn'])
 
 export function initialChatState(): ChatState {
-  return { messages: [], status: 'idle', pendingApproval: null, lastSeq: 0 }
+  return {
+    messages: [],
+    status: 'idle',
+    pendingApproval: null,
+    pendingApprovals: [],
+    pendingSensitiveInput: null,
+    pendingSensitiveInputs: [],
+    skillActivations: [],
+    connection: {
+      phase: 'idle',
+      lastDeliveredSeq: 0,
+      expectedNextSeq: 1,
+      unsupportedEventTypes: [],
+    },
+    lastSeq: 0,
+  }
 }
 
 /** Fold a sequence of events onto a state (convenience for hydrate + tests). */
@@ -35,6 +59,21 @@ export function applyEvents(state: ChatState, events: Iterable<AgentEvent>): Cha
   let s = state
   for (const e of events) s = chatReducer(s, e)
   return s
+}
+
+/** Seed a reducer from an authoritative hydrate/replay cursor. */
+export function seedReplayCursor(state: ChatState, since: number): ChatState {
+  if (!Number.isSafeInteger(since) || since < 0) return state
+  return {
+    ...state,
+    lastSeq: since,
+    connection: {
+      ...state.connection,
+      phase: 'replaying',
+      lastDeliveredSeq: since,
+      expectedNextSeq: since + 1,
+    },
+  }
 }
 
 /**
@@ -55,132 +94,383 @@ export function addUserMessage(state: ChatState, text: string, id?: string): Cha
 
 export function chatReducer(state: ChatState, event: AgentEvent): ChatState {
   const data = event.data ?? {}
-  const seq = typeof event.seq === 'number' ? event.seq : state.lastSeq
-  const lastSeq = Math.max(state.lastSeq, seq)
+  if (event.type === 'stream.start') return reduceStreamStart(state, data)
+  if (event.type === 'stream.replay.complete') return reduceReplayComplete(state, data)
+  if (event.type === 'stream.shutdown') return reduceStreamShutdown(state, data)
+  if (event.type === 'done') {
+    return {
+      ...state,
+      connection: { ...state.connection, phase: 'closed', expectedNextSeq: null },
+    }
+  }
+  const seq = event.seq
+  if (!Number.isSafeInteger(seq) || seq < 0) return state
+  if (seq > 0 && seq <= state.lastSeq) return state
+  if (
+    seq > 0
+    && state.connection.lastDeliveredSeq > 0
+    && seq > state.lastSeq + 1
+  ) {
+    return {
+      ...state,
+      connection: {
+        ...state.connection,
+        phase: 'resync_required',
+        expectedNextSeq: state.lastSeq + 1,
+      },
+    }
+  }
+  const lastSeq = seq > 0 ? seq : state.lastSeq
+  const base: ChatState = {
+    ...state,
+    lastSeq,
+    connection: {
+      ...state.connection,
+      phase: state.connection.phase === 'replaying' ? 'replaying' : 'live',
+      lastDeliveredSeq: lastSeq,
+      expectedNextSeq: lastSeq + 1,
+    },
+  }
 
   switch (event.type) {
     case 'user.message': {
       const text = readString(data, 'text') || readString(data, 'content') || readString(data, 'prompt')
-      if (!text) return { ...state, lastSeq }
+      if (!text) return base
       const msg: Message = { id: `u${seq}`, role: 'user', text, toolCalls: [], streaming: false }
-      return { ...state, messages: [...state.messages, msg], status: 'streaming', lastSeq }
+      return {
+        ...base,
+        messages: reconcileOptimisticUser(base.messages, msg),
+        status: 'streaming',
+        error: undefined,
+      }
     }
 
     case 'text.delta': {
-      const { list, idx } = ensureOpenAssistant(state.messages, seq)
+      const { list, idx } = ensureOpenAssistant(base.messages, seq)
       const cur = list[idx]!
       list[idx] = { ...cur, text: cur.text + readString(data, 'text') }
-      return { ...state, messages: list, status: 'streaming', lastSeq }
+      return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'text.complete': {
       // Deltas normally build the text; only honor `complete` if nothing streamed.
-      const last = state.messages[state.messages.length - 1]
-      if (last && last.role === 'assistant' && last.text.length > 0) return { ...state, lastSeq }
-      const { list, idx } = ensureOpenAssistant(state.messages, seq)
+      const last = base.messages[base.messages.length - 1]
+      if (last && last.role === 'assistant' && last.text.length > 0) return base
+      const { list, idx } = ensureOpenAssistant(base.messages, seq)
       list[idx] = { ...list[idx]!, text: readString(data, 'text') }
-      return { ...state, messages: list, status: 'streaming', lastSeq }
+      return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'thinking.delta': {
-      const { list, idx } = ensureOpenAssistant(state.messages, seq)
+      const { list, idx } = ensureOpenAssistant(base.messages, seq)
       const cur = list[idx]!
       list[idx] = { ...cur, thinking: (cur.thinking ?? '') + readString(data, 'text') }
-      return { ...state, messages: list, status: 'streaming', lastSeq }
+      return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'tool.call.start': {
-      const { list, idx } = ensureOpenAssistant(state.messages, seq)
+      const { list, idx } = ensureOpenAssistant(base.messages, seq)
       const cur = list[idx]!
       const call: ToolCall = {
-        id: readString(data, 'toolCallId'),
-        name: readString(data, 'toolName'),
+        id: readString(data, 'toolCallId') || `tool-${seq}`,
+        name: readString(data, 'toolName') || 'unknown',
         input: readObject(data, 'input'),
         status: 'running',
+        ...(readToolUIDescriptor(data['uiDescriptor']) ?? {}),
       }
-      list[idx] = { ...cur, toolCalls: [...cur.toolCalls, call] }
-      return { ...state, messages: list, status: 'streaming', lastSeq }
+      list[idx] = {
+        ...cur,
+        toolCalls: cur.toolCalls.some(existing => existing.id === call.id)
+          ? cur.toolCalls
+          : [...cur.toolCalls, call],
+      }
+      return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'tool.call.progress': {
-      const id = readString(data, 'toolCallId')
+      const id = readString(data, 'toolCallId') || `tool-${seq}`
       const progress = readString(data, 'progress')
-      return { ...state, messages: updateToolCall(state.messages, id, (c) => ({ ...c, progress })), lastSeq }
+      return {
+        ...base,
+        messages: updateOrInsertToolCall(base.messages, seq, id, {
+          id,
+          name: readString(data, 'toolName') || 'unknown',
+          input: {},
+          status: 'running',
+          progress,
+          partial: true,
+        }, (call) => ({ ...call, progress })),
+      }
     }
 
     case 'tool.call.end': {
-      const id = readString(data, 'toolCallId')
+      const id = readString(data, 'toolCallId') || `tool-${seq}`
       const isError = data['isError'] === true
       return {
-        ...state,
-        messages: updateToolCall(state.messages, id, (c) => ({
-          ...c,
+        ...base,
+        messages: updateOrInsertToolCall(base.messages, seq, id, {
+          id,
+          name: readString(data, 'toolName') || 'unknown',
+          input: {},
           status: isError ? 'error' : 'done',
           result: readString(data, 'result'),
           isError,
           durationMs: readNumber(data, 'durationMs'),
+          partial: true,
+          ...(readToolUIDescriptor(data['uiDescriptor']) ?? {}),
+        }, (call) => ({
+          ...call,
+          status: isError ? 'error' : 'done',
+          result: readString(data, 'result'),
+          isError,
+          durationMs: readNumber(data, 'durationMs'),
+          ...(readToolUIDescriptor(data['uiDescriptor']) ?? {}),
         })),
-        lastSeq,
       }
     }
 
     case 'permission.request': {
       const requestId = readString(data, 'requestId')
-      if (!requestId) return { ...state, lastSeq }
+      if (!requestId) return base
+      const operationHash = readString(data, 'operationHash')
+      const approval: PendingApproval = {
+        requestId,
+        toolName: readString(data, 'toolName') || 'unknown',
+        reason: readString(data, 'reason') || 'Review the exact tool request.',
+        ...(isOperationHash(operationHash) ? { operationHash } : {}),
+        ...(data['intentRevision'] === 1 ? { intentRevision: 1 as const } : {}),
+      }
+      const pendingApprovals = upsertById(base.pendingApprovals, approval, 'requestId')
       return {
-        ...state,
+        ...base,
         status: 'awaiting_approval',
-        pendingApproval: {
-          requestId,
-          toolName: readString(data, 'toolName') || 'unknown',
-          reason: readString(data, 'reason') || 'Tool requires explicit approval',
-        },
-        lastSeq,
+        pendingApproval: pendingApprovals[0] ?? null,
+        pendingApprovals,
       }
     }
 
     case 'permission.response': {
-      // The human answered; the run resumes.
-      return { ...state, status: 'streaming', pendingApproval: null, lastSeq }
+      const requestId = readString(data, 'requestId')
+      if (!requestId) return rememberUnsupported(base, event.type)
+      const pendingApprovals = base.pendingApprovals.filter(item => item.requestId !== requestId)
+      return {
+        ...base,
+        status: waitingStatus(pendingApprovals, base.pendingSensitiveInputs),
+        pendingApproval: pendingApprovals[0] ?? null,
+        pendingApprovals,
+      }
+    }
+
+    case 'sensitive.input.request': {
+      const requestId = readString(data, 'requestId')
+      const toolCallId = readString(data, 'toolCallId')
+      const toolName = readString(data, 'toolName')
+      const label = readString(data, 'label')
+      const usage = readString(data, 'usage')
+      const adapterRevision = readString(data, 'adapterRevision')
+      const agentId = data['agentId']
+      if (
+        !requestId || !toolCallId || !toolName || !label || !usage || !adapterRevision
+        || (typeof agentId !== 'string' && agentId !== null)
+      ) return rememberUnsupported(base, event.type)
+      const request: PendingSensitiveInput = {
+        requestId,
+        toolCallId,
+        toolName,
+        label,
+        usage,
+        agentId,
+        adapterRevision,
+      }
+      const pendingSensitiveInputs = upsertById(
+        base.pendingSensitiveInputs,
+        request,
+        'requestId',
+      )
+      return {
+        ...base,
+        status: base.pendingApprovals.length > 0
+          ? 'awaiting_approval'
+          : 'awaiting_sensitive_input',
+        pendingSensitiveInput: pendingSensitiveInputs[0] ?? null,
+        pendingSensitiveInputs,
+      }
+    }
+
+    case 'sensitive.input.response': {
+      const requestId = readString(data, 'requestId')
+      if (!requestId) return rememberUnsupported(base, event.type)
+      const pendingSensitiveInputs = base.pendingSensitiveInputs.filter(
+        item => item.requestId !== requestId,
+      )
+      return {
+        ...base,
+        status: waitingStatus(base.pendingApprovals, pendingSensitiveInputs),
+        pendingSensitiveInput: pendingSensitiveInputs[0] ?? null,
+        pendingSensitiveInputs,
+      }
+    }
+
+    case 'skill.activation': {
+      const activationId = boundedIdentity(readString(data, 'activationId'))
+      const skillName = boundedIdentity(readString(data, 'skillName'))
+      const skillDigest = readString(data, 'skillDigest')
+      const sourceRef = boundedIdentity(readString(data, 'sourceRef'))
+      const sourceDigest = readString(data, 'sourceDigest')
+      const turnIndex = readNumber(data, 'turnIndex')
+      const timestamp = readNumber(data, 'timestamp')
+      const rawAgentId = data['agentId']
+      const agentId = typeof rawAgentId === 'string'
+        ? boundedIdentity(rawAgentId)
+        : rawAgentId === null ? null : undefined
+      const rawToolCallId = data['toolCallId']
+      const toolCallId = typeof rawToolCallId === 'string'
+        ? boundedIdentity(rawToolCallId)
+        : rawToolCallId === null ? null : undefined
+      if (
+        !activationId || !uuidIdentity(activationId)
+        || !skillName || !keyedDigest(skillDigest)
+        || !sourceRef || !keyedDigest(sourceDigest)
+        || agentId === undefined || toolCallId === undefined
+        || !Number.isSafeInteger(turnIndex) || turnIndex! < 0
+        || !Number.isSafeInteger(timestamp) || timestamp! < 0
+      ) return rememberUnsupported(base, event.type)
+      const activation: SkillActivationEvidence = {
+        activationId,
+        skillName,
+        skillDigest,
+        sourceRef,
+        sourceDigest,
+        agentId,
+        toolCallId,
+        turnIndex: turnIndex!,
+        timestamp: timestamp!,
+      }
+      return {
+        ...base,
+        skillActivations: upsertById(base.skillActivations, activation, 'activationId'),
+      }
     }
 
     case 'turn.end': {
       const stopReason = readString(data, 'stopReason') || 'end_turn'
-      const model = readString(readObject(data, 'usage'), 'model') || state.model
+      const model = readString(readObject(data, 'usage'), 'model') || base.model
       if (CONTINUE_STOP_REASONS.has(stopReason)) {
         // A tool round-trip — the reply keeps streaming after the tool returns.
-        return { ...state, model, lastSeq }
+        return { ...base, model }
       }
-      return { ...state, messages: closeOpenAssistant(state.messages), status: 'idle', model, lastSeq }
+      if (stopReason !== 'end_turn' && stopReason !== 'max_tokens' && stopReason !== 'stop_sequence') {
+        return {
+          ...rememberUnsupported(base, `turn.end:${stopReason}`),
+          connection: {
+            ...base.connection,
+            phase: 'resync_required',
+            expectedNextSeq: lastSeq + 1,
+          },
+        }
+      }
+      return {
+        ...base,
+        messages: closeOpenAssistant(base.messages),
+        status: waitingStatus(base.pendingApprovals, base.pendingSensitiveInputs, 'idle'),
+        model,
+      }
     }
 
     case 'turn.interrupted': {
       const reason = readString(data, 'reason') || 'interrupted'
-      return { ...state, messages: closeOpenAssistant(state.messages), status: 'error', error: `run ${reason}`, lastSeq }
+      return terminalError(base, `Run ${reason}. Start another turn or refresh the run state.`)
     }
 
     case 'error': {
       const message = readString(data, 'message') || 'agent error'
-      return { ...state, messages: closeOpenAssistant(state.messages), status: 'error', error: message, lastSeq }
-    }
-
-    case 'stream.shutdown': {
-      const reason = readString(data, 'reason') || 'closed'
-      return { ...state, messages: closeOpenAssistant(state.messages), status: 'error', error: `stream ${reason}`, lastSeq }
+      return terminalError(base, message)
     }
 
     case 'session.start': {
-      const model = readString(data, 'model') || state.model
-      return { ...state, model, lastSeq }
+      const model = readString(data, 'model') || base.model
+      return { ...base, model }
     }
 
     default:
-      // Unknown/ignored event — still advance the resume cursor.
-      return lastSeq === state.lastSeq ? state : { ...state, lastSeq }
+      return rememberUnsupported(base, event.type)
   }
 }
 
 // ── internals ────────────────────────────────────────────────────────────────
+
+function reduceStreamStart(state: ChatState, data: Record<string, unknown>): ChatState {
+  const since = readNumber(data, 'since')
+  const maxSeqAtStart = readNumber(data, 'maxSeqAtStart')
+  if (
+    !Number.isSafeInteger(since) || since! < 0
+    || !Number.isSafeInteger(maxSeqAtStart) || maxSeqAtStart! < since!
+  ) return rememberUnsupported(state, 'stream.start')
+  if (state.lastSeq !== 0 && state.lastSeq !== since) {
+    return {
+      ...rememberUnsupported(state, 'stream.start:cursor-mismatch'),
+      connection: {
+        ...state.connection,
+        phase: 'resync_required',
+        expectedNextSeq: state.lastSeq + 1,
+      },
+    }
+  }
+  return seedReplayCursor(state, since!)
+}
+
+function reduceReplayComplete(state: ChatState, data: Record<string, unknown>): ChatState {
+  const since = readNumber(data, 'since')
+  const replayedThroughSeq = readNumber(data, 'replayedThroughSeq')
+  const maxSeqAtStart = readNumber(data, 'maxSeqAtStart')
+  const liveTail = data['liveTail']
+  if (
+    !Number.isSafeInteger(since) || since! < 0
+    || !Number.isSafeInteger(replayedThroughSeq) || replayedThroughSeq! < since!
+    || !Number.isSafeInteger(maxSeqAtStart) || maxSeqAtStart! < since!
+    || typeof liveTail !== 'boolean'
+    || replayedThroughSeq !== state.lastSeq
+  ) {
+    return {
+      ...rememberUnsupported(state, 'stream.replay.complete'),
+      connection: {
+        ...state.connection,
+        phase: 'resync_required',
+        expectedNextSeq: state.lastSeq + 1,
+      },
+    }
+  }
+  return {
+    ...state,
+    connection: {
+      ...state.connection,
+      phase: liveTail ? 'live' : 'closed',
+      lastDeliveredSeq: state.lastSeq,
+      expectedNextSeq: liveTail ? state.lastSeq + 1 : null,
+    },
+  }
+}
+
+function reduceStreamShutdown(state: ChatState, data: Record<string, unknown>): ChatState {
+  const reason = readString(data, 'reason')
+  if (reason === 'gateway_shutdown') {
+    return {
+      ...state,
+      connection: { ...state.connection, phase: 'reconnecting' },
+    }
+  }
+  if (reason === 'slow_consumer') {
+    return {
+      ...state,
+      connection: {
+        ...state.connection,
+        phase: 'resync_required',
+        expectedNextSeq: state.lastSeq + 1,
+      },
+    }
+  }
+  return rememberUnsupported(state, 'stream.shutdown')
+}
 
 /**
  * Ensure the last row is an OPEN streaming assistant reply (creating one keyed
@@ -220,6 +510,231 @@ function updateToolCall(
   )
 }
 
+/** Reconcile one optimistic prompt with the authoritative streamed observation. */
+function reconcileOptimisticUser(messages: readonly Message[], observed: Message): Message[] {
+  const list = messages.slice()
+  const last = list[list.length - 1]
+  if (
+    last
+    && last.role === 'user'
+    && last.id.startsWith('u-local-')
+    && last.text === observed.text
+  ) {
+    list[list.length - 1] = observed
+    return list
+  }
+  list.push(observed)
+  return list
+}
+
+/** Update an observed call, or retain an honest partial placeholder after retention loss. */
+function updateOrInsertToolCall(
+  messages: readonly Message[],
+  seq: number,
+  id: string,
+  initial: ToolCall,
+  update: (call: ToolCall) => ToolCall,
+): Message[] {
+  if (messages.some(message => message.toolCalls.some(call => call.id === id))) {
+    return updateToolCall(messages, id, update)
+  }
+  const { list, idx } = ensureOpenAssistant(messages, seq)
+  const message = list[idx]!
+  list[idx] = { ...message, toolCalls: [...message.toolCalls, initial] }
+  return list
+}
+
+function upsertById<T, K extends keyof T>(items: readonly T[], item: T, key: K): T[] {
+  const index = items.findIndex(existing => existing[key] === item[key])
+  if (index < 0) return [...items, item]
+  const next = items.slice()
+  next[index] = item
+  return next
+}
+
+function waitingStatus(
+  approvals: readonly PendingApproval[],
+  sensitiveInputs: readonly PendingSensitiveInput[],
+  fallback: ChatState['status'] = 'streaming',
+): ChatState['status'] {
+  if (approvals.length > 0) return 'awaiting_approval'
+  if (sensitiveInputs.length > 0) return 'awaiting_sensitive_input'
+  return fallback
+}
+
+function terminalError(state: ChatState, message: string): ChatState {
+  return {
+    ...state,
+    messages: closeOpenAssistant(state.messages),
+    status: 'error',
+    error: message,
+    pendingApproval: null,
+    pendingApprovals: [],
+    pendingSensitiveInput: null,
+    pendingSensitiveInputs: [],
+  }
+}
+
+function rememberUnsupported(state: ChatState, type: string): ChatState {
+  const current = state.connection.unsupportedEventTypes
+  if (current.includes(type)) return state
+  const unsupportedEventTypes = [...current, type].slice(-32)
+  return {
+    ...state,
+    connection: { ...state.connection, unsupportedEventTypes },
+  }
+}
+
+function isOperationHash(value: string): boolean {
+  if (value.length !== 64) return false
+  for (const char of value) {
+    const code = char.charCodeAt(0)
+    const digit = code >= 48 && code <= 57
+    const lowerHex = code >= 97 && code <= 102
+    if (!digit && !lowerHex) return false
+  }
+  return true
+}
+
+function boundedIdentity(value: string): string | undefined {
+  if (value.length === 0 || value.length > 240) return undefined
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return undefined
+  }
+  return value
+}
+
+function keyedDigest(value: string): boolean {
+  const prefix = 'hmac-sha256:'
+  if (value.length !== prefix.length + 64 || !value.startsWith(prefix)) return false
+  for (let index = prefix.length; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    const digit = code >= 48 && code <= 57
+    const lowerHex = code >= 97 && code <= 102
+    if (!digit && !lowerHex) return false
+  }
+  return true
+}
+
+function uuidIdentity(value: string): boolean {
+  if (value.length !== 36) return false
+  for (let index = 0; index < value.length; index += 1) {
+    if (index === 8 || index === 13 || index === 18 || index === 23) {
+      if (value[index] !== '-') return false
+      continue
+    }
+    const code = value.charCodeAt(index)
+    const digit = code >= 48 && code <= 57
+    const lowerHex = code >= 97 && code <= 102
+    if (!digit && !lowerHex) return false
+  }
+  const version = value.charCodeAt(14)
+  const variant = value.charCodeAt(19)
+  return version >= 49 && version <= 53
+    && (variant === 56 || variant === 57 || variant === 97 || variant === 98)
+}
+
+function readToolUIDescriptor(value: unknown): { readonly uiDescriptor: ToolUIDescriptor } | null {
+  if (!isRecord(value)) return null
+  const summary = value['summary']
+  if (!isRecord(summary)) return null
+  const kind = value['kind']
+  const verb = summary['verb']
+  if (!isToolKind(kind) || typeof verb !== 'string' || verb.length === 0) return null
+
+  const primaryField = optionalNonEmptyString(summary['primaryField'])
+  if (summary['primaryField'] !== undefined && primaryField === undefined) return null
+  const metaFields = readStringArray(summary['metaFields'])
+  if (summary['metaFields'] !== undefined && metaFields === undefined) return null
+
+  const descriptor: {
+    kind: ToolUIDescriptor['kind']
+    summary: { verb: string; primaryField?: string; metaFields?: readonly string[] }
+    preview?: ToolUIDescriptor['preview']
+    openAction?: ToolUIDescriptor['openAction']
+  } = {
+    kind,
+    summary: {
+      verb,
+      ...(primaryField === undefined ? {} : { primaryField }),
+      ...(metaFields === undefined ? {} : { metaFields }),
+    },
+  }
+
+  const preview = value['preview']
+  if (preview !== undefined) {
+    if (!isRecord(preview)) return null
+    const contentField = optionalNonEmptyString(preview['contentField'])
+    const format = preview['format']
+    const truncateAtLines = preview['truncateAtLines']
+    if (!contentField || !isPreviewFormat(format)) return null
+    if (
+      truncateAtLines !== undefined
+      && (!Number.isSafeInteger(truncateAtLines) || (truncateAtLines as number) <= 0)
+    ) return null
+    descriptor.preview = {
+      contentField,
+      format,
+      ...(truncateAtLines === undefined ? {} : { truncateAtLines: truncateAtLines as number }),
+    }
+  }
+
+  const openAction = value['openAction']
+  if (openAction !== undefined) {
+    if (!isRecord(openAction)) return null
+    const target = openAction['target']
+    const pathField = optionalNonEmptyString(openAction['pathField'])
+    if (!isOpenTarget(target) || !pathField) return null
+    descriptor.openAction = { target, pathField }
+  }
+
+  return { uiDescriptor: descriptor }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function optionalNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function readStringArray(value: unknown): readonly string[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item.length === 0)) {
+    return undefined
+  }
+  return value.slice()
+}
+
+function isToolKind(value: unknown): value is ToolUIDescriptor['kind'] {
+  return value === 'file-write'
+    || value === 'file-read'
+    || value === 'file-edit'
+    || value === 'shell'
+    || value === 'search'
+    || value === 'image'
+    || value === 'external-action'
+    || value === 'conversational'
+}
+
+function isPreviewFormat(value: unknown): value is NonNullable<ToolUIDescriptor['preview']>['format'] {
+  return value === 'code'
+    || value === 'diff'
+    || value === 'markdown'
+    || value === 'plain'
+    || value === 'image-thumb'
+}
+
+function isOpenTarget(value: unknown): value is NonNullable<ToolUIDescriptor['openAction']>['target'] {
+  return value === 'file-pane'
+    || value === 'terminal-pane'
+    || value === 'image-pane'
+    || value === 'search-pane'
+    || value === 'url'
+}
+
 function readString(data: Record<string, unknown>, key: string): string {
   const v = data[key]
   return typeof v === 'string' ? v : ''
@@ -232,5 +747,5 @@ function readNumber(data: Record<string, unknown>, key: string): number | undefi
 
 function readObject(data: Record<string, unknown>, key: string): Record<string, unknown> {
   const v = data[key]
-  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {}
+  return isRecord(v) ? v : {}
 }

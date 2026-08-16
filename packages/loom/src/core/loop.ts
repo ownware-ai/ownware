@@ -25,7 +25,13 @@ import { extractToolCalls, createToolResultMessage } from '../messages/types.js'
 import type { ReminderInjector } from '../reminders/index.js'
 import { LOOM_TRACE } from '../observability/debug-trace.js'
 import type { HookRuntime } from '../hooks/index.js'
-import type { Tool, ToolCall, ToolContext, ToolResult } from '../tools/types.js'
+import type {
+  Tool,
+  ToolCall,
+  ToolContext,
+  ToolResult,
+  ToolUIDescriptor,
+} from '../tools/types.js'
 import type { CredentialResolver } from '../credentials/resolver.js'
 import type {
   CheckPermissionResult,
@@ -950,6 +956,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
       const streamResult = yield* streamModelResponse(
         state.activeProvider,
         request,
+        tools,
         state.turnIndex,
         config,
         state.activeModel,
@@ -1388,6 +1395,7 @@ export async function* loop(params: LoopParams): AsyncGenerator<LoomEvent, LoopR
 async function* streamModelResponse(
   provider: ProviderAdapter,
   request: ProviderRequest,
+  tools: readonly Tool[],
   turnIndex: number,
   config: LoomConfig,
   activeModel: string,
@@ -1492,12 +1500,18 @@ async function* streamModelResponse(
 
         case 'tool_use_start':
           currentToolArgs = ''
-          yield {
-            type: 'tool.call.start',
-            toolCallId: chunk.id,
-            toolName: chunk.name,
-            input: {},
-            turnIndex,
+          {
+            const uiDescriptor = normalizeToolUIDescriptor(
+              tools.find(tool => tool.name === chunk.name)?.uiDescriptor,
+            )
+            yield {
+              type: 'tool.call.start',
+              toolCallId: chunk.id,
+              toolName: chunk.name,
+              input: {},
+              ...(uiDescriptor === undefined ? {} : { uiDescriptor }),
+              turnIndex,
+            }
           }
           break
 
@@ -2328,6 +2342,10 @@ async function* executeSingleToolGen(
       result: result.content,
       isError: result.isError,
       durationMs,
+      ...(() => {
+        const uiDescriptor = normalizeToolUIDescriptor(tool.uiDescriptor)
+        return uiDescriptor === undefined ? {} : { uiDescriptor }
+      })(),
       turnIndex,
       metadata: result.metadata,
       cacheHit,
@@ -2371,11 +2389,108 @@ async function* executeSingleToolGen(
       result: `Error: ${errorMessage}`,
       isError: true,
       durationMs,
+      ...(() => {
+        const uiDescriptor = normalizeToolUIDescriptor(tool.uiDescriptor)
+        return uiDescriptor === undefined ? {} : { uiDescriptor }
+      })(),
       turnIndex,
     }
 
     return { toolCall, result: { content: `Error: ${errorMessage}`, isError: true } }
   }
+}
+
+/**
+ * Bound untrusted/custom-tool presentation data before it enters an event.
+ * This proves structural validity only; descriptors never prove an effect.
+ */
+function normalizeToolUIDescriptor(value: ToolUIDescriptor | undefined): ToolUIDescriptor | undefined {
+  if (value === undefined || !isToolUIKind(value.kind)) return undefined
+  const verb = boundedUIString(value.summary?.verb)
+  if (verb === undefined) return undefined
+  const primaryField = value.summary.primaryField === undefined
+    ? undefined
+    : boundedUIString(value.summary.primaryField)
+  if (value.summary.primaryField !== undefined && primaryField === undefined) return undefined
+  const metaFields = value.summary.metaFields
+  if (
+    metaFields !== undefined
+    && (metaFields.length > 16 || metaFields.some(field => boundedUIString(field) === undefined))
+  ) return undefined
+
+  let preview: ToolUIDescriptor['preview']
+  if (value.preview !== undefined) {
+    const contentField = boundedUIString(value.preview.contentField)
+    if (contentField === undefined || !isToolUIPreviewFormat(value.preview.format)) return undefined
+    const truncateAtLines = value.preview.truncateAtLines
+    if (
+      truncateAtLines !== undefined
+      && (!Number.isSafeInteger(truncateAtLines) || truncateAtLines <= 0 || truncateAtLines > 10_000)
+    ) return undefined
+    preview = {
+      contentField,
+      format: value.preview.format,
+      ...(truncateAtLines === undefined ? {} : { truncateAtLines }),
+    }
+  }
+
+  let openAction: ToolUIDescriptor['openAction']
+  if (value.openAction !== undefined) {
+    const pathField = boundedUIString(value.openAction.pathField)
+    if (pathField === undefined || !isToolUIOpenTarget(value.openAction.target)) return undefined
+    openAction = { target: value.openAction.target, pathField }
+  }
+
+  return {
+    kind: value.kind,
+    summary: {
+      verb,
+      ...(primaryField === undefined ? {} : { primaryField }),
+      ...(metaFields === undefined ? {} : { metaFields: [...metaFields] }),
+    },
+    ...(preview === undefined ? {} : { preview }),
+    ...(openAction === undefined ? {} : { openAction }),
+  }
+}
+
+function boundedUIString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 120) return undefined
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return undefined
+  }
+  return value
+}
+
+function isToolUIKind(value: unknown): value is ToolUIDescriptor['kind'] {
+  return value === 'file-write'
+    || value === 'file-read'
+    || value === 'file-edit'
+    || value === 'shell'
+    || value === 'search'
+    || value === 'image'
+    || value === 'external-action'
+    || value === 'conversational'
+}
+
+function isToolUIPreviewFormat(
+  value: unknown,
+): value is NonNullable<ToolUIDescriptor['preview']>['format'] {
+  return value === 'code'
+    || value === 'diff'
+    || value === 'markdown'
+    || value === 'plain'
+    || value === 'image-thumb'
+}
+
+function isToolUIOpenTarget(
+  value: unknown,
+): value is NonNullable<ToolUIDescriptor['openAction']>['target'] {
+  return value === 'file-pane'
+    || value === 'terminal-pane'
+    || value === 'image-pane'
+    || value === 'search-pane'
+    || value === 'url'
 }
 
 function redactToolResult(

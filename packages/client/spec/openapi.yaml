@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.44.0
+  version: 0.46.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -1897,6 +1897,116 @@ paths:
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '503': { $ref: '#/components/responses/ErrorResponse' }
 
+  /api/v1/runs/{runId}/reversal-offers:
+    get:
+      operationId: listEffectReversalOffers
+      summary: Page exact, content-free reversal offers minted by registered adapters.
+      description: >
+        An available offer means a trusted adapter observed one exact effect
+        and captured an authority-owned target revision. It does not mean that
+        arbitrary tools are undoable. Target identifiers, proposal content and
+        action payloads are private and never cross this route. Unknown adapter
+        revisions cannot execute.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Oldest-first offers with an exclusive opaque cursor.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EffectReversalOfferPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/reversal-offers/{offerId}/execute:
+    post:
+      operationId: executeEffectReversal
+      summary: Execute one exact registered reversal offer.
+      description: >
+        The adapter conditionally applies the declared inverse or compensation
+        against the captured target revision. confirmed requires the authority
+        transition and immutable receipt to commit in one transaction. stale
+        and expired are terminal fail-closed outcomes and never apply a change.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: offerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Exact execution, replay or prior terminal observation.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Idempotency-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EffectReversalExecutionResult' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/runs/{runId}/reversal-receipts:
+    get:
+      operationId: listEffectReversalReceipts
+      summary: Page immutable reversal execution receipts.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Oldest-first immutable receipts with an exclusive opaque cursor.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EffectReversalReceiptPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
   /api/v1/runs/{runId}/events:
     get:
       operationId: runEvents
@@ -1926,6 +2036,38 @@ paths:
         '404': { $ref: '#/components/responses/ErrorResponse' }
         '409': { $ref: '#/components/responses/ErrorResponse' }
         '410': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/v1/threads/{threadId}/hydrate:
+    get:
+      operationId: hydrateThread
+      summary: Hydrate durable thread history and discover current live-tail correlation.
+      description: >
+        Messages are the durable historical authority and remain available after
+        raw event retention. runningAgentId is the point-in-time live-tail signal.
+        runningRunId is present only when that active process-local runner is
+        confirmed by the public durable run repository; internal or legacy work
+        may be live with no public run correlation. Archived messages are not
+        assigned guessed run IDs. A delegated principal additionally requires
+        threads.hydrate, exact workspace/profile scope and the thread's durable
+        authority binding.
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Durable ordered history, retained cursors and point-in-time active correlation.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThreadHydration' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
 
   /api/v1/threads/{threadId}/agents/root/events:
     get:
@@ -2946,6 +3088,263 @@ components:
           type: string
           enum: [profile_default_unavailable]
 
+    Thread:
+      type: object
+      additionalProperties: false
+      required: [id, profileId, workspaceId, title, status, messageCount, totalTokens, totalCost, model, createdAt, updatedAt, lastMessagePreview]
+      properties:
+        id: { type: string }
+        profileId: { type: string }
+        workspaceId: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        status: { type: string, enum: [active, completed, error] }
+        messageCount: { type: integer, minimum: 0 }
+        totalTokens: { type: integer, minimum: 0 }
+        totalCost: { type: number, minimum: 0 }
+        model: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lastMessagePreview: { type: [string, 'null'] }
+
+    ThreadMessagePart:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, text]
+          properties:
+            kind: { type: string, const: text }
+            text: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [kind, text]
+          properties:
+            kind: { type: string, const: thinking }
+            text: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [kind, toolCallId]
+          properties:
+            kind: { type: string, const: tool }
+            toolCallId: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [kind, agentId]
+          properties:
+            kind: { type: string, const: subagent }
+            agentId: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId]
+          properties:
+            kind: { type: string, const: permission }
+            requestId: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId]
+          properties:
+            kind: { type: string, const: credential }
+            requestId: { type: string }
+
+    ThreadAttachment:
+      type: object
+      additionalProperties: false
+      required: [filename, mimeType, category]
+      properties:
+        filename: { type: string }
+        mimeType: { type: string }
+        sizeBytes: { type: integer, minimum: 0 }
+        category: { type: string, enum: [image, pdf, notebook, text, binary] }
+
+    ThreadToolCall:
+      type: object
+      additionalProperties: false
+      required: [name, input]
+      properties:
+        toolCallId: { type: string }
+        name: { type: string }
+        input: {}
+        output: { type: string }
+        isError: { type: boolean }
+        durationMs: { type: number, minimum: 0 }
+        startedAt: { type: string, format: date-time }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ThreadSubAgent:
+      type: object
+      additionalProperties: false
+      required: [agentId, profileName, status]
+      properties:
+        agentId: { type: string }
+        profileName: { type: string }
+        model: { type: string }
+        usage:
+          type: object
+          additionalProperties: false
+          required: [inputTokens, outputTokens, costUsd]
+          properties:
+            inputTokens: { type: integer, minimum: 0 }
+            outputTokens: { type: integer, minimum: 0 }
+            costUsd: { type: number, minimum: 0 }
+        task: { type: string }
+        prompt: { type: string }
+        status: { type: string, enum: [running, completed, error] }
+        result: { type: string }
+        durationMs: { type: number, minimum: 0 }
+        toolCount: { type: integer, minimum: 0 }
+        turnCount: { type: integer, minimum: 0 }
+
+    ThreadPermission:
+      type: object
+      additionalProperties: false
+      required: [toolName, reason, decision]
+      properties:
+        requestId: { type: string }
+        toolName: { type: string }
+        input:
+          type: object
+          additionalProperties: true
+          description: Legacy rows only; current rows retain an empty object.
+        inputSummary: { type: string }
+        operationHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        intentRevision: { type: integer, const: 1 }
+        reason: { type: string }
+        decision: { type: string, enum: [approved, denied, pending] }
+        zoneLevel: { type: integer }
+        zoneName: { type: string }
+        explanation: { type: string }
+        severityTag: { type: string, enum: [info, warn, critical] }
+        severityReason: { type: string }
+
+    ThreadCredentialPlacement:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, variableName]
+          properties:
+            type: { type: string, const: env }
+            variableName: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [type]
+          properties:
+            type: { type: string, const: bearer }
+        - type: object
+          additionalProperties: false
+          required: [type, name]
+          properties:
+            type: { type: string, enum: [header, cookie] }
+            name: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [type, fieldPath]
+          properties:
+            type: { type: string, const: body }
+            fieldPath: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [type, paramName]
+          properties:
+            type: { type: string, const: query }
+            paramName: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [type]
+          properties:
+            type: { type: string, const: basic }
+            usernameCredentialId: { type: string }
+
+    ThreadCredential:
+      type: object
+      additionalProperties: false
+      description: Metadata-only legacy credential exchange; never contains the value.
+      required: [requestId, label, hint, usage, placement, isRequired, decision]
+      properties:
+        requestId: { type: string }
+        label: { type: string }
+        hint: { type: string }
+        usage: { type: string }
+        placement: { $ref: '#/components/schemas/ThreadCredentialPlacement' }
+        isRequired: { type: boolean }
+        decision: { type: string, enum: [pending, stored, denied] }
+        credentialId: { type: string }
+
+    ThreadMessage:
+      type: object
+      additionalProperties: false
+      required: [id, role, content, timestamp]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [user, assistant, tool_result, system, error] }
+        content: { type: string }
+        tools:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadToolCall' }
+        subAgents:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadSubAgent' }
+        permissions:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadPermission' }
+        credentials:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadCredential' }
+        attachments:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadAttachment' }
+        thinking: { type: string }
+        usage:
+          type: object
+          additionalProperties: false
+          required: [inputTokens, outputTokens]
+          properties:
+            inputTokens: { type: integer, minimum: 0 }
+            outputTokens: { type: integer, minimum: 0 }
+            cacheReadTokens: { type: integer, minimum: 0 }
+            cacheCreationTokens: { type: integer, minimum: 0 }
+        model: { type: string }
+        timestamp: { type: string, format: date-time }
+        parts:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadMessagePart' }
+
+    ThreadHydrationAgent:
+      type: object
+      additionalProperties: false
+      required: [agentId, parentAgentId, eventCount]
+      properties:
+        agentId: { type: string }
+        parentAgentId: { type: [string, 'null'] }
+        eventCount: { type: integer, minimum: 0 }
+
+    ThreadHydration:
+      type: object
+      additionalProperties: false
+      required: [thread, messages, agents, runningAgentId, runningRunId, maxSeq, lastClosedTurnEndSeq]
+      properties:
+        thread: { $ref: '#/components/schemas/Thread' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadMessage' }
+        agents:
+          type: array
+          items: { $ref: '#/components/schemas/ThreadHydrationAgent' }
+        runningAgentId:
+          type: [string, 'null']
+          enum: [root, null]
+          description: Root live-tail signal at observation time; null means terminal.
+        runningRunId:
+          type: [string, 'null']
+          format: uuid
+          description: Public durable active run correlation, never a historical inference.
+        maxSeq: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        lastClosedTurnEndSeq:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Exclusive thread-stream cursor that rebuilds any in-flight turn.
+
     RunSnapshot:
       type: object
       required: [runId, threadId, workspaceId, profileId, candidateId, model, timeoutMs, egressMode, status, consequence, terminal, outcomeKnown, acceptedAt, startedAt, updatedAt, terminalAt, cancelRequestedAt, startSeq, endSeq, earliestRetainedCursor, code]
@@ -3154,6 +3553,79 @@ components:
           maxItems: 100
           items: { $ref: '#/components/schemas/SkillActivationReceipt' }
         nextCursor: { type: [string, 'null'], format: uuid }
+    EffectReversalOffer:
+      type: object
+      additionalProperties: false
+      required: [offerId, sequence, runId, effectId, toolCallId, toolName, adapterRef, adapterRevision, operationKind, status, createdAt, expiresAt, resolvedAt]
+      properties:
+        offerId: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        runId: { type: string, format: uuid }
+        effectId: { type: string, format: uuid }
+        toolCallId: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,200}$' }
+        toolName: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,160}$' }
+        adapterRef:
+          type: string
+          pattern: '^[A-Za-z0-9_.:-]{1,160}$'
+          description: Stable registered adapter identity; never a tool-name inference.
+        adapterRevision: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,80}$' }
+        operationKind: { type: string, enum: [inverse, compensation] }
+        status: { type: string, enum: [available, confirmed, stale, expired] }
+        createdAt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        expiresAt:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 9007199254740991
+        resolvedAt:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 9007199254740991
+    EffectReversalOfferPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/EffectReversalOffer' }
+        nextCursor: { type: [string, 'null'], format: uuid }
+    EffectReversalReceipt:
+      type: object
+      additionalProperties: false
+      required: [receiptId, sequence, offerId, runId, effectId, operationKind, outcome, authorityRef, actorKind, observedAt]
+      properties:
+        receiptId: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        offerId: { type: string, format: uuid }
+        runId: { type: string, format: uuid }
+        effectId: { type: string, format: uuid }
+        operationKind: { type: string, enum: [inverse, compensation] }
+        outcome:
+          type: string
+          enum: [confirmed, stale, expired]
+          description: confirmed is authority-observed; stale and expired are terminal no-change outcomes.
+        authorityRef: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,241}$' }
+        actorKind: { type: string, enum: [owner, delegated] }
+        observedAt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+    EffectReversalReceiptPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/EffectReversalReceipt' }
+        nextCursor: { type: [string, 'null'], format: uuid }
+    EffectReversalExecutionResult:
+      type: object
+      additionalProperties: false
+      required: [disposition, offer, receipt]
+      properties:
+        disposition: { type: string, enum: [executed, replayed, already_terminal] }
+        offer: { $ref: '#/components/schemas/EffectReversalOffer' }
+        receipt: { $ref: '#/components/schemas/EffectReversalReceipt' }
     RunAttachmentInput:
       type: object
       required: [filename, data, mimeType]

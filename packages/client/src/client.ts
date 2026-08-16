@@ -113,6 +113,148 @@ export interface RunResult {
   readonly egressMode?: EgressMode
 }
 
+/** Durable thread aggregate returned by the public hydration route. */
+export interface Thread {
+  readonly id: string
+  readonly profileId: string
+  readonly workspaceId: string | null
+  readonly title: string | null
+  readonly status: 'active' | 'completed' | 'error'
+  readonly messageCount: number
+  readonly totalTokens: number
+  readonly totalCost: number
+  readonly model: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly lastMessagePreview: string | null
+}
+
+export type ThreadMessagePart =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'thinking'; readonly text: string }
+  | { readonly kind: 'tool'; readonly toolCallId: string }
+  | { readonly kind: 'subagent'; readonly agentId: string }
+  | { readonly kind: 'permission'; readonly requestId: string }
+  | { readonly kind: 'credential'; readonly requestId: string }
+
+export interface ThreadAttachment {
+  readonly filename: string
+  readonly mimeType: string
+  readonly sizeBytes?: number
+  readonly category: 'image' | 'pdf' | 'notebook' | 'text' | 'binary'
+}
+
+export interface ThreadToolCall {
+  readonly toolCallId?: string
+  readonly name: string
+  readonly input: unknown
+  readonly output?: string
+  readonly isError?: boolean
+  readonly durationMs?: number
+  readonly startedAt?: string
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface ThreadSubAgent {
+  readonly agentId: string
+  readonly profileName: string
+  readonly model?: string
+  readonly usage?: {
+    readonly inputTokens: number
+    readonly outputTokens: number
+    readonly costUsd: number
+  }
+  readonly task?: string
+  readonly prompt?: string
+  readonly status: 'running' | 'completed' | 'error'
+  readonly result?: string
+  readonly durationMs?: number
+  readonly toolCount?: number
+  readonly turnCount?: number
+}
+
+export interface ThreadPermission {
+  readonly requestId?: string
+  readonly toolName: string
+  /** Legacy rows may carry model-authored input; new rows retain only `{}`. */
+  readonly input?: Readonly<Record<string, unknown>>
+  readonly inputSummary?: string
+  readonly operationHash?: string
+  readonly intentRevision?: 1
+  readonly reason: string
+  readonly decision: 'approved' | 'denied' | 'pending'
+  readonly zoneLevel?: number
+  readonly zoneName?: string
+  readonly explanation?: string
+  readonly severityTag?: 'info' | 'warn' | 'critical'
+  readonly severityReason?: string
+}
+
+export type ThreadCredentialPlacement =
+  | { readonly type: 'env'; readonly variableName: string }
+  | { readonly type: 'bearer' }
+  | { readonly type: 'header'; readonly name: string }
+  | { readonly type: 'cookie'; readonly name: string }
+  | { readonly type: 'body'; readonly fieldPath: string }
+  | { readonly type: 'query'; readonly paramName: string }
+  | { readonly type: 'basic'; readonly usernameCredentialId?: string }
+
+/** Metadata-only legacy credential exchange; it never carries the value. */
+export interface ThreadCredential {
+  readonly requestId: string
+  readonly label: string
+  readonly hint: string
+  readonly usage: string
+  readonly placement: ThreadCredentialPlacement
+  readonly isRequired: boolean
+  readonly decision: 'pending' | 'stored' | 'denied'
+  readonly credentialId?: string
+}
+
+/** One durable consolidated message in adapter-assigned thread order. */
+export interface ThreadMessage {
+  readonly id: string
+  readonly role: 'user' | 'assistant' | 'tool_result' | 'system' | 'error'
+  readonly content: string
+  readonly tools?: readonly ThreadToolCall[]
+  readonly subAgents?: readonly ThreadSubAgent[]
+  readonly permissions?: readonly ThreadPermission[]
+  readonly credentials?: readonly ThreadCredential[]
+  readonly attachments?: readonly ThreadAttachment[]
+  readonly thinking?: string
+  readonly usage?: {
+    readonly inputTokens: number
+    readonly outputTokens: number
+    readonly cacheReadTokens?: number
+    readonly cacheCreationTokens?: number
+  }
+  readonly model?: string
+  readonly timestamp: string
+  /** Ordered turn timeline; absent only for older stored rows. */
+  readonly parts?: readonly ThreadMessagePart[]
+}
+
+export interface ThreadHydrationAgent {
+  readonly agentId: string
+  readonly parentAgentId: string | null
+  readonly eventCount: number
+}
+
+/**
+ * Complete durable history plus point-in-time live-tail correlation.
+ * `runningRunId` is present only for a live run confirmed by the public
+ * durable run repository. It is not a guessed latest/historical run ID.
+ */
+export interface ThreadHydration {
+  readonly thread: Thread
+  readonly messages: readonly ThreadMessage[]
+  readonly agents: readonly ThreadHydrationAgent[]
+  readonly runningAgentId: 'root' | null
+  readonly runningRunId: string | null
+  readonly maxSeq: number
+  readonly lastClosedTurnEndSeq: number
+}
+
 export type DurableRunStatus =
   | 'accepted'
   | 'running'
@@ -267,6 +409,64 @@ export interface SkillActivationReceiptPage {
 export interface SkillActivationReceiptListOptions {
   readonly limit?: number
   readonly cursor?: string
+}
+
+export type EffectReversalOperationKind = 'inverse' | 'compensation'
+export type EffectReversalOfferStatus = 'available' | 'confirmed' | 'stale' | 'expired'
+export type EffectReversalReceiptOutcome = 'confirmed' | 'stale' | 'expired'
+
+export interface EffectReversalOffer {
+  readonly offerId: string
+  readonly sequence: number
+  readonly runId: string
+  readonly effectId: string
+  readonly toolCallId: string
+  readonly toolName: string
+  readonly adapterRef: string
+  readonly adapterRevision: string
+  readonly operationKind: EffectReversalOperationKind
+  readonly status: EffectReversalOfferStatus
+  readonly createdAt: number
+  readonly expiresAt: number | null
+  readonly resolvedAt: number | null
+}
+
+export interface EffectReversalReceipt {
+  readonly receiptId: string
+  readonly sequence: number
+  readonly offerId: string
+  readonly runId: string
+  readonly effectId: string
+  readonly operationKind: EffectReversalOperationKind
+  readonly outcome: EffectReversalReceiptOutcome
+  readonly authorityRef: string
+  readonly actorKind: 'owner' | 'delegated'
+  readonly observedAt: number
+}
+
+export interface EffectReversalOfferPage {
+  readonly items: readonly EffectReversalOffer[]
+  readonly nextCursor: string | null
+}
+
+export interface EffectReversalReceiptPage {
+  readonly items: readonly EffectReversalReceipt[]
+  readonly nextCursor: string | null
+}
+
+export interface EffectReversalListOptions {
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+export interface ExecuteEffectReversalInput {
+  readonly idempotencyKey: string
+}
+
+export interface EffectReversalExecutionResult {
+  readonly disposition: 'executed' | 'replayed' | 'already_terminal'
+  readonly offer: EffectReversalOffer
+  readonly receipt: EffectReversalReceipt
 }
 
 export interface StreamReplyOptions {
@@ -1477,6 +1677,8 @@ export interface GatewayClient {
   deploymentState(profileId: string): Promise<ProfileDeploymentState>
   deleteCandidate(candidateId: string): Promise<CandidateDeletionResult>
   run(input: RunInput): Promise<RunResult>
+  /** Hydrate durable history and discover an addressable active run, if any. */
+  hydrateThread(threadId: string): Promise<ThreadHydration>
   streamReply(runIdOrThreadId: string, opts?: StreamReplyOptions): AsyncIterable<RunStreamEvent>
   /**
    * Owner-only legacy compatibility surface. Delegated/public clients use
@@ -1523,6 +1725,22 @@ export interface GatewayClient {
     runId: string,
     options?: SkillActivationReceiptListOptions,
   ): Promise<SkillActivationReceiptPage>
+  /** Read exact, content-free reversal offers supported by registered adapters. */
+  listEffectReversalOffers(
+    runId: string,
+    options?: EffectReversalListOptions,
+  ): Promise<EffectReversalOfferPage>
+  /** Execute one exact offer with an explicit retry identity. */
+  executeEffectReversal(
+    runId: string,
+    offerId: string,
+    input: ExecuteEffectReversalInput,
+  ): Promise<EffectReversalExecutionResult>
+  /** Read immutable reversal execution receipts. */
+  listEffectReversalReceipts(
+    runId: string,
+    options?: EffectReversalListOptions,
+  ): Promise<EffectReversalReceiptPage>
 }
 
 export interface OwnwareClientOptions {
@@ -1570,6 +1788,11 @@ export class OwnwareError extends Error {
 
 const PROFILE_ID_MAX_LENGTH = 128
 const CANDIDATE_ID = /^sha256:[0-9a-f]{64}$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const KEYED_DIGEST = /^hmac-sha256:[0-9a-f]{64}$/
+const PUBLIC_CAPABILITY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+const CONTRACT_REVISION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+const MAX_EVIDENCE_PAGE_ITEMS = 100
 const PROFILE_AVAILABILITIES = new Set([
   'available', 'paused', 'invalid', 'unavailable',
 ])
@@ -1668,6 +1891,482 @@ function parseProfileCatalog(value: unknown, status: number): ProfileSummary[] {
     result.push(item)
   }
   return result
+}
+
+type EvidenceResource =
+  | 'gateway capabilities'
+  | 'run start'
+  | 'permission decision'
+  | 'sensitive-input decision'
+  | 'run cancellation'
+  | 'run snapshot'
+  | 'effect receipt page'
+  | 'egress receipt page'
+  | 'skill activation receipt page'
+  | 'effect reversal offer page'
+  | 'effect reversal execution'
+  | 'effect reversal receipt page'
+
+function invalidEvidenceResponse(
+  status: number,
+  resource: EvidenceResource,
+): OwnwareError {
+  return new OwnwareError({
+    message: `Ownware ${resource} response was invalid`,
+    status,
+    code: `${resource.replaceAll('-', '_').replaceAll(' ', '_')}_invalid`,
+    category: 'validation',
+  })
+}
+
+async function readJsonResponse(
+  response: Response,
+  resource: EvidenceResource,
+): Promise<unknown> {
+  try {
+    return await response.json() as unknown
+  } catch {
+    throw invalidEvidenceResponse(response.status, resource)
+  }
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+function isSafeInteger(value: unknown, minimum = 0): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum
+}
+
+function isNullableSafeInteger(value: unknown, minimum = 0): value is number | null {
+  return value === null || isSafeInteger(value, minimum)
+}
+
+function isNullableNonEmptyString(value: unknown): value is string | null {
+  return value === null || isNonEmptyString(value)
+}
+
+function isMember(value: unknown, members: ReadonlySet<string>): value is string {
+  return typeof value === 'string' && members.has(value)
+}
+
+function hasIntegerFields(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): value is Record<string, unknown> {
+  if (!isRecord(value)) return false
+  if (!required.every(field => isSafeInteger(value[field], 0))) return false
+  return optional.every(field => value[field] === undefined || isSafeInteger(value[field], 0))
+}
+
+const SOURCE_KINDS = new Set<SourceKind>([
+  'file', 'text', 'visual', 'structured_export',
+  'cloud_document', 'connected_snapshot', 'supported_other',
+])
+const SOURCE_SEARCH_MATCH_MODES = new Set<SourceContentSearchMatchMode>([
+  'exact_utf8', 'ascii_case_insensitive',
+])
+
+function isSourceQuotaCeilings(value: unknown): value is SourceQuotaCeilings {
+  return hasIntegerFields(value, [
+    'maxSourceRegistrations',
+    'maxRetainedAndReservedBytes',
+    'maxActiveUploadSessions',
+    'maxNonterminalJobs',
+    'maxDerivedResources',
+  ])
+}
+
+/** Validate every field the SDK promises while deliberately ignoring additions. */
+function isPublicGatewayLimits(value: unknown): value is PublicGatewayLimits {
+  if (!isRecord(value) ||
+      !isSafeInteger(value['jsonBodyBytes'], 0) ||
+      !isSafeInteger(value['delegationDefaultTtlSeconds'], 0) ||
+      !isSafeInteger(value['delegationMaxTtlSeconds'], 0) ||
+      !isSafeInteger(value['idempotencyRetentionSeconds'], 0)) {
+    return false
+  }
+
+  const integerGroups: ReadonlyArray<
+    readonly [string, readonly string[]] |
+    readonly [string, readonly string[], readonly string[]]
+  > = [
+    ['candidateUpload', ['maxFiles', 'maxDecodedBytes', 'maxPathCharacters']],
+    ['runAttachments', [
+      'maxCount', 'maxItemDecodedBytes', 'maxTotalDecodedBytes', 'maxFilenameCharacters',
+    ]],
+    ['sourceList', ['maxPageSize']],
+    ['connectionList', ['maxPageSize']],
+    ['sourceInspection', ['maxBytes', 'perAttemptTimeoutMs', 'maxAttempts']],
+    ['sourcePreparation', [
+      'maxBytes', 'perAttemptTimeoutMs', 'maxAttempts', 'maxResourcesPerJob',
+    ]],
+    ['sourceDataView', [
+      'maxSourceBytes', 'maxArtifactBytes', 'maxFields', 'maxRows', 'maxCellBytes',
+      'maxCells', 'perAttemptTimeoutMs', 'maxAttempts',
+    ], [
+      'maxQueryFields', 'maxQueryRows', 'maxQueryCells', 'maxQueryResultBytes',
+      'queryTimeoutMs', 'maxGrantScopeIds',
+    ]],
+    ['accessGrants', [
+      'minTtlSeconds', 'maxTtlSeconds', 'maxActivePerWorkspaceProfile', 'maxPageSize',
+    ]],
+    ['sourceContent', ['maxRangeBytes']],
+    ['sourceSearch', [
+      'maxScanBytes', 'maxQueryBytes', 'maxMatches', 'maxContextBytes', 'perRequestTimeoutMs',
+    ]],
+  ]
+  for (const [name, required, optional = []] of integerGroups) {
+    if (value[name] !== undefined && !hasIntegerFields(value[name], required, optional)) return false
+  }
+
+  const sensitiveInput = value['sensitiveInput']
+  if (sensitiveInput !== undefined &&
+      (!isRecord(sensitiveInput) ||
+        !isNonEmptyString(sensitiveInput['interactionCapability']) ||
+        sensitiveInput['contentType'] !== 'text/plain; charset=utf-8' ||
+        !isSafeInteger(sensitiveInput['maxBytes'], 0))) {
+    return false
+  }
+
+  const sourceUpload = value['sourceUpload']
+  if (sourceUpload !== undefined) {
+    if (!hasIntegerFields(sourceUpload, [
+      'maxDecodedBytes', 'maxChunkBytes', 'maxChunks', 'sessionTtlSeconds',
+    ]) || !Array.isArray(sourceUpload['supportedSourceKinds']) ||
+        !sourceUpload['supportedSourceKinds'].every(kind => isMember(kind, SOURCE_KINDS)) ||
+        !isStringArray(sourceUpload['supportedMediaTypes']) ||
+        !sourceUpload['supportedMediaTypes'].every(isNonEmptyString)) {
+      return false
+    }
+  }
+
+  const sourceDataView = value['sourceDataView']
+  if (sourceDataView !== undefined &&
+      (!isRecord(sourceDataView) || !isStringArray(sourceDataView['supportedFormats']) ||
+        !sourceDataView['supportedFormats'].every(isNonEmptyString))) {
+    return false
+  }
+
+  const sourceSearch = value['sourceSearch']
+  if (sourceSearch !== undefined &&
+      (!isRecord(sourceSearch) || !Array.isArray(sourceSearch['matchModes']) ||
+        !sourceSearch['matchModes'].every(mode => isMember(mode, SOURCE_SEARCH_MATCH_MODES)))) {
+    return false
+  }
+
+  const sourceQuota = value['sourceQuota']
+  if (sourceQuota !== undefined &&
+      (!isRecord(sourceQuota) || !isSourceQuotaCeilings(sourceQuota['workspace']) ||
+        !isSourceQuotaCeilings(sourceQuota['profile']))) {
+    return false
+  }
+
+  const rateLimit = value['rateLimit']
+  return isRecord(rateLimit) && typeof rateLimit['enabled'] === 'boolean' &&
+    isSafeInteger(rateLimit['windowSeconds'], 0) &&
+    isSafeInteger(rateLimit['generalRequests'], 0) &&
+    isSafeInteger(rateLimit['runStarts'], 0)
+}
+
+interface GatewayCapabilityDocument {
+  readonly contract: GatewayContractDescriptor
+  readonly capabilities: readonly GatewayCapability[]
+  readonly limits?: PublicGatewayLimits
+}
+
+function parseGatewayCapabilityDocument(
+  value: unknown,
+  status: number,
+): GatewayCapabilityDocument {
+  const invalid = (): never => { throw invalidEvidenceResponse(status, 'gateway capabilities') }
+  if (!isRecord(value) || !isRecord(value['contract']) || !Array.isArray(value['capabilities'])) {
+    return invalid()
+  }
+  const contract = value['contract']
+  if (contract['name'] !== 'ownware.gateway' ||
+      !isSafeInteger(contract['major'], 1) ||
+      typeof contract['revision'] !== 'string' ||
+      !CONTRACT_REVISION.test(contract['revision'])) {
+    return invalid()
+  }
+  const identities = new Set<string>()
+  for (const capability of value['capabilities']) {
+    if (!isRecord(capability) ||
+        typeof capability['id'] !== 'string' ||
+        !PUBLIC_CAPABILITY_ID.test(capability['id']) ||
+        !isSafeInteger(capability['version'], 1) ||
+        identities.has(capability['id'])) {
+      return invalid()
+    }
+    identities.add(capability['id'])
+  }
+  if (value['limits'] !== undefined && !isPublicGatewayLimits(value['limits'])) return invalid()
+  return {
+    contract: contract as unknown as GatewayContractDescriptor,
+    capabilities: value['capabilities'] as unknown as readonly GatewayCapability[],
+    ...(value['limits'] !== undefined ? { limits: value['limits'] } : {}),
+  }
+}
+
+const DURABLE_RUN_STATUSES = new Set<DurableRunStatus>([
+  'accepted', 'running', 'waiting', 'cancel_requested', 'succeeded', 'failed',
+  'cancelled', 'timed_out', 'indeterminate',
+])
+const RUN_CONSEQUENCES = new Set<RunConsequence>([
+  'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed',
+])
+const EGRESS_MODES = new Set<EgressMode>(['unrestricted', 'local-only'])
+
+function isRunIdentity(value: unknown, expectedRunId: string): value is string {
+  return typeof value === 'string' && UUID.test(value) && value === expectedRunId
+}
+
+function parseRunResult(value: unknown, status: number, input: RunInput): RunResult {
+  if (!isRecord(value) || !isNonEmptyString(value['threadId']) ||
+      (input.threadId !== undefined && value['threadId'] !== input.threadId) ||
+      (value['runId'] !== undefined &&
+        (typeof value['runId'] !== 'string' || !UUID.test(value['runId']))) ||
+      (value['agentId'] !== undefined && !isNonEmptyString(value['agentId'])) ||
+      (value['profileId'] !== undefined && value['profileId'] !== input.profileId) ||
+      (value['candidateId'] !== undefined && value['candidateId'] !== null &&
+        (typeof value['candidateId'] !== 'string' || !CANDIDATE_ID.test(value['candidateId']))) ||
+      (value['model'] !== undefined && !isNonEmptyString(value['model'])) ||
+      (value['status'] !== undefined && !isNonEmptyString(value['status'])) ||
+      (value['timeoutMs'] !== undefined && !isSafeInteger(value['timeoutMs'], 1)) ||
+      (value['egressMode'] !== undefined && !isMember(value['egressMode'], EGRESS_MODES)) ||
+      (input.egressMode !== undefined && value['egressMode'] !== input.egressMode)) {
+    throw invalidEvidenceResponse(status, 'run start')
+  }
+  const substitution = value['modelSubstitution']
+  if (substitution !== undefined &&
+      (!isRecord(substitution) || !isNonEmptyString(substitution['configuredModel']) ||
+        !isNonEmptyString(substitution['effectiveModel']) ||
+        substitution['configuredSource'] !== 'profile' ||
+        substitution['reason'] !== 'profile_default_unavailable' ||
+        (value['model'] !== undefined && substitution['effectiveModel'] !== value['model']))) {
+    throw invalidEvidenceResponse(status, 'run start')
+  }
+  return value as unknown as RunResult
+}
+
+function parsePermissionDecisionResult(
+  value: unknown,
+  status: number,
+  runId: string,
+  requestId: string,
+  input: PermissionDecisionInput,
+): PermissionDecisionResult {
+  if (!isRecord(value) || !isRunIdentity(value['runId'], runId) ||
+      value['requestId'] !== requestId || value['decision'] !== input.decision ||
+      value['operationHash'] !== input.operationHash || value['intentRevision'] !== 1) {
+    throw invalidEvidenceResponse(status, 'permission decision')
+  }
+  return value as unknown as PermissionDecisionResult
+}
+
+function parseSensitiveInputDecisionResult(
+  value: unknown,
+  status: number,
+  runId: string,
+  requestId: string,
+  expectedDecision: SensitiveInputDecisionResult['status'],
+): SensitiveInputDecisionResult {
+  if (!isRecord(value) || !isRunIdentity(value['runId'], runId) ||
+      value['requestId'] !== requestId || value['accepted'] !== true ||
+      value['status'] !== expectedDecision) {
+    throw invalidEvidenceResponse(status, 'sensitive-input decision')
+  }
+  return value as unknown as SensitiveInputDecisionResult
+}
+
+function isRunStatus(value: unknown): value is DurableRunStatus {
+  return isMember(value, DURABLE_RUN_STATUSES)
+}
+
+function isRunConsequence(value: unknown): value is RunConsequence {
+  return isMember(value, RUN_CONSEQUENCES)
+}
+
+function parseRunCancellationResult(
+  value: unknown,
+  status: number,
+  runId: string,
+): RunCancellationResult {
+  const cancellations = new Set(['requested', 'already_requested', 'already_terminal'])
+  if (!isRecord(value) || !isRunIdentity(value['runId'], runId) ||
+      !isRunStatus(value['status']) || !isRunConsequence(value['consequence']) ||
+      typeof value['terminal'] !== 'boolean' || typeof value['outcomeKnown'] !== 'boolean' ||
+      !isMember(value['cancellation'], cancellations)) {
+    throw invalidEvidenceResponse(status, 'run cancellation')
+  }
+  return value as unknown as RunCancellationResult
+}
+
+function parseRunSnapshot(value: unknown, status: number, runId: string): RunSnapshot {
+  if (!isRecord(value) || !isRunIdentity(value['runId'], runId) ||
+      !isNonEmptyString(value['threadId']) || !isNullableNonEmptyString(value['workspaceId']) ||
+      !isNonEmptyString(value['profileId']) ||
+      (value['candidateId'] !== undefined && value['candidateId'] !== null &&
+        (typeof value['candidateId'] !== 'string' || !CANDIDATE_ID.test(value['candidateId']))) ||
+      !isNonEmptyString(value['model']) || !isSafeInteger(value['timeoutMs'], 1) ||
+      !isMember(value['egressMode'], EGRESS_MODES) || !isRunStatus(value['status']) ||
+      !isRunConsequence(value['consequence']) || typeof value['terminal'] !== 'boolean' ||
+      typeof value['outcomeKnown'] !== 'boolean' || !isSafeInteger(value['acceptedAt']) ||
+      !isNullableSafeInteger(value['startedAt']) || !isSafeInteger(value['updatedAt']) ||
+      !isNullableSafeInteger(value['terminalAt']) ||
+      !isNullableSafeInteger(value['cancelRequestedAt']) || !isSafeInteger(value['startSeq']) ||
+      !isNullableSafeInteger(value['endSeq']) ||
+      !isNullableSafeInteger(value['earliestRetainedCursor']) ||
+      (value['code'] !== null && typeof value['code'] !== 'string')) {
+    throw invalidEvidenceResponse(status, 'run snapshot')
+  }
+  return value as unknown as RunSnapshot
+}
+
+const EFFECT_RECEIPT_KINDS = new Set<EffectReceiptKind>([
+  'intent_observed', 'outcome_observed', 'authority_confirmed', 'reconciliation',
+])
+const EFFECT_RECEIPT_OUTCOMES = new Set<EffectReceiptOutcome>([
+  'pending', 'succeeded', 'failed', 'denied', 'unknown',
+])
+const EFFECT_AUTHORITY_KINDS = new Set(['runtime', 'effect_observer', 'reconciler'])
+const EGRESS_SOURCE_KINDS = new Set([
+  'provider', 'tool', 'connector', 'browser', 'process', 'runtime',
+])
+const EGRESS_TRANSPORTS = new Set(['http', 'https', 'ws', 'wss', 'tcp', 'tls', 'unknown'])
+const EGRESS_MEDIATIONS = new Set(['platform_fetch', 'custom_fetch', 'uncontained', 'unknown'])
+const EGRESS_PHASES = new Set<EgressReceiptPhase>([
+  'dispatch_started', 'response_observed', 'dispatch_failed', 'dispatch_blocked',
+  'route_unavailable', 'outcome_unknown',
+])
+const EGRESS_REASON_CODES = new Set<EgressReasonCode>([
+  'local_only_remote_destination', 'local_only_custom_transport',
+  'local_only_route_unavailable', 'local_only_redirect', 'route_unavailable',
+  'run_terminated_after_dispatch', 'gateway_restarted_after_dispatch',
+])
+const REVERSAL_OPERATIONS = new Set<EffectReversalOperationKind>(['inverse', 'compensation'])
+const REVERSAL_OFFER_STATUSES = new Set<EffectReversalOfferStatus>([
+  'available', 'confirmed', 'stale', 'expired',
+])
+const REVERSAL_RECEIPT_OUTCOMES = new Set<EffectReversalReceiptOutcome>([
+  'confirmed', 'stale', 'expired',
+])
+const REVERSAL_ACTOR_KINDS = new Set(['owner', 'delegated'])
+
+function isEffectReceipt(value: unknown, runId: string): value is EffectReceipt {
+  return isRecord(value) && typeof value['receiptId'] === 'string' && UUID.test(value['receiptId']) &&
+    isSafeInteger(value['sequence'], 1) && typeof value['effectId'] === 'string' &&
+    UUID.test(value['effectId']) && isRunIdentity(value['runId'], runId) &&
+    isNonEmptyString(value['toolCallId']) && isNonEmptyString(value['toolName']) &&
+    isMember(value['kind'], EFFECT_RECEIPT_KINDS) &&
+    isMember(value['outcome'], EFFECT_RECEIPT_OUTCOMES) &&
+    isRunConsequence(value['consequence']) &&
+    isMember(value['authorityKind'], EFFECT_AUTHORITY_KINDS) &&
+    isNonEmptyString(value['authorityRef']) && isSafeInteger(value['observedAt'])
+}
+
+function isEgressReceipt(value: unknown, runId: string): value is EgressReceipt {
+  return isRecord(value) && typeof value['receiptId'] === 'string' && UUID.test(value['receiptId']) &&
+    isSafeInteger(value['sequence'], 1) && typeof value['dispatchId'] === 'string' &&
+    UUID.test(value['dispatchId']) && isRunIdentity(value['runId'], runId) &&
+    isMember(value['mode'], EGRESS_MODES) && isMember(value['sourceKind'], EGRESS_SOURCE_KINDS) &&
+    isNonEmptyString(value['sourceRef']) && isMember(value['transport'], EGRESS_TRANSPORTS) &&
+    isMember(value['mediation'], EGRESS_MEDIATIONS) &&
+    isNullableNonEmptyString(value['destinationOrigin']) && isMember(value['phase'], EGRESS_PHASES) &&
+    (value['reasonCode'] === null || isMember(value['reasonCode'], EGRESS_REASON_CODES)) &&
+    isSafeInteger(value['observedAt'])
+}
+
+function isSkillActivationReceipt(
+  value: unknown,
+  runId: string,
+): value is SkillActivationReceipt {
+  return isRecord(value) && typeof value['receiptId'] === 'string' && UUID.test(value['receiptId']) &&
+    isSafeInteger(value['sequence'], 1) && isRunIdentity(value['runId'], runId) &&
+    isNonEmptyString(value['profileId']) && typeof value['profileDigest'] === 'string' &&
+    KEYED_DIGEST.test(value['profileDigest']) && isNonEmptyString(value['skillName']) &&
+    typeof value['skillDigest'] === 'string' && KEYED_DIGEST.test(value['skillDigest']) &&
+    isNullableNonEmptyString(value['agentId']) && isNullableNonEmptyString(value['toolCallId']) &&
+    isSafeInteger(value['turnIndex']) && isSafeInteger(value['activatedAt'])
+}
+
+function isEffectReversalOffer(value: unknown, runId: string): value is EffectReversalOffer {
+  return isRecord(value) && typeof value['offerId'] === 'string' && UUID.test(value['offerId']) &&
+    isSafeInteger(value['sequence'], 1) && isRunIdentity(value['runId'], runId) &&
+    typeof value['effectId'] === 'string' && UUID.test(value['effectId']) &&
+    isNonEmptyString(value['toolCallId']) && isNonEmptyString(value['toolName']) &&
+    isNonEmptyString(value['adapterRef']) && isNonEmptyString(value['adapterRevision']) &&
+    isMember(value['operationKind'], REVERSAL_OPERATIONS) &&
+    isMember(value['status'], REVERSAL_OFFER_STATUSES) && isSafeInteger(value['createdAt']) &&
+    isNullableSafeInteger(value['expiresAt']) && isNullableSafeInteger(value['resolvedAt'])
+}
+
+function isEffectReversalReceipt(
+  value: unknown,
+  runId: string,
+): value is EffectReversalReceipt {
+  return isRecord(value) && typeof value['receiptId'] === 'string' && UUID.test(value['receiptId']) &&
+    isSafeInteger(value['sequence'], 1) && typeof value['offerId'] === 'string' &&
+    UUID.test(value['offerId']) && isRunIdentity(value['runId'], runId) &&
+    typeof value['effectId'] === 'string' && UUID.test(value['effectId']) &&
+    isMember(value['operationKind'], REVERSAL_OPERATIONS) &&
+    isMember(value['outcome'], REVERSAL_RECEIPT_OUTCOMES) &&
+    isNonEmptyString(value['authorityRef']) && isMember(value['actorKind'], REVERSAL_ACTOR_KINDS) &&
+    isSafeInteger(value['observedAt'])
+}
+
+function parseEvidencePage<T extends { readonly sequence: number }>(
+  value: unknown,
+  status: number,
+  resource: Extract<EvidenceResource,
+    | 'effect receipt page'
+    | 'egress receipt page'
+    | 'skill activation receipt page'
+    | 'effect reversal offer page'
+    | 'effect reversal receipt page'>,
+  validate: (item: unknown) => item is T,
+  identity: (item: T) => string,
+): { readonly items: readonly T[]; readonly nextCursor: string | null } {
+  if (!isRecord(value) || !Array.isArray(value['items']) ||
+      value['items'].length > MAX_EVIDENCE_PAGE_ITEMS ||
+      (value['nextCursor'] !== null &&
+        (typeof value['nextCursor'] !== 'string' || !UUID.test(value['nextCursor'])))) {
+    throw invalidEvidenceResponse(status, resource)
+  }
+  const identities = new Set<string>()
+  let previousSequence = 0
+  for (const raw of value['items']) {
+    if (!validate(raw) || raw.sequence <= previousSequence || identities.has(identity(raw))) {
+      throw invalidEvidenceResponse(status, resource)
+    }
+    previousSequence = raw.sequence
+    identities.add(identity(raw))
+  }
+  return value as unknown as { readonly items: readonly T[]; readonly nextCursor: string | null }
+}
+
+function parseEffectReversalExecutionResult(
+  value: unknown,
+  status: number,
+  runId: string,
+  offerId: string,
+): EffectReversalExecutionResult {
+  const dispositions = new Set(['executed', 'replayed', 'already_terminal'])
+  if (!isRecord(value) || !isMember(value['disposition'], dispositions) ||
+      !isEffectReversalOffer(value['offer'], runId) ||
+      !isEffectReversalReceipt(value['receipt'], runId)) {
+    throw invalidEvidenceResponse(status, 'effect reversal execution')
+  }
+  const offer = value['offer']
+  const receipt = value['receipt']
+  if (offer.offerId !== offerId || receipt.offerId !== offerId ||
+      receipt.effectId !== offer.effectId || receipt.operationKind !== offer.operationKind ||
+      receipt.outcome !== offer.status) {
+    throw invalidEvidenceResponse(status, 'effect reversal execution')
+  }
+  return value as unknown as EffectReversalExecutionResult
 }
 
 // ── the client ───────────────────────────────────────────────────────────────
@@ -2459,9 +3158,22 @@ export class OwnwareClient implements GatewayClient {
       body: JSON.stringify(body),
     })
     if (!res.ok) throw await errorFromResponse(res)
-    const data = (await res.json()) as RunResult & { threadId?: string }
-    if (!data.threadId) throw new Error('ownware run response missing threadId')
-    return data as RunResult
+    const data = await readJsonResponse(res, 'run start')
+    return parseRunResult(data, res.status, input)
+  }
+
+  /**
+   * Hydrate durable thread history. A non-null runningRunId is safe to pass to
+   * the bounded run stream; null never implies that a historical run ID was
+   * inferred from message or event order.
+   */
+  async hydrateThread(threadId: string): Promise<ThreadHydration> {
+    const response = await this.doFetch(
+      `${this.base}/api/v1/threads/${encodeURIComponent(threadId)}/hydrate`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    return (await response.json()) as ThreadHydration
   }
 
   /**
@@ -2574,7 +3286,8 @@ export class OwnwareClient implements GatewayClient {
       `/api/v1/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}/decision`,
       { decision: input.decision, operationHash: input.operationHash },
     )
-    return (await res.json()) as PermissionDecisionResult
+    const value = await readJsonResponse(res, 'permission decision')
+    return parsePermissionDecisionResult(value, res.status, runId, requestId, input)
   }
 
   /** Submit one sensitive value without JSON serialization or response echo. */
@@ -2590,7 +3303,14 @@ export class OwnwareClient implements GatewayClient {
       { method: 'POST', headers, body: value },
     )
     if (!response.ok) throw await errorFromResponse(response)
-    return (await response.json()) as SensitiveInputDecisionResult
+    const decision = await readJsonResponse(response, 'sensitive-input decision')
+    return parseSensitiveInputDecisionResult(
+      decision,
+      response.status,
+      runId,
+      requestId,
+      'provided',
+    )
   }
 
   /** Decline one exact pending sensitive-input request. */
@@ -2603,13 +3323,21 @@ export class OwnwareClient implements GatewayClient {
       { method: 'POST', headers: this.headers(false) },
     )
     if (!response.ok) throw await errorFromResponse(response)
-    return (await response.json()) as SensitiveInputDecisionResult
+    const decision = await readJsonResponse(response, 'sensitive-input decision')
+    return parseSensitiveInputDecisionResult(
+      decision,
+      response.status,
+      runId,
+      requestId,
+      'denied',
+    )
   }
 
   /** Durably request cancellation for one immutable run. */
   async cancel(runId: string): Promise<RunCancellationResult> {
     const res = await this.post(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, {})
-    return (await res.json()) as RunCancellationResult
+    const value = await readJsonResponse(res, 'run cancellation')
+    return parseRunCancellationResult(value, res.status, runId)
   }
 
   /** Owner-only legacy thread abort; public/delegated callers use cancel(runId). */
@@ -2624,7 +3352,8 @@ export class OwnwareClient implements GatewayClient {
       { headers: this.headers(false) },
     )
     if (!res.ok) throw await errorFromResponse(res)
-    return (await res.json()) as RunSnapshot
+    const value = await readJsonResponse(res, 'run snapshot')
+    return parseRunSnapshot(value, res.status, runId)
   }
 
   /** Read immutable, payload-free authority observations for one run. */
@@ -2641,7 +3370,14 @@ export class OwnwareClient implements GatewayClient {
       { headers: this.headers(false) },
     )
     if (!res.ok) throw await errorFromResponse(res)
-    return (await res.json()) as EffectReceiptPage
+    const value = await readJsonResponse(res, 'effect receipt page')
+    return parseEvidencePage(
+      value,
+      res.status,
+      'effect receipt page',
+      (item): item is EffectReceipt => isEffectReceipt(item, runId),
+      item => item.receiptId,
+    )
   }
 
   /** Read immutable, content-free outbound route observations for one run. */
@@ -2658,7 +3394,14 @@ export class OwnwareClient implements GatewayClient {
       { headers: this.headers(false) },
     )
     if (!res.ok) throw await errorFromResponse(res)
-    return (await res.json()) as EgressReceiptPage
+    const value = await readJsonResponse(res, 'egress receipt page')
+    return parseEvidencePage(
+      value,
+      res.status,
+      'egress receipt page',
+      (item): item is EgressReceipt => isEgressReceipt(item, runId),
+      item => item.receiptId,
+    )
   }
 
   /** Read exact, content-free skill dispatcher observations for one run. */
@@ -2675,7 +3418,79 @@ export class OwnwareClient implements GatewayClient {
       { headers: this.headers(false) },
     )
     if (!res.ok) throw await errorFromResponse(res)
-    return (await res.json()) as SkillActivationReceiptPage
+    const value = await readJsonResponse(res, 'skill activation receipt page')
+    return parseEvidencePage(
+      value,
+      res.status,
+      'skill activation receipt page',
+      (item): item is SkillActivationReceipt => isSkillActivationReceipt(item, runId),
+      item => item.receiptId,
+    )
+  }
+
+  /** Read exact, content-free reversal offers for one run. */
+  async listEffectReversalOffers(
+    runId: string,
+    options: EffectReversalListOptions = {},
+  ): Promise<EffectReversalOfferPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const response = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/reversal-offers${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    const value = await readJsonResponse(response, 'effect reversal offer page')
+    return parseEvidencePage(
+      value,
+      response.status,
+      'effect reversal offer page',
+      (item): item is EffectReversalOffer => isEffectReversalOffer(item, runId),
+      item => item.offerId,
+    )
+  }
+
+  /** Execute one exact registered reversal offer. */
+  async executeEffectReversal(
+    runId: string,
+    offerId: string,
+    input: ExecuteEffectReversalInput,
+  ): Promise<EffectReversalExecutionResult> {
+    const headers = this.headers(false)
+    headers['Idempotency-Key'] = input.idempotencyKey
+    const response = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/reversal-offers/${encodeURIComponent(offerId)}/execute`,
+      { method: 'POST', headers },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    const value = await readJsonResponse(response, 'effect reversal execution')
+    return parseEffectReversalExecutionResult(value, response.status, runId, offerId)
+  }
+
+  /** Read immutable reversal execution receipts for one run. */
+  async listEffectReversalReceipts(
+    runId: string,
+    options: EffectReversalListOptions = {},
+  ): Promise<EffectReversalReceiptPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const response = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/reversal-receipts${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!response.ok) throw await errorFromResponse(response)
+    const value = await readJsonResponse(response, 'effect reversal receipt page')
+    return parseEvidencePage(
+      value,
+      response.status,
+      'effect reversal receipt page',
+      (item): item is EffectReversalReceipt => isEffectReversalReceipt(item, runId),
+      item => item.receiptId,
+    )
   }
 
   /**
@@ -2702,11 +3517,8 @@ export class OwnwareClient implements GatewayClient {
       throw await errorFromResponse(res)
     }
 
-    const data = (await res.json()) as {
-      contract: GatewayContractDescriptor
-      capabilities: readonly GatewayCapability[]
-      limits?: PublicGatewayLimits
-    }
+    const value = await readJsonResponse(res, 'gateway capabilities')
+    const data = parseGatewayCapabilityDocument(value, res.status)
     const expectedMajor = requirements.requiredMajor ?? 1
     if (data.contract.major !== expectedMajor) {
       return {
@@ -2823,7 +3635,6 @@ export { OwnwareClient as HttpGatewayClient }
 export type { OwnwareClientOptions as HttpGatewayClientOptions }
 
 const SAFE_ERROR_TOKEN = /^[a-z][a-z0-9_]{0,63}$/
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SAFE_CORRELATION_ID = /^[A-Za-z0-9-]{1,128}$/
 const MAX_ERROR_BODY_CHARS = 8_192
 const MAX_SAFE_MESSAGE_CHARS = 500

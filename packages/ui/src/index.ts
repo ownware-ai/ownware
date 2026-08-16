@@ -26,9 +26,19 @@ export type {
   ToolCall,
   ToolCallStatus,
   PendingApproval,
+  PendingSensitiveInput,
+  SkillActivationEvidence,
+  StreamProjection,
+  StreamProjectionPhase,
 } from './types.js'
 
-export { initialChatState, chatReducer, applyEvents, addUserMessage } from './reducer.js'
+export {
+  initialChatState,
+  chatReducer,
+  applyEvents,
+  addUserMessage,
+  seedReplayCursor,
+} from './reducer.js'
 
 export type {
   ToolUIKind,
@@ -39,3 +49,5 @@ export type {
   ToolRender,
 } from './descriptors.js'
 export { BUILTIN_DESCRIPTORS, describeToolCall } from './descriptors.js'
+
+export * from './projection.js'

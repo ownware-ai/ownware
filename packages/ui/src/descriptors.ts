@@ -6,9 +6,9 @@
  * optional expandable preview (which field + format), and an optional open
  * action. A client renders ANY tool from its descriptor — no per-tool UI code.
  *
- * The built-in tools' descriptors are STATIC (defined in Loom), so we ship
- * them here as `BUILTIN_DESCRIPTORS` — the built-ins render correctly out of
- * the box, no gateway fetch. Custom tools: pass your own descriptor map.
+ * The exact tool instance's descriptor may travel with `tool.call.start`.
+ * `BUILTIN_DESCRIPTORS` remains a presentation-only compatibility fallback
+ * for older Gateways; it never proves that the named operation took effect.
  * `describeToolCall()` resolves a ToolCall + descriptor into render-ready parts.
  */
 
@@ -48,30 +48,30 @@ export interface ToolUIDescriptor {
   readonly openAction?: ToolUIOpenAction
 }
 
-/** The built-in tools' descriptors, mirrored from Loom (packages/loom/src/tools/builtins). */
+/** @deprecated Compatibility presentation for streams that predate event descriptors. */
 export const BUILTIN_DESCRIPTORS: Readonly<Record<string, ToolUIDescriptor>> = {
   // filesystem
   readFile: { kind: 'file-read', summary: { verb: 'Read', primaryField: 'file_path' }, preview: { contentField: 'content', format: 'code', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
-  writeFile: { kind: 'file-write', summary: { verb: 'Wrote', primaryField: 'file_path' }, preview: { contentField: 'content', format: 'code', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
-  editFile: { kind: 'file-edit', summary: { verb: 'Edited', primaryField: 'file_path' }, preview: { contentField: 'new_string', format: 'diff', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
-  listFiles: { kind: 'file-read', summary: { verb: 'Listed', primaryField: 'path' }, openAction: { target: 'file-pane', pathField: 'path' } },
-  glob: { kind: 'search', summary: { verb: 'Matched', primaryField: 'pattern' }, preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 } },
-  grep: { kind: 'search', summary: { verb: 'Searched', primaryField: 'pattern' }, preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 } },
+  writeFile: { kind: 'file-write', summary: { verb: 'Write file', primaryField: 'file_path' }, preview: { contentField: 'content', format: 'code', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
+  editFile: { kind: 'file-edit', summary: { verb: 'Edit file', primaryField: 'file_path' }, preview: { contentField: 'new_string', format: 'diff', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
+  listFiles: { kind: 'file-read', summary: { verb: 'List files', primaryField: 'path' }, openAction: { target: 'file-pane', pathField: 'path' } },
+  glob: { kind: 'search', summary: { verb: 'Match files', primaryField: 'pattern' }, preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 } },
+  grep: { kind: 'search', summary: { verb: 'Search files', primaryField: 'pattern' }, preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 } },
   // shell
-  shell_execute: { kind: 'shell', summary: { verb: 'Ran', primaryField: 'command' }, preview: { contentField: 'output', format: 'plain', truncateAtLines: 10 }, openAction: { target: 'terminal-pane', pathField: 'sessionId' } },
+  shell_execute: { kind: 'shell', summary: { verb: 'Run command', primaryField: 'command' }, preview: { contentField: 'output', format: 'plain', truncateAtLines: 10 }, openAction: { target: 'terminal-pane', pathField: 'sessionId' } },
   // web
-  web_search: { kind: 'search', summary: { verb: 'Searched web', primaryField: 'query' }, preview: { contentField: 'results', format: 'markdown', truncateAtLines: 10 } },
-  web_fetch: { kind: 'external-action', summary: { verb: 'Fetched', primaryField: 'url' }, preview: { contentField: 'content', format: 'markdown', truncateAtLines: 10 }, openAction: { target: 'url', pathField: 'url' } },
+  web_search: { kind: 'search', summary: { verb: 'Search web', primaryField: 'query' }, preview: { contentField: 'results', format: 'markdown', truncateAtLines: 10 } },
+  web_fetch: { kind: 'external-action', summary: { verb: 'Fetch URL', primaryField: 'url' }, preview: { contentField: 'content', format: 'markdown', truncateAtLines: 10 }, openAction: { target: 'url', pathField: 'url' } },
   // memory / tasks / agents / skills
-  memory_store: { kind: 'external-action', summary: { verb: 'Remembered', primaryField: 'content' } },
-  memory_search: { kind: 'search', summary: { verb: 'Recalled', primaryField: 'query' } },
-  memory_forget: { kind: 'external-action', summary: { verb: 'Forgot', primaryField: 'id' } },
-  todo_write: { kind: 'conversational', summary: { verb: 'Updated tasks' } },
-  agent_spawn: { kind: 'conversational', summary: { verb: 'Delegated', primaryField: 'subagent_type' } },
-  skill: { kind: 'external-action', summary: { verb: 'Invoked skill', primaryField: 'name' } },
-  ask_user: { kind: 'conversational', summary: { verb: 'Asked you' } },
-  request_credential: { kind: 'conversational', summary: { verb: 'Requested a credential' } },
-  image_generate: { kind: 'image', summary: { verb: 'Generated image', primaryField: 'prompt' } },
+  memory_store: { kind: 'external-action', summary: { verb: 'Store memory', primaryField: 'content' } },
+  memory_search: { kind: 'search', summary: { verb: 'Search memory', primaryField: 'query' } },
+  memory_forget: { kind: 'external-action', summary: { verb: 'Delete memory', primaryField: 'id' } },
+  todo_write: { kind: 'conversational', summary: { verb: 'Update tasks' } },
+  agent_spawn: { kind: 'conversational', summary: { verb: 'Delegate task', primaryField: 'subagent_type' } },
+  skill: { kind: 'external-action', summary: { verb: 'Request skill', primaryField: 'name' } },
+  ask_user: { kind: 'conversational', summary: { verb: 'Ask user' } },
+  request_credential: { kind: 'conversational', summary: { verb: 'Request credential' } },
+  image_generate: { kind: 'image', summary: { verb: 'Generate image', primaryField: 'prompt' } },
 }
 
 /** Render-ready view of a tool call, resolved from its descriptor. */
@@ -93,7 +93,7 @@ export interface ToolRender {
  * generic view (tool name + first input + raw result) when no descriptor exists.
  */
 export function describeToolCall(call: ToolCall, descriptor?: ToolUIDescriptor): ToolRender {
-  const d = descriptor ?? BUILTIN_DESCRIPTORS[call.name]
+  const d = descriptor ?? call.uiDescriptor ?? BUILTIN_DESCRIPTORS[call.name]
   if (!d) {
     return {
       kind: 'external-action',
@@ -116,7 +116,9 @@ export function describeToolCall(call: ToolCall, descriptor?: ToolUIDescriptor):
     preview = { text: call.result, format: 'plain' }
   }
 
-  const openUrl = d.openAction?.target === 'url' ? asString(call.input[d.openAction.pathField]) : ''
+  const openUrl = d.openAction?.target === 'url'
+    ? safeHttpUrl(asString(call.input[d.openAction.pathField]))
+    : undefined
 
   return {
     kind: d.kind,
@@ -124,7 +126,17 @@ export function describeToolCall(call: ToolCall, descriptor?: ToolUIDescriptor):
     verb: d.summary.verb,
     primary: primary || undefined,
     preview,
-    openUrl: openUrl || undefined,
+    openUrl,
+  }
+}
+
+function safeHttpUrl(value: string): string | undefined {
+  if (value.length === 0) return undefined
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? value : undefined
+  } catch {
+    return undefined
   }
 }
 

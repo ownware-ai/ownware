@@ -135,6 +135,10 @@ the call and emits `security.block`.
 - Exact authorization is not generic undo, effect success, tool correctness,
   egress containment, skill compliance or proof that arbitrary input has no
   secret. Those require separate authority contracts.
+- `ToolContext.toolCallId` and `turnIndex` are host correlation supplied by the
+  loop. They do not prove an effect, target freshness or reversibility. A host
+  may use them to join an exact tool invocation to its own durable authority,
+  but the authority check and any inverse remain outside opinion-free Loom.
 
 ## Outbound dispatch seam
 

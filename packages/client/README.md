@@ -84,10 +84,14 @@ Read it from `<dataDir>/gateway-token`, or `gateway.token` in-process.
 | `deleteCandidate(id)` | `DELETE /api/v1/profile-candidates/:id` | Delete only an unreferenced candidate; active, in-flight and rollback-retained candidates reject. |
 | `profiles()` | `GET /api/v1/profiles` | Read the minimal safe catalog; delegated callers see only their scoped profile. |
 | `run(input)` | `POST /api/v1/run` | Send a message with optional model and bounded one-turn untrusted attachments. Include `interactionCapabilities: ['sensitive-input.v1']` only when this caller can answer the dedicated request event; the set is fixed for the cached thread. Model precedence is request → thread → install default → profile; only an unavailable same-runtime profile default may be substituted, while runtime incompatibility always rejects. Pass a UUID `idempotencyKey` and reuse it only to retry the exact request; delegated principals require one, plus `runs.attachments` when attachments are present. |
+| `hydrateThread(threadId)` | `GET /threads/:id/hydrate` | Read durable consolidated history and retained cursors. `runningRunId` is present only when the current live runner is confirmed by the public durable run repository; archived history receives no guessed run mapping. |
 | `runSnapshot(runId)` | `GET /api/v1/runs/:runId` | Read the bounded durable lifecycle for one execution, including truthful indeterminate restart state. |
 | `listEffectReceipts(runId, options?)` | `GET /api/v1/runs/:runId/effect-receipts` | Page immutable payload-free observations of action intent, outcome and authority-confirmed effects without claiming generic reversibility. |
 | `listEgressReceipts(runId, options?)` | `GET /api/v1/runs/:runId/egress-receipts` | Page immutable content-free observations from the platform's known outbound dispatch boundaries. |
 | `listSkillActivationReceipts(runId, options?)` | `GET /api/v1/runs/:runId/skill-activation-receipts` | Page immutable content-free proof that an exact frozen skill entered a root or explicitly granted helper conversation; this is not proof of provider processing or behavioral compliance. |
+| `listEffectReversalOffers(runId, options?)` | `GET /api/v1/runs/:runId/reversal-offers` | Page content-free exact offers minted by registered effect adapters. The first supported envelope is a newly created pending memory proposal, not generic tool undo. |
+| `executeEffectReversal(runId, offerId, input)` | `POST /api/v1/runs/:runId/reversal-offers/:offerId/execute` | Conditionally apply one exact inverse using a UUID idempotency key; `confirmed`, `stale`, and `expired` are authority-observed terminal outcomes. |
+| `listEffectReversalReceipts(runId, options?)` | `GET /api/v1/runs/:runId/reversal-receipts` | Page immutable, content-free reversal execution receipts. |
 | `streamReply(runId, opts?)` | SSE `GET /runs/:id/events` | ONE bounded reply as `delta` → `done`/`error`. A legacy thread ID still uses the older unbounded thread route. |
 | `events(runId, opts?)` | same SSE | The RAW event stream for one run — tool calls, permission requests, usage, everything. |
 | `resume(threadId, { action })` | `POST /threads/:id/resume` | Owner-only legacy UI compatibility; delegated/public callers cannot use this bulk-capable route. |
@@ -104,6 +108,12 @@ stream each returned `runId` independently. Reconnect a dropped stream by
 passing the highest `seq` you saw as `{ since }`. Invalid, earlier-run,
 ahead-of-run and expired cursors fail explicitly instead of replaying from zero;
 `runSnapshot(runId).earliestRetainedCursor` reports the current safe floor.
+Open or reload a conversation with `hydrateThread(threadId)`. Render its
+`messages` in returned order. Prefer the bounded run stream when
+`runningRunId` is non-null; otherwise `runningAgentId === 'root'` identifies
+legacy/internal live work that has no public run correlation. Both null means
+the returned durable snapshot was terminal at observation time. Hydration does
+not assign archived messages to runs.
 Sensitive input is opt-in transport negotiation, not secret detection. A
 capable client includes `sensitive-input.v1`, waits for a `sensitive-input`
 stream event, then calls exactly one of `submitSensitiveInput` or

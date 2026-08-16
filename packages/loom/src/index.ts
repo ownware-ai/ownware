@@ -418,6 +418,11 @@ export type {
   ToolProgress,
   ToolCategory,
   ToolExecutionResult,
+  ToolUIKind,
+  ToolUISummary,
+  ToolUIPreview,
+  ToolUIOpenAction,
+  ToolUIDescriptor,
 } from './tools/types.js'
 export { defineTool } from './tools/types.js'
 // Single-tool executor — the full lifecycle (permission → hooks → validate →

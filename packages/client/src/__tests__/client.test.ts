@@ -780,6 +780,7 @@ beforeAll(async () => {
       res.end(JSON.stringify({
         runId: '88888888-8888-4888-8888-888888888888',
         requestId: 'permission_1',
+        intentRevision: 1,
         ...body,
       }))
       return
@@ -968,7 +969,13 @@ describe('request shapes', () => {
     await expect(client().decidePermission(runId, 'permission_1', {
       decision: 'approve',
       operationHash,
-    })).resolves.toEqual({ runId, requestId: 'permission_1', decision: 'approve', operationHash })
+    })).resolves.toEqual({
+      runId,
+      requestId: 'permission_1',
+      decision: 'approve',
+      operationHash,
+      intentRevision: 1,
+    })
     const last = seen.at(-1)!
     expect(last.url).toBe(`/api/v1/runs/${runId}/permissions/permission_1/decision`)
     expect(JSON.parse(last.body)).toEqual({ decision: 'approve', operationHash })

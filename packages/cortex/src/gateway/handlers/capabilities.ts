@@ -82,7 +82,7 @@ const PUBLIC_CAPABILITIES = [
   { id: 'candidates.stage', version: 1 },
   { id: 'candidates.validate', version: 1 },
   { id: 'connections.list', version: 1 },
-  { id: 'gateway.capabilities', version: 26 },
+  { id: 'gateway.capabilities', version: 27 },
   { id: 'gateway.health', version: 1 },
   { id: 'models.list', version: 2 },
   { id: 'principals.issue', version: 3 },
@@ -138,6 +138,7 @@ const PUBLIC_CAPABILITIES = [
   { id: 'sources.register', version: 2 },
   { id: 'task_catalog.manage', version: 1 },
   { id: 'task_catalog.read', version: 1 },
+  { id: 'threads.hydrate', version: 1 },
 ] as const
 
 export function createCapabilitiesHandler(
@@ -149,7 +150,7 @@ export function createCapabilitiesHandler(
       contract: {
         name: 'ownware.gateway',
         major: 1,
-        revision: '0.45.0',
+        revision: '0.46.0',
       },
       capabilities: PUBLIC_CAPABILITIES,
       limits: {

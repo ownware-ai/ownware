@@ -23,14 +23,19 @@ export interface AgentEvent {
 }
 
 /** Where the run is right now. Drives the composer / caret / approval card. */
-export type ChatStatus = 'idle' | 'streaming' | 'awaiting_approval' | 'error'
+export type ChatStatus =
+  | 'idle'
+  | 'streaming'
+  | 'awaiting_approval'
+  | 'awaiting_sensitive_input'
+  | 'error'
 
 export type ToolCallStatus = 'running' | 'done' | 'error'
 
 /**
- * A single tool invocation inside an assistant reply. The renderer attaches
- * the tool's `uiDescriptor` (looked up by `name`) to draw the card; the
- * reducer only captures *what happened* — descriptor-agnostic on purpose.
+ * A single tool invocation inside an assistant reply. Tool lifecycle success
+ * is not proof of an external effect; evidence selectors keep those facts
+ * separate. Descriptors control presentation only.
  */
 export interface ToolCall {
   readonly id: string
@@ -43,6 +48,10 @@ export interface ToolCall {
   readonly result?: string
   readonly isError?: boolean
   readonly durationMs?: number
+  /** Exact presentation descriptor published with this tool call, when supported. */
+  readonly uiDescriptor?: import('./descriptors.js').ToolUIDescriptor
+  /** True when replay/hydration omitted the matching start observation. */
+  readonly partial?: boolean
 }
 
 /** One row in the thread — a user turn or an assistant reply. */
@@ -60,21 +69,73 @@ export interface Message {
 }
 
 /**
- * A paused run waiting on a human decision — a zone 'ask' or a profile
- * `approve` hook. This is the amber approval card. Answer it with
- * `resume(threadId, { action, requestId })`.
+ * A paused run waiting on a human decision. Current Gateways require the
+ * run-scoped request id and operation hash; the reducer never authorizes the
+ * mutation itself.
  */
 export interface PendingApproval {
   readonly requestId: string
   readonly toolName: string
   readonly reason: string
+  /** Exact run-scoped intent identity. Required by current Gateways. */
+  readonly operationHash?: string
+  readonly intentRevision?: 1
+}
+
+/** Metadata-only request for the dedicated non-event sensitive-value channel. */
+export interface PendingSensitiveInput {
+  readonly requestId: string
+  readonly toolCallId: string
+  readonly toolName: string
+  readonly label: string
+  readonly usage: string
+  readonly agentId: string | null
+  readonly adapterRevision: string
+}
+
+/** Content-free evidence that an exact skill body entered a conversation. */
+export interface SkillActivationEvidence {
+  readonly activationId: string
+  readonly skillName: string
+  readonly skillDigest: string
+  readonly sourceRef: string
+  readonly sourceDigest: string
+  readonly agentId: string | null
+  readonly toolCallId: string | null
+  readonly turnIndex: number
+  readonly timestamp: number
+}
+
+export type StreamProjectionPhase =
+  | 'idle'
+  | 'replaying'
+  | 'live'
+  | 'reconnecting'
+  | 'resync_required'
+  | 'closed'
+
+export interface StreamProjection {
+  readonly phase: StreamProjectionPhase
+  readonly lastDeliveredSeq: number
+  readonly expectedNextSeq: number | null
+  /** Unknown additive observations retained for honest host diagnostics. */
+  readonly unsupportedEventTypes: readonly string[]
 }
 
 /** The whole chat, derived purely from the event stream. What a UI renders. */
 export interface ChatState {
   readonly messages: readonly Message[]
   readonly status: ChatStatus
+  /** First pending request, retained for compatibility with existing renderers. */
   readonly pendingApproval: PendingApproval | null
+  /** Every exact outstanding request; helpers may park more than one. */
+  readonly pendingApprovals: readonly PendingApproval[]
+  /** First dedicated sensitive-input request, for compact renderers. */
+  readonly pendingSensitiveInput: PendingSensitiveInput | null
+  readonly pendingSensitiveInputs: readonly PendingSensitiveInput[]
+  /** Dispatcher evidence only; never behavioral-compliance proof. */
+  readonly skillActivations: readonly SkillActivationEvidence[]
+  readonly connection: StreamProjection
   /** The model the gateway actually dispatched (from turn usage), once known. */
   readonly model?: string
   /** Set when status is 'error'. */

@@ -4,6 +4,7 @@ import {
   chatReducer,
   applyEvents,
   addUserMessage,
+  seedReplayCursor,
   type AgentEvent,
 } from '../index.js'
 
@@ -58,12 +59,25 @@ describe('chatReducer', () => {
   })
 
   it('pauses on a permission request and resumes on the response', () => {
+    const operationHash = 'a'.repeat(64)
     let s = applyEvents(initialChatState(), [
       ev('user.message', { text: 'connect slack' }, 1),
-      ev('permission.request', { requestId: 'r1', toolName: 'slack_connect', reason: 'read + reply in #support only' }, 2),
+      ev('permission.request', {
+        requestId: 'r1',
+        toolName: 'slack_connect',
+        reason: 'read + reply in #support only',
+        operationHash,
+        intentRevision: 1,
+      }, 2),
     ])
     expect(s.status).toBe('awaiting_approval')
-    expect(s.pendingApproval).toMatchObject({ requestId: 'r1', toolName: 'slack_connect', reason: 'read + reply in #support only' })
+    expect(s.pendingApproval).toMatchObject({
+      requestId: 'r1',
+      toolName: 'slack_connect',
+      reason: 'read + reply in #support only',
+      operationHash,
+      intentRevision: 1,
+    })
 
     s = chatReducer(s, ev('permission.response', { requestId: 'r1', approved: true }, 3))
     expect(s.status).toBe('streaming')
@@ -100,9 +114,130 @@ describe('chatReducer', () => {
     expect(s1.messages[1]).toMatchObject({ role: 'assistant', text: 'b' })
   })
 
-  it('tracks the highest seq as the resume cursor, ignoring unknown events', () => {
+  it('tracks unknown additive observations without replaying lower sequences', () => {
     const s = applyEvents(initialChatState(), [ev('cache.status', {}, 7), ev('something.unknown', {}, 3)])
     expect(s.lastSeq).toBe(7)
     expect(s.messages).toHaveLength(0)
+    expect(s.connection.unsupportedEventTypes).toEqual(['cache.status'])
+  })
+
+  it('seeds arbitrary replay cursors and refuses to apply a sequence gap', () => {
+    let s = seedReplayCursor(initialChatState(), 41)
+    s = chatReducer(s, ev('text.delta', { text: 'expected' }, 42))
+    const beforeGap = s
+    s = chatReducer(s, ev('text.delta', { text: 'must not apply' }, 44))
+    expect(s.messages).toEqual(beforeGap.messages)
+    expect(s.lastSeq).toBe(42)
+    expect(s.connection).toMatchObject({ phase: 'resync_required', expectedNextSeq: 43 })
+  })
+
+  it('uses transport envelopes to move from replay to live without consuming a sequence', () => {
+    let s = chatReducer(initialChatState(), ev('stream.start', {
+      since: 50,
+      maxSeqAtStart: 51,
+    }, 0))
+    expect(s.connection.phase).toBe('replaying')
+    expect(s.lastSeq).toBe(50)
+    s = chatReducer(s, ev('text.delta', { text: 'replayed' }, 51))
+    s = chatReducer(s, ev('stream.replay.complete', {
+      since: 50,
+      replayedThroughSeq: 51,
+      maxSeqAtStart: 51,
+      liveTail: true,
+    }, 51))
+    expect(s.connection).toMatchObject({
+      phase: 'live',
+      lastDeliveredSeq: 51,
+      expectedNextSeq: 52,
+    })
+  })
+
+  it('keeps concurrent exact approvals independent and ignores malformed responses', () => {
+    const hash = 'b'.repeat(64)
+    let s = applyEvents(initialChatState(), [
+      ev('permission.request', { requestId: 'r1', toolName: 'one', operationHash: hash, intentRevision: 1 }, 1),
+      ev('permission.request', { requestId: 'r2', toolName: 'two', operationHash: hash, intentRevision: 1 }, 2),
+    ])
+    s = chatReducer(s, ev('permission.response', {}, 3))
+    expect(s.pendingApprovals.map(item => item.requestId)).toEqual(['r1', 'r2'])
+    s = chatReducer(s, ev('permission.response', { requestId: 'r2' }, 4))
+    expect(s.pendingApprovals.map(item => item.requestId)).toEqual(['r1'])
+    expect(s.status).toBe('awaiting_approval')
+  })
+
+  it('retains sensitive metadata only and never stores a supplied value field', () => {
+    const canary = 'sensitive-canary-must-not-enter-state'
+    let s = chatReducer(initialChatState(), ev('sensitive.input.request', {
+      requestId: 's1',
+      toolCallId: 't1',
+      toolName: 'browser_type',
+      label: 'Password',
+      usage: 'Enter in the selected password field.',
+      agentId: null,
+      adapterRevision: 'managed-browser.v1',
+      value: canary,
+    }, 1))
+    expect(s.status).toBe('awaiting_sensitive_input')
+    expect(JSON.stringify(s)).not.toContain(canary)
+    s = chatReducer(s, ev('sensitive.input.response', { requestId: 's1' }, 2))
+    expect(s.pendingSensitiveInputs).toEqual([])
+  })
+
+  it('records only structurally valid skill placement evidence', () => {
+    const digest = `hmac-sha256:${'a'.repeat(64)}`
+    let s = chatReducer(initialChatState(), ev('skill.activation', {
+      activationId: '123e4567-e89b-42d3-a456-426614174000',
+      toolCallId: 'call-1',
+      sourceRef: 'profile-1',
+      sourceDigest: digest,
+      skillName: 'research',
+      skillDigest: digest,
+      agentId: null,
+      turnIndex: 0,
+      timestamp: 100,
+    }, 1))
+    expect(s.skillActivations).toHaveLength(1)
+    s = chatReducer(s, ev('skill.activation', {
+      activationId: 'not-an-authoritative-id',
+      toolCallId: null,
+      sourceRef: 'profile-1',
+      sourceDigest: digest,
+      skillName: 'research',
+      skillDigest: digest,
+      agentId: null,
+      turnIndex: 0,
+      timestamp: 100,
+    }, 2))
+    expect(s.skillActivations).toHaveLength(1)
+    expect(s.connection.unsupportedEventTypes).toContain('skill.activation')
+  })
+
+  it('creates an honest partial tool lifecycle when retention omitted the start', () => {
+    const s = chatReducer(initialChatState(), ev('tool.call.end', {
+      toolCallId: 't1',
+      toolName: 'custom',
+      result: 'executor returned',
+      isError: false,
+    }, 80))
+    expect(s.messages[0]!.toolCalls[0]).toMatchObject({
+      id: 't1',
+      status: 'done',
+      partial: true,
+    })
+  })
+
+  it('treats transport shutdown as reconnect or rehydrate state, not run failure', () => {
+    const gateway = chatReducer(initialChatState(), ev('stream.shutdown', {
+      reason: 'gateway_shutdown',
+      retryAfterMs: 1000,
+    }, 0))
+    expect(gateway.connection.phase).toBe('reconnecting')
+    expect(gateway.status).toBe('idle')
+
+    const slow = chatReducer(seedReplayCursor(initialChatState(), 9), ev('stream.shutdown', {
+      reason: 'slow_consumer',
+      retryAfterMs: 1000,
+    }, 9))
+    expect(slow.connection).toMatchObject({ phase: 'resync_required', expectedNextSeq: 10 })
   })
 })

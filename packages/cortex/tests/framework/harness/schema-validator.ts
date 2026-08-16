@@ -41,6 +41,7 @@ export const ThreadSchema = z.object({
   messageCount: z.number(),
   totalTokens: z.number(),
   totalCost: z.number(),
+  model: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lastMessagePreview: z.string().nullable(),
@@ -53,17 +54,26 @@ export const ThreadMessageSchema = z.object({
   role: z.enum(['user', 'assistant', 'tool_result', 'system', 'error']),
   content: z.string(),
   tools: z.array(z.object({
+    toolCallId: z.string().optional(),
     name: z.string(),
     input: z.unknown(),
     output: z.string().optional(),
     isError: z.boolean().optional(),
     durationMs: z.number().optional(),
     startedAt: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(),
   })).optional(),
   subAgents: z.array(z.object({
     agentId: z.string(),
     profileName: z.string(),
+    model: z.string().optional(),
+    usage: z.object({
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      costUsd: z.number(),
+    }).optional(),
     task: z.string().optional(),
+    prompt: z.string().optional(),
     status: z.enum(['running', 'completed', 'error']),
     result: z.string().optional(),
     durationMs: z.number().optional(),
@@ -71,13 +81,37 @@ export const ThreadMessageSchema = z.object({
     turnCount: z.number().optional(),
   })).optional(),
   permissions: z.array(z.object({
+    requestId: z.string().optional(),
     toolName: z.string(),
     input: z.record(z.unknown()).optional(),
+    inputSummary: z.string().optional(),
+    operationHash: z.string().optional(),
+    intentRevision: z.literal(1).optional(),
     reason: z.string(),
     decision: z.enum(['approved', 'denied', 'pending']),
     zoneLevel: z.number().optional(),
     zoneName: z.string().optional(),
     explanation: z.string().optional(),
+    severityTag: z.enum(['info', 'warn', 'critical']).optional(),
+    severityReason: z.string().optional(),
+  })).optional(),
+  credentials: z.array(z.object({
+    requestId: z.string(),
+    label: z.string(),
+    hint: z.string(),
+    usage: z.string(),
+    placement: z.discriminatedUnion('type', [
+      z.object({ type: z.literal('env'), variableName: z.string() }),
+      z.object({ type: z.literal('bearer') }),
+      z.object({ type: z.literal('header'), name: z.string() }),
+      z.object({ type: z.literal('cookie'), name: z.string() }),
+      z.object({ type: z.literal('body'), fieldPath: z.string() }),
+      z.object({ type: z.literal('query'), paramName: z.string() }),
+      z.object({ type: z.literal('basic'), usernameCredentialId: z.string().optional() }),
+    ]),
+    isRequired: z.boolean(),
+    decision: z.enum(['pending', 'stored', 'denied']),
+    credentialId: z.string().optional(),
   })).optional(),
   attachments: z.array(z.object({
     filename: z.string(),
@@ -89,13 +123,38 @@ export const ThreadMessageSchema = z.object({
   usage: z.object({
     inputTokens: z.number(),
     outputTokens: z.number(),
+    cacheReadTokens: z.number().optional(),
+    cacheCreationTokens: z.number().optional(),
   }).optional(),
+  model: z.string().optional(),
   timestamp: z.string(),
+  parts: z.array(z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('text'), text: z.string() }),
+    z.object({ kind: z.literal('thinking'), text: z.string() }),
+    z.object({ kind: z.literal('tool'), toolCallId: z.string() }),
+    z.object({ kind: z.literal('subagent'), agentId: z.string() }),
+    z.object({ kind: z.literal('permission'), requestId: z.string() }),
+    z.object({ kind: z.literal('credential'), requestId: z.string() }),
+  ])).optional(),
 })
 
 export const ThreadWithMessagesSchema = ThreadSchema.extend({
   messages: z.array(ThreadMessageSchema),
 })
+
+export const ThreadHydrationSchema = z.object({
+  thread: ThreadSchema,
+  messages: z.array(ThreadMessageSchema),
+  agents: z.array(z.object({
+    agentId: z.string(),
+    parentAgentId: z.string().nullable(),
+    eventCount: z.number().int().nonnegative(),
+  }).strict()),
+  runningAgentId: z.literal('root').nullable(),
+  runningRunId: z.string().uuid().nullable(),
+  maxSeq: z.number().int().nonnegative(),
+  lastClosedTurnEndSeq: z.number().int().nonnegative(),
+}).strict()
 
 // ---------------------------------------------------------------------------
 // Workspace

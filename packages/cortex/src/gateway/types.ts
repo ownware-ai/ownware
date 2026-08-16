@@ -5,7 +5,7 @@
  * These are the wire format — what clients send and receive.
  */
 
-import type { CredentialPlacement } from '@ownware/loom'
+import type { CredentialPlacement, ToolUIDescriptor } from '@ownware/loom'
 import type { SafetyLevel } from '../schedules/safety.js'
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,32 @@ export interface Thread {
   updatedAt: string
   /** Preview of the last message in this thread. */
   readonly lastMessagePreview: string | null
+}
+
+/** One retained agent stream summarized for thread hydration. */
+export interface ThreadHydrationAgent {
+  readonly agentId: string
+  readonly parentAgentId: string | null
+  readonly eventCount: number
+}
+
+/**
+ * Durable thread history plus the point-in-time information needed to resume
+ * an in-flight turn without treating the raw event log as historical truth.
+ *
+ * `runningAgentId` is the live-tail signal. `runningRunId` is narrower: it is
+ * present only when that process-local live run is backed by the public durable
+ * run repository. Internal/legacy work may therefore be live while the public
+ * run correlation remains null.
+ */
+export interface ThreadHydration {
+  readonly thread: Thread
+  readonly messages: readonly ThreadMessage[]
+  readonly agents: readonly ThreadHydrationAgent[]
+  readonly runningAgentId: typeof import('./event-bus.js').ROOT_AGENT_ID | null
+  readonly runningRunId: string | null
+  readonly maxSeq: number
+  readonly lastClosedTurnEndSeq: number
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +348,8 @@ export interface ToolCallRecord {
   readonly output?: string
   readonly isError?: boolean
   readonly durationMs?: number
+  /** Presentation only; never external-effect evidence. */
+  readonly uiDescriptor?: ToolUIDescriptor
   readonly startedAt?: string
   /** Rich metadata from tool execution — images (base64), audio paths, URLs, etc.
    *  Not sent to the model, but available for UI rendering and logging. */

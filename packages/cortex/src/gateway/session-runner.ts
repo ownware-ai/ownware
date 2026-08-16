@@ -1104,6 +1104,7 @@ export class SessionRunner {
           output: event.result,
           isError: event.isError,
           durationMs: event.durationMs,
+          uiDescriptor: event.uiDescriptor,
           startedAt: acc.toolStartTimes.get(event.toolCallId),
           metadata: event.metadata,
         })
