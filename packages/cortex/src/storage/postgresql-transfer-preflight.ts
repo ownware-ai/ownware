@@ -13,16 +13,19 @@ import {
 type SessionClient = Pick<PostgreSqlClient | PostgreSqlPoolClient, 'query'>
 
 const TARGET_RECEIPT_FORMAT = 'ownware-postgresql-transfer-target-v1'
+/** Compared as an exact `ORDER BY proname` array — this order is load-bearing. */
 const EXPECTED_FUNCTIONS = Object.freeze([
   '_enforce_effect_reversal_offer_update',
   '_enforce_egress_evidence_semantics',
   '_enforce_schedule_approval_lifecycle',
   '_is_iso_instant',
+  '_reject_activity_ledger_mutation',
   '_reject_effect_evidence_mutation',
   '_reject_effect_reversal_mutation',
   '_reject_egress_evidence_mutation',
   '_reject_immutable_mutation',
   '_reject_permission_binding_mutation',
+  '_reject_permission_decision_mutation',
   '_reject_plugin_evidence_mutation',
   '_reject_provider_usage_evidence_mutation',
   '_reject_skill_activation_receipt_mutation',

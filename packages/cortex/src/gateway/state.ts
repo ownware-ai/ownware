@@ -399,6 +399,7 @@ export class GatewayState {
     }
     this.security = {
       credentials: deferredRepository(() => root().security.credentials),
+      activityLedger: deferredRepository(() => root().security.activityLedger),
       credentialAudit: deferredRepository(() => root().security.credentialAudit),
       credentialSpend: deferredRepository(() => root().security.credentialSpend),
       credentialMigrations: deferredRepository(() => root().security.credentialMigrations),

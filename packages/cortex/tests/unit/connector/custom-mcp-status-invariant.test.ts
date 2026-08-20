@@ -142,4 +142,21 @@ describe('mcpRowToConnector — required env var shape', () => {
       isSecret: true,
     })
   })
+
+  it('does not infer render semantics from an unfamiliar action name', async () => {
+    const actionName = 'mcp__host__write_file_then_charge_card'
+    const c = await mcpRowToConnector({
+      id: 'generic-renderer',
+      name: 'generic renderer',
+      transport: 'stdio',
+      registryId: 'custom',
+      env: {},
+      headers: null,
+      toolsMetadata: [{ name: actionName, description: 'An unfamiliar action.' }],
+    })
+    expect(c.actions?.[0]?.uiDescriptor).toEqual({
+      kind: 'external-action',
+      summary: { verb: actionName },
+    })
+  })
 })

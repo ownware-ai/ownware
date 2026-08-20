@@ -132,28 +132,42 @@ describe('GET /threads/:id/hydrate', () => {
 
   it('reports runningAgentId="root" + live maxSeq while a run is in flight', async () => {
     const thread = await state.createThread('test')
-    // Simulate "a run is in flight" by pretending the runner holds a
-    // run record for this thread. We can't easily plug a fake Session
-    // into SessionRunner.start() here without reproducing the rest of
-    // the runtime wiring — but isRunning is driven by the internal
-    // `runs` Map which start() populates. Instead we drive it via the
-    // event-ingestor directly to emulate the disk state and then flip
-    // `isRunning` with a tiny shim.
+    // Simulate "a run is in flight" by exposing the exact active record
+    // through the runner's read seam. The handler intentionally needs the
+    // run identity, not only a liveness boolean, before it can correlate a
+    // public durable run.
     await state.eventIngestor.ingestParentEvent(thread.id, {
       type: 'text.delta', text: 'streaming', turnIndex: 0,
     } as unknown as import('@ownware/loom').LoomEvent)
 
-    // Use a proxy runner that reports 'running'. This tests the handler
-    // contract, not the runner internals.
+    // This process-local record has no public RunRepository row. It proves
+    // liveness while leaving runningRunId null.
     const livingRunner = {
-      isRunning: (_tid: string) => true,
+      get: (candidateThreadId: string) => candidateThreadId === thread.id
+        ? {
+            runId: 'internal-live-run',
+            threadId: thread.id,
+            profileId: 'test',
+            model: 'test:model',
+            status: 'running',
+            startedAt: new Date().toISOString(),
+            lastSeq: 1,
+            turnCount: 0,
+            costUsd: 0,
+          }
+        : undefined,
     } as unknown as SessionRunner
     const handlers2 = createThreadHandlers(state, { runner: livingRunner })
     const svr = await startServer(handlers2.hydrateThread)
     try {
       const res = await fetch(`${svr.url}/hydrate/${thread.id}`)
-      const body = await res.json() as { runningAgentId: string | null; maxSeq: number }
+      const body = await res.json() as {
+        runningAgentId: string | null
+        runningRunId: string | null
+        maxSeq: number
+      }
       expect(body.runningAgentId).toBe('root')
+      expect(body.runningRunId).toBeNull()
       expect(body.maxSeq).toBeGreaterThan(0)
     } finally {
       await new Promise<void>(resolve => svr.server.close(() => resolve()))

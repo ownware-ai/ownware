@@ -21,7 +21,11 @@
  * so the whole law is provable by folding recorded event streams.
  */
 
-import { describeToolCall } from '@ownware/ui'
+import {
+  describeToolCall,
+  normalizeToolUIDescriptor,
+  type ToolUIDescriptor,
+} from '@ownware/ui'
 import { formatDuration, type RunRenderer } from '../render.js'
 import { MarkdownStream } from '../markdown-ansi.js'
 import type { Style } from '../style.js'
@@ -61,6 +65,8 @@ const SYSTEM_LINE_TYPES: Record<string, string> = {
 
 export interface ToolFacts {
   readonly name: string
+  /** Validated presentation metadata captured from this exact call. */
+  readonly descriptor?: ToolUIDescriptor
   /** The descriptor verb — `Read`, `Ran`, or the tool name fallback. */
   readonly verb: string
   /** The object of the verb — path, command, query. Empty when unknown. */
@@ -97,29 +103,30 @@ export function gerund(verb: string): string {
 /**
  * Describe a tool call through the shared seam: `describeToolCall()` from
  * `@ownware/ui` (the same headless brain the web widget uses; zero
- * per-tool CLI code). Known tools get their verb grammar (`Read path`,
- * `Ran $ command`); unknown tools fall back to generic signal keys and
- * finally to their bare name — the open world stays honest.
+ * per-tool CLI code). Exact event metadata supplies the verb grammar
+ * (`Read path`, `Ran $ command`); absent or malformed metadata falls back
+ * to the generic view — the open world stays honest.
  */
-export function describeTool(name: string, input: unknown): ToolFacts {
+export function describeTool(
+  name: string,
+  input: unknown,
+  descriptorValue?: unknown,
+): ToolFacts {
   const record = input !== null && typeof input === 'object' ? (input as Record<string, unknown>) : {}
-  const render = describeToolCall({ id: '', name, input: record, status: 'running' })
-  const command = typeof record['command'] === 'string' ? record['command'] : null
-  const isShell = render.kind === 'shell' || command !== null
-
-  const fallbackTarget =
-    command ??
-    (['path', 'file_path', 'filePath', 'pattern', 'url', 'query'] as const)
-      .map((key) => (typeof record[key] === 'string' ? (record[key] as string) : null))
-      .find((value) => value !== null) ??
-    null
-  const primary = render.primary ?? fallbackTarget
+  const descriptor = normalizeToolUIDescriptor(descriptorValue)
+  const render = describeToolCall(
+    { id: '', name, input: record, status: 'running' },
+    descriptor,
+  )
+  const isShell = render.kind === 'shell'
+  const primary = render.primary ?? null
   const target =
     primary === null || primary === ''
       ? ''
       : `${isShell ? '$ ' : ''}${truncate(primary.split('\n')[0] ?? '', 60)}`
   return {
     name,
+    ...(descriptor === undefined ? {} : { descriptor }),
     verb: render.verb,
     target,
     label: target === '' ? render.verb : `${render.verb} ${target}`,
@@ -130,14 +137,6 @@ export function describeTool(name: string, input: unknown): ToolFacts {
 export function truncate(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, max - 1) + '…'
 }
-
-/**
- * Pull a target out of PARTIAL argument JSON while it streams — the
- * first complete string value of a known signal key. Cheap and honest:
- * no match means "no target yet", never a guess.
- */
-const PARTIAL_TARGET =
-  /"(?:file_path|filePath|path|command|pattern|url|query)"\s*:\s*"((?:[^"\\]|\\.)*)"/
 
 /**
  * Fold ONE sub-agent's own event stream into a live action + step count
@@ -163,7 +162,7 @@ export class SubagentActivity {
     switch (type) {
       case 'tool.call.start': {
         const name = typeof data['toolName'] === 'string' ? data['toolName'] : 'tool'
-        const facts = describeTool(name, data['input'])
+        const facts = describeTool(name, data['input'], data['uiDescriptor'])
         const id = typeof data['toolCallId'] === 'string' ? data['toolCallId'] : ''
         if (id !== '') this.open.set(id, facts)
         this.stepsCount += 1
@@ -178,12 +177,16 @@ export class SubagentActivity {
         this.args.set(id, raw)
         const facts = this.open.get(id)
         if (facts === undefined || facts.target !== '') return
-        const found = targetFromPartialArgs(raw)
-        if (found === null || found === '') return
-        const isShell = facts.isShell || raw.includes('"command"')
-        const target = `${isShell ? '$ ' : ''}${truncate(found.split('\n')[0] ?? '', 50)}`
-        this.open.set(id, { ...facts, target, label: `${facts.verb} ${target}`, isShell })
-        this.current = `◐ ${gerund(facts.verb)} ${target}…`
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          // Incomplete JSON has no authoritative field boundary yet.
+          return
+        }
+        const updated = describeTool(facts.name, parsed, facts.descriptor)
+        this.open.set(id, updated)
+        this.current = `◐ ${gerund(updated.verb)}${updated.target === '' ? '' : ` ${updated.target}`}…`
         return
       }
       case 'tool.call.end': {
@@ -200,16 +203,6 @@ export class SubagentActivity {
       default:
         return
     }
-  }
-}
-
-export function targetFromPartialArgs(raw: string): string | null {
-  const match = PARTIAL_TARGET.exec(raw)
-  if (match === null) return null
-  try {
-    return JSON.parse(`"${match[1]!}"`) as string
-  } catch {
-    return match[1]!
   }
 }
 
@@ -484,7 +477,7 @@ export class CollapsingRenderer implements RunRenderer {
       case 'tool.call.start': {
         this.closeThinking('tool')
         const name = typeof data['toolName'] === 'string' ? data['toolName'] : 'tool'
-        const facts = describeTool(name, data['input'])
+        const facts = describeTool(name, data['input'], data['uiDescriptor'])
         const id = typeof data['toolCallId'] === 'string' ? data['toolCallId'] : ''
         if (id !== '') this.openTools.set(id, facts)
         const group = this.ensureGroup()
@@ -503,21 +496,18 @@ export class CollapsingRenderer implements RunRenderer {
         this.toolArgs.set(id, raw)
         const facts = this.openTools.get(id)
         if (facts === undefined || facts.target !== '') return
-        const found = targetFromPartialArgs(raw)
-        if (found === null || found === '') return
-        const isShell = facts.isShell || raw.includes('"command"')
-        const target = `${isShell ? '$ ' : ''}${truncate(found.split('\n')[0] ?? '', 60)}`
-        const updated: ToolFacts = {
-          name: facts.name,
-          verb: facts.verb,
-          target,
-          label: `${facts.verb} ${target}`,
-          isShell,
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          // Keep the generic live row until the provider emits valid JSON.
+          return
         }
+        const updated = describeTool(facts.name, parsed, facts.descriptor)
         this.openTools.set(id, updated)
         const group = this.group
         if (group !== null) {
-          group.action = `◐ ${gerund(updated.verb)} ${target}…`
+          group.action = `◐ ${gerund(updated.verb)}${updated.target === '' ? '' : ` ${updated.target}`}…`
           this.publishLive()
         }
         return
@@ -535,7 +525,11 @@ export class CollapsingRenderer implements RunRenderer {
       case 'tool.call.end': {
         const id = typeof data['toolCallId'] === 'string' ? data['toolCallId'] : ''
         let facts = this.openTools.get(id)
-          ?? describeTool(typeof data['toolName'] === 'string' ? data['toolName'] : 'tool', undefined)
+          ?? describeTool(
+            typeof data['toolName'] === 'string' ? data['toolName'] : 'tool',
+            undefined,
+            data['uiDescriptor'],
+          )
         // Streaming providers deliver the real input via args_delta —
         // the reassembled JSON is the authoritative source for the row.
         const rawArgs = this.toolArgs.get(id)
@@ -544,10 +538,10 @@ export class CollapsingRenderer implements RunRenderer {
           try {
             const parsed: unknown = JSON.parse(rawArgs)
             if (parsed !== null && typeof parsed === 'object') {
-              facts = describeTool(facts.name, parsed)
+              facts = describeTool(facts.name, parsed, facts.descriptor)
             }
           } catch {
-            // Partial/malformed args — keep whatever the deltas gave us.
+            // Partial/malformed args have no authoritative target boundary.
           }
         }
         this.openTools.delete(id)

@@ -144,6 +144,34 @@ export interface ThreadAttachment {
   readonly category: 'image' | 'pdf' | 'notebook' | 'text' | 'binary'
 }
 
+export type ThreadToolUIKind =
+  | 'file-write'
+  | 'file-read'
+  | 'file-edit'
+  | 'shell'
+  | 'search'
+  | 'image'
+  | 'external-action'
+  | 'conversational'
+
+export interface ThreadToolUIDescriptor {
+  readonly kind: ThreadToolUIKind
+  readonly summary: {
+    readonly verb: string
+    readonly primaryField?: string
+    readonly metaFields?: readonly string[]
+  }
+  readonly preview?: {
+    readonly contentField: string
+    readonly format: 'code' | 'diff' | 'markdown' | 'plain' | 'image-thumb'
+    readonly truncateAtLines?: number
+  }
+  readonly openAction?: {
+    readonly target: 'file-pane' | 'terminal-pane' | 'image-pane' | 'search-pane' | 'url'
+    readonly pathField: string
+  }
+}
+
 export interface ThreadToolCall {
   readonly toolCallId?: string
   readonly name: string
@@ -151,6 +179,8 @@ export interface ThreadToolCall {
   readonly output?: string
   readonly isError?: boolean
   readonly durationMs?: number
+  /** Presentation metadata retained with the historical tool call. */
+  readonly uiDescriptor?: ThreadToolUIDescriptor
   readonly startedAt?: string
   readonly metadata?: Readonly<Record<string, unknown>>
 }
@@ -1896,6 +1926,7 @@ function parseProfileCatalog(value: unknown, status: number): ProfileSummary[] {
 type EvidenceResource =
   | 'gateway capabilities'
   | 'run start'
+  | 'thread hydration'
   | 'permission decision'
   | 'sensitive-input decision'
   | 'run cancellation'
@@ -2118,6 +2149,32 @@ const RUN_CONSEQUENCES = new Set<RunConsequence>([
   'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed',
 ])
 const EGRESS_MODES = new Set<EgressMode>(['unrestricted', 'local-only'])
+const THREAD_STATUSES = new Set<Thread['status']>(['active', 'completed', 'error'])
+const THREAD_MESSAGE_ROLES = new Set<ThreadMessage['role']>([
+  'user', 'assistant', 'tool_result', 'system', 'error',
+])
+const THREAD_SUBAGENT_STATUSES = new Set<ThreadSubAgent['status']>([
+  'running', 'completed', 'error',
+])
+const THREAD_PERMISSION_DECISIONS = new Set<ThreadPermission['decision']>([
+  'approved', 'denied', 'pending',
+])
+const THREAD_CREDENTIAL_DECISIONS = new Set<ThreadCredential['decision']>([
+  'pending', 'stored', 'denied',
+])
+const THREAD_ATTACHMENT_CATEGORIES = new Set<ThreadAttachment['category']>([
+  'image', 'pdf', 'notebook', 'text', 'binary',
+])
+const THREAD_TOOL_UI_KINDS = new Set<ThreadToolUIKind>([
+  'file-write', 'file-read', 'file-edit', 'shell', 'search', 'image',
+  'external-action', 'conversational',
+])
+const THREAD_TOOL_UI_PREVIEW_FORMATS = new Set<
+  NonNullable<ThreadToolUIDescriptor['preview']>['format']
+>(['code', 'diff', 'markdown', 'plain', 'image-thumb'])
+const THREAD_TOOL_UI_OPEN_TARGETS = new Set<
+  NonNullable<ThreadToolUIDescriptor['openAction']>['target']
+>(['file-pane', 'terminal-pane', 'image-pane', 'search-pane', 'url'])
 
 function isRunIdentity(value: unknown, expectedRunId: string): value is string {
   return typeof value === 'string' && UUID.test(value) && value === expectedRunId
@@ -2149,6 +2206,245 @@ function parseRunResult(value: unknown, status: number, input: RunInput): RunRes
     throw invalidEvidenceResponse(status, 'run start')
   }
   return value as unknown as RunResult
+}
+
+function isOptionalFiniteNumber(value: unknown, minimum = 0): boolean {
+  return value === undefined ||
+    (typeof value === 'number' && Number.isFinite(value) && value >= minimum)
+}
+
+function isOptionalSafeInteger(value: unknown, minimum = 0): boolean {
+  return value === undefined || isSafeInteger(value, minimum)
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean'
+}
+
+function isOptionalRecord(value: unknown): boolean {
+  return value === undefined || isRecord(value)
+}
+
+function isThread(value: unknown): value is Thread {
+  return isRecord(value) &&
+    isNonEmptyString(value['id']) &&
+    isNonEmptyString(value['profileId']) &&
+    isNullableNonEmptyString(value['workspaceId']) &&
+    (value['title'] === null || typeof value['title'] === 'string') &&
+    isMember(value['status'], THREAD_STATUSES) &&
+    isSafeInteger(value['messageCount']) &&
+    isSafeInteger(value['totalTokens']) &&
+    typeof value['totalCost'] === 'number' && Number.isFinite(value['totalCost']) &&
+    value['totalCost'] >= 0 &&
+    (value['model'] === null || typeof value['model'] === 'string') &&
+    isNonEmptyString(value['createdAt']) &&
+    isNonEmptyString(value['updatedAt']) &&
+    (value['lastMessagePreview'] === null || typeof value['lastMessagePreview'] === 'string')
+}
+
+function isThreadMessagePart(value: unknown): value is ThreadMessagePart {
+  if (!isRecord(value)) return false
+  switch (value['kind']) {
+    case 'text':
+    case 'thinking':
+      return typeof value['text'] === 'string'
+    case 'tool':
+      return isNonEmptyString(value['toolCallId'])
+    case 'subagent':
+      return isNonEmptyString(value['agentId'])
+    case 'permission':
+    case 'credential':
+      return isNonEmptyString(value['requestId'])
+    default:
+      return false
+  }
+}
+
+function isThreadAttachment(value: unknown): value is ThreadAttachment {
+  return isRecord(value) &&
+    typeof value['filename'] === 'string' &&
+    typeof value['mimeType'] === 'string' &&
+    isOptionalSafeInteger(value['sizeBytes']) &&
+    isMember(value['category'], THREAD_ATTACHMENT_CATEGORIES)
+}
+
+function isThreadToolUIDescriptor(value: unknown): value is ThreadToolUIDescriptor {
+  if (!isRecord(value) || !isMember(value['kind'], THREAD_TOOL_UI_KINDS) ||
+      !isRecord(value['summary']) || typeof value['summary']['verb'] !== 'string' ||
+      (value['summary']['primaryField'] !== undefined &&
+        typeof value['summary']['primaryField'] !== 'string') ||
+      (value['summary']['metaFields'] !== undefined &&
+        !isStringArray(value['summary']['metaFields']))) {
+    return false
+  }
+  const preview = value['preview']
+  if (preview !== undefined &&
+      (!isRecord(preview) || typeof preview['contentField'] !== 'string' ||
+        !isMember(preview['format'], THREAD_TOOL_UI_PREVIEW_FORMATS) ||
+        !isOptionalSafeInteger(preview['truncateAtLines']))) {
+    return false
+  }
+  const openAction = value['openAction']
+  return openAction === undefined ||
+    (isRecord(openAction) && isMember(openAction['target'], THREAD_TOOL_UI_OPEN_TARGETS) &&
+      typeof openAction['pathField'] === 'string')
+}
+
+function isThreadToolCall(value: unknown): value is ThreadToolCall {
+  return isRecord(value) &&
+    (value['toolCallId'] === undefined || isNonEmptyString(value['toolCallId'])) &&
+    isNonEmptyString(value['name']) &&
+    Object.prototype.hasOwnProperty.call(value, 'input') &&
+    (value['output'] === undefined || typeof value['output'] === 'string') &&
+    isOptionalBoolean(value['isError']) &&
+    isOptionalFiniteNumber(value['durationMs']) &&
+    (value['uiDescriptor'] === undefined || isThreadToolUIDescriptor(value['uiDescriptor'])) &&
+    (value['startedAt'] === undefined || isNonEmptyString(value['startedAt'])) &&
+    isOptionalRecord(value['metadata'])
+}
+
+function isThreadSubAgent(value: unknown): value is ThreadSubAgent {
+  if (!isRecord(value) ||
+      !isNonEmptyString(value['agentId']) ||
+      !isNonEmptyString(value['profileName']) ||
+      (value['model'] !== undefined && !isNonEmptyString(value['model'])) ||
+      (value['task'] !== undefined && typeof value['task'] !== 'string') ||
+      (value['prompt'] !== undefined && typeof value['prompt'] !== 'string') ||
+      !isMember(value['status'], THREAD_SUBAGENT_STATUSES) ||
+      (value['result'] !== undefined && typeof value['result'] !== 'string') ||
+      !isOptionalFiniteNumber(value['durationMs']) ||
+      !isOptionalSafeInteger(value['toolCount']) ||
+      !isOptionalSafeInteger(value['turnCount'])) {
+    return false
+  }
+  const usage = value['usage']
+  return usage === undefined ||
+    (isRecord(usage) &&
+      isSafeInteger(usage['inputTokens']) &&
+      isSafeInteger(usage['outputTokens']) &&
+      typeof usage['costUsd'] === 'number' && Number.isFinite(usage['costUsd']) &&
+      usage['costUsd'] >= 0)
+}
+
+function isThreadPermission(value: unknown): value is ThreadPermission {
+  return isRecord(value) &&
+    (value['requestId'] === undefined || isNonEmptyString(value['requestId'])) &&
+    isNonEmptyString(value['toolName']) &&
+    isOptionalRecord(value['input']) &&
+    (value['inputSummary'] === undefined || typeof value['inputSummary'] === 'string') &&
+    (value['operationHash'] === undefined || typeof value['operationHash'] === 'string') &&
+    (value['intentRevision'] === undefined || value['intentRevision'] === 1) &&
+    typeof value['reason'] === 'string' &&
+    isMember(value['decision'], THREAD_PERMISSION_DECISIONS) &&
+    (value['zoneLevel'] === undefined || isSafeInteger(value['zoneLevel'])) &&
+    (value['zoneName'] === undefined || typeof value['zoneName'] === 'string') &&
+    (value['explanation'] === undefined || typeof value['explanation'] === 'string') &&
+    (value['severityTag'] === undefined ||
+      value['severityTag'] === 'info' ||
+      value['severityTag'] === 'warn' ||
+      value['severityTag'] === 'critical') &&
+    (value['severityReason'] === undefined || typeof value['severityReason'] === 'string')
+}
+
+function isThreadCredentialPlacement(value: unknown): value is ThreadCredentialPlacement {
+  if (!isRecord(value)) return false
+  switch (value['type']) {
+    case 'env': return isNonEmptyString(value['variableName'])
+    case 'bearer': return true
+    case 'header':
+    case 'cookie': return isNonEmptyString(value['name'])
+    case 'body': return isNonEmptyString(value['fieldPath'])
+    case 'query': return isNonEmptyString(value['paramName'])
+    case 'basic':
+      return value['usernameCredentialId'] === undefined ||
+        isNonEmptyString(value['usernameCredentialId'])
+    default: return false
+  }
+}
+
+function isThreadCredential(value: unknown): value is ThreadCredential {
+  return isRecord(value) &&
+    isNonEmptyString(value['requestId']) &&
+    typeof value['label'] === 'string' &&
+    typeof value['hint'] === 'string' &&
+    typeof value['usage'] === 'string' &&
+    isThreadCredentialPlacement(value['placement']) &&
+    typeof value['isRequired'] === 'boolean' &&
+    isMember(value['decision'], THREAD_CREDENTIAL_DECISIONS) &&
+    (value['credentialId'] === undefined || isNonEmptyString(value['credentialId']))
+}
+
+function isThreadMessage(value: unknown): value is ThreadMessage {
+  if (!isRecord(value) ||
+      !isNonEmptyString(value['id']) ||
+      !isMember(value['role'], THREAD_MESSAGE_ROLES) ||
+      typeof value['content'] !== 'string' ||
+      (value['thinking'] !== undefined && typeof value['thinking'] !== 'string') ||
+      (value['model'] !== undefined && !isNonEmptyString(value['model'])) ||
+      !isNonEmptyString(value['timestamp'])) {
+    return false
+  }
+  const usage = value['usage']
+  if (usage !== undefined &&
+      (!isRecord(usage) ||
+        !isSafeInteger(usage['inputTokens']) ||
+        !isSafeInteger(usage['outputTokens']) ||
+        !isOptionalSafeInteger(usage['cacheReadTokens']) ||
+        !isOptionalSafeInteger(usage['cacheCreationTokens']))) {
+    return false
+  }
+  return (value['tools'] === undefined ||
+      (Array.isArray(value['tools']) && value['tools'].every(isThreadToolCall))) &&
+    (value['subAgents'] === undefined ||
+      (Array.isArray(value['subAgents']) && value['subAgents'].every(isThreadSubAgent))) &&
+    (value['permissions'] === undefined ||
+      (Array.isArray(value['permissions']) && value['permissions'].every(isThreadPermission))) &&
+    (value['credentials'] === undefined ||
+      (Array.isArray(value['credentials']) && value['credentials'].every(isThreadCredential))) &&
+    (value['attachments'] === undefined ||
+      (Array.isArray(value['attachments']) && value['attachments'].every(isThreadAttachment))) &&
+    (value['parts'] === undefined ||
+      (Array.isArray(value['parts']) && value['parts'].every(isThreadMessagePart)))
+}
+
+function isThreadHydrationAgent(value: unknown): value is ThreadHydrationAgent {
+  return isRecord(value) &&
+    isNonEmptyString(value['agentId']) &&
+    isNullableNonEmptyString(value['parentAgentId']) &&
+    isSafeInteger(value['eventCount'])
+}
+
+function parseThreadHydration(
+  value: unknown,
+  status: number,
+  threadId: string,
+): ThreadHydration {
+  const invalid = (): never => {
+    throw invalidEvidenceResponse(status, 'thread hydration')
+  }
+  if (!isRecord(value) || !isThread(value['thread']) || value['thread'].id !== threadId ||
+      !Array.isArray(value['messages']) || !value['messages'].every(isThreadMessage) ||
+      !Array.isArray(value['agents']) || !value['agents'].every(isThreadHydrationAgent) ||
+      (value['runningAgentId'] !== null && value['runningAgentId'] !== 'root') ||
+      (value['runningRunId'] !== null &&
+        (typeof value['runningRunId'] !== 'string' || !UUID.test(value['runningRunId']))) ||
+      (value['runningRunId'] !== null && value['runningAgentId'] !== 'root') ||
+      !isSafeInteger(value['maxSeq']) ||
+      !isSafeInteger(value['lastClosedTurnEndSeq']) ||
+      value['lastClosedTurnEndSeq'] > value['maxSeq']) {
+    return invalid()
+  }
+  const messageIds = new Set<string>()
+  for (const message of value['messages']) {
+    if (messageIds.has(message.id)) return invalid()
+    messageIds.add(message.id)
+  }
+  const agentIds = new Set<string>()
+  for (const agent of value['agents']) {
+    if (agentIds.has(agent.agentId)) return invalid()
+    agentIds.add(agent.agentId)
+  }
+  return value as unknown as ThreadHydration
 }
 
 function parsePermissionDecisionResult(
@@ -3173,7 +3469,8 @@ export class OwnwareClient implements GatewayClient {
       { headers: this.headers(false) },
     )
     if (!response.ok) throw await errorFromResponse(response)
-    return (await response.json()) as ThreadHydration
+    const value = await readJsonResponse(response, 'thread hydration')
+    return parseThreadHydration(value, response.status, threadId)
   }
 
   /**

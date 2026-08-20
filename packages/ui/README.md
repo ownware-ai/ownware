@@ -29,15 +29,21 @@ const run = await client.run({
 })
 
 let state = initialChatState()
-for await (const event of client.events(run.threadId)) {
+for await (const event of client.events(run.runId ?? run.threadId)) {
   state = chatReducer(state, event)
   render(state)
 }
 ```
 
 `chatReducer` is defensive about unknown additive event types. Tool descriptors
-control presentation only; permission decisions still go through the gateway's
-authoritative resume routes.
+control presentation only; unfamiliar tools render generically. Exact permission,
+sensitive-input and reversal mutations still go through their run-scoped Gateway
+routes.
+
+For an existing thread, call `client.hydrateThread(threadId)` and pass the result
+to `hydrateChatState()`. It loads the durable closed transcript, preserves the
+ordered `parts` timeline and seeds replay at `lastClosedTurnEndSeq`; only the open
+tail is rebuilt from SSE.
 
 ## Main exports
 
@@ -45,8 +51,13 @@ authoritative resume routes.
 - `chatReducer(state, event)`
 - `applyEvents(state, events)`
 - `addUserMessage(state, text)`
+- `hydrateChatState(state, hydration)`
 - `describeToolCall(call, descriptor?)`
-- `BUILTIN_DESCRIPTORS`
+- evidence resource constructors and `select*` projections
+
+There is no name-keyed descriptor catalogue. A tool's name is not evidence of
+what it does, so a call without an exact `uiDescriptor` from its event renders
+generically under its own name — no kind, primary field or open action.
 
 See the [Ownware repository](https://github.com/ownware-ai/ownware) for the
 gateway, client SDK, examples, and Apache-2.0 license.

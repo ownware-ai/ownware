@@ -14,6 +14,8 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
+import { POSTGRESQL_TRANSFER_BUSINESS_TABLES } from '../../../src/storage/postgresql-transfer-preflight.js'
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
@@ -66,7 +68,7 @@ describePostgreSql('PostgreSQL transfer target preflight', () => {
           state: 'schema_absent_initializable',
           runtimeAuthority: 'not-yet-provisioned',
           schemaVersion: 0,
-          businessTableCount: 77,
+          businessTableCount: POSTGRESQL_TRANSFER_BUSINESS_TABLES.length,
         })
       expect((await migration.query(`
         SELECT count(*)::text AS count FROM pg_catalog.pg_namespace
@@ -111,8 +113,8 @@ describePostgreSql('PostgreSQL transfer target preflight', () => {
           .toMatchObject({
             state: 'schema_current_empty_ready',
             runtimeAuthority: 'combined-elevated',
-            schemaVersion: 91,
-            businessTableCount: 77,
+            schemaVersion: compiledSchemaHeadVersion(),
+            businessTableCount: POSTGRESQL_TRANSFER_BUSINESS_TABLES.length,
             nonEmptyBusinessTableCount: 0,
           })
         const after = await migration.query<{ readonly migrations: string; readonly app: string }>(`
@@ -189,7 +191,7 @@ describePostgreSql('PostgreSQL transfer target preflight', () => {
           .toMatchObject({
             state: 'schema_current_empty_ready',
             runtimeAuthority: 'separate-least-privilege',
-            schemaVersion: 91,
+            schemaVersion: compiledSchemaHeadVersion(),
             nonEmptyBusinessTableCount: 0,
           })
       } finally {

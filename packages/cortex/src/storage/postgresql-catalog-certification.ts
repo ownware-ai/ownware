@@ -17,11 +17,23 @@ const POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS: Readonly<Record<number, string>> 
     17: 'sha256:e1eb2410738e8cc813fab7c56f6f839b1200e9fa792d1af0be7b4185b38bd72b',
     18: 'sha256:c4ec4e9ae3914cb6a430042ab027d014043d52e8e80c53cc6e97508df5aeb5fd',
   })
-const POSTGRESQL_CURRENT_V91_CATALOG_DIGESTS: Readonly<Record<number, string>> =
+/**
+ * Measured against real servers (16.14, 17.11, 18.6) via the production adapter
+ * — never hand-derived. 16 and 17 agree; 18's catalogue output differs, as it
+ * already did at v91.
+ *
+ * IMPORTANT: `pg_get_constraintdef` / `pg_get_triggerdef` schema-qualify a name
+ * only when its schema is absent from the session `search_path`. Measure with a
+ * role whose name is NOT `ownware`, otherwise the default `"$user"` entry
+ * resolves to the managed schema, every trigger and semantic CHECK renders
+ * unqualified, and the digest silently differs. The same method reproduces the
+ * previous v91 digests exactly, which is how this value was validated.
+ */
+const POSTGRESQL_CURRENT_V93_CATALOG_DIGESTS: Readonly<Record<number, string>> =
   Object.freeze({
-    16: 'sha256:9d9f194bb66367dcea50c777f8e4290040c83db93d200ea2a4e5ff48d616d40e',
-    17: 'sha256:9d9f194bb66367dcea50c777f8e4290040c83db93d200ea2a4e5ff48d616d40e',
-    18: 'sha256:d0ba0317b2d928d14a92bab81d107b1f349aa3459d6bbfb09f7fbf9f133e5d87',
+    16: 'sha256:4c84e3a2a209121f85ba79c83505d0cca0ffa4f890027092ef62fe381bb59c2f',
+    17: 'sha256:4c84e3a2a209121f85ba79c83505d0cca0ffa4f890027092ef62fe381bb59c2f',
+    18: 'sha256:0292d386c29f6042e2b5a4b66902492e4dee2ad406c6e6b9e6e97b77faedb6d6',
   })
 
 interface RelationRow {
@@ -296,15 +308,21 @@ export async function postgreSqlCatalogMatchesBaselineV82(
   return matchesGeneration(client, POSTGRESQL_BASELINE_V82_CATALOG_DIGESTS)
 }
 
-export async function postgreSqlCatalogMatchesCurrentV91(
+export async function postgreSqlCatalogMatchesCurrentV93(
   client: QueryClient,
 ): Promise<boolean> {
-  return matchesGeneration(client, POSTGRESQL_CURRENT_V91_CATALOG_DIGESTS)
+  return matchesGeneration(client, POSTGRESQL_CURRENT_V93_CATALOG_DIGESTS)
 }
 
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const postgreSqlCatalogMatchesCurrentV92 = postgreSqlCatalogMatchesCurrentV93
+
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const postgreSqlCatalogMatchesCurrentV91 = postgreSqlCatalogMatchesCurrentV92
+
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const postgreSqlCatalogMatchesCurrentV90 = postgreSqlCatalogMatchesCurrentV91
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const postgreSqlCatalogMatchesCurrentV89 = postgreSqlCatalogMatchesCurrentV91
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const postgreSqlCatalogMatchesCurrentV88 = postgreSqlCatalogMatchesCurrentV91

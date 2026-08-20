@@ -6,6 +6,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { MigrationSafetyError } from '../../../src/gateway/db/migration-safety.js'
 import { OwnwareGateway } from '../../../src/gateway/server.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
 
 describe('gateway storage lifecycle', () => {
   let root: string
@@ -52,7 +53,7 @@ describe('gateway storage lifecycle', () => {
     expect(gateway.state.storageLifecycleState).toBe('ready')
     await expect(gateway.state.storageHealth()).resolves.toMatchObject({
       state: 'ready',
-      schemaVersion: 91,
+      schemaVersion: compiledSchemaHeadVersion(),
     })
 
     const firstStart = gateway.start()

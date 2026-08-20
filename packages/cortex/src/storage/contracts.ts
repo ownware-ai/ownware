@@ -121,6 +121,7 @@ export type StorageRepositoryDomain =
   | 'egress_receipts'
   | 'skill_activation_receipts'
   | 'effect_reversals'
+  | 'activity_ledger'
   | 'idempotency'
   | 'access_grants'
   | 'oauth_refresh'

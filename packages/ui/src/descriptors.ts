@@ -7,8 +7,10 @@
  * action. A client renders ANY tool from its descriptor — no per-tool UI code.
  *
  * The exact tool instance's descriptor may travel with `tool.call.start`.
- * `BUILTIN_DESCRIPTORS` remains a presentation-only compatibility fallback
- * for older Gateways; it never proves that the named operation took effect.
+ * There is deliberately NO name-keyed descriptor catalogue in this package: a
+ * tool's name is not evidence of what it does, so a familiar-looking name earns
+ * no kind, primary field or open action. A call without an exact descriptor
+ * renders generically under its own name.
  * `describeToolCall()` resolves a ToolCall + descriptor into render-ready parts.
  */
 
@@ -48,30 +50,77 @@ export interface ToolUIDescriptor {
   readonly openAction?: ToolUIOpenAction
 }
 
-/** @deprecated Compatibility presentation for streams that predate event descriptors. */
-export const BUILTIN_DESCRIPTORS: Readonly<Record<string, ToolUIDescriptor>> = {
-  // filesystem
-  readFile: { kind: 'file-read', summary: { verb: 'Read', primaryField: 'file_path' }, preview: { contentField: 'content', format: 'code', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
-  writeFile: { kind: 'file-write', summary: { verb: 'Write file', primaryField: 'file_path' }, preview: { contentField: 'content', format: 'code', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
-  editFile: { kind: 'file-edit', summary: { verb: 'Edit file', primaryField: 'file_path' }, preview: { contentField: 'new_string', format: 'diff', truncateAtLines: 10 }, openAction: { target: 'file-pane', pathField: 'file_path' } },
-  listFiles: { kind: 'file-read', summary: { verb: 'List files', primaryField: 'path' }, openAction: { target: 'file-pane', pathField: 'path' } },
-  glob: { kind: 'search', summary: { verb: 'Match files', primaryField: 'pattern' }, preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 } },
-  grep: { kind: 'search', summary: { verb: 'Search files', primaryField: 'pattern' }, preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 } },
-  // shell
-  shell_execute: { kind: 'shell', summary: { verb: 'Run command', primaryField: 'command' }, preview: { contentField: 'output', format: 'plain', truncateAtLines: 10 }, openAction: { target: 'terminal-pane', pathField: 'sessionId' } },
-  // web
-  web_search: { kind: 'search', summary: { verb: 'Search web', primaryField: 'query' }, preview: { contentField: 'results', format: 'markdown', truncateAtLines: 10 } },
-  web_fetch: { kind: 'external-action', summary: { verb: 'Fetch URL', primaryField: 'url' }, preview: { contentField: 'content', format: 'markdown', truncateAtLines: 10 }, openAction: { target: 'url', pathField: 'url' } },
-  // memory / tasks / agents / skills
-  memory_store: { kind: 'external-action', summary: { verb: 'Store memory', primaryField: 'content' } },
-  memory_search: { kind: 'search', summary: { verb: 'Search memory', primaryField: 'query' } },
-  memory_forget: { kind: 'external-action', summary: { verb: 'Delete memory', primaryField: 'id' } },
-  todo_write: { kind: 'conversational', summary: { verb: 'Update tasks' } },
-  agent_spawn: { kind: 'conversational', summary: { verb: 'Delegate task', primaryField: 'subagent_type' } },
-  skill: { kind: 'external-action', summary: { verb: 'Request skill', primaryField: 'name' } },
-  ask_user: { kind: 'conversational', summary: { verb: 'Ask user' } },
-  request_credential: { kind: 'conversational', summary: { verb: 'Request credential' } },
-  image_generate: { kind: 'image', summary: { verb: 'Generate image', primaryField: 'prompt' } },
+const MAX_DESCRIPTOR_TEXT = 120
+const MAX_DESCRIPTOR_META_FIELDS = 16
+const MAX_PREVIEW_LINES = 10_000
+
+/**
+ * Structurally validate and copy untrusted presentation metadata. This proves
+ * only that a descriptor is bounded and renderable; it never proves an effect.
+ */
+export function normalizeToolUIDescriptor(value: unknown): ToolUIDescriptor | undefined {
+  if (!isRecord(value) || !isToolKind(value['kind']) || !isRecord(value['summary'])) {
+    return undefined
+  }
+  const verb = boundedString(value['summary']['verb'])
+  if (!verb) return undefined
+  const primaryField = value['summary']['primaryField'] === undefined
+    ? undefined
+    : boundedString(value['summary']['primaryField'])
+  if (value['summary']['primaryField'] !== undefined && !primaryField) return undefined
+
+  let metaFields: readonly string[] | undefined
+  if (value['summary']['metaFields'] !== undefined) {
+    const raw = value['summary']['metaFields']
+    if (
+      !Array.isArray(raw)
+      || raw.length > MAX_DESCRIPTOR_META_FIELDS
+      || raw.some(item => boundedString(item) === undefined)
+    ) return undefined
+    metaFields = raw.map(item => item as string)
+  }
+
+  let preview: ToolUIPreview | undefined
+  if (value['preview'] !== undefined) {
+    const raw = value['preview']
+    if (!isRecord(raw)) return undefined
+    const contentField = boundedString(raw['contentField'])
+    const truncateAtLines = raw['truncateAtLines']
+    if (
+      !contentField
+      || !isPreviewFormat(raw['format'])
+      || (truncateAtLines !== undefined && (
+        !Number.isSafeInteger(truncateAtLines)
+        || (truncateAtLines as number) <= 0
+        || (truncateAtLines as number) > MAX_PREVIEW_LINES
+      ))
+    ) return undefined
+    preview = {
+      contentField,
+      format: raw['format'],
+      ...(truncateAtLines === undefined ? {} : { truncateAtLines: truncateAtLines as number }),
+    }
+  }
+
+  let openAction: ToolUIOpenAction | undefined
+  if (value['openAction'] !== undefined) {
+    const raw = value['openAction']
+    if (!isRecord(raw)) return undefined
+    const pathField = boundedString(raw['pathField'])
+    if (!pathField || !isOpenTarget(raw['target'])) return undefined
+    openAction = { target: raw['target'], pathField }
+  }
+
+  return {
+    kind: value['kind'],
+    summary: {
+      verb,
+      ...(primaryField === undefined ? {} : { primaryField }),
+      ...(metaFields === undefined ? {} : { metaFields }),
+    },
+    ...(preview === undefined ? {} : { preview }),
+    ...(openAction === undefined ? {} : { openAction }),
+  }
 }
 
 /** Render-ready view of a tool call, resolved from its descriptor. */
@@ -93,7 +142,7 @@ export interface ToolRender {
  * generic view (tool name + first input + raw result) when no descriptor exists.
  */
 export function describeToolCall(call: ToolCall, descriptor?: ToolUIDescriptor): ToolRender {
-  const d = descriptor ?? call.uiDescriptor ?? BUILTIN_DESCRIPTORS[call.name]
+  const d = descriptor ?? call.uiDescriptor
   if (!d) {
     return {
       kind: 'external-action',
@@ -128,6 +177,48 @@ export function describeToolCall(call: ToolCall, descriptor?: ToolUIDescriptor):
     preview,
     openUrl,
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function boundedString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_DESCRIPTOR_TEXT) {
+    return undefined
+  }
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return undefined
+  }
+  return value
+}
+
+function isToolKind(value: unknown): value is ToolUIKind {
+  return value === 'file-write'
+    || value === 'file-read'
+    || value === 'file-edit'
+    || value === 'shell'
+    || value === 'search'
+    || value === 'image'
+    || value === 'external-action'
+    || value === 'conversational'
+}
+
+function isPreviewFormat(value: unknown): value is ToolUIPreview['format'] {
+  return value === 'code'
+    || value === 'diff'
+    || value === 'markdown'
+    || value === 'plain'
+    || value === 'image-thumb'
+}
+
+function isOpenTarget(value: unknown): value is ToolUIOpenAction['target'] {
+  return value === 'file-pane'
+    || value === 'terminal-pane'
+    || value === 'image-pane'
+    || value === 'search-pane'
+    || value === 'url'
 }
 
 function safeHttpUrl(value: string): string | undefined {

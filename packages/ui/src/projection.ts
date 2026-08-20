@@ -85,6 +85,9 @@ export function selectCapabilitySupport(
   capabilities: ProjectionResource<readonly ProjectionCapability[]>,
   requirement: CapabilityRequirement,
 ): CapabilitySupport {
+  if (!isNonEmptyString(requirement.id) || !isPositiveSequence(requirement.minVersion)) {
+    return { state: 'unsupported', reason: 'malformed_capability_requirement' }
+  }
   if (capabilities.state !== 'ready') return resourceBlocked(capabilities)!
 
   if (!Array.isArray(capabilities.value) || !capabilities.value.every(isCapability)) {
@@ -405,6 +408,7 @@ export function selectEgress(input: {
     || !Array.isArray(input.receipts.value)
     || !input.receipts.value.every(isEgressReceipt)
     || input.receipts.value.some((receipt) => receipt.runId !== snapshot.runId)
+    || input.receipts.value.some((receipt) => receipt.mode !== snapshot.egressMode)
     || hasDuplicateIdentity(input.receipts.value, (receipt) => receipt.receiptId, (receipt) => receipt.sequence)
   ) {
     return { state: 'unsupported', reason: 'malformed_egress_evidence' }
@@ -738,7 +742,8 @@ function isAuthorityKind(value: unknown): value is ProjectedEffectReceipt['autho
 }
 
 function isEffectReceipt(value: unknown): value is ProjectedEffectReceipt {
-  return isRecord(value)
+  if (!(
+    isRecord(value)
     && isNonEmptyString(value['receiptId'])
     && isPositiveSequence(value['sequence'])
     && isNonEmptyString(value['effectId'])
@@ -751,6 +756,25 @@ function isEffectReceipt(value: unknown): value is ProjectedEffectReceipt {
     && isAuthorityKind(value['authorityKind'])
     && isNonEmptyString(value['authorityRef'])
     && isTimestamp(value['observedAt'])
+  )) return false
+
+  const receipt = value as unknown as ProjectedEffectReceipt
+  if (receipt.kind === 'intent_observed') {
+    return receipt.outcome === 'pending'
+      && receipt.consequence === 'none_observed'
+      && receipt.authorityKind === 'runtime'
+  }
+  if (receipt.kind === 'reconciliation') {
+    return receipt.outcome === 'unknown'
+      && receipt.consequence === 'effect_possible'
+      && receipt.authorityKind === 'reconciler'
+  }
+  if (receipt.kind === 'authority_confirmed') {
+    return receipt.consequence === 'effect_confirmed'
+      && receipt.authorityKind === 'effect_observer'
+  }
+  return receipt.consequence !== 'effect_confirmed'
+    && receipt.authorityKind !== 'reconciler'
 }
 
 function isEgressPhase(value: unknown): value is ProjectedEgressReceiptPhase {

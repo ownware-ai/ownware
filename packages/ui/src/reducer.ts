@@ -25,12 +25,13 @@ import type {
   AgentEvent,
   ChatState,
   Message,
+  MessagePart,
   PendingApproval,
   PendingSensitiveInput,
   SkillActivationEvidence,
   ToolCall,
 } from './types.js'
-import type { ToolUIDescriptor } from './descriptors.js'
+import { normalizeToolUIDescriptor } from './descriptors.js'
 
 /** Stop reasons on a `turn.end` that mean the loop CONTINUES (not the reply's end). */
 const CONTINUE_STOP_REASONS = new Set<string>(['tool_use', 'pause_turn'])
@@ -87,6 +88,7 @@ export function addUserMessage(state: ChatState, text: string, id?: string): Cha
     role: 'user',
     text,
     toolCalls: [],
+    parts: [{ kind: 'text', text }],
     streaming: false,
   }
   return { ...state, messages: [...state.messages, msg], status: 'streaming' }
@@ -136,7 +138,14 @@ export function chatReducer(state: ChatState, event: AgentEvent): ChatState {
     case 'user.message': {
       const text = readString(data, 'text') || readString(data, 'content') || readString(data, 'prompt')
       if (!text) return base
-      const msg: Message = { id: `u${seq}`, role: 'user', text, toolCalls: [], streaming: false }
+      const msg: Message = {
+        id: `u${seq}`,
+        role: 'user',
+        text,
+        toolCalls: [],
+        parts: [{ kind: 'text', text }],
+        streaming: false,
+      }
       return {
         ...base,
         messages: reconcileOptimisticUser(base.messages, msg),
@@ -148,7 +157,12 @@ export function chatReducer(state: ChatState, event: AgentEvent): ChatState {
     case 'text.delta': {
       const { list, idx } = ensureOpenAssistant(base.messages, seq)
       const cur = list[idx]!
-      list[idx] = { ...cur, text: cur.text + readString(data, 'text') }
+      const text = readString(data, 'text')
+      list[idx] = {
+        ...cur,
+        text: cur.text + text,
+        parts: appendMessagePart(cur.parts, { kind: 'text', text }),
+      }
       return { ...base, messages: list, status: 'streaming' }
     }
 
@@ -157,38 +171,53 @@ export function chatReducer(state: ChatState, event: AgentEvent): ChatState {
       const last = base.messages[base.messages.length - 1]
       if (last && last.role === 'assistant' && last.text.length > 0) return base
       const { list, idx } = ensureOpenAssistant(base.messages, seq)
-      list[idx] = { ...list[idx]!, text: readString(data, 'text') }
+      const text = readString(data, 'text')
+      list[idx] = {
+        ...list[idx]!,
+        text,
+        parts: text.length === 0 ? [] : [{ kind: 'text', text }],
+      }
       return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'thinking.delta': {
       const { list, idx } = ensureOpenAssistant(base.messages, seq)
       const cur = list[idx]!
-      list[idx] = { ...cur, thinking: (cur.thinking ?? '') + readString(data, 'text') }
+      const text = readString(data, 'text')
+      list[idx] = {
+        ...cur,
+        thinking: (cur.thinking ?? '') + text,
+        parts: appendMessagePart(cur.parts, { kind: 'thinking', text }),
+      }
       return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'tool.call.start': {
+      const toolCallId = readString(data, 'toolCallId')
+      const toolName = readString(data, 'toolName')
+      if (!toolCallId || !toolName) return rememberUnsupported(base, event.type)
       const { list, idx } = ensureOpenAssistant(base.messages, seq)
       const cur = list[idx]!
       const call: ToolCall = {
-        id: readString(data, 'toolCallId') || `tool-${seq}`,
-        name: readString(data, 'toolName') || 'unknown',
+        id: toolCallId,
+        name: toolName,
         input: readObject(data, 'input'),
         status: 'running',
-        ...(readToolUIDescriptor(data['uiDescriptor']) ?? {}),
+        ...descriptorProperty(data['uiDescriptor']),
       }
       list[idx] = {
         ...cur,
         toolCalls: cur.toolCalls.some(existing => existing.id === call.id)
           ? cur.toolCalls
           : [...cur.toolCalls, call],
+        parts: appendToolPart(cur.parts, call.id),
       }
       return { ...base, messages: list, status: 'streaming' }
     }
 
     case 'tool.call.progress': {
-      const id = readString(data, 'toolCallId') || `tool-${seq}`
+      const id = readString(data, 'toolCallId')
+      if (!id) return rememberUnsupported(base, event.type)
       const progress = readString(data, 'progress')
       return {
         ...base,
@@ -204,27 +233,29 @@ export function chatReducer(state: ChatState, event: AgentEvent): ChatState {
     }
 
     case 'tool.call.end': {
-      const id = readString(data, 'toolCallId') || `tool-${seq}`
+      const id = readString(data, 'toolCallId')
+      const toolName = readString(data, 'toolName')
+      if (!id || !toolName) return rememberUnsupported(base, event.type)
       const isError = data['isError'] === true
       return {
         ...base,
         messages: updateOrInsertToolCall(base.messages, seq, id, {
           id,
-          name: readString(data, 'toolName') || 'unknown',
+          name: toolName,
           input: {},
           status: isError ? 'error' : 'done',
           result: readString(data, 'result'),
           isError,
           durationMs: readNumber(data, 'durationMs'),
           partial: true,
-          ...(readToolUIDescriptor(data['uiDescriptor']) ?? {}),
+          ...descriptorProperty(data['uiDescriptor']),
         }, (call) => ({
           ...call,
           status: isError ? 'error' : 'done',
           result: readString(data, 'result'),
           isError,
           durationMs: readNumber(data, 'durationMs'),
-          ...(readToolUIDescriptor(data['uiDescriptor']) ?? {}),
+          ...descriptorProperty(data['uiDescriptor']),
         })),
       }
     }
@@ -353,17 +384,29 @@ export function chatReducer(state: ChatState, event: AgentEvent): ChatState {
     }
 
     case 'turn.end': {
-      const stopReason = readString(data, 'stopReason') || 'end_turn'
+      const stopReason = readString(data, 'stopReason')
       const model = readString(readObject(data, 'usage'), 'model') || base.model
+      if (!stopReason) {
+        const unsupported = rememberUnsupported(base, 'turn.end:missing-stop-reason')
+        return {
+          ...unsupported,
+          connection: {
+            ...unsupported.connection,
+            phase: 'resync_required',
+            expectedNextSeq: lastSeq + 1,
+          },
+        }
+      }
       if (CONTINUE_STOP_REASONS.has(stopReason)) {
         // A tool round-trip — the reply keeps streaming after the tool returns.
         return { ...base, model }
       }
       if (stopReason !== 'end_turn' && stopReason !== 'max_tokens' && stopReason !== 'stop_sequence') {
+        const unsupported = rememberUnsupported(base, `turn.end:${stopReason}`)
         return {
-          ...rememberUnsupported(base, `turn.end:${stopReason}`),
+          ...unsupported,
           connection: {
-            ...base.connection,
+            ...unsupported.connection,
             phase: 'resync_required',
             expectedNextSeq: lastSeq + 1,
           },
@@ -407,10 +450,11 @@ function reduceStreamStart(state: ChatState, data: Record<string, unknown>): Cha
     || !Number.isSafeInteger(maxSeqAtStart) || maxSeqAtStart! < since!
   ) return rememberUnsupported(state, 'stream.start')
   if (state.lastSeq !== 0 && state.lastSeq !== since) {
+    const unsupported = rememberUnsupported(state, 'stream.start:cursor-mismatch')
     return {
-      ...rememberUnsupported(state, 'stream.start:cursor-mismatch'),
+      ...unsupported,
       connection: {
-        ...state.connection,
+        ...unsupported.connection,
         phase: 'resync_required',
         expectedNextSeq: state.lastSeq + 1,
       },
@@ -431,10 +475,11 @@ function reduceReplayComplete(state: ChatState, data: Record<string, unknown>): 
     || typeof liveTail !== 'boolean'
     || replayedThroughSeq !== state.lastSeq
   ) {
+    const unsupported = rememberUnsupported(state, 'stream.replay.complete')
     return {
-      ...rememberUnsupported(state, 'stream.replay.complete'),
+      ...unsupported,
       connection: {
-        ...state.connection,
+        ...unsupported.connection,
         phase: 'resync_required',
         expectedNextSeq: state.lastSeq + 1,
       },
@@ -484,7 +529,14 @@ function ensureOpenAssistant(messages: readonly Message[], seq: number): { list:
   if (last && last.role === 'assistant' && last.streaming) {
     return { list, idx: list.length - 1 }
   }
-  list.push({ id: `a${seq}`, role: 'assistant', text: '', toolCalls: [], streaming: true })
+  list.push({
+    id: `a${seq}`,
+    role: 'assistant',
+    text: '',
+    toolCalls: [],
+    parts: [],
+    streaming: true,
+  })
   return { list, idx: list.length - 1 }
 }
 
@@ -540,7 +592,11 @@ function updateOrInsertToolCall(
   }
   const { list, idx } = ensureOpenAssistant(messages, seq)
   const message = list[idx]!
-  list[idx] = { ...message, toolCalls: [...message.toolCalls, initial] }
+  list[idx] = {
+    ...message,
+    toolCalls: [...message.toolCalls, initial],
+    parts: appendToolPart(message.parts, id),
+  }
   return list
 }
 
@@ -635,104 +691,35 @@ function uuidIdentity(value: string): boolean {
     && (variant === 56 || variant === 57 || variant === 97 || variant === 98)
 }
 
-function readToolUIDescriptor(value: unknown): { readonly uiDescriptor: ToolUIDescriptor } | null {
-  if (!isRecord(value)) return null
-  const summary = value['summary']
-  if (!isRecord(summary)) return null
-  const kind = value['kind']
-  const verb = summary['verb']
-  if (!isToolKind(kind) || typeof verb !== 'string' || verb.length === 0) return null
-
-  const primaryField = optionalNonEmptyString(summary['primaryField'])
-  if (summary['primaryField'] !== undefined && primaryField === undefined) return null
-  const metaFields = readStringArray(summary['metaFields'])
-  if (summary['metaFields'] !== undefined && metaFields === undefined) return null
-
-  const descriptor: {
-    kind: ToolUIDescriptor['kind']
-    summary: { verb: string; primaryField?: string; metaFields?: readonly string[] }
-    preview?: ToolUIDescriptor['preview']
-    openAction?: ToolUIDescriptor['openAction']
-  } = {
-    kind,
-    summary: {
-      verb,
-      ...(primaryField === undefined ? {} : { primaryField }),
-      ...(metaFields === undefined ? {} : { metaFields }),
-    },
-  }
-
-  const preview = value['preview']
-  if (preview !== undefined) {
-    if (!isRecord(preview)) return null
-    const contentField = optionalNonEmptyString(preview['contentField'])
-    const format = preview['format']
-    const truncateAtLines = preview['truncateAtLines']
-    if (!contentField || !isPreviewFormat(format)) return null
-    if (
-      truncateAtLines !== undefined
-      && (!Number.isSafeInteger(truncateAtLines) || (truncateAtLines as number) <= 0)
-    ) return null
-    descriptor.preview = {
-      contentField,
-      format,
-      ...(truncateAtLines === undefined ? {} : { truncateAtLines: truncateAtLines as number }),
-    }
-  }
-
-  const openAction = value['openAction']
-  if (openAction !== undefined) {
-    if (!isRecord(openAction)) return null
-    const target = openAction['target']
-    const pathField = optionalNonEmptyString(openAction['pathField'])
-    if (!isOpenTarget(target) || !pathField) return null
-    descriptor.openAction = { target, pathField }
-  }
-
-  return { uiDescriptor: descriptor }
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function optionalNonEmptyString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined
+function descriptorProperty(value: unknown): { readonly uiDescriptor?: import('./descriptors.js').ToolUIDescriptor } {
+  const descriptor = normalizeToolUIDescriptor(value)
+  return descriptor === undefined ? {} : { uiDescriptor: descriptor }
 }
 
-function readStringArray(value: unknown): readonly string[] | undefined {
-  if (value === undefined) return undefined
-  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item.length === 0)) {
-    return undefined
+function appendMessagePart(
+  parts: readonly MessagePart[] | undefined,
+  part: Extract<MessagePart, { kind: 'text' | 'thinking' }>,
+): readonly MessagePart[] {
+  const current = parts ?? []
+  if (part.text.length === 0) return current
+  const last = current[current.length - 1]
+  if (last?.kind === part.kind) {
+    const next = current.slice()
+    next[next.length - 1] = { ...last, text: last.text + part.text }
+    return next
   }
-  return value.slice()
+  return [...current, part]
 }
 
-function isToolKind(value: unknown): value is ToolUIDescriptor['kind'] {
-  return value === 'file-write'
-    || value === 'file-read'
-    || value === 'file-edit'
-    || value === 'shell'
-    || value === 'search'
-    || value === 'image'
-    || value === 'external-action'
-    || value === 'conversational'
-}
-
-function isPreviewFormat(value: unknown): value is NonNullable<ToolUIDescriptor['preview']>['format'] {
-  return value === 'code'
-    || value === 'diff'
-    || value === 'markdown'
-    || value === 'plain'
-    || value === 'image-thumb'
-}
-
-function isOpenTarget(value: unknown): value is NonNullable<ToolUIDescriptor['openAction']>['target'] {
-  return value === 'file-pane'
-    || value === 'terminal-pane'
-    || value === 'image-pane'
-    || value === 'search-pane'
-    || value === 'url'
+function appendToolPart(parts: readonly MessagePart[] | undefined, toolCallId: string): readonly MessagePart[] {
+  const current = parts ?? []
+  return current.some(part => part.kind === 'tool' && part.toolCallId === toolCallId)
+    ? current
+    : [...current, { kind: 'tool', toolCallId }]
 }
 
 function readString(data: Record<string, unknown>, key: string): string {

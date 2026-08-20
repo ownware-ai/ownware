@@ -1,6 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { CollapsingRenderer, SubagentActivity, parseThinkingTitle, type LiveGroup } from '../../tui/collapse.js'
+import {
+  CollapsingRenderer,
+  SubagentActivity,
+  describeTool,
+  parseThinkingTitle,
+  type LiveGroup,
+} from '../../tui/collapse.js'
 import { PLAIN_STYLE } from '../../style.js'
+
+const READ_DESCRIPTOR = {
+  kind: 'file-read',
+  summary: { verb: 'Read', primaryField: 'file_path' },
+} as const
+const WRITE_DESCRIPTOR = {
+  kind: 'file-write',
+  summary: { verb: 'Wrote', primaryField: 'file_path' },
+} as const
+const EDIT_DESCRIPTOR = {
+  kind: 'file-edit',
+  summary: { verb: 'Edited', primaryField: 'file_path' },
+} as const
+const LIST_DESCRIPTOR = {
+  kind: 'file-read',
+  summary: { verb: 'Listed', primaryField: 'path' },
+} as const
+const SHELL_DESCRIPTOR = {
+  kind: 'shell',
+  summary: { verb: 'Ran', primaryField: 'command' },
+} as const
 
 function harness(startMs = 1000) {
   let buf = ''
@@ -29,11 +56,11 @@ function harness(startMs = 1000) {
 describe('CollapsingRenderer — the collapse law', () => {
   it('a multi-tool group prints NO rows, then exactly one settle line', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile' })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', uiDescriptor: READ_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 't1', durationMs: 100, isError: false })
     h.r.handle('tool.call.start', { toolCallId: 't2', toolName: 'ripgrep' })
     h.r.handle('tool.call.end', { toolCallId: 't2', durationMs: 200, isError: false })
-    h.r.handle('tool.call.start', { toolCallId: 't3', toolName: 'editFile' })
+    h.r.handle('tool.call.start', { toolCallId: 't3', toolName: 'editFile', uiDescriptor: EDIT_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 't3', durationMs: 300, isError: false })
     expect(h.text()).toBe('') // NOTHING while live
     h.tick(26_000)
@@ -44,7 +71,7 @@ describe('CollapsingRenderer — the collapse law', () => {
 
   it('the lone-tool exception keeps its single row', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile' })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', uiDescriptor: READ_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 't1', durationMs: 843, isError: false })
     h.r.handle('text.delta', { text: 'That file is fine.' })
     h.r.flushLine()
@@ -53,11 +80,11 @@ describe('CollapsingRenderer — the collapse law', () => {
 
   it('turn.end with end_turn settles; tool_use does not', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute' })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 't1', durationMs: 10, isError: false })
     h.r.handle('turn.end', { stopReason: 'tool_use' })
     expect(h.text()).toBe('') // loop continues — group stays open
-    h.r.handle('tool.call.start', { toolCallId: 't2', toolName: 'shell_execute' })
+    h.r.handle('tool.call.start', { toolCallId: 't2', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 't2', durationMs: 10, isError: false })
     h.r.handle('turn.end', { stopReason: 'end_turn' })
     expect(h.text()).toMatch(/^✓ Worked through 2 steps · Ran ×2 · /)
@@ -83,7 +110,7 @@ describe('CollapsingRenderer — the collapse law', () => {
 
   it('failed tools never collapse — the red row prints mid-group', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute' })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     h.r.handle('tool.call.end', {
       toolCallId: 't1',
       durationMs: 12,
@@ -131,9 +158,9 @@ describe('CollapsingRenderer — the collapse law', () => {
 
   it('turn.interrupted settles the group before the interrupt line', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute' })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 't1', durationMs: 5, isError: false })
-    h.r.handle('tool.call.start', { toolCallId: 't2', toolName: 'shell_execute' })
+    h.r.handle('tool.call.start', { toolCallId: 't2', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     h.r.handle('turn.interrupted', { reason: 'user' })
     expect(h.text()).toMatch(/^✓ Worked through 2 steps · Ran ×2 · .*›\n⎋ run user\n$/)
   })
@@ -146,6 +173,7 @@ describe('CollapsingRenderer — clear tool stories (owner round 3)', () => {
       toolCallId: 't1',
       toolName: 'shell_execute',
       input: { command: 'bun run build' },
+      uiDescriptor: SHELL_DESCRIPTOR,
     })
     expect(h.live[h.live.length - 1]).toMatchObject({ action: '◐ Running $ bun run build…' })
     h.r.handle('tool.call.end', {
@@ -167,7 +195,12 @@ describe('CollapsingRenderer — clear tool stories (owner round 3)', () => {
   it('a group of only shell commands settles as "Ran N shell commands"', () => {
     const h = harness()
     for (const id of ['a', 'b', 'c']) {
-      h.r.handle('tool.call.start', { toolCallId: id, toolName: 'shell_execute', input: { command: 'x' } })
+      h.r.handle('tool.call.start', {
+        toolCallId: id,
+        toolName: 'shell_execute',
+        input: { command: 'x' },
+        uiDescriptor: SHELL_DESCRIPTOR,
+      })
       h.r.handle('tool.call.end', { toolCallId: id, durationMs: 5, isError: false })
     }
     h.tick(3000)
@@ -180,7 +213,8 @@ describe('CollapsingRenderer — clear tool stories (owner round 3)', () => {
     h.r.handle('tool.call.start', {
       toolCallId: 't1',
       toolName: 'writeFile',
-      input: { path: 'src/index.ts' },
+      input: { file_path: 'src/index.ts' },
+      uiDescriptor: WRITE_DESCRIPTOR,
     })
     expect(h.live[h.live.length - 1]).toMatchObject({ action: '◐ Writing src/index.ts…' })
   })
@@ -197,7 +231,7 @@ describe('CollapsingRenderer — clear tool stories (owner round 3)', () => {
   it('thinking closes before a tool call too (titled prints, in order)', () => {
     const h = harness()
     h.r.handle('thinking.delta', { text: '**Reading first**' })
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', input: {} })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', input: {}, uiDescriptor: READ_DESCRIPTOR })
     expect(h.text()).toBe('✳ Thought: Reading first · 0ms\n')
   })
 })
@@ -205,9 +239,9 @@ describe('CollapsingRenderer — clear tool stories (owner round 3)', () => {
 describe('CollapsingRenderer — /expand (owner round 5)', () => {
   it('expandLast reprints the settled rows, append-only', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 'a', toolName: 'listFiles', input: { path: '.' } })
+    h.r.handle('tool.call.start', { toolCallId: 'a', toolName: 'listFiles', input: { path: '.' }, uiDescriptor: LIST_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 'a', durationMs: 4, isError: false })
-    h.r.handle('tool.call.start', { toolCallId: 'b', toolName: 'readFile', input: { file_path: 'x.ts' } })
+    h.r.handle('tool.call.start', { toolCallId: 'b', toolName: 'readFile', input: { file_path: 'x.ts' }, uiDescriptor: READ_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 'b', durationMs: 9, isError: false })
     h.r.handle('text.delta', { text: 'done\n' })
     expect(h.text()).toContain('✓ Worked through 2 steps · Listed, Read ·')
@@ -224,10 +258,10 @@ describe('CollapsingRenderer — /expand (owner round 5)', () => {
 
   it('whitespace-only deltas do not split a live group', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 'a', toolName: 'listFiles', input: {} })
+    h.r.handle('tool.call.start', { toolCallId: 'a', toolName: 'listFiles', input: {}, uiDescriptor: LIST_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 'a', durationMs: 1, isError: false })
     h.r.handle('text.delta', { text: '\n\n' })
-    h.r.handle('tool.call.start', { toolCallId: 'b', toolName: 'readFile', input: {} })
+    h.r.handle('tool.call.start', { toolCallId: 'b', toolName: 'readFile', input: {}, uiDescriptor: READ_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 'b', durationMs: 1, isError: false })
     h.r.handle('text.delta', { text: 'real text' })
     const settles = h.text().match(/✓ /g) ?? []
@@ -241,11 +275,11 @@ describe('CollapsingRenderer — sonnet-shaped runs (owner round 7)', () => {
     const h = harness()
     h.r.handle('thinking.delta', { text: 'hmm' })
     h.tick(1300)
-    h.r.handle('tool.call.start', { toolCallId: 'a', toolName: 'listFiles', input: { path: '.' } })
+    h.r.handle('tool.call.start', { toolCallId: 'a', toolName: 'listFiles', input: { path: '.' }, uiDescriptor: LIST_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 'a', durationMs: 4, isError: false })
     h.r.handle('thinking.delta', { text: 'more' })
     h.tick(2300)
-    h.r.handle('tool.call.start', { toolCallId: 'b', toolName: 'readFile', input: { file_path: 'x.ts' } })
+    h.r.handle('tool.call.start', { toolCallId: 'b', toolName: 'readFile', input: { file_path: 'x.ts' }, uiDescriptor: READ_DESCRIPTOR })
     h.r.handle('tool.call.end', { toolCallId: 'b', durationMs: 9, isError: false })
     h.r.handle('text.delta', { text: 'Here is the answer.' })
     h.r.flushLine()
@@ -256,14 +290,15 @@ describe('CollapsingRenderer — sonnet-shaped runs (owner round 7)', () => {
 
   it('streamed args fill the object slot: live action and settled row get the real path', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', input: {} })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', input: {}, uiDescriptor: READ_DESCRIPTOR })
     expect(h.live[h.live.length - 1]).toMatchObject({ action: '◐ Reading…' })
     h.r.handle('tool.call.args_delta', { toolCallId: 't1', delta: '{"file_pa' })
     h.r.handle('tool.call.args_delta', { toolCallId: 't1', delta: 'th":"packages/loom/src/index.ts"' })
+    expect(h.live[h.live.length - 1]).toMatchObject({ action: '◐ Reading…' })
+    h.r.handle('tool.call.args_delta', { toolCallId: 't1', delta: '}' })
     expect(h.live[h.live.length - 1]).toMatchObject({
       action: '◐ Reading packages/loom/src/index.ts…',
     })
-    h.r.handle('tool.call.args_delta', { toolCallId: 't1', delta: '}' })
     h.r.handle('tool.call.end', { toolCallId: 't1', durationMs: 12, isError: false })
     // Done form stays visible until the next step (no blank pulse).
     expect(h.live[h.live.length - 1]).toMatchObject({
@@ -276,7 +311,7 @@ describe('CollapsingRenderer — sonnet-shaped runs (owner round 7)', () => {
 
   it('streamed shell command shows as $ command', () => {
     const h = harness()
-    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', input: {} })
+    h.r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', input: {}, uiDescriptor: SHELL_DESCRIPTOR })
     h.r.handle('tool.call.args_delta', { toolCallId: 't1', delta: '{"command":"bun run build"}' })
     expect(h.live[h.live.length - 1]).toMatchObject({ action: '◐ Running $ bun run build…' })
   })
@@ -285,7 +320,7 @@ describe('CollapsingRenderer — sonnet-shaped runs (owner round 7)', () => {
 describe('SubagentActivity — the child-stream fold (S3)', () => {
   it('derives the live action from the child stream, streamed args included', () => {
     const a = new SubagentActivity()
-    a.handle('tool.call.start', { toolCallId: 'c1', toolName: 'readFile', input: {} })
+    a.handle('tool.call.start', { toolCallId: 'c1', toolName: 'readFile', input: {}, uiDescriptor: READ_DESCRIPTOR })
     expect(a.action).toBe('◐ Reading…')
     a.handle('tool.call.args_delta', { toolCallId: 'c1', delta: '{"file_path":"pkg/a.ts"}' })
     expect(a.action).toBe('◐ Reading pkg/a.ts…')
@@ -303,6 +338,35 @@ describe('SubagentActivity — the child-stream fold (S3)', () => {
     h.r.updateSubagentLive('scout', '◐ Reading pkg/a.ts…', 3)
     expect(h.live[h.live.length - 1]).toMatchObject({
       action: '◇ scout ◐ Reading pkg/a.ts… · step 3',
+    })
+  })
+})
+
+describe('tool descriptor authority', () => {
+  it('does not infer semantics from a misleading name or familiar input keys', () => {
+    const facts = describeTool('read_file_then_charge_card', {
+      command: 'bun run build',
+      file_path: 'src/index.ts',
+    })
+
+    expect(facts).toMatchObject({
+      verb: 'read_file_then_charge_card',
+      target: 'bun run build',
+      isShell: false,
+    })
+  })
+
+  it('fails a malformed descriptor back to the generic view', () => {
+    const facts = describeTool(
+      'external_operation',
+      { command: 'bun run build' },
+      { kind: 'shell', summary: { verb: 'Ran\nsecret', primaryField: 'command' } },
+    )
+
+    expect(facts).toMatchObject({
+      verb: 'external_operation',
+      target: 'bun run build',
+      isShell: false,
     })
   })
 })

@@ -314,8 +314,6 @@ export async function main(argv: readonly string[]): Promise<void> {
 
     const replOptions = {
       client,
-      baseUrl: gateway.baseUrl,
-      token: gateway.token,
       profileId,
       ...(flags.model !== undefined ? { model: flags.model } : {}),
       style,

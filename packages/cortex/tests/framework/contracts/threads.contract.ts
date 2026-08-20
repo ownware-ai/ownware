@@ -179,6 +179,33 @@ describe('Contract: Threads', () => {
     expect(terminal.body.runningRunId).toBeNull()
   })
 
+  it('does not manufacture a public run correlation for internal live work', async () => {
+    const thread = await gw.state.createThread('mini', 'Internal hydration contract')
+    const session = new HydrationSession()
+    gw.state.setSession(thread.id, session as unknown as Session)
+    gw.state.setRuntime(thread.id, {
+      session: session as unknown as Session,
+      hitl: new HumanInTheLoop({ timeoutMs: 10_000 }),
+      zoneManager: null,
+    })
+    const handle = gw.runner.start({
+      threadId: thread.id,
+      profileId: 'mini',
+      model: 'test:model',
+      prompt: 'internal live work',
+    })
+
+    const hydration = await gw.client.get(
+      `/api/v1/threads/${thread.id}/hydrate`,
+      ThreadHydrationSchema,
+    )
+    expect(hydration.body.runningAgentId).toBe('root')
+    expect(hydration.body.runningRunId).toBeNull()
+
+    session.release()
+    await handle.done
+  })
+
   it('GET /threads?profileId=X filters by profile', async () => {
     // Create distinct profiles via state seed
     const t1 = await gw.state.createThread('mini', 'profile-filter-1')

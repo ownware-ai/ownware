@@ -424,6 +424,8 @@ export type {
   // Core entities
   Thread,
   ThreadMessage,
+  ThreadHydrationAgent,
+  ThreadHydration,
   AttachmentMeta,
   ToolCallRecord,
   SubAgentRecord,

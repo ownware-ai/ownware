@@ -11,7 +11,7 @@
  */
 
 import * as readline from 'node:readline'
-import { OwnwareClient } from '@ownware/client'
+import { OwnwareClient, type ThreadHydration } from '@ownware/client'
 import { buildBanner, type BannerInfo } from './banner.js'
 import { TranscriptRenderer } from './render.js'
 import type { Style } from './style.js'
@@ -20,8 +20,6 @@ import { streamRun, errorMessage, KEY_CTRL_C, KEY_ESC, type KeyChannel } from '.
 
 export interface ReplOptions {
   readonly client: OwnwareClient
-  readonly baseUrl: string
-  readonly token: string | undefined
   readonly profileId: string
   readonly model?: string
   readonly style: Style
@@ -185,16 +183,17 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
       out(s.dim('no previous session here — starting fresh\n'))
     } else {
       threadId = last
-      const hydrated = await hydrateThread(opts.baseUrl, opts.token, last)
+      const hydrated = await hydrateThread(opts.client, last)
       if (hydrated === null) {
         out(s.dim(`could not load previous session ${last} — starting fresh\n`))
         threadId = null
       } else {
         out(s.dim(`↺ resumed ${last}\n`))
         printHistory(hydrated, out, s)
-        if (hydrated.runningAgentId !== null) {
+        const tail = hydratedStreamTarget(hydrated)
+        if (tail !== null) {
           out(s.dim('a run is still active — streaming…\n'))
-          await stream(last, null, last, hydrated.lastClosedTurnEndSeq)
+          await stream(tail.streamId, tail.runId, hydrated.thread.id, tail.since)
         }
       }
     }
@@ -249,59 +248,62 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
   rl.close()
 }
 
-// ── /hydrate (wire contract; not yet surfaced by @ownware/client) ────
+export interface HydratedStreamTarget {
+  readonly streamId: string
+  readonly runId: string | null
+  readonly since: number
+}
 
-interface HydratedThread {
-  readonly messages: ReadonlyArray<Record<string, unknown>>
-  readonly runningAgentId: string | null
-  readonly lastClosedTurnEndSeq: number
+/**
+ * Prefer the exact public run correlation. Internal/legacy work has no public
+ * run ID and therefore keeps the explicitly unbounded thread-stream fallback.
+ */
+export function hydratedStreamTarget(
+  hydrated: Pick<ThreadHydration, 'runningAgentId' | 'runningRunId' | 'lastClosedTurnEndSeq'> & {
+    readonly thread: Pick<ThreadHydration['thread'], 'id'>
+  },
+): HydratedStreamTarget | null {
+  if (hydrated.runningAgentId === null) return null
+  return hydrated.runningRunId === null
+    ? {
+        streamId: hydrated.thread.id,
+        runId: null,
+        since: hydrated.lastClosedTurnEndSeq,
+      }
+    : {
+        streamId: hydrated.runningRunId,
+        runId: hydrated.runningRunId,
+        since: hydrated.lastClosedTurnEndSeq,
+      }
 }
 
 async function hydrateThread(
-  baseUrl: string,
-  token: string | undefined,
+  client: OwnwareClient,
   threadId: string,
-): Promise<HydratedThread | null> {
+): Promise<ThreadHydration | null> {
   try {
-    const headers: Record<string, string> = {}
-    if (token !== undefined) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(
-      `${baseUrl}/api/v1/threads/${encodeURIComponent(threadId)}/hydrate`,
-      { headers },
-    )
-    if (!res.ok) return null
-    const body = (await res.json()) as Record<string, unknown>
-    const messages = Array.isArray(body['messages'])
-      ? (body['messages'] as ReadonlyArray<Record<string, unknown>>)
-      : []
-    return {
-      messages,
-      runningAgentId:
-        typeof body['runningAgentId'] === 'string' ? body['runningAgentId'] : null,
-      lastClosedTurnEndSeq:
-        typeof body['lastClosedTurnEndSeq'] === 'number' ? body['lastClosedTurnEndSeq'] : 0,
-    }
+    return await client.hydrateThread(threadId)
   } catch {
     return null
   }
 }
 
 function printHistory(
-  hydrated: HydratedThread,
+  hydrated: ThreadHydration,
   out: (chunk: string) => void,
   s: Style,
 ): void {
   for (const msg of hydrated.messages) {
-    const role = typeof msg['role'] === 'string' ? msg['role'] : 'system'
-    const text = typeof msg['content'] === 'string' ? msg['content'] : ''
-    if (role === 'user') {
-      out(s.cyan('❯ ') + text + '\n')
-    } else if (role === 'assistant') {
-      if (text !== '') out(text.endsWith('\n') ? text : text + '\n')
-      const tools = Array.isArray(msg['tools']) ? msg['tools'].length : 0
+    if (msg.role === 'user') {
+      out(s.cyan('❯ ') + msg.content + '\n')
+    } else if (msg.role === 'assistant') {
+      if (msg.content !== '') {
+        out(msg.content.endsWith('\n') ? msg.content : msg.content + '\n')
+      }
+      const tools = msg.tools?.length ?? 0
       if (tools > 0) out(s.dim(`  · ${tools} tool call${tools === 1 ? '' : 's'}\n`))
     } else {
-      const firstLine = text.split('\n', 1)[0] ?? ''
+      const firstLine = msg.content.split('\n', 1)[0] ?? ''
       if (firstLine !== '') out(s.dim(`· ${firstLine.slice(0, 100)}\n`))
     }
   }

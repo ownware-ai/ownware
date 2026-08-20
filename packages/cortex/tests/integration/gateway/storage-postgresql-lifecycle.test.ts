@@ -15,6 +15,7 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
@@ -91,7 +92,7 @@ describePostgreSql('PostgreSQL storage lifecycle', () => {
       await expect(first.health()).resolves.toEqual(expect.objectContaining({
         kind: 'postgresql',
         state: 'ready',
-        schemaVersion: 91,
+        schemaVersion: compiledSchemaHeadVersion(),
       }))
       expect(capturedPool).toBeDefined()
 

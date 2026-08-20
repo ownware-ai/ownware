@@ -457,9 +457,9 @@ export interface Tool<TInput extends Record<string, unknown> = Record<string, un
    * cortex (`ToolUIDescriptorSchema`). See `ToolUIDescriptor` in
    * this file for the field shape and the kind enum.
    *
-   * Tools that omit this field render via the client's name/category
-   * heuristics today (FALLBACK_DESCRIPTOR + inferIconFromName). New
-   * builtins should declare a descriptor explicitly — no fallthrough.
+   * Tools that omit this field render as a generic operation. New builtins
+   * should declare a descriptor explicitly; clients must not infer semantics
+   * from the tool name.
    */
   readonly uiDescriptor?: ToolUIDescriptor
 }

@@ -54,6 +54,15 @@ export interface ToolCall {
   readonly partial?: boolean
 }
 
+/** Ordered observations within one message. IDs remain opaque correlations. */
+export type MessagePart =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'thinking'; readonly text: string }
+  | { readonly kind: 'tool'; readonly toolCallId: string }
+  | { readonly kind: 'subagent'; readonly agentId: string }
+  | { readonly kind: 'permission'; readonly requestId: string }
+  | { readonly kind: 'credential'; readonly requestId: string }
+
 /** One row in the thread — a user turn or an assistant reply. */
 export interface Message {
   readonly id: string
@@ -64,6 +73,8 @@ export interface Message {
   readonly thinking?: string
   /** Tool cards under this reply, in call order. */
   readonly toolCalls: readonly ToolCall[]
+  /** Exact durable/live ordering when supplied by the Gateway. */
+  readonly parts?: readonly MessagePart[]
   /** True while this assistant reply is still receiving events (draws the caret). */
   readonly streaming: boolean
 }

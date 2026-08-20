@@ -618,15 +618,14 @@ Three sources of the descriptor:
   relays it through `builtinActionEntry` in `connector/registry.ts` —
   pure pass-through, no synthesis.
 - **MCP servers (`source: 'mcp'`):** when the server's `toolsMetadata`
-  is available, `connector/registry.ts` synthesizes a descriptor via
-  `synthesizeUiDescriptor(actionName)` — explicit name patterns map
-  to file-write / file-read / file-edit / search / image / shell;
-  unmatched names default to `external-action` with a humanized verb.
+  is available, `connector/registry.ts` emits a generic
+  `external-action` descriptor carrying only the exact bounded action name.
+  External catalogues do not establish Ownware tool semantics; a richer kind,
+  preview or open action requires an explicit trusted descriptor contract.
 - **Composio (`source: 'composio'`):** today the source emits
   `toolNames: null` with no `actions[]`, so wire-side descriptors
-  aren't reachable. A client-side name-based fallback covers Composio
-  actions until a future change populates `actions[]` with synthesized
-  descriptors.
+  aren't reachable. Clients render those actions generically; they must not
+  recover semantics from the action name.
 
 **Rule:** the schema lives in `connector/schema.ts` as
 `ToolUIDescriptorSchema`. It is the wire contract — adding a new

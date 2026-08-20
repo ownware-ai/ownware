@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { RuntimeConsequence } from '../runtime/port.js'
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
+import { appendActivityLedgerRow } from './activity-ledger.js'
 
 export type EffectReceiptKind =
   | 'intent_observed'
@@ -393,6 +394,17 @@ export class EffectReceiptStore {
       input.runtimeSequence ?? null,
       now,
     )
+    // Indexed in this same transaction. A convergent duplicate returned above
+    // never reaches here, so one receipt is indexed exactly once.
+    appendActivityLedgerRow(this.db, {
+      family: 'effect',
+      receiptId,
+      runId: input.runId,
+      occurredAt: now,
+      outcome: input.outcome,
+      consequence: input.consequence,
+      toolName: identity.tool_name,
+    })
     this.advanceRunConsequence(input.runId, input.consequence, now)
     return {
       receiptId,

@@ -1,4 +1,5 @@
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
+import { appendActivityLedgerRow } from './activity-ledger.js'
 
 export interface SkillActivationReceipt {
   readonly receiptId: string
@@ -186,6 +187,16 @@ export class SkillActivationReceiptStore {
         input.turnIndex,
         now,
       )
+      // Indexed in this same transaction; a converged duplicate returned above
+      // never reaches here, so one receipt yields exactly one ledger row.
+      // No `outcome`: a placement receipt records that the exact skill body
+      // crossed into the conversation, which has no success/failure axis.
+      appendActivityLedgerRow(this.db, {
+        family: 'skill_activation',
+        receiptId: input.activationId,
+        runId: input.runId,
+        occurredAt: now,
+      })
       return {
         receiptId: input.activationId,
         sequence,

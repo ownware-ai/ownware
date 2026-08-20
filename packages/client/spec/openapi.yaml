@@ -3166,10 +3166,44 @@ components:
         output: { type: string }
         isError: { type: boolean }
         durationMs: { type: number, minimum: 0 }
+        uiDescriptor:
+          $ref: '#/components/schemas/ThreadToolUIDescriptor'
         startedAt: { type: string, format: date-time }
         metadata:
           type: object
           additionalProperties: true
+
+    ThreadToolUIDescriptor:
+      type: object
+      additionalProperties: false
+      required: [kind, summary]
+      properties:
+        kind:
+          type: string
+          enum: [file-write, file-read, file-edit, shell, search, image, external-action, conversational]
+        summary:
+          type: object
+          additionalProperties: false
+          required: [verb]
+          properties:
+            verb: { type: string }
+            primaryField: { type: string }
+            metaFields: { type: array, items: { type: string } }
+        preview:
+          type: object
+          additionalProperties: false
+          required: [contentField, format]
+          properties:
+            contentField: { type: string }
+            format: { type: string, enum: [code, diff, markdown, plain, image-thumb] }
+            truncateAtLines: { type: integer, minimum: 0 }
+        openAction:
+          type: object
+          additionalProperties: false
+          required: [target, pathField]
+          properties:
+            target: { type: string, enum: [file-pane, terminal-pane, image-pane, search-pane, url] }
+            pathField: { type: string }
 
     ThreadSubAgent:
       type: object

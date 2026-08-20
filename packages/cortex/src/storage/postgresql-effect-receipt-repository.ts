@@ -15,6 +15,7 @@ import {
 import type { RuntimeConsequence } from '../runtime/port.js'
 import type { PostgreSqlRootRepositoryContext } from './postgresql-adapter.js'
 import type { PostgreSqlQueryClient } from './postgresql-repository.js'
+import { appendActivityLedgerRowPostgreSql } from './postgresql-activity-ledger.js'
 import {
   repositoryCall,
   safeInteger,
@@ -108,12 +109,16 @@ export async function observePostgreSqlEffectInTransaction(
     FROM ownware.effect_receipts WHERE run_id = $1
   `, [input.runId])
   const sequence = safeInteger(sequenceResult.rows[0]?.value ?? '')
-  await client.query(`
+  // RETURNING distinguishes a newly created receipt from a converging
+  // duplicate. Only a new receipt is indexed, so one receipt gets exactly one
+  // ledger row — the same invariant the SQLite path gets from its early return.
+  const inserted = await client.query<{ readonly receipt_id: string }>(`
     INSERT INTO ownware.effect_receipts (
       receipt_id, receipt_seq, effect_id, run_id, observation_key, kind, outcome,
       consequence, authority_kind, authority_ref, runtime_sequence, observed_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     ON CONFLICT DO NOTHING
+    RETURNING receipt_id
   `, [
     receiptId,
     sequence,
@@ -128,6 +133,17 @@ export async function observePostgreSqlEffectInTransaction(
     input.runtimeSequence ?? null,
     now,
   ])
+  if (inserted.rows[0] !== undefined) {
+    await appendActivityLedgerRowPostgreSql(client, {
+      family: 'effect',
+      receiptId,
+      runId: input.runId,
+      occurredAt: now,
+      outcome: input.outcome,
+      consequence: input.consequence,
+      toolName: identity.tool_name,
+    })
+  }
   const existingResult = await client.query<PostgreSqlReceiptRow>(`
     SELECT receipt.*, identity.tool_call_id, identity.tool_name
     FROM ownware.effect_receipts AS receipt

@@ -27,24 +27,42 @@ export class LogicalSchemaError extends Error {
   }
 }
 
-export const SQLITE_V91_COLUMN_COUNT = 849
-export const SQLITE_V91_COLUMN_SET_HASH =
-  'sha256:2781daa865a832d7c3d2db1a523fa7faa1fa7ab639bb24613c49e757e1511cd3'
-/** @deprecated Internal compatibility alias; current schema is v91. */
-export const SQLITE_V90_COLUMN_COUNT = SQLITE_V91_COLUMN_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
-export const SQLITE_V90_COLUMN_SET_HASH = SQLITE_V91_COLUMN_SET_HASH
-/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V93_COLUMN_COUNT = 870
+export const SQLITE_V93_COLUMN_SET_HASH =
+  'sha256:cb033439e9c5f4c95b4d467fdb983b52729bb9778a71234716e8669314d02456'
+
+/**
+ * Stable names for the current certification receipt.
+ *
+ * Tests and tooling should import these rather than the version-suffixed
+ * constants: those are renamed by every migration, and a hand-edited constant
+ * is a chance to silently change what a test claims to certify.
+ */
+export const CURRENT_LOGICAL_COLUMN_COUNT = SQLITE_V93_COLUMN_COUNT
+export const CURRENT_LOGICAL_COLUMN_SET_HASH = SQLITE_V93_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V92_COLUMN_COUNT = SQLITE_V93_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V92_COLUMN_SET_HASH = SQLITE_V93_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V91_COLUMN_COUNT = SQLITE_V93_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V91_COLUMN_SET_HASH = SQLITE_V93_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V90_COLUMN_COUNT = SQLITE_V93_COLUMN_COUNT
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V90_COLUMN_SET_HASH = SQLITE_V93_COLUMN_SET_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V89_COLUMN_COUNT = SQLITE_V91_COLUMN_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V89_COLUMN_SET_HASH = SQLITE_V91_COLUMN_SET_HASH
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V88_COLUMN_COUNT = SQLITE_V90_COLUMN_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V88_COLUMN_SET_HASH = SQLITE_V90_COLUMN_SET_HASH
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V87_COLUMN_COUNT = SQLITE_V90_COLUMN_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V87_COLUMN_SET_HASH = SQLITE_V90_COLUMN_SET_HASH
 
 function keys(value: string): ReadonlySet<string> {
@@ -66,6 +84,7 @@ const BOOLEAN_COLUMNS = keys(`
 
 const EPOCH_MILLISECOND_COLUMNS = keys(`
   access_grant_revisions.effective_at
+  activity_ledger.occurred_at
   access_grant_revisions.expires_at
   access_grant_revisions.revision_created_at
   access_grant_revisions.revoked_at
@@ -116,6 +135,7 @@ const EPOCH_MILLISECOND_COLUMNS = keys(`
   run_idempotency.created_at
   run_idempotency.updated_at
   run_idempotency.expires_at
+  run_permission_decision_receipts.decided_at
   run_permission_requests.requested_at
   run_permission_requests.decided_at
   run_permission_bindings.bound_at

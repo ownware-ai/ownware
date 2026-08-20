@@ -21,6 +21,9 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
+import { POSTGRESQL_TRANSFER_BUSINESS_TABLES } from '../../../src/storage/postgresql-transfer-preflight.js'
+import { CURRENT_LOGICAL_COLUMN_COUNT } from '../../../src/storage/logical-schema.js'
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
@@ -251,9 +254,9 @@ describePostgreSql('cross-adapter canonical transfer snapshot', () => {
         tables: sqliteReceipt.tables,
       })
       expect(postgresqlReceipt).toMatchObject({
-        schemaVersion: 91,
-        logicalColumnCount: 849,
-        tableCount: 77,
+        schemaVersion: compiledSchemaHeadVersion(),
+        logicalColumnCount: CURRENT_LOGICAL_COLUMN_COUNT,
+        tableCount: POSTGRESQL_TRANSFER_BUSINESS_TABLES.length,
         rowCount: 8,
       })
     } finally {

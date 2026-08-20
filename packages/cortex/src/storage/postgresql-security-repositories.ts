@@ -1,3 +1,4 @@
+import { createPostgreSqlActivityLedgerRepository } from './postgresql-activity-ledger-repository.js'
 import type { EvidenceSearchCache } from '../gateway/evidence-search-cache.js'
 import type {
   SecurityRepositories,
@@ -52,6 +53,7 @@ export function createPostgreSqlSecurityRepositories(
     threadBindings: createPostgreSqlThreadBindingRepository(context),
     runs: createPostgreSqlRunRepository(context, options.permissionHashSecret),
     effectReceipts: createPostgreSqlEffectReceiptRepository(context),
+    activityLedger: createPostgreSqlActivityLedgerRepository(context),
     egressReceipts: createPostgreSqlEgressReceiptRepository(context),
     skillActivationReceipts: createPostgreSqlSkillActivationReceiptRepository(context),
     effectReversals: createPostgreSqlEffectReversalRepository(context),

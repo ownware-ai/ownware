@@ -110,8 +110,6 @@ describe('CLI ↔ gateway over the wire', () => {
 
     const repl = runRepl({
       client,
-      baseUrl: gateway.baseUrl,
-      token: gateway.token,
       profileId: 'test-agent',
       style: PLAIN_STYLE,
       sessionStore: new SessionStore(gateway.dataDir),
@@ -170,8 +168,6 @@ describe('CLI ↔ gateway over the wire', () => {
     const store = new SessionStore(gateway.dataDir)
     const repl = runRepl({
       client,
-      baseUrl: gateway.baseUrl,
-      token: gateway.token,
       profileId: 'test-agent',
       model: OLLAMA_MODEL,
       style: PLAIN_STYLE,
@@ -200,8 +196,6 @@ describe('CLI ↔ gateway over the wire', () => {
     input2.isTTY = false
     const repl2 = runRepl({
       client,
-      baseUrl: gateway.baseUrl,
-      token: gateway.token,
       profileId: 'test-agent',
       model: OLLAMA_MODEL,
       style: PLAIN_STYLE,

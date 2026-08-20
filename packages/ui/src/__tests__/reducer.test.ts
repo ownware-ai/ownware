@@ -30,7 +30,7 @@ describe('chatReducer', () => {
     const s = applyEvents(initialChatState(), [
       ev('user.message', { text: 'search the web' }, 1),
       ev('tool.call.start', { toolCallId: 't1', toolName: 'web_search', input: { q: 'flowers' } }, 2),
-      ev('tool.call.end', { toolCallId: 't1', result: '5 results', isError: false, durationMs: 400 }, 3),
+      ev('tool.call.end', { toolCallId: 't1', toolName: 'web_search', result: '5 results', isError: false, durationMs: 400 }, 3),
       ev('turn.end', { stopReason: 'tool_use' }, 4), // loop continues
       ev('text.delta', { text: 'Found it.' }, 5),
       ev('turn.end', { stopReason: 'end_turn' }, 6), // terminal
@@ -47,13 +47,17 @@ describe('chatReducer', () => {
       result: '5 results',
       durationMs: 400,
     })
+    expect(reply.parts).toEqual([
+      { kind: 'tool', toolCallId: 't1' },
+      { kind: 'text', text: 'Found it.' },
+    ])
     expect(s.status).toBe('idle')
   })
 
   it('marks a failed tool call as error', () => {
     const s = applyEvents(initialChatState(), [
       ev('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', input: {} }, 1),
-      ev('tool.call.end', { toolCallId: 't1', result: 'boom', isError: true }, 2),
+      ev('tool.call.end', { toolCallId: 't1', toolName: 'shell_execute', result: 'boom', isError: true }, 2),
     ])
     expect(s.messages[0]!.toolCalls[0]).toMatchObject({ status: 'error', isError: true, result: 'boom' })
   })
@@ -239,5 +243,20 @@ describe('chatReducer', () => {
       retryAfterMs: 1000,
     }, 9))
     expect(slow.connection).toMatchObject({ phase: 'resync_required', expectedNextSeq: 10 })
+  })
+
+  it('does not turn malformed lifecycle observations into completed work', () => {
+    let state = chatReducer(addUserMessage(initialChatState(), 'do it'), ev('tool.call.end', {
+      toolCallId: 't1',
+      result: 'looks successful',
+      isError: false,
+    }, 1))
+    expect(state.messages).toHaveLength(1)
+    expect(state.connection.unsupportedEventTypes).toContain('tool.call.end')
+
+    state = chatReducer(state, ev('turn.end', {}, 2))
+    expect(state.status).not.toBe('idle')
+    expect(state.connection.phase).toBe('resync_required')
+    expect(state.connection.unsupportedEventTypes).toContain('turn.end:missing-stop-reason')
   })
 })

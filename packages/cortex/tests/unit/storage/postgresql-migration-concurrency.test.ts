@@ -26,19 +26,30 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
 
 const TEST_URL = process.env['POSTGRES_TEST_URL'] ?? configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
 const MIGRATION_LOCK_NAMESPACE = 1_335_664_962
 const MIGRATION_LOCK_KEY = 0
 const MIGRATION_APPLICATION_NAME = 'ownware-storage-migration'
-const V92_NAME = 'add_thread_upgrade_marker'
-const V92_SQL = `
+/**
+ * The synthetic "newer binary" migration sits one ABOVE the compiled head.
+ * Derived, not hardcoded: pinning it meant a hand-edit on every migration, and
+ * twice the gapped / unknown-newer cases silently stopped testing what their
+ * names claimed after such an edit.
+ */
+const HEAD = compiledSchemaHeadVersion()
+const NEXT = HEAD + 1
+const AFTER_NEXT = HEAD + 2
+
+const V94_NAME = 'add_thread_upgrade_marker'
+const V94_SQL = `
   ALTER TABLE ownware.threads
-  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v92'
+  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v94'
 `.trim()
 
-const verifyV92Schema: PostgreSqlMigration['verifyApplied'] = async (client) => {
+const verifyV94Schema: PostgreSqlMigration['verifyApplied'] = async (client) => {
   const result = await client.query<{
     readonly tables: string
     readonly columns: string
@@ -66,25 +77,25 @@ const verifyV92Schema: PostgreSqlMigration['verifyApplied'] = async (client) => 
           AND column_name = 'upgrade_marker') AS default_value
   `)
   const row = result.rows[0]
-  return row?.tables === '78' && row.columns === '850' &&
+  return row?.tables === '80' && row.columns === '871' &&
     row.data_type === 'text' && row.nullable === 'NO' &&
-    row.default_value === "'v92'::text"
+    row.default_value === "'v94'::text"
 }
 
-const V92_MIGRATION: PostgreSqlMigration = Object.freeze({
-  version: 92,
-  name: V92_NAME,
-  sql: V92_SQL,
-  verifyApplied: verifyV92Schema,
+const V94_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: NEXT,
+  name: V94_NAME,
+  sql: V94_SQL,
+  verifyApplied: verifyV94Schema,
 })
-const V92_FINGERPRINT = postgreSqlMigrationFingerprint(V92_MIGRATION)
-const V92_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
-  migrations: Object.freeze([...POSTGRESQL_MIGRATION_MANIFEST.migrations, V92_MIGRATION]),
+const V94_FINGERPRINT = postgreSqlMigrationFingerprint(V94_MIGRATION)
+const V94_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
+  migrations: Object.freeze([...POSTGRESQL_MIGRATION_MANIFEST.migrations, V94_MIGRATION]),
   logicalMigrations: Object.freeze([
     ...STORAGE_LOGICAL_MIGRATIONS,
-    { version: 92, name: V92_NAME },
+    { version: NEXT, name: V94_NAME },
   ]),
-  verifyCurrentSchema: verifyV92Schema,
+  verifyCurrentSchema: verifyV94Schema,
 })
 
 interface EmptyRepositories {}
@@ -301,7 +312,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
         await expect(storage.health()).resolves.toMatchObject({
           kind: 'postgresql',
           state: 'ready',
-          schemaVersion: 91,
+          schemaVersion: compiledSchemaHeadVersion(),
         })
       }
       await expect(migrationHistory(database.url)).resolves.toEqual(
@@ -317,7 +328,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       await restart.initialize()
       await expect(restart.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 91,
+        schemaVersion: compiledSchemaHeadVersion(),
       })
       expect(baselineExecutions).toBe(1)
       await expect(migrationHistory(database.url)).resolves
@@ -386,7 +397,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
         await restart.initialize()
         await expect(restart.health()).resolves.toMatchObject({
           state: 'ready',
-          schemaVersion: 91,
+          schemaVersion: compiledSchemaHeadVersion(),
         })
       } finally {
         await restart.close().catch(() => {})
@@ -470,16 +481,16 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
     }
   }, 30_000)
 
-  it('executes one v92 upgrade for six concurrent initializers and preserves populated state on restart', async () => {
+  it('executes one v94 upgrade for six concurrent initializers and preserves populated state on restart', async () => {
     const database = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const seed = adapter(database.url)
     const inspector = new Client({ connectionString: database.url, ssl: false })
     const firstLockHeld = deferred()
     const releaseFirstLock = deferred()
     let firstGrantedLockPaused = false
-    let v92Executions = 0
+    let v94Executions = 0
     const driver = instrumentedDriver(async (_client, text, proceed) => {
-      if (text === V92_SQL) v92Executions += 1
+      if (text === V94_SQL) v94Executions += 1
       if (!text.includes('pg_advisory_xact_lock')) return proceed()
 
       const result = await proceed()
@@ -492,7 +503,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
     })
     const upgraders = Array.from({ length: 6 }, () => adapter(database.url, {
       driver,
-      migrationManifest: V92_MANIFEST,
+      migrationManifest: V94_MANIFEST,
       pool: { lockTimeoutMs: 15_000, migrationTimeoutMs: 20_000 },
     }))
     let restart: PostgreSqlStorageAdapter<EmptyRepositories, EmptyRepositories> | undefined
@@ -516,22 +527,22 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
       releaseFirstLock.resolve()
       await Promise.all(initializations)
 
-      expect(v92Executions).toBe(1)
+      expect(v94Executions).toBe(1)
       for (const storage of upgraders) {
         await expect(storage.health()).resolves.toMatchObject({
           kind: 'postgresql',
           state: 'ready',
-          schemaVersion: 92,
+          schemaVersion: NEXT,
         })
       }
-      await expect(verifyV92Schema(inspector)).resolves.toBe(true)
+      await expect(verifyV94Schema(inspector)).resolves.toBe(true)
       const afterUpgrade = (await inspector.query(`
         SELECT id, profile_id, title, upgrade_marker FROM ownware.threads
         WHERE id = 'migration-concurrency-thread'
       `)).rows
       expect(afterUpgrade).toEqual(beforeUpgrade.map((row) => ({
         ...row,
-        upgrade_marker: 'v92',
+        upgrade_marker: 'v94',
       })))
       const expectedHistory = [
         ...POSTGRESQL_MIGRATION_MANIFEST.migrations.map(migration => ({
@@ -539,23 +550,23 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
           name: migration.name,
           fingerprint: postgreSqlMigrationFingerprint(migration),
         })),
-        { version: '92', name: V92_NAME, fingerprint: V92_FINGERPRINT },
+        { version: String(NEXT), name: V94_NAME, fingerprint: V94_FINGERPRINT },
       ]
       expect((await migrationReceipts(inspector)).map(({ applied_at: _appliedAt, ...row }) => row))
         .toEqual(expectedHistory)
 
       const receiptsBeforeRestart = await migrationReceipts(inspector)
       await closeAdapters(upgraders)
-      restart = adapter(database.url, { driver, migrationManifest: V92_MANIFEST })
+      restart = adapter(database.url, { driver, migrationManifest: V94_MANIFEST })
       await restart.initialize()
-      await expect(restart.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 92 })
-      expect(v92Executions).toBe(1)
+      await expect(restart.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: NEXT })
+      expect(v94Executions).toBe(1)
       await expect(migrationReceipts(inspector)).resolves.toEqual(receiptsBeforeRestart)
       expect((await inspector.query(`
         SELECT id, profile_id, title, upgrade_marker FROM ownware.threads
         WHERE id = 'migration-concurrency-thread'
       `)).rows).toEqual(afterUpgrade)
-      await expect(verifyV92Schema(inspector)).resolves.toBe(true)
+      await expect(verifyV94Schema(inspector)).resolves.toBe(true)
     } finally {
       releaseFirstLock.resolve()
       await seed.close().catch(() => {})
@@ -569,20 +580,20 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
   it('makes an overlapping older binary unhealthy after a newer manifest commits', async () => {
     const database = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const older = adapter(database.url)
-    const newer = adapter(database.url, { migrationManifest: V92_MANIFEST })
+    const newer = adapter(database.url, { migrationManifest: V94_MANIFEST })
     const inspector = new Client({ connectionString: database.url, ssl: false })
     try {
       await older.initialize()
       await expect(older.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 91,
+        schemaVersion: compiledSchemaHeadVersion(),
       })
 
       // Multi-gateway runtime remains unsupported, but an accidentally
       // overlapping upgrade must not let the old binary keep claiming that its
       // compiled schema head is current.
       await newer.initialize()
-      await expect(newer.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 92 })
+      await expect(newer.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: NEXT })
       await expect(older.health()).resolves.toMatchObject({
         state: 'unavailable',
         schemaVersion: 0,
@@ -597,7 +608,7 @@ describePostgreSql('PostgreSQL migration concurrency', () => {
             name: migration.name,
             fingerprint: postgreSqlMigrationFingerprint(migration),
           })),
-          { version: '92', name: V92_NAME, fingerprint: V92_FINGERPRINT },
+          { version: String(NEXT), name: V94_NAME, fingerprint: V94_FINGERPRINT },
         ])
     } finally {
       await older.close().catch(() => {})

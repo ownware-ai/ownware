@@ -12,10 +12,15 @@ import { createTestGateway, type TestGateway } from '../../framework/harness/ind
 
 const PROVIDER_NAME = 'delegatedbindingtest'
 const PROFILE_ID = 'delegated-binding-test'
+let heldProviderRun: Promise<void> | null = null
+let releaseHeldProviderRun: (() => void) | null = null
 
 const deterministicProvider: ProviderAdapter = {
   name: PROVIDER_NAME,
   async *stream(): AsyncGenerator<ProviderChunk> {
+    const held = heldProviderRun
+    heldProviderRun = null
+    if (held !== null) await held
     yield { type: 'text_delta', text: 'completed' }
     yield {
       type: 'message_complete',
@@ -48,6 +53,9 @@ describe('delegated thread authority across restart', () => {
   let gateway: TestGateway | undefined
 
   afterEach(async () => {
+    releaseHeldProviderRun?.()
+    releaseHeldProviderRun = null
+    heldProviderRun = null
     await gateway?.stop()
     gateway = undefined
     unregisterProvider(PROVIDER_NAME)
@@ -85,6 +93,9 @@ describe('delegated thread authority across restart', () => {
       return (response.body as { token: string }).token
     }
     const subjectAToken = await issue('subject-a')
+    heldProviderRun = new Promise<void>((resolve) => {
+      releaseHeldProviderRun = resolve
+    })
     const startedResponse = await fetch(`${gateway.baseUrl}/api/v1/run`, {
       method: 'POST',
       headers: {
@@ -95,7 +106,22 @@ describe('delegated thread authority across restart', () => {
       body: JSON.stringify({ profileId: PROFILE_ID, workspaceId, prompt: 'subject A turn' }),
     })
     expect(startedResponse.status).toBe(200)
-    const { threadId } = await startedResponse.json() as { threadId: string }
+    const { runId, threadId } = await startedResponse.json() as {
+      runId: string
+      threadId: string
+    }
+    const activeHydration = await fetch(
+      `${gateway.baseUrl}/api/v1/threads/${threadId}/hydrate`,
+      { headers: { Authorization: `Bearer ${subjectAToken}` } },
+    )
+    expect(activeHydration.status).toBe(200)
+    await expect(activeHydration.json()).resolves.toMatchObject({
+      runningAgentId: 'root',
+      runningRunId: runId,
+    })
+
+    releaseHeldProviderRun?.()
+    releaseHeldProviderRun = null
     const deadline = Date.now() + 10_000
     while (gateway.runner.isRunning(threadId) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 10))

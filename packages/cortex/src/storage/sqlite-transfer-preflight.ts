@@ -126,24 +126,36 @@ export class SqliteTransferFindingsError extends Error {
   }
 }
 
-export const SQLITE_V91_SCHEMA_OBJECT_COUNT = 228
-export const SQLITE_V91_SCHEMA_OBJECT_HASH =
-  'sha256:1fa2468ebe2ed0e986f24f234a29a3120f4f0630517adb7477bd4cec62d06dd1'
-/** @deprecated Internal compatibility alias; current schema is v91. */
-export const SQLITE_V90_SCHEMA_OBJECT_COUNT = SQLITE_V91_SCHEMA_OBJECT_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
-export const SQLITE_V90_SCHEMA_OBJECT_HASH = SQLITE_V91_SCHEMA_OBJECT_HASH
-/** @deprecated Internal compatibility alias; current schema is v91. */
+export const SQLITE_V93_SCHEMA_OBJECT_COUNT = 239
+export const SQLITE_V93_SCHEMA_OBJECT_HASH =
+  'sha256:13730af951f7e70d2972e782e86fa0fdff423a3c1c9c7bc087bd80c5de3e26c5'
+
+/** Stable names for the current receipt — see the note in logical-schema.ts. */
+export const CURRENT_SCHEMA_OBJECT_COUNT = SQLITE_V93_SCHEMA_OBJECT_COUNT
+export const CURRENT_SCHEMA_OBJECT_HASH = SQLITE_V93_SCHEMA_OBJECT_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V92_SCHEMA_OBJECT_COUNT = SQLITE_V93_SCHEMA_OBJECT_COUNT
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V92_SCHEMA_OBJECT_HASH = SQLITE_V93_SCHEMA_OBJECT_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V91_SCHEMA_OBJECT_COUNT = SQLITE_V93_SCHEMA_OBJECT_COUNT
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V91_SCHEMA_OBJECT_HASH = SQLITE_V93_SCHEMA_OBJECT_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V90_SCHEMA_OBJECT_COUNT = SQLITE_V93_SCHEMA_OBJECT_COUNT
+/** @deprecated Internal compatibility alias; current schema is v93. */
+export const SQLITE_V90_SCHEMA_OBJECT_HASH = SQLITE_V93_SCHEMA_OBJECT_HASH
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V89_SCHEMA_OBJECT_COUNT = SQLITE_V91_SCHEMA_OBJECT_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V89_SCHEMA_OBJECT_HASH = SQLITE_V91_SCHEMA_OBJECT_HASH
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V88_SCHEMA_OBJECT_COUNT = SQLITE_V91_SCHEMA_OBJECT_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V88_SCHEMA_OBJECT_HASH = SQLITE_V91_SCHEMA_OBJECT_HASH
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V87_SCHEMA_OBJECT_COUNT = SQLITE_V91_SCHEMA_OBJECT_COUNT
-/** @deprecated Internal compatibility alias; current schema is v91. */
+/** @deprecated Internal compatibility alias; current schema is v93. */
 export const SQLITE_V87_SCHEMA_OBJECT_HASH = SQLITE_V91_SCHEMA_OBJECT_HASH
 
 const SOURCE_RECEIPT_FORMAT = 'ownware-sqlite-transfer-source-v1'

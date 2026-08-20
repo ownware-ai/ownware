@@ -17,6 +17,12 @@
  *   - Only POST /abort kills the loop.
  */
 
+import {
+  ACTIVITY_LEDGER_FAMILIES,
+  ACTIVITY_LEDGER_MAX_LIMIT,
+  ActivityLedgerError,
+  type ActivityLedgerRepository,
+} from '../activity-ledger.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -261,6 +267,7 @@ export interface RunHandlerDeps {
   readonly runStore?: RunRepository
   /** Append-only authority observations for external action attempts. */
   readonly effectReceipts?: EffectReceiptRepository
+  readonly activityLedger?: ActivityLedgerRepository
   /** Append-only outbound observations and local-only enforcement authority. */
   readonly egressReceipts?: EgressReceiptRepository
   /** Exact, payload-free evidence that a bound skill body entered a conversation. */
@@ -1447,6 +1454,9 @@ export function createRunHandlers(
             toolInput: tool.input,
             policyRevision: sessionPermissionPolicyRevision,
             agentId: context.agentId,
+            // The exact call the approval is spent on — the authoritative link
+            // to the effect, which is keyed (run_id, tool_call_id).
+            toolCallId: tool.id,
           }) === 'consumed'
         }
 
@@ -2922,6 +2932,123 @@ export function createRunHandlers(
     }
   }
 
+  // GET /api/v1/activity-receipts — one cross-run evidence door.
+  //
+  // Unlike the per-run reads, there is no single record to authorize against,
+  // so the PRINCIPAL constrains the query itself. A delegated caller is pinned
+  // to its own workspace/profile, and a request naming anything outside that
+  // is refused rather than quietly narrowed: silently returning the caller's
+  // own rows for someone else's profile would invite reading an empty page as
+  // "that profile did nothing".
+  async function listActivityReceipts(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    const ledger = deps.activityLedger
+    if (ledger === undefined) {
+      sendError(res, 503, 'Activity evidence is unavailable', 'activity_evidence_unavailable', 'overload')
+      return
+    }
+
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    const allowed = new Set([
+      'limit', 'cursor', 'profileId', 'workspaceId', 'threadId', 'runId',
+      'family', 'since', 'until',
+    ])
+    for (const key of url.searchParams.keys()) {
+      if (!allowed.has(key) || url.searchParams.getAll(key).length > 1) {
+        sendError(res, 400, 'Activity page is invalid', 'activity_page_invalid', 'invalid_request')
+        return
+      }
+    }
+
+    const principal = getRequestPrincipal(req)
+    const requestedProfile = url.searchParams.get('profileId') ?? undefined
+    const requestedWorkspace = url.searchParams.get('workspaceId') ?? undefined
+    let scope: { profileId?: string; workspaceId?: string }
+    if (principal && principal.kind !== 'owner') {
+      if (
+        (requestedProfile !== undefined && requestedProfile !== principal.profileId)
+        || (requestedWorkspace !== undefined && requestedWorkspace !== principal.workspaceId)
+      ) {
+        sendError(res, 403, 'Delegated principal does not allow this scope', 'principal_scope_denied', 'auth')
+        return
+      }
+      scope = { profileId: principal.profileId, workspaceId: principal.workspaceId }
+    } else {
+      scope = {
+        ...(requestedProfile === undefined ? {} : { profileId: requestedProfile }),
+        ...(requestedWorkspace === undefined ? {} : { workspaceId: requestedWorkspace }),
+      }
+    }
+
+    // Validate the request here rather than relying on the repository's error
+    // surfacing: the storage layer converts domain errors into content-free
+    // StorageRepositoryError, so a bad request would arrive as a 500.
+    const rawLimit = url.searchParams.get('limit')
+    const limit = rawLimit === null ? 50 : Number(rawLimit)
+    if (
+      rawLimit !== null
+      && (!/^[1-9][0-9]{0,2}$/.test(rawLimit) || limit < 1 || limit > ACTIVITY_LEDGER_MAX_LIMIT)
+    ) {
+      sendError(res, 400, 'Activity page is invalid', 'activity_page_invalid', 'invalid_request')
+      return
+    }
+    const family = url.searchParams.get('family')
+    if (family !== null && !ACTIVITY_LEDGER_FAMILIES.has(family)) {
+      sendError(res, 400, 'Activity page is invalid', 'activity_page_invalid', 'invalid_request')
+      return
+    }
+    const rawCursor = url.searchParams.get('cursor')
+    if (rawCursor !== null && !/^[1-9][0-9]{0,15}$/.test(rawCursor)) {
+      sendError(res, 400, 'Activity cursor is invalid', 'activity_cursor_invalid', 'invalid_request')
+      return
+    }
+    const bound = (name: string): number | undefined | null => {
+      const raw = url.searchParams.get(name)
+      if (raw === null) return undefined
+      if (!/^[0-9]{1,15}$/.test(raw)) return null
+      return Number(raw)
+    }
+    const since = bound('since')
+    const until = bound('until')
+    if (since === null || until === null) {
+      sendError(res, 400, 'Activity page is invalid', 'activity_page_invalid', 'invalid_request')
+      return
+    }
+
+    res.setHeader('Cache-Control', 'no-store')
+    try {
+      const page = await ledger.list({
+        ...scope,
+        ...(url.searchParams.get('threadId') === null
+          ? {} : { threadId: url.searchParams.get('threadId')! }),
+        ...(url.searchParams.get('runId') === null
+          ? {} : { runId: url.searchParams.get('runId')! }),
+        ...(family === null ? {} : { family: family as never }),
+        ...(since === undefined ? {} : { since }),
+        ...(until === undefined ? {} : { until }),
+      }, {
+        limit,
+        cursor: rawCursor,
+      })
+      sendJSON(res, 200, page)
+    } catch (error) {
+      if (error instanceof ActivityLedgerError) {
+        const invalidCursor = error.code === 'cursor_invalid'
+        sendError(
+          res,
+          400,
+          invalidCursor ? 'Activity cursor is invalid' : 'Activity page is invalid',
+          invalidCursor ? 'activity_cursor_invalid' : 'activity_page_invalid',
+          'invalid_request',
+        )
+        return
+      }
+      throw error
+    }
+  }
+
   // GET /api/v1/runs/:runId/egress-receipts — payload-free outbound evidence.
   async function listEgressReceipts(
     req: IncomingMessage,
@@ -3498,6 +3625,7 @@ export function createRunHandlers(
   return {
     run, startProfileRun, resume, decidePermission, cancelRun, abort, getRun,
     listEffectReceipts, listEgressReceipts, listSkillActivationReceipts,
+    listActivityReceipts,
     listEffectReversalOffers, listEffectReversalReceipts, executeEffectReversal,
     listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
     executeHeldTool,

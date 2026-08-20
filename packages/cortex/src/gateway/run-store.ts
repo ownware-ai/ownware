@@ -1,3 +1,4 @@
+import { appendActivityLedgerRow } from './activity-ledger.js'
 import { createHmac, randomBytes, randomUUID } from 'node:crypto'
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
 import type { EgressMode } from '@ownware/loom'
@@ -406,6 +407,16 @@ export class GatewayRunStore {
     readonly toolInput: Record<string, unknown>
     readonly policyRevision: string
     readonly agentId: string | null
+    /**
+     * The exact call this approval is being spent on.
+     *
+     * Recorded here because this is the one moment both identities are in
+     * hand: the approval is claimed immediately before dispatch, and the
+     * effect side is keyed (run_id, tool_call_id). Optional so a host that
+     * cannot supply it degrades to an unlinked-but-honest consumption rather
+     * than being denied.
+     */
+    readonly toolCallId?: string
   }, now: number = Date.now()):
     | 'consumed'
     | 'missing'
@@ -426,11 +437,15 @@ export class GatewayRunStore {
       ) return 'intent_mismatch'
       if (current.consumedAt !== null) return 'already_consumed'
       if (current.status !== 'approved') return 'not_approved'
+      const toolCallId = input.toolCallId !== undefined
+        && /^[A-Za-z0-9_.:-]{1,200}$/.test(input.toolCallId)
+        ? input.toolCallId
+        : null
       this.db.prepare(`
         INSERT INTO run_permission_consumptions (
-          run_id, request_id, operation_hash, consumed_at
-        ) VALUES (?, ?, ?, ?)
-      `).run(input.runId, input.requestId, operationHash, now)
+          run_id, request_id, operation_hash, consumed_at, tool_call_id
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(input.runId, input.requestId, operationHash, now, toolCallId)
       return 'consumed'
     }).immediate()
   }
@@ -442,16 +457,52 @@ export class GatewayRunStore {
     decision: 'approve' | 'deny',
     now: number = Date.now(),
   ): 'decided' | 'missing' | 'hash_mismatch' | 'already_decided' {
-    const current = this.getPermissionRequest(runId, requestId)
-    if (!current) return 'missing'
-    if (current.operationHash !== operationHash) return 'hash_mismatch'
-    if (current.status !== 'pending') return 'already_decided'
-    const result = this.db.prepare(`
-      UPDATE run_permission_requests
-      SET status = ?, decided_at = ?
-      WHERE run_id = ? AND request_id = ? AND status = 'pending' AND operation_hash = ?
-    `).run(decision === 'approve' ? 'approved' : 'denied', now, runId, requestId, operationHash)
-    return result.changes === 1 ? 'decided' : 'already_decided'
+    // One transaction, because the status change and its receipt must not be
+    // separable: `run_permission_requests.status` is later overwritten by
+    // expiry, so the receipt is the only durable record of what was actually
+    // decided. A status change without a receipt would erase that answer.
+    return this.db.transaction(() => {
+      const current = this.getPermissionRequest(runId, requestId)
+      if (!current) return 'missing' as const
+      if (current.operationHash !== operationHash) return 'hash_mismatch' as const
+      if (current.status !== 'pending') return 'already_decided' as const
+      const result = this.db.prepare(`
+        UPDATE run_permission_requests
+        SET status = ?, decided_at = ?
+        WHERE run_id = ? AND request_id = ? AND status = 'pending' AND operation_hash = ?
+      `).run(decision === 'approve' ? 'approved' : 'denied', now, runId, requestId, operationHash)
+      if (result.changes !== 1) return 'already_decided' as const
+
+      const receiptId = randomUUID()
+      const receiptSeq = this.db.prepare(`
+        SELECT COALESCE(MAX(receipt_seq), 0) + 1
+        FROM run_permission_decision_receipts WHERE run_id = ?
+      `).pluck().get(runId) as number
+      this.db.prepare(`
+        INSERT INTO run_permission_decision_receipts (
+          receipt_id, receipt_seq, run_id, request_id, operation_hash,
+          decision, tool_name, decided_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        receiptId,
+        receiptSeq,
+        runId,
+        requestId,
+        operationHash,
+        decision === 'approve' ? 'approved' : 'denied',
+        current.toolName,
+        now,
+      )
+      appendActivityLedgerRow(this.db, {
+        family: 'permission_decision',
+        receiptId,
+        runId,
+        occurredAt: now,
+        outcome: decision === 'approve' ? 'approved' : 'denied',
+        toolName: current.toolName,
+      })
+      return 'decided' as const
+    }).immediate()
   }
 
   expirePermission(

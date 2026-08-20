@@ -28,6 +28,8 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
+import { POSTGRESQL_TRANSFER_BUSINESS_TABLES } from '../../../src/storage/postgresql-transfer-preflight.js'
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
@@ -183,8 +185,8 @@ describePostgreSql('offline SQLite-to-PostgreSQL transfer', () => {
         targetVerified: true,
         cutoverAutomatic: false,
         rollbackMode: 'reuse-unchanged-sqlite-before-target-runtime-writes',
-        schemaVersion: 91,
-        tableCount: 77,
+        schemaVersion: compiledSchemaHeadVersion(),
+        tableCount: POSTGRESQL_TRANSFER_BUSINESS_TABLES.length,
         rowCount: 304,
       })
       expect(receipt.contentDigest).toBe(source.contentDigest)

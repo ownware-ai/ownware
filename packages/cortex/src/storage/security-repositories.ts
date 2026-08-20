@@ -1,3 +1,4 @@
+import type { ActivityLedgerRepository } from '../gateway/activity-ledger.js'
 import type {
   CredentialAuditEvent,
   RecordEventInput,
@@ -165,6 +166,7 @@ export interface RunRepository {
     readonly toolInput: Record<string, unknown>
     readonly policyRevision: string
     readonly agentId: string | null
+      readonly toolCallId?: string
   }, now?: number): Promise<
     | 'consumed'
     | 'missing'
@@ -286,6 +288,7 @@ export interface SecurityRepositories {
   readonly egressReceipts: EgressReceiptRepository
   readonly skillActivationReceipts: SkillActivationReceiptRepository
   readonly effectReversals: EffectReversalRepository
+  readonly activityLedger: ActivityLedgerRepository
   readonly idempotency: IdempotencyRepository
   readonly accessGrants: AccessGrantRepository
   readonly oauthRefresh: OAuthRefreshRepository

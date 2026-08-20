@@ -5267,4 +5267,205 @@ export const MIGRATIONS: Migration[] = [
         BEGIN SELECT RAISE(ABORT, 'effect reversal receipts are immutable'); END;
     `,
   },
+  {
+    version: 92,
+    name: '092_activity_ledger',
+    sql: `
+      -- One cross-run INDEX over evidence that already exists elsewhere.
+      --
+      -- This table is never a second source of truth. Every row locates one
+      -- authoritative receipt and carries only what is needed to scope, order
+      -- and filter it. It must never hold a fact its receipt does not prove.
+      --
+      -- \`ledger_seq\` is assigned COALESCE(MAX(...),0)+1 inside the same
+      -- transaction as the receipt it indexes — the identical discipline
+      -- \`effect_receipts.receipt_seq\` uses per run, widened to the install so
+      -- one cursor can page every family. Gap-free ordering is what lets a
+      -- reader prove no evidence was dropped between two pages.
+      --
+      -- Contention envelope, stated rather than hidden: this serializes
+      -- evidence appends install-wide. SQLite is single-writer already, so the
+      -- cost is nil. On PostgreSQL two concurrent appends race and the loser
+      -- fails the UNIQUE constraint and retries; that is fail-closed, and the
+      -- evidence write rate of a self-hosted runtime is far below where the
+      -- convoy would matter. Do NOT swap this for an identity/sequence column:
+      -- those can commit out of assignment order and silently break cursor
+      -- pagination by hiding a row behind a cursor a reader already passed.
+      CREATE TABLE activity_ledger (
+        ledger_seq    INTEGER NOT NULL PRIMARY KEY CHECK (ledger_seq > 0),
+        family        TEXT    NOT NULL CHECK (family IN (
+          'effect', 'egress', 'skill_activation', 'reversal', 'permission_decision'
+        )),
+        receipt_id    TEXT    NOT NULL CHECK (length(receipt_id) = 36),
+        run_id        TEXT    NOT NULL REFERENCES gateway_runs(id) ON DELETE CASCADE,
+        -- Denormalized from gateway_runs so a page needs no join. A run's
+        -- thread/profile/workspace are immutable for its lifetime, so this is
+        -- a copy of a fixed fact, not a divergent second record.
+        thread_id     TEXT    NOT NULL,
+        profile_id    TEXT    NOT NULL,
+        workspace_id  TEXT,
+        occurred_at   INTEGER NOT NULL CHECK (occurred_at >= 0),
+        -- 'live' rows were indexed in their receipt's own transaction, so
+        -- ledger_seq IS their observed append order. 'backfill' rows were
+        -- reconstructed from timestamps by migration and their relative order
+        -- is a best effort, never a claim about true causality.
+        origin        TEXT    NOT NULL CHECK (origin IN ('live', 'backfill')),
+        -- Bounded filter columns. Family-specific vocabularies stay open
+        -- because each family owns its own; an unknown value here is a
+        -- filterable label, never an authority or a semantic upgrade.
+        outcome       TEXT    CHECK (
+          outcome IS NULL OR (
+            length(outcome) BETWEEN 1 AND 40
+            AND outcome NOT GLOB '*[^a-z_]*'
+          )
+        ),
+        consequence   TEXT    CHECK (consequence IS NULL OR consequence IN (
+          'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+        )),
+        tool_name     TEXT    CHECK (
+          tool_name IS NULL OR (
+            length(tool_name) BETWEEN 1 AND 160
+            AND tool_name NOT GLOB '*[^A-Za-z0-9_.:-]*'
+          )
+        ),
+        -- One receipt is indexed at most once. A replayed observation that
+        -- converges on the same receipt converges here too.
+        UNIQUE (family, receipt_id)
+      );
+
+      -- Scoped reads page by ledger_seq within a scope; each index carries it
+      -- as the final tie-breaker so ordering is total, never implementation
+      -- defined.
+      CREATE INDEX idx_activity_ledger_profile
+        ON activity_ledger(profile_id, ledger_seq);
+      CREATE INDEX idx_activity_ledger_thread
+        ON activity_ledger(thread_id, ledger_seq);
+      CREATE INDEX idx_activity_ledger_run
+        ON activity_ledger(run_id, ledger_seq);
+      CREATE INDEX idx_activity_ledger_family
+        ON activity_ledger(family, ledger_seq);
+      CREATE INDEX idx_activity_ledger_occurred
+        ON activity_ledger(occurred_at, ledger_seq);
+
+      -- The ledger is evidence. It is appended once and never rewritten; a
+      -- row disappears only with the run it indexes (ON DELETE CASCADE).
+      CREATE TRIGGER activity_ledger_no_update
+        BEFORE UPDATE ON activity_ledger
+        BEGIN SELECT RAISE(ABORT, 'activity ledger rows are immutable'); END;
+
+      -- Backfill receipts that already exist on an upgraded install.
+      --
+      -- A ledger that silently begins at migration time makes "nothing
+      -- happened before" and "nothing was indexed before" indistinguishable.
+      -- These rows are marked origin='backfill' precisely because their
+      -- relative order is reconstructed from timestamps, not observed at
+      -- append time. Readers must not present that ordering as causality.
+      --
+      -- Runs the receipt outlived are excluded by the inner join: a row whose
+      -- run is gone cannot carry authoritative scope, and inventing one would
+      -- be worse than omitting it. A fresh install matches nothing and
+      -- backfills nothing. The whole statement shares the migration's
+      -- transaction, so an interrupted upgrade leaves no partial index.
+      INSERT INTO activity_ledger (
+        ledger_seq, family, receipt_id, run_id, thread_id, profile_id,
+        workspace_id, occurred_at, origin, outcome, consequence, tool_name
+      )
+      SELECT
+        ROW_NUMBER() OVER (ORDER BY source.occurred_at, source.receipt_id),
+        source.family, source.receipt_id, source.run_id,
+        runs.thread_id, runs.profile_id, runs.workspace_id,
+        source.occurred_at, 'backfill',
+        source.outcome, source.consequence, source.tool_name
+      FROM (
+        SELECT
+          'effect' AS family, receipt.receipt_id AS receipt_id,
+          receipt.run_id AS run_id, receipt.observed_at AS occurred_at,
+          receipt.outcome AS outcome, receipt.consequence AS consequence,
+          identity.tool_name AS tool_name
+        FROM effect_receipts AS receipt
+        JOIN effect_identities AS identity ON identity.effect_id = receipt.effect_id
+        UNION ALL
+        SELECT 'egress', receipt_id, run_id, observed_at, phase, NULL, NULL
+        FROM egress_receipts
+        UNION ALL
+        SELECT 'skill_activation', receipt_id, run_id, activated_at, NULL, NULL, NULL
+        FROM skill_activation_receipts
+        UNION ALL
+        SELECT 'reversal', receipt_id, run_id, observed_at, outcome, NULL, NULL
+        FROM effect_reversal_receipts
+      ) AS source
+      JOIN gateway_runs AS runs ON runs.id = source.run_id;
+    `,
+  },
+  {
+    version: 93,
+    name: '093_permission_decision_evidence',
+    sql: `
+      -- The authoritative link from an approval to the effect it authorized.
+      --
+      -- EE2 consumes an approval atomically immediately before dispatch, which
+      -- is exactly when the tool call identity is known. Effects are keyed
+      -- (run_id, tool_call_id) in effect_identities, so this one column
+      -- completes decision -> effect without inference.
+      --
+      -- Joining on (run_id, tool_name) instead would be a guess: two calls to
+      -- the same tool in one run are indistinguishable, so an approval could be
+      -- attributed to the call that was denied.
+      --
+      -- Nullable because a decision may never be consumed (denied, expired, or
+      -- the run ended first) and because rows written before this migration
+      -- have no recoverable identity. Absent means unknown, never "no effect".
+      ALTER TABLE run_permission_consumptions ADD COLUMN tool_call_id TEXT
+        CHECK (
+          tool_call_id IS NULL OR (
+            length(tool_call_id) BETWEEN 1 AND 200
+            AND tool_call_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+          )
+        );
+
+      -- An immutable record of what a person actually decided.
+      --
+      -- run_permission_requests.status is MUTABLE: expirePermission overwrites
+      -- it, so after an expiry the earlier decision is unrecoverable. A trail
+      -- that must answer "what did you say, and when" cannot rest on a column
+      -- that is later overwritten.
+      --
+      -- The UUID identity also lets the activity ledger index this family
+      -- unchanged; permission request ids are not uniformly UUIDs (the
+      -- hook-approval path mints a prefixed form), so they cannot serve as the
+      -- ledger key without omitting that whole category from the trail.
+      CREATE TABLE run_permission_decision_receipts (
+        receipt_id      TEXT    PRIMARY KEY CHECK (length(receipt_id) = 36),
+        receipt_seq     INTEGER NOT NULL CHECK (receipt_seq > 0),
+        run_id          TEXT    NOT NULL REFERENCES gateway_runs(id) ON DELETE CASCADE,
+        request_id      TEXT    NOT NULL CHECK (
+          length(request_id) BETWEEN 1 AND 200
+          AND request_id NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        operation_hash  TEXT    NOT NULL CHECK (
+          length(operation_hash) = 64 AND operation_hash NOT GLOB '*[^0-9a-f]*'
+        ),
+        decision        TEXT    NOT NULL CHECK (decision IN ('approved', 'denied')),
+        tool_name       TEXT    NOT NULL CHECK (
+          length(tool_name) BETWEEN 1 AND 160
+          AND tool_name NOT GLOB '*[^A-Za-z0-9_.:-]*'
+        ),
+        decided_at      INTEGER NOT NULL CHECK (decided_at >= 0),
+        -- One decision per request. A second attempt converges or conflicts;
+        -- it never appends a competing account of the same choice.
+        UNIQUE (run_id, request_id),
+        UNIQUE (run_id, receipt_seq)
+      );
+
+      CREATE INDEX idx_permission_decision_receipts_run
+        ON run_permission_decision_receipts(run_id, receipt_seq);
+
+      CREATE TRIGGER run_permission_decision_receipts_no_update
+        BEFORE UPDATE ON run_permission_decision_receipts
+        BEGIN SELECT RAISE(ABORT, 'permission decision receipts are immutable'); END;
+      CREATE TRIGGER run_permission_decision_receipts_no_delete
+        BEFORE DELETE ON run_permission_decision_receipts
+        BEGIN SELECT RAISE(ABORT, 'permission decision receipts are immutable'); END;
+    `,
+  },
 ]

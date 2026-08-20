@@ -25,21 +25,33 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
-const V92_NAME = 'add_thread_upgrade_marker'
-const V92_SQL = `
-  ALTER TABLE ownware.threads
-  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v92'
-`.trim()
-const V92_FINGERPRINT = `sha256:${createHash('sha256').update(V92_SQL).digest('hex')}`
+/**
+ * The synthetic "newer binary" migration sits one ABOVE the compiled head.
+ * Derived, not hardcoded: pinning it meant a hand-edit on every migration, and
+ * twice the gapped / unknown-newer cases silently stopped testing what their
+ * names claimed after such an edit.
+ */
+const HEAD = compiledSchemaHeadVersion()
+const NEXT = HEAD + 1
+const AFTER_NEXT = HEAD + 2
 
-const V90_MIGRATION = POSTGRESQL_MIGRATION_MANIFEST.migrations.at(-2)!
-const V90_ONLY_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
+const V94_NAME = 'add_thread_upgrade_marker'
+const V94_SQL = `
+  ALTER TABLE ownware.threads
+  ADD COLUMN upgrade_marker TEXT NOT NULL DEFAULT 'v94'
+`.trim()
+const V94_FINGERPRINT = `sha256:${createHash('sha256').update(V94_SQL).digest('hex')}`
+
+/** Head minus one, resolved relatively so a new migration cannot stale it. */
+const PREVIOUS_HEAD_MIGRATION = POSTGRESQL_MIGRATION_MANIFEST.migrations.at(-2)!
+const PREVIOUS_HEAD_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
   migrations: Object.freeze(POSTGRESQL_MIGRATION_MANIFEST.migrations.slice(0, -1)),
   logicalMigrations: Object.freeze(STORAGE_LOGICAL_MIGRATIONS.slice(0, -1)),
-  verifyCurrentSchema: V90_MIGRATION.verifyApplied,
+  verifyCurrentSchema: PREVIOUS_HEAD_MIGRATION.verifyApplied,
 })
 
 const BASELINE_ONLY_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
@@ -176,7 +188,7 @@ const HISTORY_DIVERGENCES: ReadonlyArray<{
     mutate: async (client) => {
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (92, '', 'not-a-fingerprint')
+        VALUES (${NEXT}, '', 'not-a-fingerprint')
       `)
     },
   },
@@ -185,8 +197,8 @@ const HISTORY_DIVERGENCES: ReadonlyArray<{
     mutate: async (client) => {
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (93, 'skipped_v92', $1)
-      `, [V92_FINGERPRINT])
+        VALUES (${AFTER_NEXT}, 'skipped_next', $1)
+      `, [V94_FINGERPRINT])
     },
   },
   {
@@ -195,8 +207,8 @@ const HISTORY_DIVERGENCES: ReadonlyArray<{
     mutate: async (client) => {
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (92, 'unknown_v92', $1)
-      `, [V92_FINGERPRINT])
+        VALUES (${NEXT}, 'unknown_next', $1)
+      `, [V94_FINGERPRINT])
     },
   },
 ]
@@ -254,7 +266,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       `)).rows
 
       upgraded = await open(database.url)
-      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 91 })
+      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: compiledSchemaHeadVersion() })
       const after = (await client.query(`
         SELECT to_jsonb(message_record) - 'message_seq' AS value
         FROM ownware.messages AS message_record
@@ -281,7 +293,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       const durableHistory = await history(client)
       await upgraded.close()
       upgraded = await open(database.url)
-      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: 91 })
+      await expect(upgraded.health()).resolves.toMatchObject({ state: 'ready', schemaVersion: compiledSchemaHeadVersion() })
       expect(await history(client)).toEqual(durableHistory)
       await upgraded.close()
       upgraded = undefined
@@ -314,7 +326,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       expect(await storage.health()).toMatchObject({
         kind: 'postgresql',
         state: 'ready',
-        schemaVersion: 91,
+        schemaVersion: compiledSchemaHeadVersion(),
       })
       expect(await history(client)).toEqual(POSTGRESQL_MIGRATION_MANIFEST.migrations.map(
         (migration) => ({
@@ -335,7 +347,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       })
       await expect(storage.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 91,
+        schemaVersion: compiledSchemaHeadVersion(),
       })
       expect(await history(client)).toHaveLength(POSTGRESQL_MIGRATION_MANIFEST.migrations.length)
     } finally {
@@ -353,7 +365,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
     let populatedStorage: PostgreSqlStorageAdapter<RootRepositories, object> | undefined
     let freshStorage: PostgreSqlStorageAdapter<RootRepositories, object> | undefined
     try {
-      populatedStorage = await open(populated.url, V90_ONLY_MANIFEST)
+      populatedStorage = await open(populated.url, PREVIOUS_HEAD_MANIFEST)
       const thread = await populatedStorage.repositories.core.threads.create(
         'migration-v91-profile',
         'populated upgrade row',
@@ -363,12 +375,12 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
 
       populatedStorage = await open(populated.url)
       await populatedClient.connect()
-      expect(await populatedStorage.health()).toMatchObject({ state: 'ready', schemaVersion: 91 })
+      expect(await populatedStorage.health()).toMatchObject({ state: 'ready', schemaVersion: compiledSchemaHeadVersion() })
       await expect(populatedStorage.repositories.core.threads.get(thread.id)).resolves.toEqual(before)
 
       freshStorage = await open(fresh.url)
       await freshClient.connect()
-      expect(await freshStorage.health()).toMatchObject({ state: 'ready', schemaVersion: 91 })
+      expect(await freshStorage.health()).toMatchObject({ state: 'ready', schemaVersion: compiledSchemaHeadVersion() })
       await expect(POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(populatedClient))
         .resolves.toBe(true)
       await expect(POSTGRESQL_MIGRATION_MANIFEST.verifyCurrentSchema(freshClient))
@@ -391,7 +403,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       await expect(populatedStorage.repositories.core.threads.get(thread.id)).resolves.toEqual(before)
       await expect(populatedStorage.health()).resolves.toMatchObject({
         state: 'ready',
-        schemaVersion: 91,
+        schemaVersion: compiledSchemaHeadVersion(),
       })
       await populatedStorage.close()
       populatedStorage = undefined
@@ -402,7 +414,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
           SELECT id, title FROM ownware.threads WHERE id = $1
         `, [thread.id])).rows,
       }
-      await expect(failedOpen(populated.url, V90_ONLY_MANIFEST)).resolves.toMatchObject({
+      await expect(failedOpen(populated.url, PREVIOUS_HEAD_MANIFEST)).resolves.toMatchObject({
         code: 'schema_version_newer',
         phase: 'migration',
         retryable: false,
@@ -421,7 +433,7 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
     }
   }, 20_000)
 
-  it('refuses a coherent pre-applied v92 migration unchanged because no compiled v92 seam exists', async () => {
+  it('refuses a coherent pre-applied v94 migration unchanged because no compiled v94 seam exists', async () => {
     const database = await createDisposablePostgreSqlDatabase(TEST_URL!)
     const client = new Client({ connectionString: database.url, ssl: false })
     let storage: PostgreSqlStorageAdapter<RootRepositories, object> | undefined
@@ -435,11 +447,11 @@ describePostgreSql('PostgreSQL migration history and upgrade boundary', () => {
       storage = undefined
       await client.connect()
       await client.query('BEGIN')
-      await client.query(V92_SQL)
+      await client.query(V94_SQL)
       await client.query(`
         INSERT INTO ownware._migrations (version, name, fingerprint)
-        VALUES (92, $1, $2)
-      `, [V92_NAME, V92_FINGERPRINT])
+        VALUES (${NEXT}, $1, $2)
+      `, [V94_NAME, V94_FINGERPRINT])
       await client.query('COMMIT')
       const before = await client.query<{
         readonly id: string

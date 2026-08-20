@@ -6,6 +6,7 @@ import type {
   EgressTransport,
 } from '@ownware/loom'
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
+import { appendActivityLedgerRow } from './activity-ledger.js'
 
 export type EgressReceiptPhase =
   | 'dispatch_started'
@@ -451,6 +452,15 @@ export class EgressReceiptStore {
       input.reasonCode,
       now,
     )
+    // Indexed in this same transaction; a converged duplicate returned above
+    // never reaches here, so one receipt yields exactly one ledger row.
+    appendActivityLedgerRow(this.db, {
+      family: 'egress',
+      receiptId,
+      runId: input.runId,
+      occurredAt: now,
+      outcome: input.phase,
+    })
     return projectEgressReceipt({
       receipt_id: receiptId,
       receipt_seq: sequence,

@@ -28,7 +28,7 @@ the published package.
 |---|---|
 | `src/index.ts` | arg parsing, profile pick (prefers `ownware-code`), wiring, `main()` |
 | `src/gateway.ts` | attach (`--base-url`) or boot in-process loopback gateway; profiles-dir resolution (local `./profiles` wins, cortex bundle as fallback) |
-| `src/repl.ts` | the terminal side of the chat loop: readline prompt, raw-mode key wiring, `--resume` via `/hydrate` |
+| `src/repl.ts` | the terminal side of the chat loop: readline prompt, raw-mode key wiring, `--resume` via the Client's typed hydration contract; exact live run stream when correlated, legacy thread fallback only for internal work |
 | `src/stream-run.ts` | one run's stream to terminal — approval cards → exact decision route, esc-cancel, reconnect `since=`; injectable `KeyChannel`/`askLine` so it's provable over the real wire |
 | `src/render.ts` | **the testable heart** — one gateway event in, appended scrollback out; pure w.r.t. terminal (injected sink + style) |
 | `src/style.ts` | plain ANSI styling; `NO_COLOR` + non-TTY collapse to identity |
@@ -60,6 +60,10 @@ the published package.
   (`inputSummary`, "arguments withheld by the gateway"); it must never
   fetch or display unredacted surfaces. Denied tools render as
   strikethrough decisions, not errors.
+- **Tool presentation follows the exact event descriptor.** Never infer a
+  tool's kind, verb, or primary field from its name, a familiar input-key
+  catalogue, or partial JSON. Missing/malformed descriptors and incomplete
+  arguments render generically until authoritative structure arrives.
 - **Session state lives under the gateway's `dataDir`** so test isolation
   (temp dataDir) automatically isolates CLI state. Tests never touch the
   real `~/.ownware` (repo guardrail #4) — pass temp `profilesDir` AND

@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { TranscriptRenderer, formatDuration } from '../../render.js'
 import { PLAIN_STYLE } from '../../style.js'
 
+const READ_DESCRIPTOR = {
+  kind: 'file-read',
+  summary: { verb: 'Read', primaryField: 'file_path' },
+} as const
+const SHELL_DESCRIPTOR = {
+  kind: 'shell',
+  summary: { verb: 'Ran', primaryField: 'command' },
+} as const
+
 function collect(): { out: (s: string) => void; text: () => string } {
   let buf = ''
   return {
@@ -32,7 +41,7 @@ describe('TranscriptRenderer', () => {
     r.handle('thinking.delta', { text: 'hm' })
     r.handle('thinking.delta', { text: 'hmm' })
     r.handle('thinking.complete', {})
-    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile' })
+    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', uiDescriptor: READ_DESCRIPTOR })
     r.handle('tool.call.end', { toolCallId: 't1', durationMs: 843, isError: false })
     r.handle('text.delta', { text: 'Done.' })
     r.flushLine()
@@ -56,14 +65,14 @@ describe('TranscriptRenderer', () => {
     const sink = collect()
     const r = makeRenderer(sink)
     r.handle('text.delta', { text: 'Checking' })
-    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute' })
+    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     expect(sink.text()).toBe('Checking\n● Running\n')
   })
 
   it('renders tool errors with the first line of the result', () => {
     const sink = collect()
     const r = makeRenderer(sink)
-    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute' })
+    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', uiDescriptor: SHELL_DESCRIPTOR })
     r.handle('tool.call.end', {
       toolCallId: 't1',
       durationMs: 12,
@@ -82,6 +91,7 @@ describe('TranscriptRenderer', () => {
       toolCallId: 't1',
       toolName: 'readFile',
       input: { file_path: 'greeting.txt' },
+      uiDescriptor: READ_DESCRIPTOR,
     })
     r.handle('tool.call.end', { toolCallId: 't1', durationMs: 2, isError: false })
     expect(sink.text()).toBe('● Reading greeting.txt\n  ✓ Read greeting.txt · 2ms\n')
@@ -94,22 +104,23 @@ describe('TranscriptRenderer', () => {
     // to carry the truth.
     const sink = collect()
     const r = makeRenderer(sink)
-    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', input: {} })
+    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'readFile', input: {}, uiDescriptor: READ_DESCRIPTOR })
     r.handle('tool.call.args_delta', { toolCallId: 't1', delta: '{"file_path":"src/' })
     r.handle('tool.call.args_delta', { toolCallId: 't1', delta: 'index.ts"}' })
     r.handle('tool.call.end', { toolCallId: 't1', durationMs: 5, isError: false })
     expect(sink.text()).toBe('● Reading\n  ✓ Read src/index.ts · 5ms\n')
   })
 
-  it('names the command from streamed arguments even if the JSON is truncated (F10)', () => {
-    // A dropped stream must still say something true rather than
-    // falling back to a bare tool name.
+  it('does not guess a target from truncated streamed JSON', () => {
+    // The descriptor proves how a complete input should render, but a
+    // dropped string does not prove that a partial field is valid JSON.
     const sink = collect()
     const r = makeRenderer(sink)
-    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', input: {} })
+    r.handle('tool.call.start', { toolCallId: 't1', toolName: 'shell_execute', input: {}, uiDescriptor: SHELL_DESCRIPTOR })
     r.handle('tool.call.args_delta', { toolCallId: 't1', delta: '{"command":"bun run build"' })
     r.handle('tool.call.end', { toolCallId: 't1', durationMs: 9, isError: false })
-    expect(sink.text()).toContain('✓ Ran $ bun run build · 9ms')
+    expect(sink.text()).toBe('● Running\n  ✓ Ran · 9ms\n')
+    expect(sink.text()).not.toContain('bun run build')
   })
 
   it('an unknown tool still settles honestly with its own name', () => {

@@ -29,9 +29,18 @@ export function AgentChat() {
 }
 ```
 
-`OwnwareChat` renders messages, streaming replies, tool activity, approval
-requests, errors, and the composer. Use `theme="light"` or override the
-namespaced `--ow-*` CSS variables to fit the host application.
+`OwnwareChat` renders durable hydration plus live replies, ordered tool activity,
+exact approval and sensitive-input requests, evidence, bounded reversal offers,
+connection recovery, errors, and the composer. Use `theme="light"` or override
+the namespaced `--ow-*` CSS variables to fit the host application.
+
+Strict-CSP hosts can set `injectStyles={false}` and ship the exported
+`ownwareChatCss` string through their normal build-time stylesheet pipeline.
+
+Pass `threadId` to reopen a thread. The component hydrates durable history first,
+then tails only an authoritatively correlated active run. It retains drafts and
+pending decisions when a mutation fails and does not force-scroll a reader who
+has moved away from the latest activity.
 
 ## Headless hook
 
@@ -55,9 +64,17 @@ function CustomChat() {
 }
 ```
 
-The hook exposes `messages`, `status`, `models`, `send`, `approve`, `deny`,
-and `abort`. `OwnwareStudio` adds a profile picker and in-session conversation
-sidebar around the same chat component.
+The hook exposes transcript and connection state, active thread/run identities,
+capability support, evidence resources/projections, exact permission and
+sensitive-input mutations, cancellation, reversal execution, hydration and
+refresh controls. A custom sensitive-input UI must opt in with
+`sensitiveInputMode: 'component-local'`, keep the value in its local controlled
+field, and call `submitSensitiveInput` directly; never copy the value into shared
+application or reducer state.
+
+`OwnwareStudio` remains a small generic profile/conversation shell around the
+same chat component. Product-specific workspace panes and routing belong in the
+host application.
 
 ## ChatGPT connection
 

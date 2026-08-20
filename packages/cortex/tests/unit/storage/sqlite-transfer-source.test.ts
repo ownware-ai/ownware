@@ -8,8 +8,8 @@ import { MIGRATIONS } from '../../../src/gateway/db/schema.js'
 import { runMigrationsSafely } from '../../../src/gateway/db/migration-safety.js'
 import {
   assertSqliteTransferSnapshot,
-  SQLITE_V91_SCHEMA_OBJECT_COUNT,
-  SQLITE_V91_SCHEMA_OBJECT_HASH,
+  SQLITE_V93_SCHEMA_OBJECT_COUNT,
+  SQLITE_V93_SCHEMA_OBJECT_HASH,
   SqliteTransferPreflightError,
   SqliteTransferFindingsError,
   assertSqliteTransferSourceUnchanged,
@@ -22,6 +22,9 @@ import {
   type LogicalColumnDescriptor,
   type PhysicalColumnDescriptor,
 } from '../../../src/storage/logical-schema.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
+import { POSTGRESQL_TRANSFER_BUSINESS_TABLES } from '../../../src/storage/postgresql-transfer-preflight.js'
+import { CURRENT_LOGICAL_COLUMN_COUNT } from '../../../src/storage/logical-schema.js'
 
 function fileDigest(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -100,8 +103,8 @@ describe('SQLite transfer source preflight', () => {
       2n,
     )
     expect(sqliteSchemaObjectReceipt(db)).toEqual({
-      count: SQLITE_V91_SCHEMA_OBJECT_COUNT,
-      digest: SQLITE_V91_SCHEMA_OBJECT_HASH,
+      count: SQLITE_V93_SCHEMA_OBJECT_COUNT,
+      digest: SQLITE_V93_SCHEMA_OBJECT_HASH,
     })
     db.close()
     const before = fileDigest(dbPath)
@@ -112,13 +115,13 @@ describe('SQLite transfer source preflight', () => {
       snapshotAuthority: 'sqlite-read-transaction',
       writerExclusion: 'not-proven',
       authorizesTargetWrites: false,
-      schemaVersion: 91,
-      schemaObjectCount: SQLITE_V91_SCHEMA_OBJECT_COUNT,
-      schemaObjectDigest: SQLITE_V91_SCHEMA_OBJECT_HASH,
+      schemaVersion: compiledSchemaHeadVersion(),
+      schemaObjectCount: SQLITE_V93_SCHEMA_OBJECT_COUNT,
+      schemaObjectDigest: SQLITE_V93_SCHEMA_OBJECT_HASH,
       logicalColumnCount: SQLITE_V91_COLUMN_COUNT,
-      tableCount: 77,
+      tableCount: POSTGRESQL_TRANSFER_BUSINESS_TABLES.length,
     })
-    expect(receipt.tables).toHaveLength(77)
+    expect(receipt.tables).toHaveLength(POSTGRESQL_TRANSFER_BUSINESS_TABLES.length)
     expect(receipt.tables.map((table) => table.table)).toEqual(
       [...receipt.tables.map((table) => table.table)].sort(),
     )

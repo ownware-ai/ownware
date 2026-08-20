@@ -25,6 +25,8 @@ export type {
   Thread,
   ThreadMessagePart,
   ThreadAttachment,
+  ThreadToolUIKind,
+  ThreadToolUIDescriptor,
   ThreadToolCall,
   ThreadSubAgent,
   ThreadPermission,

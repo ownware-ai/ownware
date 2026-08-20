@@ -7,6 +7,7 @@ import {
   configuredPostgreSqlTestUrl,
   createDisposablePostgreSqlDatabase,
 } from '../../storage/postgresql-test-database.js'
+import { compiledSchemaHeadVersion } from '../../../src/storage/postgresql-migrations.js'
 
 const TEST_URL = configuredPostgreSqlTestUrl()
 const describePostgreSql = TEST_URL === undefined ? describe.skip : describe
@@ -60,7 +61,7 @@ describePostgreSql('PostgreSQL-backed public gateway', () => {
     await expect(gateway.state.storageHealth()).resolves.toMatchObject({
       kind: 'postgresql',
       state: 'ready',
-      schemaVersion: 91,
+      schemaVersion: compiledSchemaHeadVersion(),
     })
     const health = await fetch(`http://127.0.0.1:${gateway.port}/api/v1/health`)
     expect(health.status).toBe(200)

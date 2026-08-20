@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { SqliteDatabase } from '../storage/sqlite-driver.js'
+import { appendActivityLedgerRow } from './activity-ledger.js'
 import {
   EffectReceiptStore,
   isEffectReceiptUuid,
@@ -494,6 +495,15 @@ export class EffectReversalStore {
         input.idempotencyKey,
         now,
       )
+      // Indexed in this same transaction. An idempotent replay returns the
+      // existing receipt earlier and never reaches here.
+      appendActivityLedgerRow(this.db, {
+        family: 'reversal',
+        receiptId,
+        runId: input.runId,
+        occurredAt: now,
+        outcome,
+      })
       offerRow = this.requireOfferRow(input.runId, input.offerId)
       const receipt = this.requireReceiptRow(receiptId)
       return {

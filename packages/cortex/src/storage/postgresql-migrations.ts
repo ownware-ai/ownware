@@ -1730,7 +1730,7 @@ PostgreSqlSchemaExpectation = Object.freeze({
   }),
 })
 
-export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+const POSTGRESQL_V91_SCHEMA_EXPECTATION:
 PostgreSqlSchemaExpectation = Object.freeze({
   summary: Object.freeze({
     ...POSTGRESQL_V90_SCHEMA_EXPECTATION.summary,
@@ -1842,15 +1842,291 @@ async function postgreSqlMessageSequenceMatches(client: QueryClient): Promise<bo
     row.data_valid === true
 }
 
-async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<boolean> {
+const ACTIVITY_LEDGER_COLUMNS = [
+  { table: 'activity_ledger', name: 'ledger_seq', type: 'BIGINT', nullable: false, pkPosition: 1 },
+  { table: 'activity_ledger', name: 'family', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'receipt_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'thread_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'profile_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'workspace_id', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'occurred_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'origin', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'outcome', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'consequence', type: 'TEXT', nullable: true, pkPosition: 0 },
+  { table: 'activity_ledger', name: 'tool_name', type: 'TEXT', nullable: true, pkPosition: 0 },
+] as const
+
+const ACTIVITY_LEDGER_INDEXES = [
+  ['idx_activity_ledger_family', 'family'],
+  ['idx_activity_ledger_occurred', 'occurred_at'],
+  ['idx_activity_ledger_profile', 'profile_id'],
+  ['idx_activity_ledger_run', 'run_id'],
+  ['idx_activity_ledger_thread', 'thread_id'],
+].map(([name, leading]) => ({
+  table: 'activity_ledger',
+  name: name!,
+  unique: false,
+  columns: [
+    { name: leading!, descending: false },
+    { name: 'ledger_seq', descending: false },
+  ],
+  predicate: null,
+}))
+
+/**
+ * Deltas measured against a real PostgreSQL 17 catalogue, not derived by hand:
+ * +1 table, +12 columns, +1 foreign key, +1 unique constraint, +5 explicit
+ * indexes, +1 trigger. The PRIMARY KEY is contype 'p' and its index is
+ * constraint-backed, so neither is counted here.
+ */
+const POSTGRESQL_V92_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_V91_SCHEMA_EXPECTATION.summary,
+    tableCount: POSTGRESQL_V91_SCHEMA_EXPECTATION.summary.tableCount + 1,
+    columnCount: POSTGRESQL_V91_SCHEMA_EXPECTATION.summary.columnCount + 12,
+    foreignKeyCount: POSTGRESQL_V91_SCHEMA_EXPECTATION.summary.foreignKeyCount + 1,
+    uniqueConstraintCount:
+      POSTGRESQL_V91_SCHEMA_EXPECTATION.summary.uniqueConstraintCount + 1,
+    explicitIndexCount: POSTGRESQL_V91_SCHEMA_EXPECTATION.summary.explicitIndexCount + 5,
+    triggerCount: POSTGRESQL_V91_SCHEMA_EXPECTATION.summary.triggerCount + 1,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_V91_SCHEMA_EXPECTATION.manifest.columns,
+      ...ACTIVITY_LEDGER_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: Object.freeze([
+      ...POSTGRESQL_V91_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+      { table: 'activity_ledger', columns: ['family', 'receipt_id'] },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_V91_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'activity_ledger',
+        columns: ['run_id'],
+        referencedTable: 'gateway_runs',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'CASCADE',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_V91_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      ...ACTIVITY_LEDGER_INDEXES,
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
+
+const PERMISSION_DECISION_EVIDENCE_SQL = `
+ALTER TABLE ownware.run_permission_consumptions ADD COLUMN tool_call_id TEXT;
+ALTER TABLE ownware.run_permission_consumptions
+  ADD CONSTRAINT ck_run_permission_consumptions_tool_call_id CHECK (
+    tool_call_id IS NULL OR (
+      length(tool_call_id) BETWEEN 1 AND 200 AND tool_call_id ~ '^[A-Za-z0-9_.:-]+$'
+    )
+  );
+
+CREATE TABLE ownware.run_permission_decision_receipts (
+  receipt_id TEXT PRIMARY KEY CHECK (
+    receipt_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  receipt_seq BIGINT NOT NULL CHECK (receipt_seq BETWEEN 1 AND 9007199254740991),
+  run_id TEXT NOT NULL REFERENCES ownware.gateway_runs(id) ON DELETE CASCADE,
+  request_id TEXT NOT NULL CHECK (
+    length(request_id) BETWEEN 1 AND 200 AND request_id ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  operation_hash TEXT NOT NULL CHECK (
+    length(operation_hash) = 64 AND operation_hash ~ '^[0-9a-f]+$'
+  ),
+  decision TEXT NOT NULL CHECK (decision IN ('approved', 'denied')),
+  tool_name TEXT NOT NULL CHECK (
+    length(tool_name) BETWEEN 1 AND 160 AND tool_name ~ '^[A-Za-z0-9_.:-]+$'
+  ),
+  decided_at BIGINT NOT NULL CHECK (decided_at BETWEEN 0 AND 9007199254740991),
+  UNIQUE (run_id, request_id),
+  UNIQUE (run_id, receipt_seq)
+);
+
+CREATE INDEX idx_permission_decision_receipts_run
+  ON ownware.run_permission_decision_receipts(run_id, receipt_seq);
+
+CREATE FUNCTION ownware._reject_permission_decision_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'permission decision receipts are immutable';
+END;
+$$;
+
+CREATE TRIGGER run_permission_decision_receipts_no_update
+  BEFORE UPDATE ON ownware.run_permission_decision_receipts
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_permission_decision_mutation();
+`
+
+const PERMISSION_DECISION_RECEIPT_COLUMNS = [
+  { table: 'run_permission_decision_receipts', name: 'receipt_id', type: 'TEXT', nullable: false, pkPosition: 1 },
+  { table: 'run_permission_decision_receipts', name: 'receipt_seq', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_decision_receipts', name: 'run_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_decision_receipts', name: 'request_id', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_decision_receipts', name: 'operation_hash', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_decision_receipts', name: 'decision', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_decision_receipts', name: 'tool_name', type: 'TEXT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_decision_receipts', name: 'decided_at', type: 'BIGINT', nullable: false, pkPosition: 0 },
+  { table: 'run_permission_consumptions', name: 'tool_call_id', type: 'TEXT', nullable: true, pkPosition: 0 },
+] as const
+
+/**
+ * Deltas for 093: +1 table, +9 columns (8 new + the consumption link),
+ * +1 foreign key, +2 unique constraints, +1 explicit index, +1 trigger.
+ * Measured against a real catalogue, not derived.
+ */
+export const POSTGRESQL_CURRENT_SCHEMA_EXPECTATION:
+PostgreSqlSchemaExpectation = Object.freeze({
+  summary: Object.freeze({
+    ...POSTGRESQL_V92_SCHEMA_EXPECTATION.summary,
+    tableCount: POSTGRESQL_V92_SCHEMA_EXPECTATION.summary.tableCount + 1,
+    columnCount: POSTGRESQL_V92_SCHEMA_EXPECTATION.summary.columnCount + 9,
+    foreignKeyCount: POSTGRESQL_V92_SCHEMA_EXPECTATION.summary.foreignKeyCount + 1,
+    uniqueConstraintCount:
+      POSTGRESQL_V92_SCHEMA_EXPECTATION.summary.uniqueConstraintCount + 2,
+    explicitIndexCount: POSTGRESQL_V92_SCHEMA_EXPECTATION.summary.explicitIndexCount + 1,
+    triggerCount: POSTGRESQL_V92_SCHEMA_EXPECTATION.summary.triggerCount + 1,
+  }),
+  manifest: Object.freeze({
+    columns: Object.freeze([
+      ...POSTGRESQL_V92_SCHEMA_EXPECTATION.manifest.columns,
+      ...PERMISSION_DECISION_RECEIPT_COLUMNS,
+    ].sort((left, right) => (
+      left.table.localeCompare(right.table) || left.name.localeCompare(right.name)
+    ))),
+    uniqueConstraints: Object.freeze([
+      ...POSTGRESQL_V92_SCHEMA_EXPECTATION.manifest.uniqueConstraints,
+      { table: 'run_permission_decision_receipts', columns: ['run_id', 'request_id'] },
+      { table: 'run_permission_decision_receipts', columns: ['run_id', 'receipt_seq'] },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    foreignKeys: Object.freeze([
+      ...POSTGRESQL_V92_SCHEMA_EXPECTATION.manifest.foreignKeys,
+      {
+        table: 'run_permission_decision_receipts',
+        columns: ['run_id'],
+        referencedTable: 'gateway_runs',
+        referencedColumns: ['id'],
+        onUpdate: 'NO ACTION',
+        onDelete: 'CASCADE',
+        deferred: false,
+      },
+    ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))),
+    explicitIndexes: Object.freeze([
+      ...POSTGRESQL_V92_SCHEMA_EXPECTATION.manifest.explicitIndexes,
+      {
+        table: 'run_permission_decision_receipts',
+        name: 'idx_permission_decision_receipts_run',
+        unique: false,
+        columns: [
+          { name: 'run_id', descending: false },
+          { name: 'receipt_seq', descending: false },
+        ],
+        predicate: null,
+      },
+    ].sort((left, right) => left.name.localeCompare(right.name))),
+  }),
+})
+
+export async function postgreSqlCurrentSchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_CURRENT_SCHEMA_EXPECTATION) &&
     await postgreSqlV90SemanticsMatch(client) &&
-    await postgreSqlEffectReversalsMatch(client)
+    await postgreSqlEffectReversalsMatch(client) &&
+    await postgreSqlActivityLedgerMatches(client) &&
+    await postgreSqlPermissionDecisionReceiptsMatch(client)
+}
+
+/** Migration 092's own postcondition — see the note above. */
+async function postgreSqlV92SchemaMatches(client: QueryClient): Promise<boolean> {
+  return await postgreSqlSchemaMatches(client, POSTGRESQL_V92_SCHEMA_EXPECTATION) &&
+    await postgreSqlV90SemanticsMatch(client) &&
+    await postgreSqlEffectReversalsMatch(client) &&
+    await postgreSqlActivityLedgerMatches(client)
+}
+
+/**
+ * Semantic postcondition for permission decision evidence: the immutability
+ * trigger and its function must both exist. Structural counts prove the table's
+ * shape; only the trigger proves a recorded decision cannot be rewritten.
+ */
+async function postgreSqlPermissionDecisionReceiptsMatch(
+  client: QueryClient,
+): Promise<boolean> {
+  const result = await client.query<{
+    readonly trigger_count: string
+    readonly function_count: string
+  }>(`
+    SELECT
+      (SELECT count(*)::text
+        FROM pg_catalog.pg_trigger AS trigger_record
+        JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+        JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'ownware'
+          AND relation.relname = 'run_permission_decision_receipts'
+          AND NOT trigger_record.tgisinternal) AS trigger_count,
+      (SELECT count(*)::text
+        FROM pg_catalog.pg_proc AS procedure_record
+        JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure_record.pronamespace
+        WHERE namespace.nspname = 'ownware'
+          AND procedure_record.proname = '_reject_permission_decision_mutation') AS function_count
+  `)
+  const row = result.rows[0]
+  return row?.trigger_count === '1' && row?.function_count === '1'
+}
+
+/**
+ * Semantic postcondition for the activity ledger: the immutability trigger and
+ * its function must both exist. Structural counts above prove the table is
+ * shaped correctly; they cannot prove it is append-only.
+ */
+async function postgreSqlActivityLedgerMatches(client: QueryClient): Promise<boolean> {
+  const result = await client.query<{
+    readonly trigger_count: string
+    readonly function_count: string
+  }>(`
+    SELECT
+      (SELECT count(*)::text
+        FROM pg_catalog.pg_trigger AS trigger_record
+        JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger_record.tgrelid
+        JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'ownware'
+          AND relation.relname = 'activity_ledger'
+          AND NOT trigger_record.tgisinternal) AS trigger_count,
+      (SELECT count(*)::text
+        FROM pg_catalog.pg_proc AS procedure_record
+        JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure_record.pronamespace
+        WHERE namespace.nspname = 'ownware'
+          AND procedure_record.proname = '_reject_activity_ledger_mutation') AS function_count
+  `)
+  const row = result.rows[0]
+  return row?.trigger_count === '1' && row?.function_count === '1'
 }
 
 async function postgreSqlV90SchemaMatches(client: QueryClient): Promise<boolean> {
   return await postgreSqlSchemaMatches(client, POSTGRESQL_V90_SCHEMA_EXPECTATION) &&
     await postgreSqlV90SemanticsMatch(client)
+}
+
+/**
+ * Each migration's own postcondition. It must NOT be the "current" expectation:
+ * a later additive migration would then retroactively change what an earlier
+ * one is required to have produced, and that earlier migration would fail on
+ * every fresh install. This trap has now fired three times (090, 091, 092) —
+ * when adding a migration, pin the previous head before wiring the new one.
+ */
+async function postgreSqlV91SchemaMatches(client: QueryClient): Promise<boolean> {
+  return await postgreSqlSchemaMatches(client, POSTGRESQL_V91_SCHEMA_EXPECTATION) &&
+    await postgreSqlV90SemanticsMatch(client) &&
+    await postgreSqlEffectReversalsMatch(client)
 }
 
 /**
@@ -2473,12 +2749,140 @@ const EFFECT_REVERSALS_MIGRATION: PostgreSqlMigration = Object.freeze({
   version: 91,
   name: '091_effect_reversals',
   sql: EFFECT_REVERSALS_SQL,
+  verifyApplied: postgreSqlV91SchemaMatches,
+})
+
+const ACTIVITY_LEDGER_SQL = `
+CREATE TABLE ownware.activity_ledger (
+  ledger_seq BIGINT PRIMARY KEY CHECK (ledger_seq BETWEEN 1 AND 9007199254740991),
+  family TEXT NOT NULL CHECK (family IN (
+    'effect', 'egress', 'skill_activation', 'reversal', 'permission_decision'
+  )),
+  receipt_id TEXT NOT NULL CHECK (
+    receipt_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  ),
+  run_id TEXT NOT NULL REFERENCES ownware.gateway_runs(id) ON DELETE CASCADE,
+  thread_id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  workspace_id TEXT,
+  occurred_at BIGINT NOT NULL CHECK (occurred_at BETWEEN 0 AND 9007199254740991),
+  origin TEXT NOT NULL CHECK (origin IN ('live', 'backfill')),
+  outcome TEXT CHECK (
+    outcome IS NULL OR (length(outcome) BETWEEN 1 AND 40 AND outcome ~ '^[a-z_]+$')
+  ),
+  consequence TEXT CHECK (consequence IS NULL OR consequence IN (
+    'none_observed', 'output_observed', 'effect_possible', 'effect_confirmed'
+  )),
+  tool_name TEXT CHECK (
+    tool_name IS NULL OR (
+      length(tool_name) BETWEEN 1 AND 160 AND tool_name ~ '^[A-Za-z0-9_.:-]+$'
+    )
+  ),
+  UNIQUE (family, receipt_id)
+);
+
+CREATE INDEX idx_activity_ledger_profile
+  ON ownware.activity_ledger(profile_id, ledger_seq);
+CREATE INDEX idx_activity_ledger_thread
+  ON ownware.activity_ledger(thread_id, ledger_seq);
+CREATE INDEX idx_activity_ledger_run
+  ON ownware.activity_ledger(run_id, ledger_seq);
+CREATE INDEX idx_activity_ledger_family
+  ON ownware.activity_ledger(family, ledger_seq);
+CREATE INDEX idx_activity_ledger_occurred
+  ON ownware.activity_ledger(occurred_at, ledger_seq);
+
+CREATE FUNCTION ownware._reject_activity_ledger_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'activity ledger rows are immutable';
+END;
+$$;
+
+CREATE TRIGGER activity_ledger_no_update
+  BEFORE UPDATE ON ownware.activity_ledger
+  FOR EACH ROW EXECUTE FUNCTION ownware._reject_activity_ledger_mutation();
+
+-- Backfill existing receipts on an upgraded install. See the SQLite twin for
+-- the reasoning; origin='backfill' marks rows whose relative order is
+-- reconstructed from timestamps rather than observed at append time.
+INSERT INTO ownware.activity_ledger (
+  ledger_seq, family, receipt_id, run_id, thread_id, profile_id,
+  workspace_id, occurred_at, origin, outcome, consequence, tool_name
+)
+SELECT
+  ROW_NUMBER() OVER (ORDER BY source.occurred_at, source.receipt_id),
+  source.family, source.receipt_id, source.run_id,
+  runs.thread_id, runs.profile_id, runs.workspace_id,
+  source.occurred_at, 'backfill',
+  source.outcome, source.consequence, source.tool_name
+FROM (
+  SELECT
+    'effect' AS family, receipt.receipt_id AS receipt_id,
+    receipt.run_id AS run_id, receipt.observed_at AS occurred_at,
+    receipt.outcome AS outcome, receipt.consequence AS consequence,
+    identity.tool_name AS tool_name
+  FROM ownware.effect_receipts AS receipt
+  JOIN ownware.effect_identities AS identity ON identity.effect_id = receipt.effect_id
+  UNION ALL
+  SELECT 'egress', receipt_id, run_id, observed_at, phase, NULL, NULL
+  FROM ownware.egress_receipts
+  UNION ALL
+  SELECT 'skill_activation', receipt_id, run_id, activated_at, NULL, NULL, NULL
+  FROM ownware.skill_activation_receipts
+  UNION ALL
+  SELECT 'reversal', receipt_id, run_id, observed_at, outcome, NULL, NULL
+  FROM ownware.effect_reversal_receipts
+) AS source
+JOIN ownware.gateway_runs AS runs ON runs.id = source.run_id;
+`
+
+const ACTIVITY_LEDGER_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 92,
+  name: '092_activity_ledger',
+  sql: ACTIVITY_LEDGER_SQL,
+  verifyApplied: postgreSqlV92SchemaMatches,
+})
+
+const PERMISSION_DECISION_EVIDENCE_MIGRATION: PostgreSqlMigration = Object.freeze({
+  version: 93,
+  name: '093_permission_decision_evidence',
+  sql: PERMISSION_DECISION_EVIDENCE_SQL,
   verifyApplied: postgreSqlCurrentSchemaMatches,
 })
 
+/**
+ * Reject a manifest where a non-head migration verifies against the "current"
+ * schema.
+ *
+ * `postgreSqlCurrentSchemaMatches` describes the compiled HEAD. If an earlier
+ * migration uses it, the next additive migration retroactively changes what
+ * that earlier one is required to have produced, and it fails on every fresh
+ * install — with a `schema_manifest_mismatch` that points nowhere near the
+ * cause. This exact mistake shipped at 090, 091 and 092; a comment asking
+ * people to remember was not enough, so it is now a load failure.
+ */
+export function assertOnlyHeadVerifiesCurrentSchema(
+  migrations: readonly PostgreSqlMigration[],
+): readonly PostgreSqlMigration[] {
+  for (const [index, migration] of migrations.entries()) {
+    if (
+      index !== migrations.length - 1
+      && migration.verifyApplied === postgreSqlCurrentSchemaMatches
+    ) {
+      throw new TypeError(
+        `PostgreSQL migration ${migration.name} verifies against the current `
+        + 'schema but is not the compiled head. Pin it to its own postcondition '
+        + 'before adding a later migration.',
+      )
+    }
+  }
+  return migrations
+}
+
 /** Immutable production PostgreSQL dialect manifest. */
 export const POSTGRESQL_MIGRATION_MANIFEST: PostgreSqlMigrationManifest = Object.freeze({
-  migrations: Object.freeze([
+  migrations: Object.freeze(assertOnlyHeadVerifiesCurrentSchema([
     BASELINE_MIGRATION,
     MESSAGE_SEQUENCE_MIGRATION,
     PROVIDER_USAGE_EVIDENCE_MIGRATION,
@@ -2489,7 +2893,9 @@ export const POSTGRESQL_MIGRATION_MANIFEST: PostgreSqlMigrationManifest = Object
     EGRESS_EVIDENCE_MIGRATION,
     SKILL_ACTIVATION_RECEIPTS_MIGRATION,
     EFFECT_REVERSALS_MIGRATION,
-  ]),
+    ACTIVITY_LEDGER_MIGRATION,
+    PERMISSION_DECISION_EVIDENCE_MIGRATION,
+  ])),
   logicalMigrations: STORAGE_LOGICAL_MIGRATIONS,
   verifyCurrentSchema: postgreSqlCurrentSchemaMatches,
 })
@@ -2619,4 +3025,16 @@ export async function applyPostgreSqlMigrationManifest(
   if (!await manifest.verifyCurrentSchema(client)) {
     throw new PostgreSqlStorageError('schema_manifest_mismatch', 'migration', false)
   }
+}
+
+/**
+ * The compiled schema head.
+ *
+ * Tests that exercise behaviour AT the head should read it from here rather
+ * than hardcoding a number: every migration otherwise costs a sweep of
+ * hand-edited constants, and each edit is a chance to silently change what a
+ * test claims to check.
+ */
+export function compiledSchemaHeadVersion(): number {
+  return POSTGRESQL_MIGRATION_MANIFEST.migrations.at(-1)!.version
 }

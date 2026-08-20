@@ -17,6 +17,7 @@ import {
   type ProjectedRunSnapshot,
   type ProjectedSkillActivationReceipt,
   type ProjectionCapability,
+  type ProjectionResource,
 } from '../index.js'
 
 const RUN_ID = 'run-1'
@@ -160,6 +161,15 @@ describe('projection capability and resource state', () => {
     )).toEqual({ state: 'unsupported', reason: 'malformed_capability_set' })
 
     expect(selectCapabilitySupport(
+      readyProjection([{ id: 'runs.snapshot', version: 4 }]),
+      EVIDENCE_CAPABILITIES.runSnapshot,
+    )).toEqual({
+      state: 'incompatible',
+      reason: 'capability_version_too_old',
+      observedVersion: 4,
+    })
+
+    expect(selectCapabilitySupport(
       partialProjection([{ id: 'runs.effects.read', version: 1 }], 'capability_response_partial'),
       EVIDENCE_CAPABILITIES.effectsRead,
     )).toEqual({ state: 'partial', reason: 'capability_response_partial' })
@@ -173,6 +183,16 @@ describe('projection capability and resource state', () => {
       loadingProjection(),
       EVIDENCE_CAPABILITIES.effectsRead,
     )).toEqual({ state: 'loading', reason: 'resource_loading' })
+
+    const futureState = {
+      state: 'future_state',
+      completeness: 'complete',
+      value: capabilities(),
+    } as unknown as ProjectionResource<readonly ProjectionCapability[]>
+    expect(selectCapabilitySupport(
+      futureState,
+      EVIDENCE_CAPABILITIES.effectsRead,
+    )).toEqual({ state: 'unsupported', reason: 'unknown_resource_state' })
   })
 })
 
@@ -265,6 +285,19 @@ describe('EE1 tool and effect separation', () => {
       toolCallId: 'tool-call-1',
       toolLifecycle: 'done',
     })).toEqual({ state: 'unsupported', reason: 'malformed_effect_receipt_set' })
+
+    const falseConfirmation = effectReceipt({
+      kind: 'outcome_observed',
+      consequence: 'effect_confirmed',
+      authorityKind: 'runtime',
+    })
+    expect(selectToolEffect({
+      capabilities: readyProjection(capabilities()),
+      receipts: readyProjection([falseConfirmation]),
+      runId: RUN_ID,
+      toolCallId: 'tool-call-1',
+      toolLifecycle: 'done',
+    })).toEqual({ state: 'unsupported', reason: 'malformed_effect_receipt_set' })
   })
 })
 
@@ -304,6 +337,16 @@ describe('EE3 egress projection', () => {
         reasonCode: 'local_only_route_unavailable',
       }],
     })
+
+    const futureReceipt = {
+      ...receipt,
+      phase: 'future_phase',
+    } as unknown as ProjectedEgressReceipt
+    expect(selectEgress({
+      capabilities: readyProjection(capabilities()),
+      snapshot: readyProjection(snapshot({ egressMode: 'local-only' })),
+      receipts: readyProjection([futureReceipt]),
+    })).toEqual({ state: 'unsupported', reason: 'malformed_egress_evidence' })
   })
 })
 

@@ -2512,6 +2512,7 @@ export class OwnwareGateway {
     const run = createRunHandlers(this.state, this.registry, this.runner, {
       runStore: this.runStore,
       effectReceipts: this.state.securityRepositories.effectReceipts,
+      activityLedger: this.state.securityRepositories.activityLedger,
       egressReceipts: this.state.securityRepositories.egressReceipts,
       skillActivationReceipts: this.state.securityRepositories.skillActivationReceipts,
       effectReversals: this.state.securityRepositories.effectReversals,
@@ -3138,6 +3139,11 @@ export class OwnwareGateway {
       '/api/v1/runs/:runId/reversal-offers/:offerId/execute',
       run.executeEffectReversal,
       { operation: 'runs.reversals.execute' },
+    )
+    this.router.get(
+      '/api/v1/activity-receipts',
+      run.listActivityReceipts,
+      { operation: 'activity.read' },
     )
     this.router.get('/api/v1/runs/:runId', run.getRun, { operation: 'runs.snapshot' })
     this.router.get('/api/v1/runs/:runId/events', agentEvents.streamRunEvents, { operation: 'runs.events' })

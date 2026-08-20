@@ -32,8 +32,6 @@ import type { Style } from './style.js'
 import {
   describeTool,
   gerund,
-  targetFromPartialArgs,
-  truncate,
   type ToolFacts,
 } from './tui/collapse.js'
 
@@ -83,25 +81,25 @@ export class TranscriptRenderer implements RunRenderer {
   /**
    * The tool's facts once the call has ended — the first moment the
    * arguments are certainly complete. Prefers the reassembled streamed
-   * JSON, falls back to whatever `start` carried, and finally to a
-   * partial-arguments scan so a truncated stream still names something.
+   * JSON, then falls back to whatever the start event proved. Incomplete
+   * JSON is not scanned for familiar keys because it has no authoritative
+   * field boundary.
    */
-  private factsAtEnd(id: string, name: string, started: ToolFacts | undefined): ToolFacts {
+  private factsAtEnd(
+    id: string,
+    name: string,
+    started: ToolFacts | undefined,
+    endDescriptor: unknown,
+  ): ToolFacts {
     const raw = this.toolArgs.get(id)
     if (raw !== undefined && raw !== '') {
       try {
-        return describeTool(name, JSON.parse(raw))
+        return describeTool(name, JSON.parse(raw), started?.descriptor ?? endDescriptor)
       } catch {
-        const found = targetFromPartialArgs(raw)
-        if (found !== null && found !== '') {
-          const isShell = (started?.isShell ?? false) || raw.includes('"command"')
-          const verb = started?.verb ?? name
-          const target = `${isShell ? '$ ' : ''}${truncate(found.split('\n')[0] ?? '', 60)}`
-          return { name, verb, target, label: `${verb} ${target}`, isShell }
-        }
+        // Preserve the last structurally valid facts.
       }
     }
-    return started ?? describeTool(name, undefined)
+    return started ?? describeTool(name, undefined, endDescriptor)
   }
 
   constructor(opts: RendererOptions) {
@@ -149,7 +147,7 @@ export class TranscriptRenderer implements RunRenderer {
       case 'tool.call.start': {
         const name = typeof data['toolName'] === 'string' ? data['toolName'] : 'tool'
         const id = typeof data['toolCallId'] === 'string' ? data['toolCallId'] : ''
-        const facts = describeTool(name, data['input'])
+        const facts = describeTool(name, data['input'], data['uiDescriptor'])
         if (id !== '') this.openTools.set(id, facts)
         // Running rows take the gerund. The target may still be unknown
         // here — Anthropic-style providers send an EMPTY input at start
@@ -179,7 +177,7 @@ export class TranscriptRenderer implements RunRenderer {
           started?.name ?? (typeof data['toolName'] === 'string' ? data['toolName'] : 'tool')
         // Recompute from the reassembled arguments: with a streaming
         // provider this is the first point the real target is known.
-        const facts = this.factsAtEnd(id, name, started)
+        const facts = this.factsAtEnd(id, name, started, data['uiDescriptor'])
         this.openTools.delete(id)
         this.toolArgs.delete(id)
         const durationMs = typeof data['durationMs'] === 'number' ? data['durationMs'] : null

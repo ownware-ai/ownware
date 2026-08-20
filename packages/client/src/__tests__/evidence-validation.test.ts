@@ -48,6 +48,52 @@ const snapshot = {
   futureSnapshotField: { additive: true },
 } as const
 
+const hydration = {
+  thread: {
+    id: 'thread_1',
+    profileId: 'assistant',
+    workspaceId: null,
+    title: 'Hydrated thread',
+    status: 'active',
+    messageCount: 1,
+    totalTokens: 2,
+    totalCost: 0,
+    model: 'ollama:llama3.2',
+    createdAt: '2026-08-17T00:00:00.000Z',
+    updatedAt: '2026-08-17T00:00:01.000Z',
+    lastMessagePreview: 'hello',
+    futureThreadField: true,
+  },
+  messages: [{
+    id: 'message_1',
+    role: 'assistant',
+    content: 'hello',
+    timestamp: '2026-08-17T00:00:01.000Z',
+    tools: [{
+      toolCallId: 'call_1',
+      name: 'read_file',
+      input: { path: 'README.md' },
+      uiDescriptor: {
+        kind: 'file-read',
+        summary: { verb: 'Read', primaryField: 'path' },
+        openAction: { target: 'file-pane', pathField: 'path' },
+      },
+      futureToolField: true,
+    }],
+    parts: [
+      { kind: 'tool', toolCallId: 'call_1' },
+      { kind: 'text', text: 'hello' },
+    ],
+    futureMessageField: true,
+  }],
+  agents: [{ agentId: 'root', parentAgentId: null, eventCount: 8 }],
+  runningAgentId: 'root',
+  runningRunId: RUN_ID,
+  maxSeq: 8,
+  lastClosedTurnEndSeq: 4,
+  futureHydrationField: { additive: true },
+} as const
+
 const effectReceipt = {
   receiptId: '11111111-1111-4111-8111-111111111111',
   sequence: 1,
@@ -322,6 +368,50 @@ describe('runtime run and decision evidence validation', () => {
     await expect(clientReturning(cancellation).cancel(RUN_ID)).resolves.toMatchObject(cancellation)
     await expect(clientReturning({ ...cancellation, cancellation: 'undone' }).cancel(RUN_ID))
       .rejects.toMatchObject(invalidResponse('run_cancellation_invalid'))
+  })
+})
+
+describe('runtime thread hydration validation', () => {
+  it('accepts additive fields while retaining the typed live-run correlation', async () => {
+    await expect(clientReturning(hydration).hydrateThread('thread_1')).resolves.toMatchObject({
+      thread: { id: 'thread_1', futureThreadField: true },
+      messages: [{ tools: [{ uiDescriptor: { kind: 'file-read' } }] }],
+      runningAgentId: 'root',
+      runningRunId: RUN_ID,
+      futureHydrationField: { additive: true },
+    })
+  })
+
+  it('rejects identity drift, invented live-run state, malformed cursors, and nested variants', async () => {
+    const malformed = [
+      { ...hydration, thread: { ...hydration.thread, id: 'thread_other' } },
+      { ...hydration, runningAgentId: null },
+      { ...hydration, runningRunId: 'not-a-run' },
+      { ...hydration, lastClosedTurnEndSeq: 9 },
+      { ...hydration, messages: [...hydration.messages, hydration.messages[0]] },
+      {
+        ...hydration,
+        messages: [{ ...hydration.messages[0], role: 'developer' }],
+      },
+      {
+        ...hydration,
+        messages: [{
+          ...hydration.messages[0],
+          tools: [{
+            ...hydration.messages[0].tools[0],
+            uiDescriptor: {
+              ...hydration.messages[0].tools[0].uiDescriptor,
+              kind: 'unknown-pane',
+            },
+          }],
+        }],
+      },
+    ]
+
+    for (const body of malformed) {
+      await expect(clientReturning(body).hydrateThread('thread_1'))
+        .rejects.toMatchObject(invalidResponse('thread_hydration_invalid'))
+    }
   })
 })
 

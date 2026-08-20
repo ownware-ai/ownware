@@ -703,6 +703,38 @@ beforeAll(async () => {
       }))
       return
     }
+    if (url === '/api/v1/threads/thread_hydrate/hydrate') {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end(JSON.stringify({
+        thread: {
+          id: 'thread_hydrate',
+          profileId: 'assistant',
+          workspaceId: 'ws_1',
+          title: 'Hydrated thread',
+          status: 'active',
+          messageCount: 1,
+          totalTokens: 2,
+          totalCost: 0,
+          model: 'ollama:llama3.2',
+          createdAt: '2026-08-17T00:00:00.000Z',
+          updatedAt: '2026-08-17T00:00:01.000Z',
+          lastMessagePreview: 'hello',
+        },
+        messages: [{
+          id: 'message_1',
+          role: 'user',
+          content: 'hello',
+          timestamp: '2026-08-17T00:00:00.000Z',
+          parts: [{ kind: 'text', text: 'hello' }],
+        }],
+        agents: [{ agentId: 'root', parentAgentId: null, eventCount: 8 }],
+        runningAgentId: 'root',
+        runningRunId: '88888888-8888-4888-8888-888888888888',
+        maxSeq: 8,
+        lastClosedTurnEndSeq: 4,
+      }))
+      return
+    }
     if (/^\/api\/v1\/runs\/[^/]+\/egress-receipts(?:\?|$)/.test(url)) {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({
@@ -903,6 +935,22 @@ describe('request shapes', () => {
       egressMode: 'local-only',
       interactionCapabilities: ['sensitive-input.v1'],
     })
+  })
+
+  it('hydrates durable thread history with optional active run correlation', async () => {
+    await expect(client().hydrateThread('thread_hydrate')).resolves.toMatchObject({
+      thread: { id: 'thread_hydrate', model: 'ollama:llama3.2' },
+      messages: [{ id: 'message_1', parts: [{ kind: 'text', text: 'hello' }] }],
+      runningAgentId: 'root',
+      runningRunId: '88888888-8888-4888-8888-888888888888',
+      maxSeq: 8,
+      lastClosedTurnEndSeq: 4,
+    })
+    const last = seen.at(-1)!
+    expect(last.method).toBe('GET')
+    expect(last.url).toBe('/api/v1/threads/thread_hydrate/hydrate')
+    expect(last.auth).toBe('Bearer tok123')
+    expect(last.body).toBe('')
   })
 
   it('every call carries the Bearer token — including the SSE request', async () => {

@@ -274,84 +274,25 @@ function deriveFileLineHintFromDescriptor(
 }
 
 /**
- * Synthesize a `ToolUIDescriptor` for an MCP / Composio action.
- *
- * Unlike builtins (which declare their descriptor on the Loom Tool
- * definition), external sources don't carry render metadata. Cortex
- * infers from the action name using explicit substring patterns —
- * NOT lossy lowercase-strip. The patterns mirror the client's previous
- * `inferFileLineFromName` heuristic but synthesize the FULL descriptor
- * (kind + summary + preview + openAction) instead of just the file-line
- * mini-hint.
- *
- * Every action gets a descriptor — no implicit fallthrough. Unknown
- * shapes default to `kind: 'external-action'` with a humanized verb
- * derived from the action name. The client's generic renderer then drives
- * the chat row.
+ * External catalogues do not own Ownware render semantics. Preserve the exact
+ * bounded action name as a generic label; a richer kind/preview/open action is
+ * accepted only through an explicit trusted descriptor contract.
  */
-function synthesizeUiDescriptor(actionName: string): NonNullable<Tool['uiDescriptor']> {
-  const lower = actionName.toLowerCase()
-  // Strip Loom's MCP prefix and Composio's connector prefix before
-  // matching — the inference works on the underlying action verb,
-  // not the source's namespacing.
-  let bare = lower
-  const mcpMatch = bare.match(/^mcp__[a-z0-9-]+__(.+)$/)
-  if (mcpMatch != null) bare = mcpMatch[1]!
-  else if (bare.startsWith('composio_')) bare = bare.slice('composio_'.length)
-
-  // file-write
-  if (/(^|_)(create|write|save|new)_file($|_)/.test(bare) || bare === 'writefile') {
-    return {
-      kind: 'file-write',
-      summary: { verb: 'Wrote', primaryField: 'path' },
-      preview: { contentField: 'content', format: 'code', truncateAtLines: 10 },
-      openAction: { target: 'file-pane', pathField: 'path' },
-    }
-  }
-  // file-edit
-  if (/(^|_)(update|edit|patch|modify)_file($|_)/.test(bare) || bare === 'editfile') {
-    return {
-      kind: 'file-edit',
-      summary: { verb: 'Edited', primaryField: 'path' },
-      openAction: { target: 'file-pane', pathField: 'path' },
-    }
-  }
-  // file-read
-  if (/(^|_)(read|get|load|fetch)_file($|_)/.test(bare) || bare === 'readfile') {
-    return {
-      kind: 'file-read',
-      summary: { verb: 'Read', primaryField: 'path' },
-      preview: { contentField: 'content', format: 'plain', truncateAtLines: 10 },
-      openAction: { target: 'file-pane', pathField: 'path' },
-    }
-  }
-  // search-ish
-  if (/(^|_)(search|find|query|lookup|grep)($|_)/.test(bare)) {
-    return { kind: 'search', summary: { verb: 'Searched' } }
-  }
-  // image-ish
-  if (/(^|_)(screenshot|image|picture|photo)($|_)/.test(bare)) {
-    return { kind: 'image', summary: { verb: 'Captured' } }
-  }
-  // shell-ish
-  if (/(^|_)(shell|execute_command|run_command)($|_)/.test(bare)) {
-    return {
-      kind: 'shell',
-      summary: { verb: 'Ran', primaryField: 'command' },
-      preview: { contentField: 'output', format: 'plain', truncateAtLines: 10 },
-    }
-  }
-
-  // Default — explicit declaration that the tool renders as a generic
-  // external-action row. The verb is derived from the action name's
-  // first segment (e.g. "send_email" → "Sent"). Past-tense is the
-  // chat-stream convention.
-  const firstSegment = bare.split('_')[0] ?? 'did'
-  const verb = firstSegment.charAt(0).toUpperCase() + firstSegment.slice(1)
+function genericExternalUiDescriptor(actionName: string): NonNullable<Tool['uiDescriptor']> {
+  const verb = boundedPresentationLabel(actionName) ?? 'Connector action'
   return {
     kind: 'external-action',
     summary: { verb },
   }
+}
+
+function boundedPresentationLabel(value: string): string | undefined {
+  if (value.length === 0 || value.length > 120) return undefined
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return undefined
+  }
+  return value
 }
 
 function builtinActionEntry(tool: Tool): NonNullable<Connector['actions']>[number] {
@@ -753,7 +694,7 @@ async function mcpServerToConnector(
         description: t.description,
         isReadOnly: t.annotations?.readOnlyHint,
         requiresPermission: t.annotations?.destructiveHint === true ? true : undefined,
-        uiDescriptor: synthesizeUiDescriptor(t.name),
+        uiDescriptor: genericExternalUiDescriptor(t.name),
       }))
     : undefined
 
@@ -992,7 +933,7 @@ export async function mcpRowToConnector(row: {
         description: t.description,
         isReadOnly: t.annotations?.readOnlyHint,
         requiresPermission: t.annotations?.destructiveHint === true ? true : undefined,
-        uiDescriptor: synthesizeUiDescriptor(t.name),
+        uiDescriptor: genericExternalUiDescriptor(t.name),
       }))
     : undefined
 

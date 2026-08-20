@@ -15,7 +15,7 @@
 asyncapi: 3.0.0
 info:
   title: Ownware Gateway — run event stream
-  version: 0.45.0
+  version: 0.46.0
 
 channels:
   runEvents:
@@ -36,24 +36,30 @@ channels:
         summary: The agent started a tool call.
         payload:
           type: object
-          required: [type, seq, toolName]
+          required: [type, seq, toolCallId, toolName]
           properties:
             type: { const: tool.call.start }
             seq: { type: integer }
+            toolCallId: { type: string }
             toolName: { type: string }
             input: { type: object }
+            uiDescriptor:
+              $ref: '#/components/schemas/ToolUIDescriptor'
       toolCallEnd:
         name: tool.call.end
         summary: Tool call finished.
         payload:
           type: object
-          required: [type, seq, toolName]
+          required: [type, seq, toolCallId, toolName]
           properties:
             type: { const: tool.call.end }
             seq: { type: integer }
+            toolCallId: { type: string }
             toolName: { type: string }
             isError: { type: boolean }
             durationMs: { type: integer }
+            uiDescriptor:
+              $ref: '#/components/schemas/ToolUIDescriptor'
       toolCallProgress:
         name: tool.call.progress
         summary: >
@@ -218,6 +224,43 @@ channels:
           properties:
             type: { const: heartbeat }
             ts: { type: integer }
+
+components:
+  schemas:
+    ToolUIDescriptor:
+      type: object
+      additionalProperties: false
+      required: [kind, summary]
+      properties:
+        kind:
+          type: string
+          enum: [file-write, file-read, file-edit, shell, search, image, external-action, conversational]
+        summary:
+          type: object
+          additionalProperties: false
+          required: [verb]
+          properties:
+            verb: { type: string, minLength: 1, maxLength: 120 }
+            primaryField: { type: string, minLength: 1, maxLength: 120 }
+            metaFields:
+              type: array
+              maxItems: 16
+              items: { type: string, minLength: 1, maxLength: 120 }
+        preview:
+          type: object
+          additionalProperties: false
+          required: [contentField, format]
+          properties:
+            contentField: { type: string, minLength: 1, maxLength: 120 }
+            format: { type: string, enum: [code, diff, markdown, plain, image-thumb] }
+            truncateAtLines: { type: integer, minimum: 1, maximum: 10000 }
+        openAction:
+          type: object
+          additionalProperties: false
+          required: [target, pathField]
+          properties:
+            target: { type: string, enum: [file-pane, terminal-pane, image-pane, search-pane, url] }
+            pathField: { type: string, minLength: 1, maxLength: 120 }
 
 # The full engine vocabulary (thinking deltas, sub-agent spawns,
 # compaction, security blocks, …) is larger; events not listed here are

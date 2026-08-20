@@ -24,17 +24,17 @@ export const ownwareChatCss = `
   --ow-font: "Instrument Sans","Helvetica Neue",Helvetica,system-ui,sans-serif;
   --ow-mono: "IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
 
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; position: relative;
   height: 100%; min-height: 0; width: 100%;
   background: var(--ow-bg); color: var(--ow-ink);
   font-family: var(--ow-font); font-size: 15px; line-height: 1.55;
   border: 1px solid var(--ow-hairline); border-radius: var(--ow-radius);
-  overflow: hidden; box-sizing: border-box;
+  overflow: hidden; box-sizing: border-box; container-type: inline-size;
 }
 .ow-chat[data-ow-theme="light"] {
   --ow-bg: #F4F3F0; --ow-surface: #FFFFFF; --ow-surface-2: #F0EFEC; --ow-wash: #E7E6E2;
   --ow-hairline: rgba(0,0,0,.10); --ow-hairline-2: rgba(0,0,0,.15);
-  --ow-ink: #141414; --ow-ink-2: #565654; --ow-ink-3: #83827E;
+  --ow-ink: #141414; --ow-ink-2: #565654; --ow-ink-3: #62615E;
   --ow-accent: #2A45C6; --ow-accent-wash: rgba(42,69,198,.08);
   --ow-action: #141414; --ow-on-action: #F4F3F0; --ow-action-hover: #282827;
   --ow-success: #1A7F37; --ow-warning: #9A6700; --ow-warning-wash: rgba(154,103,0,.10);
@@ -42,6 +42,13 @@ export const ownwareChatCss = `
 }
 .ow-chat *, .ow-chat *::before, .ow-chat *::after { box-sizing: border-box; }
 .ow-chat button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; }
+.ow-chat button:disabled { cursor: default; opacity: .52; }
+.ow-chat :is(button, a, summary, textarea, input):focus-visible {
+  outline: 2px solid var(--ow-accent); outline-offset: 3px;
+}
+.ow-sr-only { position: absolute !important; width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important; overflow: hidden !important;
+  clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 
 /* header */
 .ow-header {
@@ -62,6 +69,7 @@ export const ownwareChatCss = `
 /* message list */
 .ow-msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px 16px;
   display: flex; flex-direction: column; gap: 16px; }
+.ow-loading { margin: auto; color: var(--ow-ink-2); }
 .ow-empty { margin: auto; text-align: center; color: var(--ow-ink-3); max-width: 34ch;
   display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .ow-empty .ow-mark { width: 34px; height: 34px; }
@@ -114,39 +122,78 @@ export const ownwareChatCss = `
 .ow-tool details > summary { list-style: none; cursor: pointer; padding: 6px 11px;
   font-size: 11.5px; color: var(--ow-ink-3); border-top: 1px solid var(--ow-hairline); }
 .ow-tool details > summary::-webkit-details-marker { display: none; }
+.ow-thinking { color: var(--ow-ink-2); font-size: 12.5px; }
+.ow-thinking > summary { width: max-content; cursor: pointer; color: var(--ow-ink-3); }
+.ow-thinking > div { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ow-history-gap { padding: 7px 10px; color: var(--ow-ink-3); background: var(--ow-surface-2);
+  border: 1px dashed var(--ow-hairline-2); border-radius: var(--ow-radius-sm); font-size: 12px; }
+.ow-tool-evidence { padding: 7px 11px; border-top: 1px solid var(--ow-hairline);
+  color: var(--ow-ink-2); font-size: 12px; overflow-wrap: anywhere; }
+.ow-tool-evidence.receipt_observed { color: var(--ow-accent); }
 
 /* approval card */
-.ow-approval { border: 1px solid var(--ow-warning); border-left-width: 3px;
+.ow-approval, .ow-sensitive { border: 1px solid var(--ow-warning); border-left-width: 3px;
   border-radius: var(--ow-radius); background: var(--ow-warning-wash);
   padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
 .ow-approval-title { display: flex; align-items: center; gap: 8px; font-weight: 650; }
 .ow-approval-title svg { width: 16px; height: 16px; color: var(--ow-warning); flex: none; }
 .ow-approval-reason { font-size: 13.5px; color: var(--ow-ink-2); }
 .ow-approval-actions { display: flex; gap: 8px; margin-top: 6px; }
-.ow-btn { height: 34px; padding: 0 16px; border-radius: var(--ow-radius-sm);
+.ow-btn { min-height: 44px; padding: 0 16px; border-radius: var(--ow-radius-sm);
   font-size: 13.5px; font-weight: 600; }
 .ow-btn.primary { background: var(--ow-action); color: var(--ow-on-action); }
 .ow-btn.primary:hover { background: var(--ow-action-hover); }
 .ow-btn.ghost { background: transparent; color: var(--ow-ink-2);
   border: 1px solid var(--ow-hairline-2); }
 .ow-btn.ghost:hover { color: var(--ow-ink); }
+.ow-sensitive input { width: 100%; min-height: 44px; padding: 9px 11px;
+  color: var(--ow-ink); background: var(--ow-surface); border: 1px solid var(--ow-hairline-2);
+  border-radius: var(--ow-radius-sm); font: inherit; font-size: 16px; }
+.ow-action-note { color: var(--ow-ink-3); font-size: 12px; overflow-wrap: anywhere; }
+.ow-action-error { color: var(--ow-danger); font-size: 13px; }
+
+/* evidence + reversal */
+.ow-evidence, .ow-reversal { padding: 12px 14px; color: var(--ow-ink-2);
+  background: var(--ow-surface); border: 1px solid var(--ow-hairline);
+  border-radius: var(--ow-radius-sm); font-size: 12.5px; overflow-wrap: anywhere; }
+.ow-evidence.unavailable { color: var(--ow-ink-3); }
+.ow-evidence-title { color: var(--ow-ink); font-weight: 650; }
+.ow-evidence p, .ow-reversal p { margin: 4px 0 0; }
+.ow-reversal .ow-btn { margin-top: 10px; }
 
 /* error line */
 .ow-error { font-size: 13px; color: var(--ow-danger); padding: 4px 2px; }
+.ow-new-activity { position: absolute; align-self: center; bottom: 74px; z-index: 1;
+  min-height: 44px; padding: 0 14px; color: var(--ow-ink); background: var(--ow-surface) !important;
+  border: 1px solid var(--ow-hairline-2) !important; border-radius: var(--ow-radius-pill); }
 
 /* composer */
+.ow-composer-wrap { flex: none; background: var(--ow-surface); }
+.ow-composer-error { padding: 8px 16px 0; color: var(--ow-danger); font-size: 13px; }
 .ow-composer { flex: none; border-top: 1px solid var(--ow-hairline);
   background: var(--ow-surface); padding: 12px 12px 12px 16px;
   display: flex; align-items: flex-end; gap: 10px; }
-.ow-composer textarea { flex: 1; resize: none; border: none; outline: none; background: none;
+.ow-composer textarea { flex: 1; resize: none; border: none; background: none;
   color: var(--ow-ink); font: inherit; line-height: 1.5; max-height: 160px;
-  padding: 6px 0; }
+  padding: 6px 0; font-size: 16px; }
 .ow-composer textarea::placeholder { color: var(--ow-ink-3); }
-.ow-send { width: 34px; height: 34px; border-radius: var(--ow-radius-pill); flex: none;
+.ow-send { width: 44px; height: 44px; border-radius: var(--ow-radius-pill); flex: none;
   display: grid; place-items: center; background: var(--ow-action); color: var(--ow-on-action); }
 .ow-send:hover { background: var(--ow-action-hover); }
 .ow-send:disabled { opacity: .4; cursor: default; }
 .ow-send svg { width: 15px; height: 15px; }
+
+@container (max-width: 520px) {
+  .ow-header { align-items: flex-start; flex-wrap: wrap; }
+  .ow-header-meta { width: 100%; margin-left: 32px; overflow: hidden; }
+  .ow-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ow-msgs { padding: 16px 12px; }
+  .ow-row.user .ow-bubble { max-width: 92%; }
+  .ow-tool-head, .ow-tool-line { align-items: flex-start; flex-wrap: wrap; }
+  .ow-tool-status { margin-left: 0; }
+  .ow-approval-actions { flex-direction: column; }
+  .ow-btn { width: 100%; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ow-caret, .ow-spin { animation: none !important; }
