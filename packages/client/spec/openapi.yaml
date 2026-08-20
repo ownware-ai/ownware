@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Ownware Gateway — core wire contract
-  version: 0.46.0
+  version: 0.47.0
   description: >
     Drive a Ownware agent from any language: start a run, stream its
     events, answer permission prompts. Bearer auth applies to every
@@ -1775,6 +1775,1153 @@ paths:
         '403': { $ref: '#/components/responses/ErrorResponse' }
         '404': { $ref: '#/components/responses/ErrorResponse' }
 
+  /api/v1/credentials:
+    get:
+      operationId: listCredentials
+      summary: The stored-credential inventory — metadata only, never a value.
+      description: >
+        Rows carry a masked hint, category, trust, status and timestamps. The
+        plaintext never crosses this wire by design; this listing shows WHICH
+        secrets are held, not what they are, and stored inventory is not the
+        same as effective access — who may use a credential is policy, decided
+        elsewhere. Owner surface; delegation is refused.
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema: { type: string }
+        - name: forConnector
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: The inventory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [credentials]
+                properties:
+                  credentials:
+                    type: array
+                    items: { $ref: '#/components/schemas/CredentialSummary' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/workspaces:
+    get:
+      operationId: listWorkspaces
+      summary: Page the owner's workspaces. Owner surface; delegation is refused.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, archived] }
+      responses:
+        '200':
+          description: One page of workspaces.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Workspace' }
+                  total: { type: integer, minimum: 0 }
+                  limit: { type: integer, minimum: 1 }
+                  offset: { type: integer, minimum: 0 }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      operationId: createWorkspace
+      summary: Create (or adopt) a workspace directory on the owner's machine.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string, minLength: 1 }
+                name: { type: string, minLength: 1 }
+                create:
+                  type: boolean
+                  description: Create the directory when it does not exist; without it an unknown path is refused.
+              additionalProperties: false
+      responses:
+        '200':
+          description: An existing workspace at this path was returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '201':
+          description: The created workspace.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/workspaces/{workspaceId}:
+    get:
+      operationId: getWorkspace
+      summary: One workspace.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The workspace.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      operationId: updateWorkspace
+      summary: Rename, pin or archive a workspace.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: The updated workspace.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      operationId: deleteWorkspace
+      summary: Remove the workspace row. The directory on disk is never deleted.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Removed. }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/workspaces/{workspaceId}/threads:
+    get:
+      operationId: listWorkspaceThreads
+      summary: The threads that live in one workspace.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Thread summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Thread' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/profiles/{profileId}/skills:
+    get:
+      operationId: listProfileSkills
+      summary: The per-agent skill list. Owner surface; delegation is refused.
+      description: >
+        `active` is a configuration fact — the skill body is present and
+        enabled. It is NOT use evidence and NOT compliance proof; per-run
+        activation observations live in runs.skill-activations.read.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Installed skills with their playbook content.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [skills]
+                properties:
+                  skills:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, description, content, active]
+                      properties:
+                        name: { type: string }
+                        description: { type: string }
+                        content: { type: string }
+                        active: { type: boolean }
+                      additionalProperties: false
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      operationId: installSkill
+      summary: Install a skill from a URL, inline content or a GitHub folder.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [source, url]
+                  properties:
+                    source: { type: string, const: url }
+                    url: { type: string, minLength: 1, maxLength: 2048 }
+                  additionalProperties: false
+                - type: object
+                  required: [source, content]
+                  properties:
+                    source: { type: string, const: content }
+                    content: { type: string, minLength: 1, maxLength: 65536 }
+                    sourceUrl: { type: [string, 'null'], maxLength: 2048 }
+                  additionalProperties: false
+                - type: object
+                  required: [source, owner, repo, ref, path]
+                  properties:
+                    source: { type: string, const: github-folder }
+                    owner: { type: string, minLength: 1, maxLength: 100 }
+                    repo: { type: string, minLength: 1, maxLength: 100 }
+                    ref: { type: string, minLength: 1, maxLength: 255 }
+                    path: { type: string, minLength: 1, maxLength: 1024 }
+                  additionalProperties: false
+      responses:
+        '201':
+          description: The installed skill's identity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slug, name]
+                properties:
+                  slug: { type: string }
+                  name: { type: string }
+                additionalProperties: true
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/profiles/{profileId}/skills/{slug}:
+    patch:
+      operationId: setSkillActive
+      summary: Enable or disable one installed skill.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-zA-Z0-9_-]+$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+              additionalProperties: false
+      responses:
+        '200':
+          description: The new activation state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slug, active]
+                properties:
+                  slug: { type: string }
+                  active: { type: boolean }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      operationId: removeSkill
+      summary: Remove one installed skill permanently.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-zA-Z0-9_-]+$' }
+      responses:
+        '204': { description: Removed. }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/approvals:
+    get:
+      operationId: listApprovals
+      summary: The pending-approvals inbox, newest first. Owner surface; delegation is refused.
+      description: >
+        Each row carries the held call verbatim — the draft is what the owner
+        reviews before saying go. Nothing listed here has been executed.
+      parameters:
+        - name: profileId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        '200':
+          description: Pending approvals with their agent display fields.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvals]
+                properties:
+                  approvals:
+                    type: array
+                    items: { $ref: '#/components/schemas/PendingApproval' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/approvals/count:
+    get:
+      operationId: countApprovals
+      summary: The pending count — the bell badge.
+      parameters:
+        - name: profileId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: How many drafts wait on the owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count: { type: integer, minimum: 0 }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/approvals/{approvalId}:
+    get:
+      operationId: getApproval
+      summary: One approval, including the exact held call.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval: { $ref: '#/components/schemas/Approval' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/approvals/{approvalId}/approve:
+    post:
+      operationId: approveApproval
+      summary: Re-execute the EXACT held call. The decision and its result are both recorded.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The approval with its execution result or error.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval: { $ref: '#/components/schemas/Approval' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/approvals/{approvalId}/discard:
+    post:
+      operationId: discardApproval
+      summary: Drop a draft. It is NEVER executed.
+      parameters:
+        - name: approvalId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The discarded approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval: { $ref: '#/components/schemas/Approval' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/profiles/{profileId}/memories:
+    get:
+      operationId: listMemories
+      summary: Page what one agent remembers. Owner surface; delegation is refused.
+      description: >
+        Every memory names its source (user_pinned, agent_proposed, reflection,
+        legacy_import) and its provenance thread where one exists. Render the
+        real source; do not collapse unlike origins into one label.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: One page of memories with the total count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Memory' }
+                  total: { type: integer, minimum: 0 }
+                  limit: { type: integer, minimum: 1 }
+                  offset: { type: integer, minimum: 0 }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      operationId: createMemory
+      summary: Pin a memory the user stated directly.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profileId, content]
+              properties:
+                profileId: { type: string, minLength: 1 }
+                content: { type: string, minLength: 1, maxLength: 2000 }
+                kind: { type: string, enum: [fact, preference, correction, identity], default: fact }
+                pinned: { type: boolean, default: false }
+              additionalProperties: false
+      responses:
+        '201':
+          description: The pinned memory, with source user_pinned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [memory]
+                properties:
+                  memory: { $ref: '#/components/schemas/Memory' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/memories/{memoryId}:
+    patch:
+      operationId: updateMemory
+      summary: Edit, pin or archive one memory in place.
+      parameters:
+        - name: memoryId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string, minLength: 1, maxLength: 2000 }
+                kind: { type: string, enum: [fact, preference, correction, identity] }
+                pinned: { type: boolean }
+                status: { type: string, enum: [active, superseded, archived] }
+              additionalProperties: false
+      responses:
+        '200':
+          description: The updated memory.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [memory]
+                properties:
+                  memory: { $ref: '#/components/schemas/Memory' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      operationId: deleteMemory
+      summary: Forget one memory. Real deletion; the ledger records THAT, never what it said.
+      parameters:
+        - name: memoryId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Forgotten.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/profiles/{profileId}/memories/proposals:
+    get:
+      operationId: listMemoryProposals
+      summary: The proposal queue for one agent.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [pending, accepted, rejected, edited] }
+      responses:
+        '200':
+          description: Proposals plus the live pending count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pendingCount]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/MemoryProposal' }
+                  pendingCount: { type: integer, minimum: 0 }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/memories/proposals/{proposalId}/accept:
+    post:
+      operationId: acceptMemoryProposal
+      summary: Keep a proposal, optionally edited, as a real memory — atomically.
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content: { type: string, minLength: 1, maxLength: 2000 }
+                kind: { type: string, enum: [fact, preference, correction, identity] }
+                pinned: { type: boolean, default: false }
+              additionalProperties: false
+      responses:
+        '200':
+          description: The resolved proposal and the memory it created, linked both ways.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposal, memory]
+                properties:
+                  proposal: { $ref: '#/components/schemas/MemoryProposal' }
+                  memory: { $ref: '#/components/schemas/Memory' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/memories/proposals/{proposalId}/reject:
+    post:
+      operationId: rejectMemoryProposal
+      summary: Discard a proposal with an optional reason. Never touches memories.
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: The rejected proposal.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposal]
+                properties:
+                  proposal: { $ref: '#/components/schemas/MemoryProposal' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/user/identity:
+    get:
+      operationId: getUserIdentity
+      summary: About You — the shared context every agent sees. Distinct from learned memory.
+      responses:
+        '200':
+          description: The identity record; every field nullable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [identity]
+                properties:
+                  identity: { $ref: '#/components/schemas/UserIdentity' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      operationId: putUserIdentity
+      summary: Replace the About You record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: [string, 'null'], maxLength: 200 }
+                role: { type: [string, 'null'], maxLength: 200 }
+                company: { type: [string, 'null'], maxLength: 200 }
+                timezone: { type: [string, 'null'], maxLength: 100 }
+                pronouns: { type: [string, 'null'], maxLength: 60 }
+                preferences: { type: [string, 'null'], maxLength: 2000 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: The stored record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [identity]
+                properties:
+                  identity: { $ref: '#/components/schemas/UserIdentity' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules:
+    get:
+      operationId: listSchedules
+      summary: List routines. Owner surface; delegation is refused with 403.
+      parameters:
+        - name: profileId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: enabledOnly
+          in: query
+          required: false
+          schema: { type: string, enum: ['1'] }
+      responses:
+        '200':
+          description: Every routine visible to the owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedules]
+                properties:
+                  schedules:
+                    type: array
+                    items: { $ref: '#/components/schemas/Schedule' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      operationId: createSchedule
+      summary: Create a routine. Unsupported cadences (cron) are refused, never silently disarmed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateScheduleRequest' }
+      responses:
+        '201':
+          description: The created routine, armed by the server's cadence math when supported.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule: { $ref: '#/components/schemas/Schedule' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/{scheduleId}:
+    get:
+      operationId: getSchedule
+      summary: Read one routine, including its effective safety level and tool envelope.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The routine.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule: { $ref: '#/components/schemas/Schedule' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    patch:
+      operationId: updateSchedule
+      summary: Update a routine. Switching to an unsupported cadence is refused, never silently disarmed.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Any subset of the create fields except profileId.
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: The updated routine.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule: { $ref: '#/components/schemas/Schedule' }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      operationId: deleteSchedule
+      summary: Delete a routine.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: boolean, const: true }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/{scheduleId}/pause:
+    post:
+      operationId: pauseSchedule
+      summary: Pause a routine; its cursor is retained.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The paused routine.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule: { $ref: '#/components/schemas/Schedule' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/{scheduleId}/resume:
+    post:
+      operationId: resumeSchedule
+      summary: Resume a paused routine; the server recomputes its next fire time.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The resumed routine.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule: { $ref: '#/components/schemas/Schedule' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/{scheduleId}/run-now:
+    post:
+      operationId: runScheduleNow
+      summary: Fire a routine immediately under its own safety envelope.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '202':
+          description: The run was dispatched.
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/{scheduleId}/runs:
+    get:
+      operationId: listScheduleRuns
+      summary: Per-routine run history, including runs that found nothing.
+      description: >
+        A run that found nothing still appears — silence must be
+        distinguishable from failure. Skipped and missed runs carry their
+        reason; the agent is never the source of a status.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Newest-first run records.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduleRun' }
+                additionalProperties: false
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/occurrences:
+    get:
+      operationId: listScheduleOccurrences
+      summary: Projected fire times for calendar views, computed by the server's cadence math.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, minimum: 0 }
+        - name: to
+          in: query
+          required: true
+          schema: { type: integer, minimum: 0 }
+        - name: profileId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Projected occurrences within the window.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [occurrences]
+                properties:
+                  occurrences:
+                    type: array
+                    items:
+                      type: object
+                      required: [scheduleId, at]
+                      properties:
+                        scheduleId: { type: string }
+                        at: { type: integer, minimum: 0 }
+                      additionalProperties: true
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/schedules/preview:
+    post:
+      operationId: previewSchedule
+      summary: Next projected fire times for a cadence not yet saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cadenceKind, cadenceExpr, timezone]
+              properties:
+                cadenceKind: { type: string, enum: [once, interval, daily, weekdays, weekly] }
+                cadenceExpr: { type: string, minLength: 1 }
+                timezone: { type: string, minLength: 1 }
+                skipWeekends: { type: boolean }
+                skipHolidays: { type: boolean }
+                count: { type: integer, minimum: 1, maximum: 20 }
+              additionalProperties: false
+      responses:
+        '200':
+          description: The next projected fire instants.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [occurrences]
+                properties:
+                  occurrences:
+                    type: array
+                    items: { type: integer, minimum: 0 }
+                additionalProperties: false
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/threads:
+    get:
+      operationId: listThreads
+      summary: Page thread summaries for navigation.
+      description: >
+        An owner surface: a delegated principal follows the exact threads it is
+        bound to (through hydrate and its own runs) and is refused enumeration
+        with 403 rather than handed a filtered page — an empty filtered page
+        would read as "no threads exist". The detail door for one thread is
+        GET /api/v1/threads/{threadId}/hydrate; this listing intentionally
+        carries summaries only.
+      parameters:
+        - name: profileId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: One page of thread summaries with the total count.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThreadPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/activity-receipts:
+    get:
+      operationId: listActivityReceipts
+      summary: Page the cross-run activity ledger, newest first.
+      description: >
+        One index over evidence recorded elsewhere: effect, egress, skill
+        activation, reversal and permission-decision receipts share one
+        install-wide, database-assigned, gap-free sequence. Each row locates one
+        authoritative receipt and carries only scope, order and bounded filter
+        labels — never payloads, and never a fact the receipt does not prove.
+        A delegated principal is confined to its own workspace/profile; naming
+        another scope is refused, not silently narrowed. Rows with
+        origin=backfill were reconstructed from timestamps during upgrade and
+        their relative order is not observed append order; the coverage object
+        on every page states where observed ordering begins.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[1-9][0-9]{0,15}$' }
+        - name: profileId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: workspaceId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: threadId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: runId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: family
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/ActivityLedgerFamily' }
+        - name: since
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0 }
+        - name: until
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Newest-first ledger page with ordering provenance.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityLedgerPage' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+  /api/v1/runs/{runId}/job-receipt:
+    get:
+      operationId: getJobReceipt
+      summary: What one run is observed to have done, aggregated per tool action.
+      description: >
+        Assembled only from the run's durable consequence and its immutable
+        effect receipts; assistant text is never a source. Every number counts
+        receipts. The receipt makes NO absence claims: it reports observed
+        effects and explicit indeterminacy, never that something was not done.
+        completed means a terminal outcome was observed — including failure and
+        denial — and never implies an external effect did or did not occur;
+        read each action's consequence for that. indeterminate collapses
+        interrupted-mid-dispatch and never-dispatched, which receipts cannot
+        separate.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The assembled job receipt.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobReceipt' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
   /api/v1/runs/{runId}/effect-receipts:
     get:
       operationId: listEffectReceipts
@@ -3490,6 +4637,342 @@ components:
           pattern: '^[A-Za-z0-9_.:/-]{1,160}$'
           description: Bounded structural provenance inside the configured adapter trust boundary.
         observedAt: { type: integer, minimum: 0, maximum: 9007199254740991 }
+      additionalProperties: false
+    CredentialSummary:
+      type: object
+      required: [id, name, category, authType, hint, trust, source, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string, maxLength: 128 }
+        variableName: { type: string }
+        category: { type: string }
+        forConnector: { type: string }
+        authType: { type: string }
+        hint:
+          type: string
+          description: A masked fragment for recognition. Never the value.
+        grantedScopes:
+          type: array
+          items: { type: string }
+        trust: {}
+        spendCap: {}
+        source: {}
+        status: { type: string }
+        statusReason: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        lastUsedAt: { type: string }
+      additionalProperties: true
+    Workspace:
+      type: object
+      required: [id, name, path, status, lastProfileId, pinned, tabCount]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        path:
+          type: string
+          description: Absolute path on the owner's machine — the "Show in Finder" target.
+        status: { type: string, enum: [active, archived] }
+        lastProfileId: { type: [string, 'null'] }
+        pinned: { type: boolean }
+        tabCount: { type: integer, minimum: 0 }
+      additionalProperties: true
+    Approval:
+      type: object
+      required:
+        [id, scheduleId, runId, threadId, toolName, toolInput, summary, status,
+         result, errorMessage, createdAt, decidedAt]
+      properties:
+        id: { type: string }
+        scheduleId: { type: string }
+        runId: { type: string }
+        threadId: { type: [string, 'null'] }
+        toolName: { type: string }
+        toolInput:
+          description: The held call's arguments, verbatim — the draft under review.
+        summary: { type: string }
+        status: { type: string, enum: [pending, executing, approved, discarded, failed, indeterminate] }
+        result: {}
+        errorMessage: { type: [string, 'null'] }
+        createdAt: { type: integer, minimum: 0 }
+        decidedAt: { type: [integer, 'null'], minimum: 0 }
+      additionalProperties: true
+    PendingApproval:
+      allOf:
+        - { $ref: '#/components/schemas/Approval' }
+        - type: object
+          required: [scheduleName, profileId]
+          properties:
+            scheduleName: { type: string }
+            profileId: { type: string }
+    Memory:
+      type: object
+      required:
+        [id, profileId, scope, scopeId, kind, content, source, sourceThreadId,
+         sourceProposalId, confidence, status, supersededBy, pinned,
+         referenceCount, lastReferencedAt, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        profileId: { type: string }
+        scope: { type: string, enum: [agent, workspace, user] }
+        scopeId: { type: [string, 'null'] }
+        kind: { type: string, enum: [fact, preference, correction, identity] }
+        content: { type: string, maxLength: 2000 }
+        source:
+          type: string
+          enum: [user_pinned, agent_proposed, reflection, legacy_import]
+          description: Render the real origin; do not collapse unlike sources into "learned automatically".
+        sourceThreadId: { type: [string, 'null'] }
+        sourceProposalId: { type: [string, 'null'] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        status: { type: string, enum: [active, superseded, archived] }
+        supersededBy: { type: [string, 'null'] }
+        pinned: { type: boolean }
+        referenceCount: { type: integer, minimum: 0 }
+        lastReferencedAt: { type: [string, 'null'] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      additionalProperties: false
+    MemoryProposal:
+      type: object
+      required:
+        [id, profileId, threadId, proposedContent, proposedKind, status,
+         resolvedContent, resolvedMemoryId, rejectionReason, createdAt, resolvedAt]
+      properties:
+        id: { type: string }
+        profileId: { type: string }
+        threadId: { type: string }
+        proposedContent: { type: string, maxLength: 2000 }
+        proposedKind: { type: string, enum: [fact, preference, correction, identity] }
+        status: { type: string, enum: [pending, accepted, rejected, edited] }
+        resolvedContent: { type: [string, 'null'] }
+        resolvedMemoryId: { type: [string, 'null'] }
+        rejectionReason: { type: [string, 'null'] }
+        createdAt: { type: string }
+        resolvedAt: { type: [string, 'null'] }
+      additionalProperties: false
+    UserIdentity:
+      type: object
+      required: [name, role, company, timezone, pronouns, preferences, updatedAt]
+      properties:
+        name: { type: [string, 'null'] }
+        role: { type: [string, 'null'] }
+        company: { type: [string, 'null'] }
+        timezone: { type: [string, 'null'] }
+        pronouns: { type: [string, 'null'] }
+        preferences: { type: [string, 'null'] }
+        updatedAt: { type: [string, 'null'] }
+      additionalProperties: false
+    Schedule:
+      type: object
+      required:
+        [id, profileId, workspaceId, name, prompt, model, cadenceKind,
+         cadenceExpr, cadenceDisplay, timezone, catchUpPolicy, catchUpWindowMs,
+         overlapPolicy, skipWeekends, skipHolidays, toolEnvelope, safetyLevel,
+         deliveryMode, quietOnEmpty, deliver, enabled, state, nextRunAt,
+         lastRunAt, lastRunId, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        profileId: { type: string }
+        workspaceId: { type: [string, 'null'] }
+        name: { type: string }
+        prompt: { type: string }
+        model: { type: [string, 'null'] }
+        cadenceKind:
+          type: string
+          enum: [once, interval, daily, weekdays, weekly, cron]
+          description: cron is part of the vocabulary but rejected at create/update until the runner has cron math.
+        cadenceExpr: { type: string }
+        cadenceDisplay: { type: string }
+        timezone: { type: string }
+        catchUpPolicy: { type: string, enum: [catch-up, skip, window] }
+        catchUpWindowMs: { type: [integer, 'null'], minimum: 1 }
+        overlapPolicy: { type: string, enum: [skip-if-running, queue] }
+        skipWeekends: { type: boolean }
+        skipHolidays: { type: boolean }
+        toolEnvelope: {}
+        safetyLevel:
+          type: string
+          enum: [draft-approval, read-only, full-access]
+          description: >
+            The routine's ACTUAL unattended envelope. full-access runs headless
+            with permission bypass; surfaces must display this, never a blanket
+            "dangerous actions always ask".
+        deliveryMode: { type: string }
+        quietOnEmpty: { type: boolean }
+        deliver: {}
+        enabled: { type: boolean }
+        state: { type: string, enum: [scheduled, paused, running, completed, error] }
+        nextRunAt: { type: [integer, 'null'], minimum: 0 }
+        lastRunAt: { type: [integer, 'null'], minimum: 0 }
+        lastRunId: { type: [string, 'null'] }
+        createdAt: { type: integer, minimum: 0 }
+        updatedAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    ScheduleRun:
+      type: object
+      required:
+        [id, scheduleId, threadId, scheduledFor, startedAt, finishedAt,
+         runStatus, skipReason, wasCatchUp, errorCategory, errorMessage,
+         deliveryStatus, idempotencyKey, createdAt]
+      properties:
+        id: { type: string }
+        scheduleId: { type: string }
+        threadId: { type: [string, 'null'] }
+        scheduledFor: { type: integer, minimum: 0 }
+        startedAt: { type: [integer, 'null'], minimum: 0 }
+        finishedAt: { type: [integer, 'null'], minimum: 0 }
+        runStatus: { type: string }
+        skipReason: { type: [string, 'null'] }
+        wasCatchUp: { type: boolean }
+        errorCategory: { type: [string, 'null'] }
+        errorMessage: { type: [string, 'null'] }
+        deliveryStatus: { type: string }
+        idempotencyKey: { type: [string, 'null'] }
+        createdAt: { type: integer, minimum: 0 }
+      additionalProperties: false
+    CreateScheduleRequest:
+      type: object
+      required: [profileId, name, prompt, cadenceKind, cadenceExpr, cadenceDisplay, timezone]
+      properties:
+        profileId: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        prompt: { type: string, minLength: 1 }
+        cadenceKind: { type: string, enum: [once, interval, daily, weekdays, weekly] }
+        cadenceExpr: { type: string, minLength: 1 }
+        cadenceDisplay: { type: string, minLength: 1 }
+        timezone: { type: string, minLength: 1 }
+        workspaceId: { type: string, minLength: 1 }
+        model: { type: string, minLength: 1 }
+        catchUpPolicy: { type: string, enum: [catch-up, skip, window] }
+        catchUpWindowMs: { type: integer, minimum: 1 }
+        overlapPolicy: { type: string, enum: [skip-if-running, queue] }
+        skipWeekends: { type: boolean }
+        skipHolidays: { type: boolean }
+        safetyLevel: { type: string, enum: [draft-approval, read-only, full-access] }
+        deliveryMode: { type: string }
+        quietOnEmpty: { type: boolean }
+        deliver: {}
+        enabled: { type: boolean }
+        nextRunAt: { type: [integer, 'null'], minimum: 0 }
+      additionalProperties: false
+    ThreadPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/Thread' }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 200 }
+        offset: { type: integer, minimum: 0 }
+      additionalProperties: false
+    ActivityLedgerFamily:
+      type: string
+      enum: [effect, egress, skill_activation, reversal, permission_decision]
+    ActivityLedgerEntry:
+      type: object
+      required:
+        [ledgerSeq, family, receiptId, runId, threadId, profileId, workspaceId,
+         occurredAt, origin, outcome, consequence, toolName]
+      properties:
+        ledgerSeq: { type: integer, minimum: 1 }
+        family: { $ref: '#/components/schemas/ActivityLedgerFamily' }
+        receiptId: { type: string, format: uuid }
+        runId: { type: string }
+        threadId: { type: string }
+        profileId: { type: string }
+        workspaceId: { type: [string, 'null'] }
+        occurredAt: { type: integer, minimum: 0 }
+        origin:
+          type: string
+          enum: [live, backfill]
+          description: >
+            live rows were indexed in their receipt's own transaction, so
+            ledger sequence IS observed append order. backfill rows were
+            reconstructed from timestamps during upgrade; their order is
+            deterministic but not a claim about true causality.
+        outcome: { type: [string, 'null'], maxLength: 40 }
+        consequence:
+          type: [string, 'null']
+          enum: [none_observed, output_observed, effect_possible, effect_confirmed, null]
+        toolName: { type: [string, 'null'], maxLength: 160 }
+      additionalProperties: false
+    ActivityLedgerCoverage:
+      type: object
+      required: [reconstructedThrough, reconstructedCount, observedFrom]
+      properties:
+        reconstructedThrough: { type: integer, minimum: 0 }
+        reconstructedCount: { type: integer, minimum: 0 }
+        observedFrom: { type: [integer, 'null'], minimum: 1 }
+      additionalProperties: false
+    ActivityLedgerPage:
+      type: object
+      required: [items, nextCursor, coverage]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ActivityLedgerEntry' }
+        nextCursor: { type: [string, 'null'], pattern: '^[1-9][0-9]{0,15}$' }
+        coverage: { $ref: '#/components/schemas/ActivityLedgerCoverage' }
+      additionalProperties: false
+    JobReceiptAction:
+      type: object
+      required:
+        [effectId, toolCallId, toolName, outcome, consequence, disposition,
+         firstObservedAt, lastObservedAt, receiptCount]
+      properties:
+        effectId: { type: string, format: uuid }
+        toolCallId: { type: string, maxLength: 200 }
+        toolName: { type: string, maxLength: 160 }
+        outcome:
+          type: string
+          enum: [pending, succeeded, failed, denied, unknown]
+        consequence:
+          type: string
+          enum: [none_observed, output_observed, effect_possible, effect_confirmed]
+          description: Strongest consequence observed for this action, not the latest.
+        disposition:
+          type: string
+          enum: [completed, indeterminate]
+        firstObservedAt: { type: integer, minimum: 0 }
+        lastObservedAt: { type: integer, minimum: 0 }
+        receiptCount: { type: integer, minimum: 1 }
+      additionalProperties: false
+    JobReceipt:
+      type: object
+      required:
+        [runId, status, terminal, stopRequested, stopRequestedAt, consequence,
+         actions, totals]
+      properties:
+        runId: { type: string, format: uuid }
+        status: { type: string }
+        terminal: { type: boolean }
+        stopRequested: { type: boolean }
+        stopRequestedAt: { type: [integer, 'null'], minimum: 0 }
+        consequence:
+          type: string
+          enum: [none_observed, output_observed, effect_possible, effect_confirmed]
+        actions:
+          type: array
+          items: { $ref: '#/components/schemas/JobReceiptAction' }
+        totals:
+          type: object
+          required:
+            [observedActions, completed, indeterminate, succeeded, failed,
+             denied, effectPossibleOrStronger, effectConfirmed]
+          properties:
+            observedActions: { type: integer, minimum: 0 }
+            completed: { type: integer, minimum: 0 }
+            indeterminate: { type: integer, minimum: 0 }
+            succeeded: { type: integer, minimum: 0 }
+            failed: { type: integer, minimum: 0 }
+            denied: { type: integer, minimum: 0 }
+            effectPossibleOrStronger: { type: integer, minimum: 0 }
+            effectConfirmed: { type: integer, minimum: 0 }
+          additionalProperties: false
       additionalProperties: false
     EffectReceiptPage:
       type: object

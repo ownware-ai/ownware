@@ -31,9 +31,39 @@ export function createThreadHandlers(state: GatewayState, deps: ThreadHandlerDep
 
   // GET /api/v1/threads?profileId=coder
   async function listThreads(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // Public contract (revision 0.47): validated pagination and fail-closed
+    // principal scoping. A delegated principal follows the exact threads it is
+    // bound to (via hydrate and its own runs); enumerating a profile's threads
+    // is an owner surface, so delegation is refused rather than filtered —
+    // a filtered empty page would read as "no threads exist".
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot enumerate threads', 'principal_scope_denied', 'auth')
+      return
+    }
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+    const allowed = new Set(['profileId', 'limit', 'offset'])
+    for (const key of url.searchParams.keys()) {
+      if (!allowed.has(key) || url.searchParams.getAll(key).length > 1) {
+        sendError(res, 400, 'Thread listing query is invalid', 'thread_list_invalid', 'invalid_request')
+        return
+      }
+    }
+    const bounded = (name: string, max: number, fallback: number): number | null => {
+      const raw = url.searchParams.get(name)
+      if (raw === null) return fallback
+      if (!/^[0-9]{1,9}$/.test(raw)) return null
+      const parsed = Number(raw)
+      return parsed > max ? null : parsed
+    }
+    const limit = bounded('limit', 200, 50)
+    const offset = bounded('offset', 1_000_000_000 - 1, 0)
+    if (limit === null || limit < 1 || offset === null) {
+      sendError(res, 400, 'Thread listing query is invalid', 'thread_list_invalid', 'invalid_request')
+      return
+    }
     const profileId = url.searchParams.get('profileId') ?? undefined
-    sendJSON(res, 200, await state.listThreads(profileId))
+    res.setHeader('Cache-Control', 'no-store')
+    sendJSON(res, 200, await state.listThreads(profileId, { limit, offset }))
   }
 
   // POST /api/v1/threads

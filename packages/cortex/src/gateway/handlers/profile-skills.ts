@@ -12,6 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { readJSON, sendError, sendJSON } from '../router.js'
+import { authorizePrincipalScope } from '../auth/scoped-principal.js'
 import type { ProfileRegistry } from '../../profile/registry.js'
 import {
   installSkill,
@@ -114,6 +115,11 @@ function sendInstallError(res: ServerResponse, err: SkillInstallError): void {
 // ---------------------------------------------------------------------------
 
 export interface SkillHandlers {
+  listSkills: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ) => Promise<void>
   installSkill: (
     req: IncomingMessage,
     res: ServerResponse,
@@ -134,6 +140,23 @@ export interface SkillHandlers {
     res: ServerResponse,
     params: Record<string, string>,
   ) => Promise<void>
+}
+
+/**
+ * Owner-only boundary. Skills are executable instructions installed into the
+ * agent; reading them reveals the owner's playbooks and installing one changes
+ * agent behaviour. Neither is ever a delegated surface.
+ */
+function ownerOnly<Args extends unknown[]>(
+  handler: (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void> {
+  return async (req, res, ...args) => {
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot access skills', 'principal_scope_denied', 'auth')
+      return
+    }
+    await handler(req, res, ...args)
+  }
 }
 
 export function createSkillHandlers(
@@ -363,10 +386,38 @@ export function createSkillHandlers(
     }
   }
 
+  // GET /api/v1/profiles/:profileId/skills — the per-agent skill list.
+  //
+  // `active` is a configuration fact: the skill body is present and enabled.
+  // It is NOT use evidence and NOT compliance proof — activation receipts
+  // (runs.skill-activations.read) carry the per-run observation.
+  async function list(
+    _req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const profileId = params['profileId']!
+    if (!registry.has(profileId)) {
+      sendError(res, 404, `Profile "${profileId}" not found`)
+      return
+    }
+    const loaded = await registry.get(profileId)
+    res.setHeader('Cache-Control', 'no-store')
+    sendJSON(res, 200, {
+      skills: loaded.skills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        content: skill.content,
+        active: skill.active !== false,
+      })),
+    })
+  }
+
   return {
-    installSkill: install,
-    removeSkill: remove,
-    setSkillActive: setActive,
-    browseSkills: browse,
+    listSkills: ownerOnly(list),
+    installSkill: ownerOnly(install),
+    removeSkill: ownerOnly(remove),
+    setSkillActive: ownerOnly(setActive),
+    browseSkills: ownerOnly(browse),
   }
 }

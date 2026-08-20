@@ -30,6 +30,7 @@ import {
 } from '../../schedules/types.js'
 import { computeNextRun, occurrencesInRange, nextOccurrences } from '../../schedules/cadence.js'
 import { SafetyLevelSchema } from '../../schedules/safety.js'
+import { authorizePrincipalScope } from '../auth/scoped-principal.js'
 
 // ---------------------------------------------------------------------------
 // Request schemas
@@ -148,6 +149,26 @@ export interface ScheduleHandlerDeps {
   readonly runNow: (scheduleId: string) => Promise<ScheduleRunDto | null>
 }
 
+/**
+ * Wrap a schedule handler with the owner-only boundary.
+ *
+ * Routines are a management surface: they run unattended with their own
+ * safety envelope, so a delegated principal (a customer widget, a channel
+ * subject) must never read or mutate them. Refused outright rather than
+ * filtered — a filtered empty roster would read as "no routines exist".
+ */
+function ownerOnly<Args extends unknown[]>(
+  handler: (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void> {
+  return async (req, res, ...args) => {
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot access schedules', 'principal_scope_denied', 'auth')
+      return
+    }
+    await handler(req, res, ...args)
+  }
+}
+
 export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
   const { store, runNow } = deps
 
@@ -157,6 +178,20 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     const parsed = CreateScheduleRequestSchema.safeParse(raw)
     if (!parsed.success) {
       sendError(res, 400, `Invalid schedule: ${parsed.error.message}`)
+      return
+    }
+    // 'cron' remains in the vocabulary but the runner has no cron math yet.
+    // Accepting it used to create a schedule that sat 'scheduled' forever and
+    // silently never fired — an accepted configuration doing nothing, which is
+    // exactly the dishonest default this refuses. Reject until cron exists.
+    if (parsed.data.cadenceKind === 'cron') {
+      sendError(
+        res,
+        400,
+        'Cron cadence is not supported yet: the runner cannot compute its next fire time, so the schedule would never run.',
+        'cadence_unsupported',
+        'invalid_request',
+      )
       return
     }
     let schedule = await store.create(parsed.data)
@@ -208,6 +243,16 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
     const parsed = UpdateScheduleRequestSchema.safeParse(raw)
     if (!parsed.success) {
       sendError(res, 400, `Invalid update: ${parsed.error.message}`)
+      return
+    }
+    if (parsed.data.cadenceKind === 'cron') {
+      sendError(
+        res,
+        400,
+        'Cron cadence is not supported yet: the runner cannot compute its next fire time, so the schedule would never run.',
+        'cadence_unsupported',
+        'invalid_request',
+      )
       return
     }
     const schedule = await store.update(params['id'] ?? '', parsed.data)
@@ -355,17 +400,17 @@ export function createScheduleHandlers(deps: ScheduleHandlerDeps) {
   }
 
   return {
-    createSchedule,
-    listSchedules,
-    listOccurrences,
-    listRecentRuns,
-    previewSchedule: previewSchedule_,
-    getSchedule,
-    updateSchedule,
-    deleteSchedule,
-    pauseSchedule: setEnabled(false),
-    resumeSchedule: setEnabled(true),
-    runNowSchedule,
-    listScheduleRuns,
+    createSchedule: ownerOnly(createSchedule),
+    listSchedules: ownerOnly(listSchedules),
+    listOccurrences: ownerOnly(listOccurrences),
+    listRecentRuns: ownerOnly(listRecentRuns),
+    previewSchedule: ownerOnly(previewSchedule_),
+    getSchedule: ownerOnly(getSchedule),
+    updateSchedule: ownerOnly(updateSchedule),
+    deleteSchedule: ownerOnly(deleteSchedule),
+    pauseSchedule: ownerOnly(setEnabled(false)),
+    resumeSchedule: ownerOnly(setEnabled(true)),
+    runNowSchedule: ownerOnly(runNowSchedule),
+    listScheduleRuns: ownerOnly(listScheduleRuns),
   }
 }

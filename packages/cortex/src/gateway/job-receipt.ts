@@ -198,3 +198,16 @@ export function assembleJobReceipt(db: SqliteDatabase, runId: string): JobReceip
     },
   }
 }
+
+/**
+ * Dialect-agnostic port. Handlers must not know which storage adapter is
+ * underneath them, and `rawDbHandle` is a deprecated SQLite-only surface.
+ */
+export interface JobReceiptRepository {
+  assemble(runId: string): Promise<JobReceipt>
+}
+
+/** SQLite implementation of {@link JobReceiptRepository}. */
+export function createSqliteJobReceiptRepository(db: SqliteDatabase): JobReceiptRepository {
+  return { assemble: async (runId) => assembleJobReceipt(db, runId) }
+}

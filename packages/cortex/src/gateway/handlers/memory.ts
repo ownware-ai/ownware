@@ -43,6 +43,7 @@ import {
   type MemorySystem,
   type MemoryEvent,
 } from '../../memory/index.js'
+import { authorizePrincipalScope } from '../auth/scoped-principal.js'
 
 const HEARTBEAT_INTERVAL_MS = 30_000
 
@@ -56,6 +57,26 @@ const ProposalStatusFilterSchema = z.union([ProposalStatusSchema, z.literal('all
 
 export interface MemoryHandlerDeps {
   readonly system: MemorySystem
+}
+
+/**
+ * Owner-only boundary for the whole memory family.
+ *
+ * Memory content feeds the system prompt and About You holds personal
+ * identity (name, role, pronouns). A delegated principal — a customer widget,
+ * a channel subject — must never read or mutate what the agent knows about
+ * its owner. Refused outright, not filtered.
+ */
+function ownerOnly<Args extends unknown[]>(
+  handler: (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void> {
+  return async (req, res, ...args) => {
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot access memory', 'principal_scope_denied', 'auth')
+      return
+    }
+    await handler(req, res, ...args)
+  }
 }
 
 export function createMemoryHandlers(deps: MemoryHandlerDeps) {
@@ -349,17 +370,17 @@ export function createMemoryHandlers(deps: MemoryHandlerDeps) {
   }
 
   return {
-    listMemories,
-    createMemory,
-    updateMemory,
-    deleteMemory,
-    listProposalsForProfile,
-    listProposalsForThread,
-    acceptProposal,
-    rejectProposal,
-    getIdentity,
-    putIdentity,
-    streamMemoryEvents,
+    listMemories: ownerOnly(listMemories),
+    createMemory: ownerOnly(createMemory),
+    updateMemory: ownerOnly(updateMemory),
+    deleteMemory: ownerOnly(deleteMemory),
+    listProposalsForProfile: ownerOnly(listProposalsForProfile),
+    listProposalsForThread: ownerOnly(listProposalsForThread),
+    acceptProposal: ownerOnly(acceptProposal),
+    rejectProposal: ownerOnly(rejectProposal),
+    getIdentity: ownerOnly(getIdentity),
+    putIdentity: ownerOnly(putIdentity),
+    streamMemoryEvents: ownerOnly(streamMemoryEvents),
   }
 }
 

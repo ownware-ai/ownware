@@ -351,3 +351,75 @@ describe('ScheduleRunner — overlap + one-off + boot reconcile', () => {
     expect(store.listRuns(s.id).length).toBe(0)
   })
 })
+
+describe('ScheduleRunner — weekly re-arm (V1)', () => {
+  // The board flagged "weekly/cron re-arm unverified (runner doc-drift)".
+  // These pin the runner's actual behaviour: weekly re-arms to the next
+  // CHOSEN day after each fire, and the re-arm math is DST-stable.
+
+  it('re-arms a weekly schedule to the next chosen day after firing', async () => {
+    // Mon 2026-08-17 09:00 UTC; fires Mon/Fri at 09:00.
+    const monday = Date.UTC(2026, 7, 17, 9, 0, 0)
+    clock = monday
+    const s = store.create(input({
+      cadenceKind: 'weekly',
+      cadenceExpr: '{"time":"09:00","days":[1,5]}',
+      cadenceDisplay: 'Mondays and Fridays at 09:00',
+      nextRunAt: monday,
+    }))
+    const runner = makeRunner()
+    await runner.tickOnce()
+    expect(calls).toHaveLength(1)
+    calls[0]!.resolve()
+    await runner.drain()
+
+    const friday = Date.UTC(2026, 7, 21, 9, 0, 0)
+    const after = store.get(s.id)!
+    expect(after.state).toBe('scheduled')
+    expect(after.nextRunAt).toBe(friday)
+
+    // And across the week boundary: fire Friday, re-arm to NEXT Monday.
+    clock = friday
+    await runner.tickOnce()
+    expect(calls).toHaveLength(2)
+    calls[1]!.resolve()
+    await runner.drain()
+    expect(store.get(s.id)!.nextRunAt).toBe(Date.UTC(2026, 7, 24, 9, 0, 0))
+  })
+
+  it('keeps the local fire time across a DST transition', async () => {
+    // America/New_York leaves DST on Sun 2026-11-01. A Friday 09:00 schedule
+    // fired on Oct 30 must re-arm to Nov 6 09:00 LOCAL — which is a different
+    // UTC offset (13:00Z → 14:00Z). Fixed-interval math would drift an hour.
+    const fridayBeforeDst = Date.UTC(2026, 9, 30, 13, 0, 0) // 09:00 EDT
+    clock = fridayBeforeDst
+    const s = store.create(input({
+      cadenceKind: 'weekly',
+      cadenceExpr: '{"time":"09:00","days":[5]}',
+      cadenceDisplay: 'Fridays at 09:00',
+      timezone: 'America/New_York',
+      nextRunAt: fridayBeforeDst,
+    }))
+    const runner = makeRunner()
+    await runner.tickOnce()
+    calls[0]!.resolve()
+    await runner.drain()
+    expect(store.get(s.id)!.nextRunAt).toBe(Date.UTC(2026, 10, 6, 14, 0, 0)) // 09:00 EST
+  })
+
+  it('completes a weekly whose day set is empty instead of spinning', async () => {
+    const s = store.create(input({
+      cadenceKind: 'weekly',
+      cadenceExpr: '{"time":"09:00","days":[]}',
+      cadenceDisplay: 'never',
+      nextRunAt: clock,
+    }))
+    const runner = makeRunner()
+    await runner.tickOnce()
+    calls[0]!.resolve()
+    await runner.drain()
+    // No next occurrence exists; the honest terminal state is completed.
+    expect(store.get(s.id)!.state).toBe('completed')
+    expect(store.get(s.id)!.nextRunAt).toBeNull()
+  })
+})

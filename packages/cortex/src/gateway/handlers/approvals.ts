@@ -12,6 +12,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ToolResult } from '@ownware/loom'
 import { sendError, sendJSON } from '../router.js'
+import { authorizePrincipalScope } from '../auth/scoped-principal.js'
 import type { ApprovalRepository, ScheduleRepository } from '../../storage/platform-repositories.js'
 
 /** Re-execute the exact held tool call with the user's credentials (8d-4).
@@ -34,6 +35,24 @@ export interface ApprovalHandlerDeps {
   readonly scheduleStore: ScheduleRepository
   /** Re-execute the held call on approve (8d-4). */
   readonly executeHeldTool: ExecuteHeldTool
+}
+
+/**
+ * Owner-only boundary. An approval row carries the held call verbatim — the
+ * draft email, the file content — because reviewing it is the whole point of
+ * draft-approval. That is exactly why no delegated principal may ever read or
+ * decide one: the drafts are the owner's unsent outbound actions.
+ */
+function ownerOnly<Args extends unknown[]>(
+  handler: (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void> {
+  return async (req, res, ...args) => {
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot access approvals', 'principal_scope_denied', 'auth')
+      return
+    }
+    await handler(req, res, ...args)
+  }
 }
 
 export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
@@ -170,5 +189,11 @@ export function createApprovalHandlers(deps: ApprovalHandlerDeps) {
     })
   }
 
-  return { listApprovals, countApprovals, getApproval, discardApproval, approveApproval }
+  return {
+    listApprovals: ownerOnly(listApprovals),
+    countApprovals: ownerOnly(countApprovals),
+    getApproval: ownerOnly(getApproval),
+    discardApproval: ownerOnly(discardApproval),
+    approveApproval: ownerOnly(approveApproval),
+  }
 }

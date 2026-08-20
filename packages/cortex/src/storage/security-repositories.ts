@@ -1,3 +1,4 @@
+import type { JobReceiptRepository } from '../gateway/job-receipt.js'
 import type { ActivityLedgerRepository } from '../gateway/activity-ledger.js'
 import type {
   CredentialAuditEvent,
@@ -289,6 +290,7 @@ export interface SecurityRepositories {
   readonly skillActivationReceipts: SkillActivationReceiptRepository
   readonly effectReversals: EffectReversalRepository
   readonly activityLedger: ActivityLedgerRepository
+  readonly jobReceipts: JobReceiptRepository
   readonly idempotency: IdempotencyRepository
   readonly accessGrants: AccessGrantRepository
   readonly oauthRefresh: OAuthRefreshRepository

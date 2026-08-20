@@ -264,6 +264,246 @@ export interface ThreadMessage {
   readonly parts?: readonly ThreadMessagePart[]
 }
 
+export interface CredentialSummary {
+  readonly id: string
+  readonly name: string
+  readonly category: string
+  readonly authType: string
+  /** A masked fragment for recognition. Never the value. */
+  readonly hint: string
+  readonly status: string
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly lastUsedAt?: string
+  readonly forConnector?: string
+  readonly grantedScopes?: readonly string[]
+}
+
+export interface Workspace {
+  readonly id: string
+  readonly name: string
+  /** Absolute path on the owner's machine — the "Show in Finder" target. */
+  readonly path: string
+  readonly status: 'active' | 'archived'
+  readonly lastProfileId: string | null
+  readonly pinned: boolean
+  readonly tabCount: number
+}
+
+export interface WorkspacePage {
+  readonly items: readonly Workspace[]
+  readonly total: number
+  readonly limit: number
+  readonly offset: number
+}
+
+export interface ProfileSkill {
+  readonly name: string
+  readonly description: string
+  /** The playbook body — the owner's own file, editable on disk. */
+  readonly content: string
+  /**
+   * A configuration fact: the body is present and enabled. NOT use evidence
+   * and NOT compliance proof — per-run activation receipts carry those.
+   */
+  readonly active: boolean
+}
+
+export type InstallSkillInput =
+  | { readonly source: 'url'; readonly url: string }
+  | { readonly source: 'content'; readonly content: string; readonly sourceUrl?: string | null }
+  | {
+      readonly source: 'github-folder'
+      readonly owner: string
+      readonly repo: string
+      readonly ref: string
+      readonly path: string
+    }
+
+export type ApprovalStatus =
+  | 'pending'
+  | 'executing'
+  | 'approved'
+  | 'discarded'
+  | 'failed'
+  /** Claimed, but completion could not be established safely. Never retried automatically. */
+  | 'indeterminate'
+
+export interface Approval {
+  readonly id: string
+  readonly scheduleId: string
+  readonly runId: string
+  readonly threadId: string | null
+  readonly toolName: string
+  /** The held call's arguments, verbatim — the draft under review. */
+  readonly toolInput: unknown
+  readonly summary: string
+  readonly status: ApprovalStatus
+  readonly result: unknown
+  readonly errorMessage: string | null
+  readonly createdAt: number
+  readonly decidedAt: number | null
+}
+
+export interface PendingApproval extends Approval {
+  readonly scheduleName: string
+  readonly profileId: string
+}
+
+export type MemoryKind = 'fact' | 'preference' | 'correction' | 'identity'
+export type MemorySource = 'user_pinned' | 'agent_proposed' | 'reflection' | 'legacy_import'
+export type MemoryStatus = 'active' | 'superseded' | 'archived'
+
+export interface Memory {
+  readonly id: string
+  readonly profileId: string
+  readonly scope: 'agent' | 'workspace' | 'user'
+  readonly scopeId: string | null
+  readonly kind: MemoryKind
+  readonly content: string
+  /** The real origin. Render it; never collapse unlike sources into one label. */
+  readonly source: MemorySource
+  readonly sourceThreadId: string | null
+  readonly sourceProposalId: string | null
+  readonly confidence: number
+  readonly status: MemoryStatus
+  readonly supersededBy: string | null
+  readonly pinned: boolean
+  readonly referenceCount: number
+  readonly lastReferencedAt: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface MemoryPage {
+  readonly items: readonly Memory[]
+  readonly total: number
+  readonly limit: number
+  readonly offset: number
+}
+
+export interface MemoryProposal {
+  readonly id: string
+  readonly profileId: string
+  readonly threadId: string
+  readonly proposedContent: string
+  readonly proposedKind: MemoryKind
+  readonly status: 'pending' | 'accepted' | 'rejected' | 'edited'
+  readonly resolvedContent: string | null
+  readonly resolvedMemoryId: string | null
+  readonly rejectionReason: string | null
+  readonly createdAt: string
+  readonly resolvedAt: string | null
+}
+
+export interface UserIdentity {
+  readonly name: string | null
+  readonly role: string | null
+  readonly company: string | null
+  readonly timezone: string | null
+  readonly pronouns: string | null
+  readonly preferences: string | null
+  readonly updatedAt: string | null
+}
+
+export type ScheduleCadenceKind = 'once' | 'interval' | 'daily' | 'weekdays' | 'weekly' | 'cron'
+export type ScheduleSafetyLevel = 'draft-approval' | 'read-only' | 'full-access'
+export type ScheduleState = 'scheduled' | 'paused' | 'running' | 'completed' | 'error'
+
+export interface Schedule {
+  readonly id: string
+  readonly profileId: string
+  readonly workspaceId: string | null
+  readonly name: string
+  readonly prompt: string
+  readonly model: string | null
+  readonly cadenceKind: ScheduleCadenceKind
+  readonly cadenceExpr: string
+  readonly cadenceDisplay: string
+  readonly timezone: string
+  readonly catchUpPolicy: 'catch-up' | 'skip' | 'window'
+  readonly catchUpWindowMs: number | null
+  readonly overlapPolicy: string
+  readonly skipWeekends: boolean
+  readonly skipHolidays: boolean
+  /** Opaque tool boundary; presentation only, never enforcement. */
+  readonly toolEnvelope: unknown
+  /**
+   * The routine's ACTUAL unattended envelope. `full-access` runs headless
+   * with permission bypass — surfaces must show this, never a blanket
+   * "dangerous actions always ask".
+   */
+  readonly safetyLevel: ScheduleSafetyLevel
+  readonly deliveryMode: string
+  readonly quietOnEmpty: boolean
+  readonly deliver: unknown
+  readonly enabled: boolean
+  readonly state: ScheduleState
+  readonly nextRunAt: number | null
+  readonly lastRunAt: number | null
+  readonly lastRunId: string | null
+  readonly createdAt: number
+  readonly updatedAt: number
+}
+
+export interface ScheduleRun {
+  readonly id: string
+  readonly scheduleId: string
+  readonly threadId: string | null
+  readonly scheduledFor: number
+  readonly startedAt: number | null
+  readonly finishedAt: number | null
+  readonly runStatus: string
+  readonly skipReason: string | null
+  readonly wasCatchUp: boolean
+  readonly errorCategory: string | null
+  readonly errorMessage: string | null
+  readonly deliveryStatus: string
+  readonly idempotencyKey: string | null
+  readonly createdAt: number
+}
+
+export interface ScheduleOccurrence {
+  readonly scheduleId: string
+  readonly at: number
+}
+
+export interface CreateScheduleInput {
+  readonly profileId: string
+  readonly name: string
+  readonly prompt: string
+  readonly cadenceKind: Exclude<ScheduleCadenceKind, 'cron'>
+  readonly cadenceExpr: string
+  readonly cadenceDisplay: string
+  readonly timezone: string
+  readonly workspaceId?: string
+  readonly model?: string
+  readonly catchUpPolicy?: 'catch-up' | 'skip' | 'window'
+  readonly catchUpWindowMs?: number
+  readonly overlapPolicy?: string
+  readonly skipWeekends?: boolean
+  readonly skipHolidays?: boolean
+  readonly safetyLevel?: ScheduleSafetyLevel
+  readonly deliveryMode?: string
+  readonly quietOnEmpty?: boolean
+  readonly deliver?: unknown
+  readonly enabled?: boolean
+  readonly nextRunAt?: number | null
+}
+
+export interface ThreadPage {
+  readonly items: readonly Thread[]
+  readonly total: number
+  readonly limit: number
+  readonly offset: number
+}
+
+export interface ThreadListOptions {
+  readonly profileId?: string
+  readonly limit?: number
+  readonly offset?: number
+}
+
 export interface ThreadHydrationAgent {
   readonly agentId: string
   readonly parentAgentId: string | null
@@ -339,6 +579,99 @@ export type EffectReceiptOutcome =
   | 'failed'
   | 'denied'
   | 'unknown'
+
+export type ActivityLedgerFamily =
+  | 'effect'
+  | 'egress'
+  | 'skill_activation'
+  | 'reversal'
+  | 'permission_decision'
+
+export interface ActivityLedgerEntry {
+  /** Install-wide, database-assigned, gap-free order. The page cursor. */
+  readonly ledgerSeq: number
+  readonly family: ActivityLedgerFamily
+  /** Locates the authoritative receipt; the row itself proves nothing more. */
+  readonly receiptId: string
+  readonly runId: string
+  readonly threadId: string
+  readonly profileId: string
+  readonly workspaceId: string | null
+  readonly occurredAt: number
+  /**
+   * 'live' rows were indexed in their receipt's own transaction, so ledger
+   * order IS observed append order. 'backfill' rows were reconstructed from
+   * timestamps during upgrade; their order is deterministic, not causal.
+   */
+  readonly origin: 'live' | 'backfill'
+  readonly outcome: string | null
+  readonly consequence: RunConsequence | null
+  readonly toolName: string | null
+}
+
+export interface ActivityLedgerCoverage {
+  readonly reconstructedThrough: number
+  readonly reconstructedCount: number
+  readonly observedFrom: number | null
+}
+
+export interface ActivityLedgerPage {
+  readonly items: readonly ActivityLedgerEntry[]
+  readonly nextCursor: string | null
+  /** What the ledger can and cannot claim about its own ordering. */
+  readonly coverage: ActivityLedgerCoverage
+}
+
+export interface ActivityLedgerListOptions {
+  readonly limit?: number
+  readonly cursor?: string
+  readonly profileId?: string
+  readonly workspaceId?: string
+  readonly threadId?: string
+  readonly runId?: string
+  readonly family?: ActivityLedgerFamily
+  readonly since?: number
+  readonly until?: number
+}
+
+export interface JobReceiptAction {
+  readonly effectId: string
+  readonly toolCallId: string
+  readonly toolName: string
+  readonly outcome: EffectReceiptOutcome
+  /** Strongest consequence observed for this action, not the latest. */
+  readonly consequence: RunConsequence
+  /**
+   * 'completed' means a terminal outcome was observed — including failure and
+   * denial — and never implies an external effect did or did not occur.
+   * 'indeterminate' collapses interrupted and never-dispatched, which the
+   * receipts cannot separate.
+   */
+  readonly disposition: 'completed' | 'indeterminate'
+  readonly firstObservedAt: number
+  readonly lastObservedAt: number
+  readonly receiptCount: number
+}
+
+export interface JobReceipt {
+  readonly runId: string
+  readonly status: string
+  readonly terminal: boolean
+  readonly stopRequested: boolean
+  readonly stopRequestedAt: number | null
+  readonly consequence: RunConsequence
+  readonly actions: readonly JobReceiptAction[]
+  readonly totals: {
+    readonly observedActions: number
+    readonly completed: number
+    readonly indeterminate: number
+    readonly succeeded: number
+    readonly failed: number
+    readonly denied: number
+    readonly effectPossibleOrStronger: number
+    readonly effectConfirmed: number
+  }
+}
 
 export interface EffectReceipt {
   readonly receiptId: string
@@ -1741,6 +2074,91 @@ export interface GatewayClient {
   /** Read one immutable run's bounded durable lifecycle snapshot. */
   runSnapshot(runId: string): Promise<RunSnapshot>
   /** Read immutable, payload-free effect authority observations. */
+  /** Page thread summaries for navigation. Owner surface; delegation is refused. */
+  listThreads(options?: ThreadListOptions): Promise<ThreadPage>
+  /** The stored-credential inventory — metadata only, never a value. */
+  listCredentials(options?: { category?: string; forConnector?: string }): Promise<readonly CredentialSummary[]>
+  /** Page the owner's workspaces. Owner surface; delegation is refused. */
+  listWorkspaces(options?: { status?: 'active' | 'archived' }): Promise<WorkspacePage>
+  /** Create (or adopt) a workspace directory on the owner's machine. */
+  createWorkspace(input: { path: string; name?: string; create?: boolean }): Promise<Workspace>
+  /** One workspace. */
+  getWorkspace(workspaceId: string): Promise<Workspace>
+  /** Rename, pin or archive a workspace. */
+  updateWorkspace(workspaceId: string, patch: Record<string, unknown>): Promise<Workspace>
+  /** Remove the workspace row; the directory on disk is never deleted. */
+  deleteWorkspace(workspaceId: string): Promise<void>
+  /** The threads that live in one workspace. */
+  listWorkspaceThreads(workspaceId: string): Promise<readonly Thread[]>
+  /** The per-agent skill list. Owner surface; delegation is refused. */
+  listProfileSkills(profileId: string): Promise<readonly ProfileSkill[]>
+  /** Install a skill from a URL, inline content or a GitHub folder. */
+  installSkill(profileId: string, input: InstallSkillInput): Promise<{ slug: string; name: string }>
+  /** Enable or disable one installed skill. */
+  setSkillActive(profileId: string, slug: string, active: boolean): Promise<void>
+  /** Remove one installed skill permanently. */
+  removeSkill(profileId: string, slug: string): Promise<void>
+  /** The pending-approvals inbox, newest first. Owner surface; delegation is refused. */
+  listApprovals(options?: { profileId?: string; limit?: number }): Promise<readonly PendingApproval[]>
+  /** The pending count — the bell badge. */
+  countApprovals(options?: { profileId?: string }): Promise<number>
+  /** One approval, including the exact held call. */
+  getApproval(approvalId: string): Promise<Approval>
+  /** Re-execute the EXACT held call; decision and result are both recorded. */
+  approveApproval(approvalId: string): Promise<Approval>
+  /** Drop a draft. It is NEVER executed. */
+  discardApproval(approvalId: string): Promise<Approval>
+  /** Page one agent's memories. Owner surface; delegation is refused. */
+  listMemories(profileId: string, options?: { limit?: number; offset?: number }): Promise<MemoryPage>
+  /** Pin a memory the user stated directly. */
+  createMemory(profileId: string, input: { content: string; kind?: MemoryKind; pinned?: boolean }): Promise<Memory>
+  /** Edit, pin or archive one memory in place. */
+  updateMemory(memoryId: string, patch: { content?: string; kind?: MemoryKind; pinned?: boolean; status?: MemoryStatus }): Promise<Memory>
+  /** Forget one memory. Real deletion. */
+  deleteMemory(memoryId: string): Promise<void>
+  /** The proposal queue for one agent, with the live pending count. */
+  listMemoryProposals(profileId: string, options?: { status?: MemoryProposal['status'] }): Promise<{ items: readonly MemoryProposal[]; pendingCount: number }>
+  /** Keep a proposal, optionally edited, as a real memory — atomically. */
+  acceptMemoryProposal(proposalId: string, input?: { content?: string; kind?: MemoryKind; pinned?: boolean }): Promise<{ proposal: MemoryProposal; memory: Memory }>
+  /** Discard a proposal with an optional reason. Never touches memories. */
+  rejectMemoryProposal(proposalId: string, input?: { reason?: string }): Promise<MemoryProposal>
+  /** About You — the shared context every agent sees. Distinct from learned memory. */
+  getUserIdentity(): Promise<UserIdentity>
+  /** Replace the About You record. */
+  putUserIdentity(identity: Partial<Omit<UserIdentity, 'updatedAt'>>): Promise<UserIdentity>
+  /** List routines. Owner surface; delegation is refused. */
+  listSchedules(options?: { profileId?: string; enabledOnly?: boolean }): Promise<readonly Schedule[]>
+  /** Create a routine; unsupported cadences are refused, never silently disarmed. */
+  createSchedule(input: CreateScheduleInput): Promise<Schedule>
+  /** Read one routine including its effective safety envelope. */
+  getSchedule(scheduleId: string): Promise<Schedule>
+  /** Update a routine. */
+  updateSchedule(scheduleId: string, patch: Partial<Omit<CreateScheduleInput, 'profileId'>>): Promise<Schedule>
+  /** Delete a routine. */
+  deleteSchedule(scheduleId: string): Promise<void>
+  /** Pause a routine; its cursor is retained. */
+  pauseSchedule(scheduleId: string): Promise<Schedule>
+  /** Resume a routine; the server recomputes the next fire time. */
+  resumeSchedule(scheduleId: string): Promise<Schedule>
+  /** Fire a routine immediately under its own safety envelope. */
+  runScheduleNow(scheduleId: string): Promise<void>
+  /** Per-routine run history; found-nothing runs still appear. */
+  listScheduleRuns(scheduleId: string, options?: { limit?: number }): Promise<readonly ScheduleRun[]>
+  /** Projected fire times for calendar views. */
+  listScheduleOccurrences(options: { from: number; to: number; profileId?: string }): Promise<readonly ScheduleOccurrence[]>
+  /** Next projected fire instants for an unsaved cadence. */
+  previewSchedule(input: {
+    cadenceKind: Exclude<ScheduleCadenceKind, 'cron'>
+    cadenceExpr: string
+    timezone: string
+    skipWeekends?: boolean
+    skipHolidays?: boolean
+    count?: number
+  }): Promise<readonly number[]>
+  /** Page the cross-run activity ledger, newest first. */
+  listActivityReceipts(options?: ActivityLedgerListOptions): Promise<ActivityLedgerPage>
+  /** What one run is observed to have done, aggregated per tool action. */
+  getJobReceipt(runId: string): Promise<JobReceipt>
   listEffectReceipts(
     runId: string,
     options?: EffectReceiptListOptions,
@@ -1937,6 +2355,19 @@ type EvidenceResource =
   | 'effect reversal offer page'
   | 'effect reversal execution'
   | 'effect reversal receipt page'
+  | 'activity ledger page'
+  | 'job receipt'
+  | 'thread page'
+  | 'schedule'
+  | 'schedule run list'
+  | 'schedule occurrence list'
+  | 'memory'
+  | 'memory proposal'
+  | 'user identity'
+  | 'approval'
+  | 'profile skill'
+  | 'workspace'
+  | 'credential inventory'
 
 function invalidEvidenceResponse(
   status: number,
@@ -2414,6 +2845,105 @@ function isThreadHydrationAgent(value: unknown): value is ThreadHydrationAgent {
     isSafeInteger(value['eventCount'])
 }
 
+function isWorkspace(value: unknown): value is Workspace {
+  return isRecord(value) && isNonEmptyString(value['id']) && isNonEmptyString(value['name']) &&
+    isNonEmptyString(value['path']) &&
+    (value['status'] === 'active' || value['status'] === 'archived') &&
+    (value['lastProfileId'] === null || isNonEmptyString(value['lastProfileId'])) &&
+    typeof value['pinned'] === 'boolean' && isSafeInteger(value['tabCount'], 0)
+}
+
+const APPROVAL_STATUSES = new Set([
+  'pending', 'executing', 'approved', 'discarded', 'failed', 'indeterminate',
+])
+
+function isApproval(value: unknown): value is Approval {
+  return isRecord(value) && isNonEmptyString(value['id']) && isNonEmptyString(value['scheduleId']) &&
+    isNonEmptyString(value['runId']) &&
+    (value['threadId'] === null || isNonEmptyString(value['threadId'])) &&
+    isNonEmptyString(value['toolName']) && typeof value['summary'] === 'string' &&
+    isMember(value['status'], APPROVAL_STATUSES) &&
+    (value['errorMessage'] === null || typeof value['errorMessage'] === 'string') &&
+    isSafeInteger(value['createdAt']) && isNullableSafeInteger(value['decidedAt'])
+}
+
+const MEMORY_KINDS = new Set(['fact', 'preference', 'correction', 'identity'])
+const MEMORY_SOURCES = new Set(['user_pinned', 'agent_proposed', 'reflection', 'legacy_import'])
+const MEMORY_STATUSES = new Set(['active', 'superseded', 'archived'])
+const PROPOSAL_STATUSES = new Set(['pending', 'accepted', 'rejected', 'edited'])
+
+function isMemory(value: unknown): value is Memory {
+  return isRecord(value) && isNonEmptyString(value['id']) && isNonEmptyString(value['profileId']) &&
+    isMember(value['kind'], MEMORY_KINDS) && typeof value['content'] === 'string' &&
+    isMember(value['source'], MEMORY_SOURCES) && isMember(value['status'], MEMORY_STATUSES) &&
+    typeof value['confidence'] === 'number' && value['confidence'] >= 0 && value['confidence'] <= 1 &&
+    typeof value['pinned'] === 'boolean' && isSafeInteger(value['referenceCount'], 0) &&
+    (value['sourceThreadId'] === null || isNonEmptyString(value['sourceThreadId'])) &&
+    isNonEmptyString(value['createdAt']) && isNonEmptyString(value['updatedAt'])
+}
+
+function isMemoryProposal(value: unknown): value is MemoryProposal {
+  return isRecord(value) && isNonEmptyString(value['id']) && isNonEmptyString(value['profileId']) &&
+    isNonEmptyString(value['threadId']) && typeof value['proposedContent'] === 'string' &&
+    isMember(value['proposedKind'], MEMORY_KINDS) &&
+    isMember(value['status'], PROPOSAL_STATUSES) && isNonEmptyString(value['createdAt'])
+}
+
+function isUserIdentity(value: unknown): value is UserIdentity {
+  if (!isRecord(value)) return false
+  const fields = ['name', 'role', 'company', 'timezone', 'pronouns', 'preferences', 'updatedAt'] as const
+  return fields.every((field) => value[field] === null || typeof value[field] === 'string')
+}
+
+const SCHEDULE_CADENCES = new Set(['once', 'interval', 'daily', 'weekdays', 'weekly', 'cron'])
+const SCHEDULE_SAFETY = new Set(['draft-approval', 'read-only', 'full-access'])
+const SCHEDULE_STATES = new Set(['scheduled', 'paused', 'running', 'completed', 'error'])
+
+function isSchedule(value: unknown): value is Schedule {
+  return isRecord(value) && isNonEmptyString(value['id']) && isNonEmptyString(value['profileId']) &&
+    (value['workspaceId'] === null || isNonEmptyString(value['workspaceId'])) &&
+    isNonEmptyString(value['name']) && typeof value['prompt'] === 'string' &&
+    (value['model'] === null || isNonEmptyString(value['model'])) &&
+    isMember(value['cadenceKind'], SCHEDULE_CADENCES) &&
+    typeof value['cadenceExpr'] === 'string' && typeof value['cadenceDisplay'] === 'string' &&
+    isNonEmptyString(value['timezone']) &&
+    isMember(value['safetyLevel'], SCHEDULE_SAFETY) &&
+    isMember(value['state'], SCHEDULE_STATES) &&
+    typeof value['enabled'] === 'boolean' &&
+    isNullableSafeInteger(value['nextRunAt']) && isNullableSafeInteger(value['lastRunAt']) &&
+    isSafeInteger(value['createdAt']) && isSafeInteger(value['updatedAt'])
+}
+
+function parseScheduleEnvelope(value: unknown, status: number): Schedule {
+  if (!isRecord(value) || !isSchedule(value['schedule'])) {
+    throw invalidEvidenceResponse(status, 'schedule')
+  }
+  return value['schedule']
+}
+
+function isScheduleRun(value: unknown): value is ScheduleRun {
+  return isRecord(value) && isNonEmptyString(value['id']) && isNonEmptyString(value['scheduleId']) &&
+    (value['threadId'] === null || isNonEmptyString(value['threadId'])) &&
+    isSafeInteger(value['scheduledFor']) &&
+    isNullableSafeInteger(value['startedAt']) && isNullableSafeInteger(value['finishedAt']) &&
+    isNonEmptyString(value['runStatus']) && typeof value['wasCatchUp'] === 'boolean' &&
+    isSafeInteger(value['createdAt'])
+}
+
+function parseThreadPage(value: unknown, status: number): ThreadPage {
+  if (!isRecord(value) || !Array.isArray(value['items']) ||
+      !isSafeInteger(value['total'], 0) || !isSafeInteger(value['limit'], 1) ||
+      !isSafeInteger(value['offset'], 0) || value['items'].length > (value['limit'] as number)) {
+    throw invalidEvidenceResponse(status, 'thread page')
+  }
+  const seen = new Set<string>()
+  for (const raw of value['items']) {
+    if (!isThread(raw) || seen.has(raw.id)) throw invalidEvidenceResponse(status, 'thread page')
+    seen.add(raw.id)
+  }
+  return value as unknown as ThreadPage
+}
+
 function parseThreadHydration(
   value: unknown,
   status: number,
@@ -2550,6 +3080,105 @@ const REVERSAL_RECEIPT_OUTCOMES = new Set<EffectReversalReceiptOutcome>([
   'confirmed', 'stale', 'expired',
 ])
 const REVERSAL_ACTOR_KINDS = new Set(['owner', 'delegated'])
+
+const ACTIVITY_LEDGER_FAMILIES = new Set<string>([
+  'effect', 'egress', 'skill_activation', 'reversal', 'permission_decision',
+])
+const ACTIVITY_CURSOR = /^[1-9][0-9]{0,15}$/
+const ACTIVITY_OUTCOME = /^[a-z_]{1,40}$/
+const ACTIVITY_TOOL_NAME = /^[A-Za-z0-9_.:-]{1,160}$/
+
+function isActivityLedgerEntry(value: unknown): value is ActivityLedgerEntry {
+  return isRecord(value) && isSafeInteger(value['ledgerSeq'], 1) &&
+    isMember(value['family'], ACTIVITY_LEDGER_FAMILIES) &&
+    typeof value['receiptId'] === 'string' && UUID.test(value['receiptId']) &&
+    isNonEmptyString(value['runId']) && isNonEmptyString(value['threadId']) &&
+    isNonEmptyString(value['profileId']) &&
+    (value['workspaceId'] === null || isNonEmptyString(value['workspaceId'])) &&
+    isSafeInteger(value['occurredAt']) &&
+    (value['origin'] === 'live' || value['origin'] === 'backfill') &&
+    (value['outcome'] === null ||
+      (typeof value['outcome'] === 'string' && ACTIVITY_OUTCOME.test(value['outcome']))) &&
+    (value['consequence'] === null || isRunConsequence(value['consequence'])) &&
+    (value['toolName'] === null ||
+      (typeof value['toolName'] === 'string' && ACTIVITY_TOOL_NAME.test(value['toolName'])))
+}
+
+function parseActivityLedgerPage(value: unknown, status: number): ActivityLedgerPage {
+  if (!isRecord(value) || !Array.isArray(value['items']) ||
+      value['items'].length > MAX_EVIDENCE_PAGE_ITEMS ||
+      (value['nextCursor'] !== null &&
+        (typeof value['nextCursor'] !== 'string' || !ACTIVITY_CURSOR.test(value['nextCursor'])))) {
+    throw invalidEvidenceResponse(status, 'activity ledger page')
+  }
+  const coverage = value['coverage']
+  if (!isRecord(coverage) || !isSafeInteger(coverage['reconstructedThrough'], 0) ||
+      !isSafeInteger(coverage['reconstructedCount'], 0) ||
+      (coverage['observedFrom'] !== null && !isSafeInteger(coverage['observedFrom'], 1))) {
+    throw invalidEvidenceResponse(status, 'activity ledger page')
+  }
+  // Newest first: strictly descending, so a duplicated or reordered row is a
+  // malformed response, never silently accepted.
+  let previous = Number.MAX_SAFE_INTEGER
+  for (const raw of value['items']) {
+    if (!isActivityLedgerEntry(raw) || raw.ledgerSeq >= previous) {
+      throw invalidEvidenceResponse(status, 'activity ledger page')
+    }
+    previous = raw.ledgerSeq
+  }
+  return value as unknown as ActivityLedgerPage
+}
+
+const JOB_DISPOSITIONS = new Set(['completed', 'indeterminate'])
+
+function isJobReceiptAction(value: unknown): value is JobReceiptAction {
+  return isRecord(value) && typeof value['effectId'] === 'string' && UUID.test(value['effectId']) &&
+    isNonEmptyString(value['toolCallId']) && isNonEmptyString(value['toolName']) &&
+    isMember(value['outcome'], EFFECT_RECEIPT_OUTCOMES) &&
+    isRunConsequence(value['consequence']) &&
+    isMember(value['disposition'], JOB_DISPOSITIONS) &&
+    isSafeInteger(value['firstObservedAt']) && isSafeInteger(value['lastObservedAt']) &&
+    isSafeInteger(value['receiptCount'], 1)
+}
+
+function parseJobReceipt(value: unknown, status: number, runId: string): JobReceipt {
+  if (!isRecord(value) || !isRunIdentity(value['runId'], runId) ||
+      !isNonEmptyString(value['status']) || typeof value['terminal'] !== 'boolean' ||
+      typeof value['stopRequested'] !== 'boolean' ||
+      (value['stopRequestedAt'] !== null && !isSafeInteger(value['stopRequestedAt'])) ||
+      !isRunConsequence(value['consequence']) || !Array.isArray(value['actions'])) {
+    throw invalidEvidenceResponse(status, 'job receipt')
+  }
+  const seen = new Set<string>()
+  for (const raw of value['actions']) {
+    if (!isJobReceiptAction(raw) || seen.has(raw.effectId)) {
+      throw invalidEvidenceResponse(status, 'job receipt')
+    }
+    seen.add(raw.effectId)
+  }
+  const actions = value['actions'] as readonly JobReceiptAction[]
+  const totals = value['totals']
+  // Totals are recomputed here, not trusted: a summary that disagrees with its
+  // own items is a malformed response, whichever half is wrong.
+  const count = (predicate: (action: JobReceiptAction) => boolean): number =>
+    actions.filter(predicate).length
+  const rank: Record<string, number> = {
+    none_observed: 0, output_observed: 1, effect_possible: 2, effect_confirmed: 3,
+  }
+  if (!isRecord(totals) ||
+      totals['observedActions'] !== actions.length ||
+      totals['completed'] !== count((a) => a.disposition === 'completed') ||
+      totals['indeterminate'] !== count((a) => a.disposition === 'indeterminate') ||
+      totals['succeeded'] !== count((a) => a.outcome === 'succeeded') ||
+      totals['failed'] !== count((a) => a.outcome === 'failed') ||
+      totals['denied'] !== count((a) => a.outcome === 'denied') ||
+      totals['effectPossibleOrStronger'] !==
+        count((a) => (rank[a.consequence] ?? 0) >= 2) ||
+      totals['effectConfirmed'] !== count((a) => a.consequence === 'effect_confirmed')) {
+    throw invalidEvidenceResponse(status, 'job receipt')
+  }
+  return value as unknown as JobReceipt
+}
 
 function isEffectReceipt(value: unknown, runId: string): value is EffectReceipt {
   return isRecord(value) && typeof value['receiptId'] === 'string' && UUID.test(value['receiptId']) &&
@@ -3651,6 +4280,567 @@ export class OwnwareClient implements GatewayClient {
     if (!res.ok) throw await errorFromResponse(res)
     const value = await readJsonResponse(res, 'run snapshot')
     return parseRunSnapshot(value, res.status, runId)
+  }
+
+  /**
+   * Page thread summaries for navigation.
+   *
+   * An owner surface: a delegated principal follows the exact threads it is
+   * bound to through hydrate and its own runs, and is refused enumeration
+   * rather than handed a filtered page that reads as "no threads exist".
+   */
+  async listThreads(options: ThreadListOptions = {}): Promise<ThreadPage> {
+    const query = new URLSearchParams()
+    if (options.profileId !== undefined) query.set('profileId', options.profileId)
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.offset !== undefined) query.set('offset', String(options.offset))
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/threads${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'thread page')
+    return parseThreadPage(value, res.status)
+  }
+
+  /** The stored-credential inventory. Metadata only; the wire never carries a value. */
+  async listCredentials(
+    options: { category?: string; forConnector?: string } = {},
+  ): Promise<readonly CredentialSummary[]> {
+    const query = new URLSearchParams()
+    if (options.category !== undefined) query.set('category', options.category)
+    if (options.forConnector !== undefined) query.set('forConnector', options.forConnector)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(`${this.base}/api/v1/credentials${suffix}`, { headers: this.headers(false) })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'credential inventory')
+    if (!isRecord(value) || !Array.isArray(value['credentials']) ||
+        !value['credentials'].every((row): row is CredentialSummary =>
+          isRecord(row) && isNonEmptyString(row['id']) && isNonEmptyString(row['name']) &&
+          isNonEmptyString(row['category']) && typeof row['hint'] === 'string' &&
+          isNonEmptyString(row['status']) &&
+          // The load-bearing check: a value must never appear on this wire.
+          !('value' in row) && !('plaintext' in row) && !('ciphertext' in row))) {
+      throw invalidEvidenceResponse(res.status, 'credential inventory')
+    }
+    return value['credentials']
+  }
+
+  /** Page the owner's workspaces. Owner-only; delegation gets 403. */
+  async listWorkspaces(options: { status?: 'active' | 'archived' } = {}): Promise<WorkspacePage> {
+    const query = new URLSearchParams()
+    if (options.status !== undefined) query.set('status', options.status)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(`${this.base}/api/v1/workspaces${suffix}`, { headers: this.headers(false) })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'workspace')
+    if (!isRecord(value) || !Array.isArray(value['items']) || !value['items'].every(isWorkspace) ||
+        !isSafeInteger(value['total'], 0) || !isSafeInteger(value['limit'], 1) ||
+        !isSafeInteger(value['offset'], 0)) {
+      throw invalidEvidenceResponse(res.status, 'workspace')
+    }
+    return value as unknown as WorkspacePage
+  }
+
+  async createWorkspace(input: { path: string; name?: string; create?: boolean }): Promise<Workspace> {
+    const res = await this.doFetch(`${this.base}/api/v1/workspaces`, {
+      method: 'POST', headers: this.headers(true), body: JSON.stringify(input),
+    })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'workspace')
+    if (!isWorkspace(value)) throw invalidEvidenceResponse(res.status, 'workspace')
+    return value
+  }
+
+  async getWorkspace(workspaceId: string): Promise<Workspace> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/workspaces/${encodeURIComponent(workspaceId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'workspace')
+    if (!isWorkspace(value)) throw invalidEvidenceResponse(res.status, 'workspace')
+    return value
+  }
+
+  async updateWorkspace(workspaceId: string, patch: Record<string, unknown>): Promise<Workspace> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/workspaces/${encodeURIComponent(workspaceId)}`,
+      { method: 'PUT', headers: this.headers(true), body: JSON.stringify(patch) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'workspace')
+    if (!isWorkspace(value)) throw invalidEvidenceResponse(res.status, 'workspace')
+    return value
+  }
+
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/workspaces/${encodeURIComponent(workspaceId)}`,
+      { method: 'DELETE', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+  }
+
+  async listWorkspaceThreads(workspaceId: string): Promise<readonly Thread[]> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/threads`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'workspace')
+    if (!Array.isArray(value) || !value.every(isThread)) {
+      throw invalidEvidenceResponse(res.status, 'workspace')
+    }
+    return value
+  }
+
+  /** The per-agent skill list. Owner-only; delegation gets 403. */
+  async listProfileSkills(profileId: string): Promise<readonly ProfileSkill[]> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/skills`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'profile skill')
+    if (!isRecord(value) || !Array.isArray(value['skills']) ||
+        !value['skills'].every((skill): skill is ProfileSkill =>
+          isRecord(skill) && isNonEmptyString(skill['name']) &&
+          typeof skill['description'] === 'string' && typeof skill['content'] === 'string' &&
+          typeof skill['active'] === 'boolean')) {
+      throw invalidEvidenceResponse(res.status, 'profile skill')
+    }
+    return value['skills']
+  }
+
+  async installSkill(
+    profileId: string,
+    input: InstallSkillInput,
+  ): Promise<{ slug: string; name: string }> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/skills`,
+      { method: 'POST', headers: this.headers(true), body: JSON.stringify(input) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'profile skill')
+    if (!isRecord(value) || !isNonEmptyString(value['slug']) || !isNonEmptyString(value['name'])) {
+      throw invalidEvidenceResponse(res.status, 'profile skill')
+    }
+    return { slug: value['slug'], name: value['name'] }
+  }
+
+  async setSkillActive(profileId: string, slug: string, active: boolean): Promise<void> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/skills/${encodeURIComponent(slug)}`,
+      { method: 'PATCH', headers: this.headers(true), body: JSON.stringify({ active }) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+  }
+
+  async removeSkill(profileId: string, slug: string): Promise<void> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/skills/${encodeURIComponent(slug)}`,
+      { method: 'DELETE', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+  }
+
+  /** The pending-approvals inbox, newest first. Owner-only; delegation gets 403. */
+  async listApprovals(
+    options: { profileId?: string; limit?: number } = {},
+  ): Promise<readonly PendingApproval[]> {
+    const query = new URLSearchParams()
+    if (options.profileId !== undefined) query.set('profileId', options.profileId)
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(`${this.base}/api/v1/approvals${suffix}`, { headers: this.headers(false) })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'approval')
+    if (!isRecord(value) || !Array.isArray(value['approvals']) ||
+        !value['approvals'].every((a): a is PendingApproval =>
+          isApproval(a) && isRecord(a) &&
+          isNonEmptyString((a as Record<string, unknown>)['scheduleName']) &&
+          isNonEmptyString((a as Record<string, unknown>)['profileId']))) {
+      throw invalidEvidenceResponse(res.status, 'approval')
+    }
+    return value['approvals'] as readonly PendingApproval[]
+  }
+
+  async countApprovals(options: { profileId?: string } = {}): Promise<number> {
+    const query = new URLSearchParams()
+    if (options.profileId !== undefined) query.set('profileId', options.profileId)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(`${this.base}/api/v1/approvals/count${suffix}`, { headers: this.headers(false) })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'approval')
+    if (!isRecord(value) || !isSafeInteger(value['count'], 0)) {
+      throw invalidEvidenceResponse(res.status, 'approval')
+    }
+    return value['count'] as number
+  }
+
+  async getApproval(approvalId: string): Promise<Approval> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/approvals/${encodeURIComponent(approvalId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'approval')
+    if (!isRecord(value) || !isApproval(value['approval'])) throw invalidEvidenceResponse(res.status, 'approval')
+    return value['approval']
+  }
+
+  async approveApproval(approvalId: string): Promise<Approval> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/approvals/${encodeURIComponent(approvalId)}/approve`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'approval')
+    if (!isRecord(value) || !isApproval(value['approval'])) throw invalidEvidenceResponse(res.status, 'approval')
+    return value['approval']
+  }
+
+  async discardApproval(approvalId: string): Promise<Approval> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/approvals/${encodeURIComponent(approvalId)}/discard`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'approval')
+    if (!isRecord(value) || !isApproval(value['approval'])) throw invalidEvidenceResponse(res.status, 'approval')
+    return value['approval']
+  }
+
+  /** Page one agent's memories. Owner surface; delegation is refused with 403. */
+  async listMemories(
+    profileId: string,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<MemoryPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.offset !== undefined) query.set('offset', String(options.offset))
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/memories${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'memory')
+    if (!isRecord(value) || !Array.isArray(value['items']) || !value['items'].every(isMemory) ||
+        !isSafeInteger(value['total'], 0) || !isSafeInteger(value['limit'], 1) ||
+        !isSafeInteger(value['offset'], 0)) {
+      throw invalidEvidenceResponse(res.status, 'memory')
+    }
+    return value as unknown as MemoryPage
+  }
+
+  async createMemory(
+    profileId: string,
+    input: { content: string; kind?: MemoryKind; pinned?: boolean },
+  ): Promise<Memory> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/memories`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({ profileId, ...input }),
+      },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'memory')
+    if (!isRecord(value) || !isMemory(value['memory'])) throw invalidEvidenceResponse(res.status, 'memory')
+    return value['memory']
+  }
+
+  async updateMemory(
+    memoryId: string,
+    patch: { content?: string; kind?: MemoryKind; pinned?: boolean; status?: MemoryStatus },
+  ): Promise<Memory> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/memories/${encodeURIComponent(memoryId)}`,
+      { method: 'PATCH', headers: this.headers(true), body: JSON.stringify(patch) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'memory')
+    if (!isRecord(value) || !isMemory(value['memory'])) throw invalidEvidenceResponse(res.status, 'memory')
+    return value['memory']
+  }
+
+  async deleteMemory(memoryId: string): Promise<void> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/memories/${encodeURIComponent(memoryId)}`,
+      { method: 'DELETE', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+  }
+
+  async listMemoryProposals(
+    profileId: string,
+    options: { status?: MemoryProposal['status'] } = {},
+  ): Promise<{ items: readonly MemoryProposal[]; pendingCount: number }> {
+    const query = new URLSearchParams()
+    if (options.status !== undefined) query.set('status', options.status)
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/profiles/${encodeURIComponent(profileId)}/memories/proposals${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'memory proposal')
+    if (!isRecord(value) || !Array.isArray(value['items']) ||
+        !value['items'].every(isMemoryProposal) || !isSafeInteger(value['pendingCount'], 0)) {
+      throw invalidEvidenceResponse(res.status, 'memory proposal')
+    }
+    return value as unknown as { items: readonly MemoryProposal[]; pendingCount: number }
+  }
+
+  async acceptMemoryProposal(
+    proposalId: string,
+    input: { content?: string; kind?: MemoryKind; pinned?: boolean } = {},
+  ): Promise<{ proposal: MemoryProposal; memory: Memory }> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/memories/proposals/${encodeURIComponent(proposalId)}/accept`,
+      { method: 'POST', headers: this.headers(true), body: JSON.stringify(input) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'memory proposal')
+    if (!isRecord(value) || !isMemoryProposal(value['proposal']) || !isMemory(value['memory']) ||
+        value['memory'].sourceProposalId !== proposalId) {
+      throw invalidEvidenceResponse(res.status, 'memory proposal')
+    }
+    return value as unknown as { proposal: MemoryProposal; memory: Memory }
+  }
+
+  async rejectMemoryProposal(
+    proposalId: string,
+    input: { reason?: string } = {},
+  ): Promise<MemoryProposal> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/memories/proposals/${encodeURIComponent(proposalId)}/reject`,
+      { method: 'POST', headers: this.headers(true), body: JSON.stringify(input) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'memory proposal')
+    if (!isRecord(value) || !isMemoryProposal(value['proposal'])) {
+      throw invalidEvidenceResponse(res.status, 'memory proposal')
+    }
+    return value['proposal']
+  }
+
+  async getUserIdentity(): Promise<UserIdentity> {
+    const res = await this.doFetch(`${this.base}/api/v1/user/identity`, { headers: this.headers(false) })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'user identity')
+    if (!isRecord(value) || !isUserIdentity(value['identity'])) {
+      throw invalidEvidenceResponse(res.status, 'user identity')
+    }
+    return value['identity']
+  }
+
+  async putUserIdentity(identity: Partial<Omit<UserIdentity, 'updatedAt'>>): Promise<UserIdentity> {
+    const res = await this.doFetch(`${this.base}/api/v1/user/identity`, {
+      method: 'PUT',
+      headers: this.headers(true),
+      body: JSON.stringify(identity),
+    })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'user identity')
+    if (!isRecord(value) || !isUserIdentity(value['identity'])) {
+      throw invalidEvidenceResponse(res.status, 'user identity')
+    }
+    return value['identity']
+  }
+
+  /** List routines. Owner surface; delegation is refused with 403. */
+  async listSchedules(
+    options: { profileId?: string; enabledOnly?: boolean } = {},
+  ): Promise<readonly Schedule[]> {
+    const query = new URLSearchParams()
+    if (options.profileId !== undefined) query.set('profileId', options.profileId)
+    if (options.enabledOnly === true) query.set('enabledOnly', '1')
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(`${this.base}/api/v1/schedules${suffix}`, { headers: this.headers(false) })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'schedule')
+    if (!isRecord(value) || !Array.isArray(value['schedules']) || !value['schedules'].every(isSchedule)) {
+      throw invalidEvidenceResponse(res.status, 'schedule')
+    }
+    return value['schedules']
+  }
+
+  async createSchedule(input: CreateScheduleInput): Promise<Schedule> {
+    const res = await this.doFetch(`${this.base}/api/v1/schedules`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify(input),
+    })
+    if (!res.ok) throw await errorFromResponse(res)
+    return parseScheduleEnvelope(await readJsonResponse(res, 'schedule'), res.status)
+  }
+
+  async getSchedule(scheduleId: string): Promise<Schedule> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return parseScheduleEnvelope(await readJsonResponse(res, 'schedule'), res.status)
+  }
+
+  async updateSchedule(
+    scheduleId: string,
+    patch: Partial<Omit<CreateScheduleInput, 'profileId'>>,
+  ): Promise<Schedule> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}`,
+      { method: 'PATCH', headers: this.headers(true), body: JSON.stringify(patch) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return parseScheduleEnvelope(await readJsonResponse(res, 'schedule'), res.status)
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<void> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}`,
+      { method: 'DELETE', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+  }
+
+  async pauseSchedule(scheduleId: string): Promise<Schedule> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}/pause`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return parseScheduleEnvelope(await readJsonResponse(res, 'schedule'), res.status)
+  }
+
+  async resumeSchedule(scheduleId: string): Promise<Schedule> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}/resume`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    return parseScheduleEnvelope(await readJsonResponse(res, 'schedule'), res.status)
+  }
+
+  async runScheduleNow(scheduleId: string): Promise<void> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}/run-now`,
+      { method: 'POST', headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+  }
+
+  /** Per-routine run history; a run that found nothing still appears. */
+  async listScheduleRuns(
+    scheduleId: string,
+    options: { limit?: number } = {},
+  ): Promise<readonly ScheduleRun[]> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/${encodeURIComponent(scheduleId)}/runs${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'schedule run list')
+    if (!isRecord(value) || !Array.isArray(value['runs']) || !value['runs'].every(isScheduleRun)) {
+      throw invalidEvidenceResponse(res.status, 'schedule run list')
+    }
+    return value['runs']
+  }
+
+  async listScheduleOccurrences(
+    options: { from: number; to: number; profileId?: string },
+  ): Promise<readonly ScheduleOccurrence[]> {
+    const query = new URLSearchParams({ from: String(options.from), to: String(options.to) })
+    if (options.profileId !== undefined) query.set('profileId', options.profileId)
+    const res = await this.doFetch(
+      `${this.base}/api/v1/schedules/occurrences?${query.toString()}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'schedule occurrence list')
+    if (!isRecord(value) || !Array.isArray(value['occurrences']) ||
+        !value['occurrences'].every((o): o is ScheduleOccurrence =>
+          isRecord(o) && isNonEmptyString(o['scheduleId']) && isSafeInteger(o['at']))) {
+      throw invalidEvidenceResponse(res.status, 'schedule occurrence list')
+    }
+    return value['occurrences']
+  }
+
+  async previewSchedule(input: {
+    cadenceKind: Exclude<ScheduleCadenceKind, 'cron'>
+    cadenceExpr: string
+    timezone: string
+    skipWeekends?: boolean
+    skipHolidays?: boolean
+    count?: number
+  }): Promise<readonly number[]> {
+    const res = await this.doFetch(`${this.base}/api/v1/schedules/preview`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify(input),
+    })
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'schedule occurrence list')
+    if (!isRecord(value) || !Array.isArray(value['occurrences']) ||
+        !value['occurrences'].every((at) => isSafeInteger(at))) {
+      throw invalidEvidenceResponse(res.status, 'schedule occurrence list')
+    }
+    return value['occurrences'] as readonly number[]
+  }
+
+  /**
+   * Page the cross-run activity ledger, newest first.
+   *
+   * One filterable index over every evidence family. A delegated principal is
+   * confined to its own scope by the Gateway; naming another profile or
+   * workspace is refused, never silently narrowed.
+   */
+  async listActivityReceipts(
+    options: ActivityLedgerListOptions = {},
+  ): Promise<ActivityLedgerPage> {
+    const query = new URLSearchParams()
+    if (options.limit !== undefined) query.set('limit', String(options.limit))
+    if (options.cursor !== undefined) query.set('cursor', options.cursor)
+    if (options.profileId !== undefined) query.set('profileId', options.profileId)
+    if (options.workspaceId !== undefined) query.set('workspaceId', options.workspaceId)
+    if (options.threadId !== undefined) query.set('threadId', options.threadId)
+    if (options.runId !== undefined) query.set('runId', options.runId)
+    if (options.family !== undefined) query.set('family', options.family)
+    if (options.since !== undefined) query.set('since', String(options.since))
+    if (options.until !== undefined) query.set('until', String(options.until))
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`
+    const res = await this.doFetch(
+      `${this.base}/api/v1/activity-receipts${suffix}`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'activity ledger page')
+    return parseActivityLedgerPage(value, res.status)
+  }
+
+  /**
+   * What one run is observed to have done, aggregated per tool action.
+   *
+   * The receipt makes no absence claims, and its totals are recomputed from
+   * its actions at this boundary — a summary that disagrees with its own items
+   * is rejected as malformed.
+   */
+  async getJobReceipt(runId: string): Promise<JobReceipt> {
+    const res = await this.doFetch(
+      `${this.base}/api/v1/runs/${encodeURIComponent(runId)}/job-receipt`,
+      { headers: this.headers(false) },
+    )
+    if (!res.ok) throw await errorFromResponse(res)
+    const value = await readJsonResponse(res, 'job receipt')
+    return parseJobReceipt(value, res.status, runId)
   }
 
   /** Read immutable, payload-free authority observations for one run. */

@@ -1,3 +1,4 @@
+import { createSqliteJobReceiptRepository } from '../gateway/job-receipt.js'
 import { createSqliteActivityLedgerRepository } from '../gateway/activity-ledger.js'
 import { randomUUID } from 'node:crypto'
 import type { SqliteDatabase } from './sqlite-driver.js'
@@ -144,6 +145,7 @@ export function createSqliteSecurityRepositories(
   const runs = new GatewayRunStore(database, options.permissionHashSecret)
   const effectReceipts = new EffectReceiptStore(database)
   const activityLedger = createSqliteActivityLedgerRepository(database)
+  const jobReceipts = createSqliteJobReceiptRepository(database)
   const egressReceipts = new EgressReceiptStore(database)
   const skillActivationReceipts = new SkillActivationReceiptStore(database)
   const effectReversals = new EffectReversalStore(database, effectReceipts)
@@ -194,6 +196,11 @@ export function createSqliteSecurityRepositories(
 
   return {
     credentials,
+    jobReceipts: {
+      assemble: (runId) =>
+        repositoryCallAsync(assertActive, 'runs', 'job_receipt', 'read_failed', () =>
+          jobReceipts.assemble(runId)),
+    },
     activityLedger: {
       list: (query, page) =>
         repositoryCallAsync(assertActive, 'activity_ledger', 'list', 'read_failed', () =>

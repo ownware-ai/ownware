@@ -49,6 +49,7 @@ import {
 } from '../../credential/trust-gate.js'
 import type { CredentialEventBus } from '../credential-event-bus.js'
 import { readJSON, sendError, sendJSON } from '../router.js'
+import { authorizePrincipalScope } from '../auth/scoped-principal.js'
 
 // ---------------------------------------------------------------------------
 // File-vault cascade
@@ -494,6 +495,25 @@ export interface CredentialStoreHandlerDeps {
    * `server.ts` always passes a real bus.
    */
   readonly eventBus?: CredentialEventBus
+}
+
+/**
+ * Owner-only boundary. This family is the inventory of the owner's stored
+ * secrets — plaintext never crosses the wire (rows carry a hint only), but
+ * even the inventory (which providers, which scopes, when last used) is
+ * owner-intelligence no delegated principal may read. `reveal` stays internal
+ * and unpublished besides.
+ */
+function ownerOnly<Args extends unknown[]>(
+  handler: (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void> {
+  return async (req, res, ...args) => {
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot access credentials', 'principal_scope_denied', 'auth')
+      return
+    }
+    await handler(req, res, ...args)
+  }
 }
 
 export function createCredentialStoreHandlers(
@@ -1038,7 +1058,16 @@ export function createCredentialStoreHandlers(
     sendJSON(res, 200, { ok: true })
   }
 
-  return { list, getOne, create, update, remove, validate, reveal, approve }
+  return {
+    list: ownerOnly(list),
+    getOne: ownerOnly(getOne),
+    create: ownerOnly(create),
+    update: ownerOnly(update),
+    remove: ownerOnly(remove),
+    validate: ownerOnly(validate),
+    reveal: ownerOnly(reveal),
+    approve: ownerOnly(approve),
+  }
 }
 
 // ---------------------------------------------------------------------------

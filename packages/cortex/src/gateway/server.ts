@@ -2513,6 +2513,7 @@ export class OwnwareGateway {
       runStore: this.runStore,
       effectReceipts: this.state.securityRepositories.effectReceipts,
       activityLedger: this.state.securityRepositories.activityLedger,
+      jobReceipts: this.state.securityRepositories.jobReceipts,
       egressReceipts: this.state.securityRepositories.egressReceipts,
       skillActivationReceipts: this.state.securityRepositories.skillActivationReceipts,
       effectReversals: this.state.securityRepositories.effectReversals,
@@ -3017,13 +3018,18 @@ export class OwnwareGateway {
     this.router.delete('/api/v1/profiles/:profileId/composio/:toolkit', profiles.removeComposioFromProfile)
     // Skills — install via URL / pasted content / github-folder; toggle active;
     // remove by slug; browse a repo.
-    this.router.post('/api/v1/profiles/:profileId/skills', skills.installSkill)
-    this.router.patch('/api/v1/profiles/:profileId/skills/:slug', skills.setSkillActive)
-    this.router.delete('/api/v1/profiles/:profileId/skills/:slug', skills.removeSkill)
-    this.router.get('/api/v1/profiles/:profileId/skills/browse', skills.browseSkills)
+    this.router.get(
+      '/api/v1/profiles/:profileId/skills',
+      skills.listSkills,
+      { operation: 'skills.read' },
+    )
+    this.router.post('/api/v1/profiles/:profileId/skills', skills.installSkill, { operation: 'skills.manage' })
+    this.router.patch('/api/v1/profiles/:profileId/skills/:slug', skills.setSkillActive, { operation: 'skills.manage' })
+    this.router.delete('/api/v1/profiles/:profileId/skills/:slug', skills.removeSkill, { operation: 'skills.manage' })
+    this.router.get('/api/v1/profiles/:profileId/skills/browse', skills.browseSkills, { operation: 'skills.read' })
 
     // Threads
-    this.router.get('/api/v1/threads', threads.listThreads)
+    this.router.get('/api/v1/threads', threads.listThreads, { operation: 'threads.list' })
     this.router.post('/api/v1/threads', threads.createThread)
     this.router.get('/api/v1/threads/:threadId', threads.getThread)
     this.router.patch('/api/v1/threads/:threadId', threads.patchThread)
@@ -3062,43 +3068,43 @@ export class OwnwareGateway {
 
     // Per-profile scheduling ("Ownware Calendar") — CRUD + pause/resume +
     // run-now + run history.
-    this.router.post('/api/v1/schedules', schedules.createSchedule)
-    this.router.get('/api/v1/schedules', schedules.listSchedules)
+    this.router.post('/api/v1/schedules', schedules.createSchedule, { operation: 'schedules.manage' })
+    this.router.get('/api/v1/schedules', schedules.listSchedules, { operation: 'schedules.read' })
     // Literal routes BEFORE the `:id` param route, or ":id" swallows them.
-    this.router.get('/api/v1/schedules/occurrences', schedules.listOccurrences)
-    this.router.get('/api/v1/schedules/runs', schedules.listRecentRuns)
-    this.router.post('/api/v1/schedules/preview', schedules.previewSchedule)
-    this.router.get('/api/v1/schedules/:id', schedules.getSchedule)
-    this.router.patch('/api/v1/schedules/:id', schedules.updateSchedule)
-    this.router.delete('/api/v1/schedules/:id', schedules.deleteSchedule)
-    this.router.post('/api/v1/schedules/:id/pause', schedules.pauseSchedule)
-    this.router.post('/api/v1/schedules/:id/resume', schedules.resumeSchedule)
-    this.router.post('/api/v1/schedules/:id/run-now', schedules.runNowSchedule)
-    this.router.get('/api/v1/schedules/:id/runs', schedules.listScheduleRuns)
+    this.router.get('/api/v1/schedules/occurrences', schedules.listOccurrences, { operation: 'schedules.read' })
+    this.router.get('/api/v1/schedules/runs', schedules.listRecentRuns, { operation: 'schedules.read' })
+    this.router.post('/api/v1/schedules/preview', schedules.previewSchedule, { operation: 'schedules.manage' })
+    this.router.get('/api/v1/schedules/:id', schedules.getSchedule, { operation: 'schedules.read' })
+    this.router.patch('/api/v1/schedules/:id', schedules.updateSchedule, { operation: 'schedules.manage' })
+    this.router.delete('/api/v1/schedules/:id', schedules.deleteSchedule, { operation: 'schedules.manage' })
+    this.router.post('/api/v1/schedules/:id/pause', schedules.pauseSchedule, { operation: 'schedules.manage' })
+    this.router.post('/api/v1/schedules/:id/resume', schedules.resumeSchedule, { operation: 'schedules.manage' })
+    this.router.post('/api/v1/schedules/:id/run-now', schedules.runNowSchedule, { operation: 'schedules.manage' })
+    this.router.get('/api/v1/schedules/:id/runs', schedules.listScheduleRuns, { operation: 'schedules.read' })
 
     // Approvals inbox (Slice 8d-3). Literal `/count` BEFORE `/:id`.
     if (approvals != null) {
-      this.router.get('/api/v1/approvals/count', approvals.countApprovals)
-      this.router.get('/api/v1/approvals', approvals.listApprovals)
-      this.router.get('/api/v1/approvals/:id', approvals.getApproval)
-      this.router.post('/api/v1/approvals/:id/discard', approvals.discardApproval)
-      this.router.post('/api/v1/approvals/:id/approve', approvals.approveApproval)
+      this.router.get('/api/v1/approvals/count', approvals.countApprovals, { operation: 'approvals.read' })
+      this.router.get('/api/v1/approvals', approvals.listApprovals, { operation: 'approvals.read' })
+      this.router.get('/api/v1/approvals/:id', approvals.getApproval, { operation: 'approvals.read' })
+      this.router.post('/api/v1/approvals/:id/discard', approvals.discardApproval, { operation: 'approvals.decide' })
+      this.router.post('/api/v1/approvals/:id/approve', approvals.approveApproval, { operation: 'approvals.decide' })
     }
 
     // Memory system — DB-backed continuous learning.
     // Memories are scoped per-profile; the user identity layer is global.
     // SSE channel ships invalidation hints only — clients refetch via
     // HTTP to read the data.
-    this.router.get('/api/v1/profiles/:profileId/memories', memory.listMemories)
-    this.router.post('/api/v1/profiles/:profileId/memories', memory.createMemory)
-    this.router.patch('/api/v1/memories/:id', memory.updateMemory)
-    this.router.delete('/api/v1/memories/:id', memory.deleteMemory)
-    this.router.get('/api/v1/profiles/:profileId/memories/proposals', memory.listProposalsForProfile)
-    this.router.get('/api/v1/threads/:threadId/memories/proposals', memory.listProposalsForThread)
-    this.router.post('/api/v1/memories/proposals/:id/accept', memory.acceptProposal)
-    this.router.post('/api/v1/memories/proposals/:id/reject', memory.rejectProposal)
-    this.router.get('/api/v1/user/identity', memory.getIdentity)
-    this.router.put('/api/v1/user/identity', memory.putIdentity)
+    this.router.get('/api/v1/profiles/:profileId/memories', memory.listMemories, { operation: 'memories.read' })
+    this.router.post('/api/v1/profiles/:profileId/memories', memory.createMemory, { operation: 'memories.manage' })
+    this.router.patch('/api/v1/memories/:id', memory.updateMemory, { operation: 'memories.manage' })
+    this.router.delete('/api/v1/memories/:id', memory.deleteMemory, { operation: 'memories.manage' })
+    this.router.get('/api/v1/profiles/:profileId/memories/proposals', memory.listProposalsForProfile, { operation: 'memories.read' })
+    this.router.get('/api/v1/threads/:threadId/memories/proposals', memory.listProposalsForThread, { operation: 'memories.read' })
+    this.router.post('/api/v1/memories/proposals/:id/accept', memory.acceptProposal, { operation: 'memories.manage' })
+    this.router.post('/api/v1/memories/proposals/:id/reject', memory.rejectProposal, { operation: 'memories.manage' })
+    this.router.get('/api/v1/user/identity', memory.getIdentity, { operation: 'user_identity.read' })
+    this.router.put('/api/v1/user/identity', memory.putIdentity, { operation: 'user_identity.manage' })
     this.router.get('/api/v1/memory/events', memory.streamMemoryEvents)
 
     // (The desktop terminal-panel and files-panel HTTP surfaces were removed
@@ -3114,6 +3120,11 @@ export class OwnwareGateway {
       '/api/v1/runs/:runId/effect-receipts',
       run.listEffectReceipts,
       { operation: 'runs.effects.read' },
+    )
+    this.router.get(
+      '/api/v1/runs/:runId/job-receipt',
+      run.getJobReceipt,
+      { operation: 'runs.job-receipt.read' },
     )
     this.router.get(
       '/api/v1/runs/:runId/egress-receipts',
@@ -3210,7 +3221,7 @@ export class OwnwareGateway {
       this.credentialStore,
       this.credentialAudit,
     )
-    this.router.get('/api/v1/credentials', credentialStoreHandlers.list)
+    this.router.get('/api/v1/credentials', credentialStoreHandlers.list, { operation: 'credentials.read' })
     // Credential CRUD SSE channel (audit #5 H1, 2026-05-16). MUST be
     // registered BEFORE `GET /api/v1/credentials/:id` — the router
     // iterates in registration order and the `:id` pattern would
@@ -3512,8 +3523,8 @@ export class OwnwareGateway {
     // run a filesystem root (`workspaceId` on POST /run → workspacePath
     // → the agent's zone boundary + shell cwd). Platform surface, kept.
     // (The desktop-only browse/history/file-tree extras were removed.)
-    this.router.get('/api/v1/workspaces', workspaces.list)
-    this.router.post('/api/v1/workspaces', workspaces.create)
+    this.router.get('/api/v1/workspaces', workspaces.list, { operation: 'workspaces.read' })
+    this.router.post('/api/v1/workspaces', workspaces.create, { operation: 'workspaces.manage' })
     // Workspace CRUD SSE channel (audit #2 C2 / F1a, 2026-05-16). MUST
     // be registered BEFORE `GET /api/v1/workspaces/:workspaceId` — the
     // router iterates in registration order and the `:workspaceId`
@@ -3528,10 +3539,10 @@ export class OwnwareGateway {
       '/api/v1/workspaces/events',
       workspaceEventsHandler.streamWorkspaceEvents,
     )
-    this.router.get('/api/v1/workspaces/:workspaceId', workspaces.get)
-    this.router.put('/api/v1/workspaces/:workspaceId', workspaces.update)
-    this.router.delete('/api/v1/workspaces/:workspaceId', workspaces.remove)
-    this.router.get('/api/v1/workspaces/:workspaceId/threads', workspaces.listThreads)
+    this.router.get('/api/v1/workspaces/:workspaceId', workspaces.get, { operation: 'workspaces.read' })
+    this.router.put('/api/v1/workspaces/:workspaceId', workspaces.update, { operation: 'workspaces.manage' })
+    this.router.delete('/api/v1/workspaces/:workspaceId', workspaces.remove, { operation: 'workspaces.manage' })
+    this.router.get('/api/v1/workspaces/:workspaceId/threads', workspaces.listThreads, { operation: 'workspaces.read' })
 
     // (The desktop pane substrate — pane CRUD/layout/SSE — was removed
     // with the legacy desktop shell.)

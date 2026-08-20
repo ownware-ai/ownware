@@ -71,6 +71,7 @@ export const EVIDENCE_CAPABILITIES = {
   skillActivationsRead: { id: 'runs.skill-activations.read', minVersion: 1 },
   reversalsRead: { id: 'runs.reversals.read', minVersion: 1 },
   reversalsExecute: { id: 'runs.reversals.execute', minVersion: 1 },
+  activityRead: { id: 'activity.read', minVersion: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRequirement>>
 
 export type CapabilitySupport =
@@ -622,6 +623,144 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isPositiveSequence(value: unknown): value is number {
   return Number.isSafeInteger(value) && typeof value === 'number' && value > 0
+}
+
+
+// ---------------------------------------------------------------------------
+// AL4: the cross-run activity trail
+// ---------------------------------------------------------------------------
+
+export type ProjectedActivityFamily =
+  | 'effect'
+  | 'egress'
+  | 'skill_activation'
+  | 'reversal'
+  | 'permission_decision'
+
+export interface ProjectedActivityEntry {
+  readonly ledgerSeq: number
+  readonly family: string
+  readonly receiptId: string
+  readonly runId: string
+  readonly threadId: string
+  readonly profileId: string
+  readonly workspaceId: string | null
+  readonly occurredAt: number
+  readonly origin: 'live' | 'backfill'
+  readonly outcome: string | null
+  readonly consequence: ProjectedRunConsequence | null
+  readonly toolName: string | null
+}
+
+export interface ProjectedActivityCoverage {
+  readonly reconstructedThrough: number
+  readonly reconstructedCount: number
+  readonly observedFrom: number | null
+}
+
+export interface ActivityTrailRow {
+  readonly entry: ProjectedActivityEntry
+  /**
+   * True only for the enum of families this projection understands. An
+   * unknown additive family stays in the trail as raw evidence — visible,
+   * ordered, never dropped — but earns no family-specific presentation and
+   * never an action.
+   */
+  readonly knownFamily: boolean
+  /** True when this row's position reflects observed append order. */
+  readonly observedOrder: boolean
+}
+
+export type ActivityTrailProjection =
+  | ProjectionBlocked
+  | {
+      readonly state: 'ready'
+      readonly rows: readonly ActivityTrailRow[]
+      /**
+       * Ordering provenance, phrased for display. Distinguishes "no trail",
+       * "reconstructed prefix" and "fully observed" — an empty trail is never
+       * presented as proof that nothing happened.
+       */
+      readonly coverageStatement: string
+      readonly coverage: ProjectedActivityCoverage
+    }
+
+const KNOWN_ACTIVITY_FAMILIES: ReadonlySet<string> = new Set<ProjectedActivityFamily>([
+  'effect', 'egress', 'skill_activation', 'reversal', 'permission_decision',
+])
+
+function isActivityEntry(value: unknown): value is ProjectedActivityEntry {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return Number.isSafeInteger(record['ledgerSeq']) && (record['ledgerSeq'] as number) >= 1
+    && isNonEmptyString(record['family'])
+    && isNonEmptyString(record['receiptId'])
+    && isNonEmptyString(record['runId'])
+    && isNonEmptyString(record['threadId'])
+    && isNonEmptyString(record['profileId'])
+    && (record['workspaceId'] === null || isNonEmptyString(record['workspaceId']))
+    && isTimestamp(record['occurredAt'])
+    && (record['origin'] === 'live' || record['origin'] === 'backfill')
+    && (record['outcome'] === null || isNonEmptyString(record['outcome']))
+    && (record['consequence'] === null || isConsequence(record['consequence']))
+    && (record['toolName'] === null || isNonEmptyString(record['toolName']))
+}
+
+/**
+ * Project one ledger page into renderable trail rows.
+ *
+ * The projection never upgrades a row into evidence it does not carry: an
+ * unknown family renders raw, a backfilled row is marked reconstructed, and
+ * an empty page is described as an absence of receipts, not of activity.
+ */
+export function selectActivityTrail(input: {
+  readonly capabilities: ProjectionResource<readonly ProjectionCapability[]>
+  readonly page: ProjectionResource<{
+    readonly items: readonly ProjectedActivityEntry[]
+    readonly coverage: ProjectedActivityCoverage
+  }>
+}): ActivityTrailProjection {
+  const capability = requireCapability(input.capabilities, EVIDENCE_CAPABILITIES.activityRead)
+  if (capability !== null) return capability
+  if (input.page.state !== 'ready') return resourceBlocked(input.page)!
+
+  const page = input.page.value
+  const coverage = page?.coverage
+  if (
+    page === null || typeof page !== 'object'
+    || !Array.isArray(page.items)
+    || !page.items.every(isActivityEntry)
+    || coverage === null || typeof coverage !== 'object'
+    || !Number.isSafeInteger(coverage.reconstructedThrough) || coverage.reconstructedThrough < 0
+    || !Number.isSafeInteger(coverage.reconstructedCount) || coverage.reconstructedCount < 0
+    || (coverage.observedFrom !== null
+      && (!Number.isSafeInteger(coverage.observedFrom) || coverage.observedFrom < 1))
+  ) {
+    return { state: 'unsupported', reason: 'malformed_activity_evidence' }
+  }
+  // Newest-first is the wire contract; a disordered page is malformed, and
+  // silently re-sorting it would hide a broken or tampered pagination.
+  for (let index = 1; index < page.items.length; index += 1) {
+    if (page.items[index]!.ledgerSeq >= page.items[index - 1]!.ledgerSeq) {
+      return { state: 'unsupported', reason: 'malformed_activity_evidence' }
+    }
+  }
+
+  const rows: ActivityTrailRow[] = page.items.map((entry) => ({
+    entry,
+    knownFamily: KNOWN_ACTIVITY_FAMILIES.has(entry.family),
+    observedOrder: entry.origin === 'live',
+  }))
+
+  const coverageStatement = rows.length === 0
+    ? 'No activity receipts are recorded in this view. Receipt absence is not proof that nothing happened.'
+    : coverage.reconstructedCount === 0
+      ? 'Every row is ordered by observed append order.'
+      : `Rows up to sequence ${coverage.reconstructedThrough} were indexed from `
+        + 'timestamps during an upgrade; their relative order is reconstructed, '
+        + 'not observed.'
+
+  return { state: 'ready', rows, coverageStatement, coverage }
 }
 
 function isTimestamp(value: unknown): value is number {

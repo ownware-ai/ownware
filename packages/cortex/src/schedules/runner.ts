@@ -16,8 +16,10 @@
  *   - boot reconcile       → orphaned 'running' runs become failed, not
  *     silently fine.
  *
- * Cadence math here covers `interval` + `once`; daily/weekly/cron land in
- * Slice 5 (this engine does not reschedule them yet — it fires once).
+ * Cadence math (cadence.ts) covers `once`, `interval`, `daily`, `weekdays`
+ * and `weekly` — the runner re-arms all of them via computeNextRun after each
+ * fire. `cron` has no math yet and is rejected at the API, because a schedule
+ * that is accepted but never fires is a silent lie.
  */
 
 import type { ScheduleRepository } from '../storage/platform-repositories.js'

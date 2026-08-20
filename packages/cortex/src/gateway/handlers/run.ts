@@ -23,6 +23,7 @@ import {
   ActivityLedgerError,
   type ActivityLedgerRepository,
 } from '../activity-ledger.js'
+import { JobReceiptError, type JobReceiptRepository } from '../job-receipt.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -268,6 +269,7 @@ export interface RunHandlerDeps {
   /** Append-only authority observations for external action attempts. */
   readonly effectReceipts?: EffectReceiptRepository
   readonly activityLedger?: ActivityLedgerRepository
+  readonly jobReceipts?: JobReceiptRepository
   /** Append-only outbound observations and local-only enforcement authority. */
   readonly egressReceipts?: EgressReceiptRepository
   /** Exact, payload-free evidence that a bound skill body entered a conversation. */
@@ -3049,6 +3051,50 @@ export function createRunHandlers(
     }
   }
 
+  // GET /api/v1/runs/:runId/job-receipt — what this run is observed to have done.
+  //
+  // Assembled only from the run's durable consequence and its immutable effect
+  // receipts. It makes no absence claims: "nothing was deleted" is not
+  // derivable from receipts, so it is never said.
+  async function getJobReceipt(
+    req: IncomingMessage,
+    res: ServerResponse,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const runId = params['runId']!
+    const snapshot = await deps.runStore?.get(runId) ?? null
+    if (!snapshot) {
+      sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+      return
+    }
+    if (!authorizePrincipalScope(req, {
+      workspaceId: snapshot.workspaceId ?? undefined,
+      profileId: snapshot.profileId,
+    }) || !await delegatedThreadAccessAllowed(
+      getRequestPrincipal(req),
+      snapshot.threadId,
+      snapshot.profileId,
+      snapshot.workspaceId ?? undefined,
+    )) {
+      sendError(res, 403, 'Delegated principal does not allow this run', 'principal_scope_denied', 'auth')
+      return
+    }
+    if (deps.jobReceipts === undefined) {
+      sendError(res, 503, 'Job receipt is unavailable', 'job_receipt_unavailable', 'overload')
+      return
+    }
+    res.setHeader('Cache-Control', 'no-store')
+    try {
+      sendJSON(res, 200, await deps.jobReceipts.assemble(runId))
+    } catch (error) {
+      if (error instanceof JobReceiptError && error.code === 'run_missing') {
+        sendError(res, 404, 'Run was not found', 'run_not_found', 'not_found')
+        return
+      }
+      throw error
+    }
+  }
+
   // GET /api/v1/runs/:runId/egress-receipts — payload-free outbound evidence.
   async function listEgressReceipts(
     req: IncomingMessage,
@@ -3625,7 +3671,7 @@ export function createRunHandlers(
   return {
     run, startProfileRun, resume, decidePermission, cancelRun, abort, getRun,
     listEffectReceipts, listEgressReceipts, listSkillActivationReceipts,
-    listActivityReceipts,
+    listActivityReceipts, getJobReceipt,
     listEffectReversalOffers, listEffectReversalReceipts, executeEffectReversal,
     listActiveRuns, listWorkspaceRoots, revokeWorkspaceRoot,
     executeHeldTool,

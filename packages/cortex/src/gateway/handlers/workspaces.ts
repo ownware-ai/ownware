@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { sendJSON, sendError, readJSON } from '../router.js'
+import { authorizePrincipalScope } from '../auth/scoped-principal.js'
 import type { GatewayState } from '../state.js'
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from '../types.js'
 import {
@@ -40,6 +41,23 @@ export interface WorkspaceHandlerDeps {
    * `server.ts` always passes a real bus.
    */
   readonly eventBus?: WorkspaceEventBus
+}
+
+/**
+ * Owner-only boundary. A workspace is a directory on the owner's machine —
+ * create makes it on disk, and every row names an absolute local path.
+ * Never a delegated surface.
+ */
+function ownerOnly<Args extends unknown[]>(
+  handler: (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse, ...args: Args) => Promise<void> {
+  return async (req, res, ...args) => {
+    if (!authorizePrincipalScope(req, {})) {
+      sendError(res, 403, 'Delegated principals cannot access workspaces', 'principal_scope_denied', 'auth')
+      return
+    }
+    await handler(req, res, ...args)
+  }
 }
 
 export function createWorkspaceHandlers(
@@ -210,7 +228,11 @@ export function createWorkspaceHandlers(
   // with the legacy desktop shell.)
 
   return {
-    list, create, get, update, remove,
-    listThreads,
+    list: ownerOnly(list),
+    create: ownerOnly(create),
+    get: ownerOnly(get),
+    update: ownerOnly(update),
+    remove: ownerOnly(remove),
+    listThreads: ownerOnly(listThreads),
   }
 }
